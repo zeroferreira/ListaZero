@@ -88,40 +88,43 @@
 
       populateRegisteredUsers();
 
-      if (form) {
+      // Evitar doble registro del handler si el script está duplicado
+      if (form && !window.__FORM_SUBMIT_HANDLER_ADDED__) {
+        window.__FORM_SUBMIT_HANDLER_ADDED__ = true;
+      
         form.addEventListener('submit', function (e) {
           e.preventDefault();
-
+      
           const usuarioEl = document.getElementById('usuario');
           const cancionEl = document.getElementById('cancion');
           const artistaEl = document.getElementById('artista');
-
+      
           const usuarioText = (usuarioEl.value || '').trim().replace(/^@/, '');
           const usuarioSel = (usuarioSelect?.value || '').trim().replace(/^@/, '');
           const usuario = usuarioText || usuarioSel;
-
+      
           const cancion = (cancionEl.value || '').trim();
           const artista = (artistaEl.value || '').trim();
-
+      
           if (!usuario || !cancion || !artista) {
             alert('Por favor completa Usuario (escribe o selecciona), Canción y Artista.');
             return;
           }
-
+      
           const ts = Date.now();
           const nueva = { usuario, cancion, artista, time: ts };
-
+      
           // Guardar por día
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
           const key = getLocalDateKey(ts);
           (byDay[key] ??= []).push(nueva);
           localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
-
+      
           // Compatibilidad legacy
           const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
           arr.push(nueva);
           localStorage.setItem('solicitudes', JSON.stringify(arr));
-
+      
           form.reset();
           window.location.href = 'lista.html';
         });
@@ -266,6 +269,20 @@
       return `${y}-${m}-${dd}`;
     }
 
+    // Inicializar Firebase aquí para asegurar que esté disponible al enviar
+    const firebaseConfig = {
+      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+      authDomain: "zero-strom-web.firebaseapp.com",
+      projectId: "zero-strom-web",
+      storageBucket: "zero-strom-web.firebasestorage.app",
+      messagingSenderId: "758369466349",
+      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+    };
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.firestore();
+
     const form = document.getElementById('formulario');
     const usuarioSelect = document.getElementById('usuario-registrado');
 
@@ -300,8 +317,11 @@
 
     populateRegisteredUsers();
 
-    if (form) {
-      form.addEventListener('submit', function (e) {
+    // Evitar doble registro del handler si el script está duplicado
+    if (form && !window.__FORM_SUBMIT_HANDLER_ADDED__) {
+      window.__FORM_SUBMIT_HANDLER_ADDED__ = true;
+
+      form.addEventListener('submit', async function (e) {
         e.preventDefault();
 
         const usuarioEl = document.getElementById('usuario');
@@ -323,16 +343,38 @@
         const ts = Date.now();
         const nueva = { usuario, cancion, artista, time: ts };
 
-        // Guardar por día
+        // Guardar por día en localStorage (opcional, compatibilidad)
         const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
         const key = getLocalDateKey(ts);
         (byDay[key] ??= []).push(nueva);
         localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
 
-        // Compatibilidad legacy
         const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
         arr.push(nueva);
         localStorage.setItem('solicitudes', JSON.stringify(arr));
+
+        // Guardar en Firestore para que aparezca en lista.html
+        try {
+          const dayKey = (function getLocalDateKey(ts) {
+            const d = ts ? new Date(ts) : new Date();
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${dd}`;
+          })(ts);
+
+          await firebase.firestore().collection('solicitudes').add({
+            usuario,
+            cancion,
+            artista,
+            day: dayKey, // usado por lista.html para filtrar
+            ts: firebase.firestore.FieldValue.serverTimestamp(), // para ordenar y mostrar hora
+          });
+        } catch (err) {
+          console.error('Error guardando en Firestore:', err);
+          alert('Ocurrió un error guardando en la nube. Intenta nuevamente.');
+          return;
+        }
 
         form.reset();
         window.location.href = 'lista.html';
@@ -467,20 +509,6 @@
 </script>
 
 <script>
-  // Configuración e inicialización de Firebase (tu configuración exacta)
-  const firebaseConfig = {
-    apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-    authDomain: "zero-strom-web.firebaseapp.com",
-    projectId: "zero-strom-web",
-    storageBucket: "zero-strom-web.firebasestorage.app",
-    messagingSenderId: "758369466349",
-    appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
-  };
-  if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
-  }
-  const db = firebase.firestore();
-
   // Autenticación: sesión anónima automática para usuarios normales
   firebase.auth().onAuthStateChanged((user) => {
     if (!user) {

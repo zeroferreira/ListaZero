@@ -159,7 +159,6 @@
             return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           }
 
-          // Cargar días disponibles desde Firestore
           async function loadDays() {
             const snap = await db.collection('solicitudes').orderBy('day', 'desc').limit(500).get();
             const days = new Set();
@@ -176,6 +175,22 @@
             if (sorted.length) {
               daySelect.value = sorted[0];
             }
+
+            // Fallback: si Firestore no trajo días, cargar desde localStorage
+            if (!daySelect.value) {
+              const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+              const localDays = Object.keys(byDay).sort().reverse();
+              if (localDays.length) {
+                daySelect.innerHTML = '';
+                localDays.forEach(d => {
+                  const opt = document.createElement('option');
+                  opt.value = d;
+                  opt.textContent = d;
+                  daySelect.appendChild(opt);
+                });
+                daySelect.value = localDays[0];
+              }
+            }
           }
 
           // Suscribirse en tiempo real a las solicitudes del día seleccionado
@@ -189,7 +204,7 @@
               .orderBy('ts', 'desc');
 
             unsubscribeSolicitudes = q.onSnapshot((snap) => {
-              const items = [];
+              let items = [];
               snap.forEach((doc) => {
                 const data = doc.data();
                 const isVip = vipSet.has(data.usuario);
@@ -201,6 +216,21 @@
                   hora: toHour(data.ts),
                 });
               });
+
+              // Fallback: si Firestore devuelve cero, usar localStorage del día
+              if (items.length === 0) {
+                const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+                const arr = Array.isArray(byDay[dayValue]) ? byDay[dayValue] : [];
+                items = arr
+                  .filter(it => !vipOnly.checked || vipSet.has(it.usuario))
+                  .map(it => ({
+                    usuario: it.usuario,
+                    cancion: it.cancion,
+                    artista: it.artista,
+                    hora: toHour(it.time),
+                  }));
+              }
+
               renderSolicitudes(items);
             }, (err) => {
               console.error('Error suscripción solicitudes:', err);
@@ -255,17 +285,38 @@
           // Borrar todas las solicitudes (del día seleccionado)
           wipeAllBtn?.addEventListener('click', async () => {
             if (!daySelect.value) return;
-            const ok = confirm(`¿Borrar todas las solicitudes del día ${daySelect.value}?`);
+            const day = daySelect.value;
+            const ok = confirm(`¿Borrar todas las solicitudes del día ${day}?`);
             if (!ok) return;
+
+            // Deshabilitar botón durante la operación
+            wipeAllBtn.disabled = true;
+
             try {
-              const snap = await db.collection('solicitudes').where('day', '==', daySelect.value).get();
+              // Borrar en Firestore
+              const snap = await db.collection('solicitudes').where('day', '==', day).get();
               const batch = db.batch();
               snap.forEach(doc => batch.delete(doc.ref));
               await batch.commit();
+
+              // Borrar también el fallback de localStorage para ese día
+              const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+              if (byDay && byDay[day]) {
+                delete byDay[day];
+                localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+              }
+
+              // Forzar re-render de la suscripción del día actual (quedará vacío)
+              if (daySelect.value === day) {
+                subscribeSolicitudesForDay(day);
+              }
+
               alert('Solicitudes borradas.');
             } catch (err) {
               console.error('Error al borrar solicitudes:', err);
               alert('Ocurrió un error al borrar las solicitudes.');
+            } finally {
+              wipeAllBtn.disabled = false;
             }
           });
 
