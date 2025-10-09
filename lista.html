@@ -268,10 +268,44 @@
 
           // Popular select de todos los usuarios registrados
           async function renderAllUsersSelect() {
+            // Primero intentamos cargar desde la colección users
             const snap = await db.collection('users').orderBy('name').get();
+            const set = new Set();
+            
+            if (!snap.empty) {
+              snap.forEach(doc => {
+                const { name } = doc.data();
+                if (name) set.add(name);
+              });
+            } else {
+              // Fallback 1: recolectar usuarios desde todas las solicitudes en Firestore
+              const reqSnap = await db.collection('solicitudes').orderBy('day', 'desc').limit(1000).get();
+              reqSnap.forEach(doc => {
+                const u = String(doc.data().usuario || '').trim();
+                if (u) set.add(u);
+              });
+            
+              // Fallback 2: si aún está vacío, recolectar desde localStorage
+              if (set.size === 0) {
+                try {
+                  const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+                  Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
+                    const u = String(it.usuario || '').trim();
+                    if (u) set.add(u);
+                  }));
+                  const legacy = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+                  (legacy || []).forEach(it => {
+                    const u = String(it.usuario || '').trim();
+                    if (u) set.add(u);
+                  });
+                } catch (_) {}
+              }
+            }
+            
+            // Poblar el select
+            const list = Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
             allUsersSelect.innerHTML = '<option value="">Selecciona un usuario</option>';
-            snap.forEach(doc => {
-              const { name } = doc.data();
+            list.forEach(name => {
               const opt = document.createElement('option');
               opt.value = name;
               opt.textContent = name;
