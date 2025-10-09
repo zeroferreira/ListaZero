@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lista de canciones - Zero FM</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <!-- Quita esta línea si no usarás Firebase Auth en lista.html -->
+  <!-- <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script> -->
+</head>
+<body>
+  <main class="container">
+    <section class="card" aria-labelledby="titulo">
+      <div class="title-bar" role="group" aria-label="Barra de título y filtro">
+        <h1 id="titulo">Lista de canciones</h1>
+        <div class="title-tools">
+          <!-- Quitamos el day-filter de aquí -->
+          <button id="menu-btn" class="menu-btn" type="button" aria-label="Abrir menú" aria-haspopup="true" aria-expanded="false" aria-controls="menu-dropdown">
+            <span class="bar bar1"></span>
+            <span class="bar bar2"></span>
+            <span class="bar bar3"></span>
+          </button>
+          <div id="menu-dropdown" class="menu-dropdown" hidden>
+            <ul class="menu-list" role="menu" aria-label="Acciones">
+              <li><a href="index.html" class="menu-item" role="menuitem">Pedir nueva canción</a></li>
+              <li><button type="button" id="menu-admin-open" class="menu-item" role="menuitem">Modo Admin</button></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Nuevo: fila de filtro de día debajo del título -->
+      <div class="day-filter-row" role="group" aria-label="Filtro de día">
+        <div class="day-filter">
+          <label for="day-select">Ver día:</label>
+          <select id="day-select"></select>
+        </div>
+      </div>
+
+      <!-- Elimina cualquier bloque antiguo de menu-overlay que esté fuera de title-bar -->
+
+      <!-- Filtro VIP (único) -->
+      <div class="vip-filter">
+        <label><input type="checkbox" id="vip-only" /> Ver solo VIP</label>
+      </div>
+
+      <!-- Panel de Admin (único) -->
+      <div id="admin-panel" class="admin-panel" hidden>
+        <div class="admin-row">
+          <label for="all-users-select">Selecciona usuario registrado para VIP:</label>
+          <select id="all-users-select" class="user-select" aria-label="Usuarios registrados">
+            <option value="">Selecciona un usuario</option>
+          </select>
+          <button type="button" id="vip-add" class="btn">Agregar</button>
+        </div>
+        <div class="admin-row">
+          <strong>Usuarios VIP:</strong>
+          <ul id="vip-list" class="vip-list"></ul>
+        </div>
+        <div class="admin-row">
+          <strong>Mantenimiento:</strong>
+          <button type="button" id="wipe-all" class="btn">Borrar todas las solicitudes</button>
+        </div>
+      </div>
+
+      <!-- Modal de contraseña Admin (único) -->
+      <!-- Modal de Admin: ahora pide email + contraseña -->
+      <div id="admin-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
+          <h2 id="admin-modal-title">Modo Admin</h2>
+          <p>Inicia sesión para administrar VIP y mantenimiento</p>
+          <div class="field">
+            <label for="admin-email-input">Correo</label>
+            <input id="admin-email-input" type="email" placeholder="correo@ejemplo.com" />
+          </div>
+          <div class="field">
+            <label for="admin-pass-input">Contraseña</label>
+            <input id="admin-pass-input" type="password" placeholder="Contraseña" />
+            <p id="admin-auth-error" class="error" hidden>Credenciales incorrectas o no eres admin.</p>
+          </div>
+          <div class="actions modal-actions">
+            <button type="button" id="admin-pass-cancel" class="btn">Cancelar</button>
+            <button type="button" id="admin-pass-confirm" class="btn">Entrar</button>
+          </div>
+        </div>
+      </div>
+
+      <section class="list" aria-live="polite">
+        <!-- Encabezado de la lista (único) -->
+        <div class="list-header" role="group" aria-label="Encabezados de lista">
+          <span class="col col-time">Hora</span>
+          <span class="col col-usuario">Usuario</span>
+          <span class="col col-cancion">Canción</span>
+          <span class="col col-artista">Artista</span>
+        </div>
+        <ul id="solicitudes-list" class="items"></ul>
+        <p id="empty" class="empty" hidden>Aún no hay solicitudes.</p>
+      </section>
+
+      <script>
+        (function () {
+          // Configuración e inicialización de Firebase (igual que en index.html)
+          const firebaseConfig = {
+            apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+            authDomain: "zero-strom-web.firebaseapp.com",
+            projectId: "zero-strom-web",
+            storageBucket: "zero-strom-web.firebasestorage.app",
+            messagingSenderId: "758369466349",
+            appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+          };
+          if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+          }
+          const db = firebase.firestore();
+
+          // Referencias UI
+          const solicitudesList = document.getElementById('solicitudes-list');
+          const emptyEl = document.getElementById('empty');
+          const vipOnly = document.getElementById('vip-only');
+          const daySelect = document.getElementById('day-select');
+
+          // Admin y VIP
+          const allUsersSelect = document.getElementById('all-users-select');
+          const vipAddBtn = document.getElementById('vip-add');
+          const vipListEl = document.getElementById('vip-list');
+          const wipeAllBtn = document.getElementById('wipe-all');
+
+          // Estado
+          let vipSet = new Set();
+          let unsubscribeSolicitudes = null;
+
+          // Utilidades
+          function renderSolicitudes(items) {
+            solicitudesList.innerHTML = '';
+            if (!items.length) {
+              emptyEl.hidden = false;
+              return;
+            }
+            emptyEl.hidden = true;
+            items.forEach((it) => {
+              const li = document.createElement('li');
+              li.className = 'item';
+              li.innerHTML = `
+                <span class="col col-time">${it.hora || ''}</span>
+                <span class="col col-usuario">${it.usuario}</span>
+                <span class="col col-cancion">${it.cancion}</span>
+                <span class="col col-artista">${it.artista}</span>
+              `;
+              solicitudesList.appendChild(li);
+            });
+          }
+
+          function toHour(ts) {
+            if (!ts) return '';
+            const d = ts.toDate ? ts.toDate() : new Date(ts);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+
+          // Cargar días disponibles desde Firestore
+          async function loadDays() {
+            const snap = await db.collection('solicitudes').orderBy('day', 'desc').limit(500).get();
+            const days = new Set();
+            snap.forEach(doc => days.add(doc.data().day));
+            const sorted = Array.from(days).sort().reverse();
+            daySelect.innerHTML = '';
+            sorted.forEach(d => {
+              const opt = document.createElement('option');
+              opt.value = d;
+              opt.textContent = d;
+              daySelect.appendChild(opt);
+            });
+            // Selecciona el primero por defecto
+            if (sorted.length) {
+              daySelect.value = sorted[0];
+            }
+          }
+
+          // Suscribirse en tiempo real a las solicitudes del día seleccionado
+          function subscribeSolicitudesForDay(dayValue) {
+            if (unsubscribeSolicitudes) {
+              unsubscribeSolicitudes();
+              unsubscribeSolicitudes = null;
+            }
+            const q = db.collection('solicitudes')
+              .where('day', '==', dayValue)
+              .orderBy('ts', 'desc');
+
+            unsubscribeSolicitudes = q.onSnapshot((snap) => {
+              const items = [];
+              snap.forEach((doc) => {
+                const data = doc.data();
+                const isVip = vipSet.has(data.usuario);
+                if (vipOnly.checked && !isVip) return;
+                items.push({
+                  usuario: data.usuario,
+                  cancion: data.cancion,
+                  artista: data.artista,
+                  hora: toHour(data.ts),
+                });
+              });
+              renderSolicitudes(items);
+            }, (err) => {
+              console.error('Error suscripción solicitudes:', err);
+            });
+          }
+
+          // Suscripción a usuarios VIP
+          function subscribeVipUsers() {
+            db.collection('vipUsers').onSnapshot((snap) => {
+              vipSet = new Set();
+              vipListEl.innerHTML = '';
+              snap.forEach((doc) => {
+                const { name } = doc.data();
+                if (name) {
+                  vipSet.add(name);
+                  const li = document.createElement('li');
+                  li.textContent = name;
+                  vipListEl.appendChild(li);
+                }
+              });
+              // Refiltra lista actual si está suscrito
+              if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+            }, (err) => {
+              console.error('Error suscripción VIP:', err);
+            });
+          }
+
+          // Popular select de todos los usuarios registrados
+          async function renderAllUsersSelect() {
+            const snap = await db.collection('users').orderBy('name').get();
+            allUsersSelect.innerHTML = '<option value="">Selecciona un usuario</option>';
+            snap.forEach(doc => {
+              const { name } = doc.data();
+              const opt = document.createElement('option');
+              opt.value = name;
+              opt.textContent = name;
+              allUsersSelect.appendChild(opt);
+            });
+          }
+
+          // Agregar a VIP
+          vipAddBtn?.addEventListener('click', async () => {
+            const name = allUsersSelect.value;
+            if (!name) return;
+            try {
+              await db.collection('vipUsers').doc(name).set({ name }, { merge: true });
+            } catch (err) {
+              console.error('Error al agregar VIP:', err);
+            }
+          });
+
+          // Borrar todas las solicitudes (del día seleccionado)
+          wipeAllBtn?.addEventListener('click', async () => {
+            if (!daySelect.value) return;
+            const ok = confirm(`¿Borrar todas las solicitudes del día ${daySelect.value}?`);
+            if (!ok) return;
+            try {
+              const snap = await db.collection('solicitudes').where('day', '==', daySelect.value).get();
+              const batch = db.batch();
+              snap.forEach(doc => batch.delete(doc.ref));
+              await batch.commit();
+              alert('Solicitudes borradas.');
+            } catch (err) {
+              console.error('Error al borrar solicitudes:', err);
+              alert('Ocurrió un error al borrar las solicitudes.');
+            }
+          });
+
+          // Cambio de día y filtro VIP
+          daySelect?.addEventListener('change', () => {
+            if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+          });
+          vipOnly?.addEventListener('change', () => {
+            if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+          });
+
+          // Inicialización
+          (async function init() {
+            await loadDays();
+            subscribeVipUsers();
+            if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+          })();
+        })();
+      </script>
+      <script>
+        (function () {
+          // Referencias del menú hamburguesa (dropdown pegado al botón)
+          const menuBtn = document.getElementById('menu-btn');
+          const menuDropdown = document.getElementById('menu-dropdown');
+          const menuAdminOpen = document.getElementById('menu-admin-open');
+          
+          // Referencias del modal y panel Admin
+          const ADMIN_PASS = '1415130*';
+          const adminModal = document.getElementById('admin-modal');
+          const adminPanel = document.getElementById('admin-panel');
+          const adminPassInput = document.getElementById('admin-pass-input');
+          const adminPassError = document.getElementById('admin-pass-error');
+          const adminPassCancelBtn = document.getElementById('admin-pass-cancel');
+          const adminPassConfirmBtn = document.getElementById('admin-pass-confirm');
+          
+          // Abrir/cerrar menú con animación
+          function openMenu() {
+            if (!menuDropdown) return;
+            menuDropdown.hidden = false;
+            requestAnimationFrame(() => {
+              menuDropdown.classList.add('open');
+              menuBtn?.setAttribute('aria-expanded', 'true');
+            });
+          }
+          function closeMenu() {
+            if (!menuDropdown) return;
+            menuDropdown.classList.remove('open');
+            menuBtn?.setAttribute('aria-expanded', 'false');
+            const onEnd = (e) => {
+              if (e.target !== menuDropdown) return;
+              menuDropdown.hidden = true;
+              menuDropdown.removeEventListener('transitionend', onEnd);
+            };
+            menuDropdown.addEventListener('transitionend', onEnd);
+          }
+          
+          // Toggle al hacer clic en el botón
+          menuBtn?.addEventListener('click', () => {
+            if (menuDropdown.hidden) {
+              openMenu();
+            } else {
+              closeMenu();
+            }
+          });
+          
+          // Cerrar al hacer clic fuera
+          document.addEventListener('click', (e) => {
+            if (menuDropdown.hidden) return;
+            const clickInside = menuDropdown.contains(e.target) || menuBtn.contains(e.target);
+            if (!clickInside) {
+              closeMenu();
+            }
+          });
+          
+          // Cerrar con Escape
+          document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !menuDropdown.hidden) {
+              closeMenu();
+            }
+          });
+          
+          // Abrir modal Admin desde el menú
+          adminModal.hidden = true;
+          adminPanel.hidden = true;
+          menuAdminOpen?.addEventListener('click', () => {
+            closeMenu();
+            adminModal.hidden = false;
+            adminPassInput.value = '';
+            adminPassError.hidden = true;
+            adminPassInput.focus();
+          });
+          
+          // Validación de contraseña y apertura del panel Admin (sin Firebase Auth)
+          function tryOpenAdmin() {
+            const pass = adminPassInput.value;
+            if (pass === ADMIN_PASS) {
+              adminModal.hidden = true;
+              adminPanel.hidden = false;
+              // Renderiza el select de usuarios registrados (función ya definida en tu script)
+              renderAllUsersSelect();
+            } else {
+              adminPassError.hidden = false;
+              adminPassInput.focus();
+            }
+          }
+          
+          adminPassConfirmBtn?.addEventListener('click', tryOpenAdmin);
+          adminPassCancelBtn?.addEventListener('click', () => {
+            adminModal.hidden = true;
+          });
+          adminPassInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              tryOpenAdmin();
+            }
+          });
+        })();
+      </script>
+</body>
+</html>

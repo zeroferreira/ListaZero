@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lista de canciones - Zero FM</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Firebase SDK (compat para uso sencillo en HTML) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <main class="container">
+    <section class="card" aria-labelledby="titulo">
+      <h1 id="titulo">Lista de canciones</h1>
+
+
+      <!-- Formulario: Usuario | Canción | Artista -->
+      <form id="formulario" class="nuevo-form" autocomplete="on" aria-label="Formulario para pedir nueva canción">
+        <div class="field">
+          <label for="usuario">Usuario</label>
+          <div class="user-split">
+            <input id="usuario" name="usuario" type="text" placeholder="Escribe aquí tu nombre de usuario" />
+            <select id="usuario-registrado" aria-label="Selecciona un usuario registrado">
+              <option value="">Selecciona un usuario</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="cancion">Canción</label>
+          <input id="cancion" name="cancion" type="text" required placeholder="¿Qué cancion vas a elegir?" />
+        </div>
+        <div class="field">
+          <label for="artista">Artista</label>
+          <input id="artista" name="artista" type="text" required placeholder="¿Quién interpreta la cancion?" />
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn">Enviar solicitud</button>
+          <a href="lista.html" class="btn">Lista de Canciones</a>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      function getLocalDateKey(ts) {
+        const d = ts ? new Date(ts) : new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+      }
+
+      const form = document.getElementById('formulario');
+      const usuarioSelect = document.getElementById('usuario-registrado');
+
+      // Poblar lista de usuarios registrados desde localStorage
+      function collectRegisteredUsers() {
+        const map = new Map(); // clave: lower, valor: original (primera aparición)
+        try {
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
+            const original = String(it.usuario || '').trim().replace(/^@/, '');
+            const lower = original.toLowerCase();
+            if (original && !map.has(lower)) map.set(lower, original);
+          }));
+          const legacy = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          (legacy || []).forEach(it => {
+            const original = String(it.usuario || '').trim().replace(/^@/, '');
+            const lower = original.toLowerCase();
+            if (original && !map.has(lower)) map.set(lower, original);
+          });
+        } catch (e) {}
+        const arr = Array.from(map.values());
+        arr.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        return arr;
+      }
+
+      function populateRegisteredUsers() {
+        if (!usuarioSelect) return;
+        const users = collectRegisteredUsers();
+        usuarioSelect.innerHTML = '<option value="">Selecciona un usuario</option>' +
+          users.map(u => `<option value="${u}">@${u}</option>`).join('');
+      }
+
+      populateRegisteredUsers();
+
+      if (form) {
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+
+          const usuarioEl = document.getElementById('usuario');
+          const cancionEl = document.getElementById('cancion');
+          const artistaEl = document.getElementById('artista');
+
+          const usuarioText = (usuarioEl.value || '').trim().replace(/^@/, '');
+          const usuarioSel = (usuarioSelect?.value || '').trim().replace(/^@/, '');
+          const usuario = usuarioText || usuarioSel;
+
+          const cancion = (cancionEl.value || '').trim();
+          const artista = (artistaEl.value || '').trim();
+
+          if (!usuario || !cancion || !artista) {
+            alert('Por favor completa Usuario (escribe o selecciona), Canción y Artista.');
+            return;
+          }
+
+          const ts = Date.now();
+          const nueva = { usuario, cancion, artista, time: ts };
+
+          // Guardar por día
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          const key = getLocalDateKey(ts);
+          (byDay[key] ??= []).push(nueva);
+          localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+
+          // Compatibilidad legacy
+          const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          arr.push(nueva);
+          localStorage.setItem('solicitudes', JSON.stringify(arr));
+
+          form.reset();
+          window.location.href = 'lista.html';
+        });
+      }
+
+      // Modo Admin: gestión de VIP y visualización de usuarios registrados
+      const ADMIN_PASS = '1415130*';
+      const adminBtn = document.getElementById('admin-btn');
+      const adminPanel = document.getElementById('admin-panel');
+
+      // Referencias del modal
+      const adminModal = document.getElementById('admin-modal');
+      const adminPassInput = document.getElementById('admin-pass-input');
+      const adminPassError = document.getElementById('admin-pass-error');
+      const adminPassCancelBtn = document.getElementById('admin-pass-cancel');
+      const adminPassConfirmBtn = document.getElementById('admin-pass-confirm');
+
+      const vipAddBtn = document.getElementById('vip-add');
+      const vipListEl = document.getElementById('vip-list');
+      const usersSelectEl = document.getElementById('all-users-select');
+      const wipeAllBtn = document.getElementById('wipe-all');
+
+      function normUser(u) {
+        return String(u || '').trim().toLowerCase().replace(/^@/, '');
+      }
+      function escapeHTML(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function getVipUsers() {
+        const arr = JSON.parse(localStorage.getItem('vip_users') || '[]');
+        return Array.isArray(arr) ? arr : [];
+      }
+      function setVipUsers(arr) {
+        localStorage.setItem('vip_users', JSON.stringify(arr));
+      }
+      function renderVipList() {
+        const vipUsers = getVipUsers();
+        vipListEl.innerHTML = vipUsers.map(u => `
+          <li>
+            <span>@${escapeHTML(u)}</span>
+            <button type="button" class="remove-btn" data-user="${escapeHTML(u)}">Eliminar</button>
+          </li>
+        `).join('');
+      }
+      function renderAllUsersSelect() {
+        if (!usersSelectEl) return;
+        const users = collectRegisteredUsers();
+        usersSelectEl.innerHTML = '<option value="">Selecciona un usuario</option>' +
+          users.map(u => `<option value="${escapeHTML(u)}">@${escapeHTML(u)}</option>`).join('');
+      }
+
+      // Asegurar oculto al cargar
+      adminModal.hidden = true;
+      adminPanel.hidden = true;
+
+      // Abrir modal solo al hacer click en "Modo Admin"
+      adminBtn?.addEventListener('click', () => {
+        adminModal.hidden = false;
+        adminPassInput.value = '';
+        adminPassError.hidden = true;
+        adminPassInput.focus();
+      });
+
+      function tryOpenAdmin() {
+        const pass = adminPassInput.value;
+        if (pass === ADMIN_PASS) {
+          adminModal.hidden = true;
+          adminPanel.hidden = false;
+          // Inicializar contenido del panel
+          renderVipList?.();
+          renderAllUsersSelect?.();
+        } else {
+          adminPassError.hidden = false;
+          adminPassInput.focus();
+        }
+      }
+
+      adminPassConfirmBtn?.addEventListener('click', tryOpenAdmin);
+      adminPassCancelBtn?.addEventListener('click', () => {
+        adminModal.hidden = true; // cerrar modal sin abrir panel
+      });
+      adminPassInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          tryOpenAdmin();
+        }
+      });
+
+      vipAddBtn?.addEventListener('click', () => {
+        const raw = usersSelectEl?.value || '';
+        const user = normUser(raw);
+        if (!user) {
+          alert('Selecciona un usuario registrado.');
+          return;
+        }
+        const vipUsers = getVipUsers();
+        if (vipUsers.includes(user)) {
+          alert('Ese usuario ya es VIP.');
+          return;
+        }
+        vipUsers.push(user);
+        setVipUsers(vipUsers);
+        renderVipList();
+      });
+
+      vipListEl?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.remove-btn');
+        if (!btn) return;
+        const user = btn.getAttribute('data-user');
+        if (!user) return;
+        const vipUsers = getVipUsers().filter(u => u !== user);
+        setVipUsers(vipUsers);
+        renderVipList();
+      });
+
+      wipeAllBtn?.addEventListener('click', () => {
+        const ok = confirm('Esto borrará todas las solicitudes guardadas (todos los días). ¿Quieres continuar?');
+        if (!ok) return;
+        localStorage.removeItem('solicitudes_by_day');
+        localStorage.removeItem('solicitudes');
+        renderAllUsersSelect();
+        alert('Solicitudes borradas. La lista está limpia.');
+      });
+    })();
+  </script>
+</body>
+</html>
+
+<script>
+  (function () {
+    function getLocalDateKey(ts) {
+      const d = ts ? new Date(ts) : new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dd}`;
+    }
+
+    const form = document.getElementById('formulario');
+    const usuarioSelect = document.getElementById('usuario-registrado');
+
+    // Poblar lista de usuarios registrados desde localStorage
+    function collectRegisteredUsers() {
+      const map = new Map(); // clave: lower, valor: original (primera aparición)
+      try {
+        const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+        Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
+          const original = String(it.usuario || '').trim().replace(/^@/, '');
+          const lower = original.toLowerCase();
+          if (original && !map.has(lower)) map.set(lower, original);
+        }));
+        const legacy = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+        (legacy || []).forEach(it => {
+          const original = String(it.usuario || '').trim().replace(/^@/, '');
+          const lower = original.toLowerCase();
+          if (original && !map.has(lower)) map.set(lower, original);
+        });
+      } catch (e) {}
+      const arr = Array.from(map.values());
+      arr.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      return arr;
+    }
+
+    function populateRegisteredUsers() {
+      if (!usuarioSelect) return;
+      const users = collectRegisteredUsers();
+      usuarioSelect.innerHTML = '<option value="">Selecciona un usuario</option>' +
+        users.map(u => `<option value="${u}">@${u}</option>`).join('');
+    }
+
+    populateRegisteredUsers();
+
+    if (form) {
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        const usuarioEl = document.getElementById('usuario');
+        const cancionEl = document.getElementById('cancion');
+        const artistaEl = document.getElementById('artista');
+
+        const usuarioText = (usuarioEl.value || '').trim().replace(/^@/, '');
+        const usuarioSel = (usuarioSelect?.value || '').trim().replace(/^@/, '');
+        const usuario = usuarioText || usuarioSel;
+
+        const cancion = (cancionEl.value || '').trim();
+        const artista = (artistaEl.value || '').trim();
+
+        if (!usuario || !cancion || !artista) {
+          alert('Por favor completa Usuario (escribe o selecciona), Canción y Artista.');
+          return;
+        }
+
+        const ts = Date.now();
+        const nueva = { usuario, cancion, artista, time: ts };
+
+        // Guardar por día
+        const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+        const key = getLocalDateKey(ts);
+        (byDay[key] ??= []).push(nueva);
+        localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+
+        // Compatibilidad legacy
+        const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+        arr.push(nueva);
+        localStorage.setItem('solicitudes', JSON.stringify(arr));
+
+        form.reset();
+        window.location.href = 'lista.html';
+      });
+    }
+
+    // Modo Admin: gestión de VIP y visualización de usuarios registrados
+    const ADMIN_PASS = '1415130*';
+    const adminBtn = document.getElementById('admin-btn');
+    const adminPanel = document.getElementById('admin-panel');
+
+    // Referencias del modal
+    const adminModal = document.getElementById('admin-modal');
+    const adminPassInput = document.getElementById('admin-pass-input');
+    const adminPassError = document.getElementById('admin-pass-error');
+    const adminPassCancelBtn = document.getElementById('admin-pass-cancel');
+    const adminPassConfirmBtn = document.getElementById('admin-pass-confirm');
+
+    const vipAddBtn = document.getElementById('vip-add');
+    const vipListEl = document.getElementById('vip-list');
+    const usersSelectEl = document.getElementById('all-users-select');
+    const wipeAllBtn = document.getElementById('wipe-all');
+
+    function normUser(u) {
+      return String(u || '').trim().toLowerCase().replace(/^@/, '');
+    }
+    function escapeHTML(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getVipUsers() {
+      const arr = JSON.parse(localStorage.getItem('vip_users') || '[]');
+      return Array.isArray(arr) ? arr : [];
+    }
+    function setVipUsers(arr) {
+      localStorage.setItem('vip_users', JSON.stringify(arr));
+    }
+    function renderVipList() {
+      const vipUsers = getVipUsers();
+      vipListEl.innerHTML = vipUsers.map(u => `
+        <li>
+          <span>@${escapeHTML(u)}</span>
+          <button type="button" class="remove-btn" data-user="${escapeHTML(u)}">Eliminar</button>
+        </li>
+      `).join('');
+    }
+    function renderAllUsersSelect() {
+      if (!usersSelectEl) return;
+      const users = collectRegisteredUsers();
+      usersSelectEl.innerHTML = '<option value="">Selecciona un usuario</option>' +
+        users.map(u => `<option value="${escapeHTML(u)}">@${escapeHTML(u)}</option>`).join('');
+    }
+
+    // Asegurar oculto al cargar
+    adminModal.hidden = true;
+    adminPanel.hidden = true;
+
+    // Abrir modal solo al hacer click en "Modo Admin"
+    adminBtn?.addEventListener('click', () => {
+      adminModal.hidden = false;
+      adminPassInput.value = '';
+      adminPassError.hidden = true;
+      adminPassInput.focus();
+    });
+
+    function tryOpenAdmin() {
+      const pass = adminPassInput.value;
+      if (pass === ADMIN_PASS) {
+        adminModal.hidden = true;
+        adminPanel.hidden = false;
+        // Inicializar contenido del panel
+        renderVipList?.();
+        renderAllUsersSelect?.();
+      } else {
+        adminPassError.hidden = false;
+        adminPassInput.focus();
+      }
+    }
+
+    adminPassConfirmBtn?.addEventListener('click', tryOpenAdmin);
+    adminPassCancelBtn?.addEventListener('click', () => {
+      adminModal.hidden = true; // cerrar modal sin abrir panel
+    });
+    adminPassInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        tryOpenAdmin();
+      }
+    });
+
+    vipAddBtn?.addEventListener('click', () => {
+      const raw = usersSelectEl?.value || '';
+      const user = normUser(raw);
+      if (!user) {
+        alert('Selecciona un usuario registrado.');
+        return;
+      }
+      const vipUsers = getVipUsers();
+      if (vipUsers.includes(user)) {
+        alert('Ese usuario ya es VIP.');
+        return;
+      }
+      vipUsers.push(user);
+      setVipUsers(vipUsers);
+      renderVipList();
+    });
+
+    vipListEl?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.remove-btn');
+      if (!btn) return;
+      const user = btn.getAttribute('data-user');
+      if (!user) return;
+      const vipUsers = getVipUsers().filter(u => u !== user);
+      setVipUsers(vipUsers);
+      renderVipList();
+    });
+
+    wipeAllBtn?.addEventListener('click', () => {
+      const ok = confirm('Esto borrará todas las solicitudes guardadas (todos los días). ¿Quieres continuar?');
+      if (!ok) return;
+      localStorage.removeItem('solicitudes_by_day');
+      localStorage.removeItem('solicitudes');
+      renderAllUsersSelect();
+      alert('Solicitudes borradas. La lista está limpia.');
+    });
+  })();
+</script>
+
+<script>
+  // Configuración e inicialización de Firebase (tu configuración exacta)
+  const firebaseConfig = {
+    apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+    authDomain: "zero-strom-web.firebaseapp.com",
+    projectId: "zero-strom-web",
+    storageBucket: "zero-strom-web.firebasestorage.app",
+    messagingSenderId: "758369466349",
+    appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+  };
+  if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  }
+  const db = firebase.firestore();
+
+  // Autenticación: sesión anónima automática para usuarios normales
+  firebase.auth().onAuthStateChanged((user) => {
+    if (!user) {
+      firebase.auth().signInAnonymously().catch((err) => {
+        console.error('Error al autenticar anónimamente:', err);
+      });
+    }
+  });
+
+  // Ejemplo: cuando envías la solicitud, asegúrate de usar serverTimestamp() del SDK compat
+  // await db.collection('solicitudes').add({
+  //   usuario, cancion, artista, day,
+  //   ts: firebase.firestore.FieldValue.serverTimestamp(),
+  // });
+</script>
