@@ -54,6 +54,29 @@
         return `${y}-${m}-${dd}`;
       }
 
+      // Inicializa Firebase si aún no está
+      const firebaseConfig = {
+        apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+        authDomain: "zero-strom-web.firebaseapp.com",
+        projectId: "zero-strom-web",
+        storageBucket: "zero-strom-web.firebasestorage.app",
+        messagingSenderId: "758369466349",
+        appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+      };
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+      const db = firebase.firestore();
+
+      // Autenticación anónima para permitir reglas basadas en usuarios no registrados
+      firebase.auth().onAuthStateChanged((user) => {
+        if (!user) {
+          firebase.auth().signInAnonymously().catch((err) => {
+            console.error('Error al autenticar anónimamente:', err);
+          });
+        }
+      });
+
       const form = document.getElementById('formulario');
       const usuarioSelect = document.getElementById('usuario-registrado');
 
@@ -88,43 +111,66 @@
 
       populateRegisteredUsers();
 
-      // Evitar doble registro del handler si el script está duplicado
+      // Flags globales para evitar doble registro y doble ejecución
+      window.__FORM_SUBMIT_HANDLER_ADDED__ = window.__FORM_SUBMIT_HANDLER_ADDED__ || false;
+      window.__FORM_SUBMITTED__ = window.__FORM_SUBMITTED__ || false;
+
+      // Handler de envío (localStorage + Firestore)
       if (form && !window.__FORM_SUBMIT_HANDLER_ADDED__) {
         window.__FORM_SUBMIT_HANDLER_ADDED__ = true;
-      
-        form.addEventListener('submit', function (e) {
+
+        form.addEventListener('submit', async function (e) {
           e.preventDefault();
-      
+
+          // Si ya se procesó una vez (por duplicidad), no volver a validar ni alertar
+          if (window.__FORM_SUBMITTED__) return;
+
           const usuarioEl = document.getElementById('usuario');
           const cancionEl = document.getElementById('cancion');
           const artistaEl = document.getElementById('artista');
-      
+
           const usuarioText = (usuarioEl.value || '').trim().replace(/^@/, '');
           const usuarioSel = (usuarioSelect?.value || '').trim().replace(/^@/, '');
           const usuario = usuarioText || usuarioSel;
-      
+
           const cancion = (cancionEl.value || '').trim();
           const artista = (artistaEl.value || '').trim();
-      
+
           if (!usuario || !cancion || !artista) {
             alert('Por favor completa Usuario (escribe o selecciona), Canción y Artista.');
             return;
           }
-      
+
           const ts = Date.now();
-          const nueva = { usuario, cancion, artista, time: ts };
-      
-          // Guardar por día
+          const dayKey = getLocalDateKey(ts);
+
+          // Guardar en localStorage (compatibilidad/local)
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          const key = getLocalDateKey(ts);
-          (byDay[key] ??= []).push(nueva);
+          (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
           localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
-      
-          // Compatibilidad legacy
+
           const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          arr.push(nueva);
+          arr.push({ usuario, cancion, artista, time: ts });
           localStorage.setItem('solicitudes', JSON.stringify(arr));
-      
+
+          // Guardar en Firestore (sincronización multi-dispositivo)
+          try {
+            await db.collection('solicitudes').add({
+              usuario,
+              cancion,
+              artista,
+              day: dayKey, // lista.html filtra por este campo
+              ts: firebase.firestore.FieldValue.serverTimestamp(), // para hora y orden
+            });
+          } catch (err) {
+            console.error('Error guardando en Firestore:', err);
+            alert('Ocurrió un error guardando en la nube. Intenta nuevamente.');
+            return;
+          }
+
+          // Marca que ya se procesó para evitar que otro handler muestre el alerta
+          window.__FORM_SUBMITTED__ = true;
+
           form.reset();
           window.location.href = 'lista.html';
         });
@@ -183,11 +229,12 @@
       }
 
       // Asegurar oculto al cargar
-      adminModal.hidden = true;
-      adminPanel.hidden = true;
+      adminModal && (adminModal.hidden = true);
+      adminPanel && (adminPanel.hidden = true);
 
       // Abrir modal solo al hacer click en "Modo Admin"
       adminBtn?.addEventListener('click', () => {
+        if (!adminModal || !adminPassInput || !adminPassError) return;
         adminModal.hidden = false;
         adminPassInput.value = '';
         adminPassError.hidden = true;
@@ -195,14 +242,16 @@
       });
 
       function tryOpenAdmin() {
-        const pass = adminPassInput.value;
+        const pass = adminPassInput?.value;
         if (pass === ADMIN_PASS) {
+          if (!adminModal || !adminPanel) return;
           adminModal.hidden = true;
           adminPanel.hidden = false;
           // Inicializar contenido del panel
           renderVipList?.();
           renderAllUsersSelect?.();
         } else {
+          if (!adminPassError || !adminPassInput) return;
           adminPassError.hidden = false;
           adminPassInput.focus();
         }
@@ -210,7 +259,7 @@
 
       adminPassConfirmBtn?.addEventListener('click', tryOpenAdmin);
       adminPassCancelBtn?.addEventListener('click', () => {
-        adminModal.hidden = true; // cerrar modal sin abrir panel
+        if (adminModal) adminModal.hidden = true; // cerrar modal sin abrir panel
       });
       adminPassInput?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -269,7 +318,11 @@
       return `${y}-${m}-${dd}`;
     }
 
-    // Inicializar Firebase aquí para asegurar que esté disponible al enviar
+    // Flags globales para evitar doble registro y doble ejecución
+    window.__FORM_SUBMIT_HANDLER_ADDED__ = window.__FORM_SUBMIT_HANDLER_ADDED__ || false;
+    window.__FORM_SUBMITTED__ = window.__FORM_SUBMITTED__ || false;
+
+    // Inicializa Firebase si aún no está
     const firebaseConfig = {
       apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
       authDomain: "zero-strom-web.firebaseapp.com",
@@ -324,6 +377,9 @@
       form.addEventListener('submit', async function (e) {
         e.preventDefault();
 
+        // Si ya se procesó una vez (por duplicidad), no volver a validar ni alertar
+        if (window.__FORM_SUBMITTED__) return;
+
         const usuarioEl = document.getElementById('usuario');
         const cancionEl = document.getElementById('cancion');
         const artistaEl = document.getElementById('artista');
@@ -341,41 +397,34 @@
         }
 
         const ts = Date.now();
-        const nueva = { usuario, cancion, artista, time: ts };
+        const dayKey = getLocalDateKey(ts); // usa tu función ya definida
 
-        // Guardar por día en localStorage (opcional, compatibilidad)
+        // Guardar en localStorage (compatibilidad/local)
         const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-        const key = getLocalDateKey(ts);
-        (byDay[key] ??= []).push(nueva);
+        (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
         localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
 
         const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-        arr.push(nueva);
+        arr.push({ usuario, cancion, artista, time: ts });
         localStorage.setItem('solicitudes', JSON.stringify(arr));
 
-        // Guardar en Firestore para que aparezca en lista.html en todos los dispositivos
+        // Guardar en Firestore (sincronización multi-dispositivo)
         try {
-          // Clave de día YYYY-MM-DD que lista.html usa en el filtro
-          const dayKey = (function getLocalDateKey(ts) {
-            const d = ts ? new Date(ts) : new Date();
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const dd = String(d.getDate()).padStart(2, '0');
-            return `${y}-${m}-${dd}`;
-          })(ts);
-
-          await firebase.firestore().collection('solicitudes').add({
+          await db.collection('solicitudes').add({
             usuario,
             cancion,
             artista,
-            day: dayKey,
-            ts: firebase.firestore.FieldValue.serverTimestamp(),
+            day: dayKey, // lista.html filtra por este campo
+            ts: firebase.firestore.FieldValue.serverTimestamp(), // para hora y orden
           });
         } catch (err) {
           console.error('Error guardando en Firestore:', err);
           alert('Ocurrió un error guardando en la nube. Intenta nuevamente.');
           return;
         }
+
+        // Marca que ya se procesó para evitar que otro handler muestre el alerta
+        window.__FORM_SUBMITTED__ = true;
 
         form.reset();
         window.location.href = 'lista.html';
