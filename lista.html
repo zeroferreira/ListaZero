@@ -8,8 +8,7 @@
   <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
-  <!-- Quita esta línea si no usarás Firebase Auth en lista.html -->
-  <!-- <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script> -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 </head>
 <body>
   <main class="container">
@@ -115,6 +114,15 @@
             firebase.initializeApp(firebaseConfig);
           }
           const db = firebase.firestore();
+
+          // Iniciar sesión anónima para que request.auth != null en reglas
+          firebase.auth().onAuthStateChanged((user) => {
+            if (!user) {
+              firebase.auth().signInAnonymously().catch((err) => {
+                console.error('Error al autenticar anónimamente:', err);
+              });
+            }
+          });
 
           // Referencias UI
           const solicitudesList = document.getElementById('solicitudes-list');
@@ -289,24 +297,30 @@
             const ok = confirm(`¿Borrar todas las solicitudes del día ${day}?`);
             if (!ok) return;
 
-            // Deshabilitar botón durante la operación
             wipeAllBtn.disabled = true;
 
             try {
-              // Borrar en Firestore
+              // Trae todos los docs del día
               const snap = await db.collection('solicitudes').where('day', '==', day).get();
-              const batch = db.batch();
-              snap.forEach(doc => batch.delete(doc.ref));
-              await batch.commit();
+              const docs = snap.docs;
 
-              // Borrar también el fallback de localStorage para ese día
+              // Borra en lotes de hasta 500 (límite de Firestore)
+              const chunkSize = 500;
+              for (let i = 0; i < docs.length; i += chunkSize) {
+                const batch = db.batch();
+                const chunk = docs.slice(i, i + chunkSize);
+                chunk.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+              }
+
+              // Limpia el fallback localStorage para ese día
               const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
               if (byDay && byDay[day]) {
                 delete byDay[day];
                 localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
               }
 
-              // Forzar re-render de la suscripción del día actual (quedará vacío)
+              // Refresca la suscripción de ese día
               if (daySelect.value === day) {
                 subscribeSolicitudesForDay(day);
               }
@@ -314,7 +328,7 @@
               alert('Solicitudes borradas.');
             } catch (err) {
               console.error('Error al borrar solicitudes:', err);
-              alert('Ocurrió un error al borrar las solicitudes.');
+              alert('Ocurrió un error al borrar las solicitudes. Verifica reglas y vuelve a intentar.');
             } finally {
               wipeAllBtn.disabled = false;
             }
