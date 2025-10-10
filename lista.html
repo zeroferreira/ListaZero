@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lista de canciones - Zero FM</title>
+  <title>Lista d'Canciones - Zero Radio</title>
   <link rel="stylesheet" href="styles.css" />
   <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -53,7 +53,11 @@
           <select id="all-users-select" class="user-select" aria-label="Usuarios registrados">
             <option value="">Selecciona un usuario</option>
           </select>
-          <button type="button" id="vip-add" class="btn">Agregar</button>
+          <!-- Nuevo: agrupa los botones en una columna para que "Borrar" quede debajo de "Agregar" -->
+          <div class="admin-btns">
+            <button type="button" id="vip-add" class="btn">Agregar</button>
+            <button type="button" id="user-delete" class="btn">Borrar usuario</button>
+          </div>
         </div>
         <div class="admin-row">
           <strong>Usuarios VIP:</strong>
@@ -63,10 +67,12 @@
           <strong>Mantenimiento:</strong>
           <button type="button" id="wipe-all" class="btn">Borrar todas las solicitudes</button>
         </div>
+        <div class="admin-row admin-actions">
+          <button type="button" id="admin-exit" class="btn">Salir del modo Admin</button>
+        </div>
       </div>
 
       <!-- Modal de contraseña Admin (único) -->
-      <!-- Modal de Admin: ahora pide email + contraseña -->
       <div id="admin-modal" class="modal-overlay" hidden>
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
           <h2 id="admin-modal-title">Modo Admin</h2>
@@ -83,6 +89,41 @@
           <div class="actions modal-actions">
             <button type="button" id="admin-pass-cancel" class="btn">Cancelar</button>
             <button type="button" id="admin-pass-confirm" class="btn">Entrar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Nuevo: modal de confirmación para borrar usuario registrado -->
+      <div id="user-delete-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="user-delete-modal-title">
+          <h2 id="user-delete-modal-title">Borrar usuario</h2>
+          <p>¿Borrar al usuario "<span id="user-delete-name"></span>" de la lista de registrados?</p>
+          <div class="actions modal-actions">
+            <button type="button" id="user-delete-cancel" class="btn">Cancelar</button>
+            <button type="button" id="user-delete-confirm" class="btn">Borrar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Nuevo: modal de confirmación para quitar VIP -->
+      <div id="vip-remove-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="vip-remove-modal-title">
+          <h2 id="vip-remove-modal-title">Quitar VIP</h2>
+          <p>¿Quitar VIP a "<span id="vip-remove-user"></span>"?</p>
+          <div class="actions modal-actions">
+            <button type="button" id="vip-remove-cancel" class="btn">Cancelar</button>
+            <button type="button" id="vip-remove-confirm" class="btn">Quitar</button>
+          </div>
+        </div>
+      </div>
+      <!-- Nuevo: modal de confirmación para borrar todas las solicitudes del día -->
+      <div id="wipe-all-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="wipe-all-modal-title">
+          <h2 id="wipe-all-modal-title">Borrar todas las solicitudes</h2>
+          <p>¿Borrar todas las solicitudes del día "<span id="wipe-all-day"></span>"?</p>
+          <div class="actions modal-actions">
+            <button type="button" id="wipe-all-cancel" class="btn">Cancelar</button>
+            <button type="button" id="wipe-all-confirm" class="btn">Borrar</button>
           </div>
         </div>
       </div>
@@ -114,12 +155,13 @@
             firebase.initializeApp(firebaseConfig);
           }
           const db = firebase.firestore();
-
-          // Iniciar sesión anónima para que request.auth != null en reglas
+          // Exportar Firestore para el segundo bloque de script
+          window.db = db;
+          // Iniciar sesión anónima para que request.auth != null en reglas (si escribes VIP)
           firebase.auth().onAuthStateChanged((user) => {
             if (!user) {
               firebase.auth().signInAnonymously().catch((err) => {
-                console.error('Error al autenticar anónimamente:', err);
+                console.error('Error al iniciar sesión anónima:', err);
               });
             }
           });
@@ -136,6 +178,12 @@
           const vipListEl = document.getElementById('vip-list');
           const wipeAllBtn = document.getElementById('wipe-all');
 
+          // Nuevo: referencias del modal de quitar VIP
+          const vipRemoveModal = document.getElementById('vip-remove-modal');
+          const vipRemoveUserSpan = document.getElementById('vip-remove-user');
+          const vipRemoveCancelBtn = document.getElementById('vip-remove-cancel');
+          const vipRemoveConfirmBtn = document.getElementById('vip-remove-confirm');
+          let pendingVipRemoveUser = null;
           // Estado
           let vipSet = new Set();
           let unsubscribeSolicitudes = null;
@@ -149,11 +197,12 @@
             }
             emptyEl.hidden = true;
             items.forEach((it) => {
+              const isVip = vipSet.has(it.usuario);
               const li = document.createElement('li');
-              li.className = 'item';
+              li.className = isVip ? 'item vip' : 'item';
               li.innerHTML = `
                 <span class="col col-time">${it.hora || ''}</span>
-                <span class="col col-usuario">${it.usuario}</span>
+                <span class="col col-usuario usuario">${it.usuario}</span>
                 <span class="col col-cancion">${it.cancion}</span>
                 <span class="col col-artista">${it.artista}</span>
               `;
@@ -255,7 +304,10 @@
                 if (name) {
                   vipSet.add(name);
                   const li = document.createElement('li');
-                  li.textContent = name;
+                  li.innerHTML = `
+                    <span>${name}</span>
+                    <button type="button" class="remove-btn" data-user="${name}" aria-label="Quitar VIP">×</button>
+                  `;
                   vipListEl.appendChild(li);
                 }
               });
@@ -271,7 +323,7 @@
             // Primero intentamos cargar desde la colección users
             const snap = await db.collection('users').orderBy('name').get();
             const set = new Set();
-            
+          
             if (!snap.empty) {
               snap.forEach(doc => {
                 const { name } = doc.data();
@@ -301,7 +353,7 @@
                 } catch (_) {}
               }
             }
-            
+          
             // Poblar el select
             const list = Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
             allUsersSelect.innerHTML = '<option value="">Selecciona un usuario</option>';
@@ -313,23 +365,76 @@
             });
           }
 
-          // Agregar a VIP
+          // Agregar a VIP (usa el select o el input manual)
           vipAddBtn?.addEventListener('click', async () => {
-            const name = allUsersSelect.value;
-            if (!name) return;
+            const name = allUsersSelect.value.trim();
+            if (!name) {
+              alert('Selecciona un usuario del listado.');
+              return;
+            }
             try {
               await db.collection('vipUsers').doc(name).set({ name }, { merge: true });
+              // La suscripción a vipUsers actualizará vipSet y el render mostrará la insignia
             } catch (err) {
               console.error('Error al agregar VIP:', err);
+              alert('No se pudo agregar el usuario a VIP. Revisa reglas/permisos.');
+            }
+          });
+
+          // Quitar VIP usando modal (en modo Admin)
+          vipListEl?.addEventListener('click', (e) => {
+            const btn = e.target.closest('.remove-btn');
+            if (!btn) return;
+            const user = btn.getAttribute('data-user');
+            if (!user) return;
+
+            pendingVipRemoveUser = user;
+            vipRemoveUserSpan.textContent = user;
+            vipRemoveModal.hidden = false;
+          });
+
+          vipRemoveCancelBtn?.addEventListener('click', () => {
+            pendingVipRemoveUser = null;
+            vipRemoveModal.hidden = true;
+          });
+
+          vipRemoveConfirmBtn?.addEventListener('click', async () => {
+            if (!pendingVipRemoveUser) return;
+            try {
+              await db.collection('vipUsers').doc(pendingVipRemoveUser).delete();
+              // La suscripción a vipUsers actualizará vipSet y re-renderizará la lista
+            } catch (err) {
+              console.error('Error al quitar VIP:', err);
+              alert('No se pudo quitar el VIP. Revisa reglas/permisos.');
+            } finally {
+              pendingVipRemoveUser = null;
+              vipRemoveModal.hidden = true;
             }
           });
 
           // Borrar todas las solicitudes (del día seleccionado)
-          wipeAllBtn?.addEventListener('click', async () => {
+          // NUEVO: usar modal en vez de confirm()
+          const wipeAllModal = document.getElementById('wipe-all-modal');
+          const wipeAllDaySpan = document.getElementById('wipe-all-day');
+          const wipeAllCancelBtn = document.getElementById('wipe-all-cancel');
+          const wipeAllConfirmBtn = document.getElementById('wipe-all-confirm');
+
+          wipeAllBtn?.addEventListener('click', () => {
             if (!daySelect.value) return;
+            wipeAllDaySpan.textContent = daySelect.value;
+            wipeAllModal.hidden = false;
+          });
+
+          wipeAllCancelBtn?.addEventListener('click', () => {
+            wipeAllModal.hidden = true;
+          });
+
+          wipeAllConfirmBtn?.addEventListener('click', async () => {
             const day = daySelect.value;
-            const ok = confirm(`¿Borrar todas las solicitudes del día ${day}?`);
-            if (!ok) return;
+            if (!day) {
+              wipeAllModal.hidden = true;
+              return;
+            }
 
             wipeAllBtn.disabled = true;
 
@@ -358,13 +463,12 @@
               if (daySelect.value === day) {
                 subscribeSolicitudesForDay(day);
               }
-
-              alert('Solicitudes borradas.');
             } catch (err) {
               console.error('Error al borrar solicitudes:', err);
               alert('Ocurrió un error al borrar las solicitudes. Verifica reglas y vuelve a intentar.');
             } finally {
               wipeAllBtn.disabled = false;
+              wipeAllModal.hidden = true;
             }
           });
 
@@ -380,6 +484,8 @@
           (async function init() {
             await loadDays();
             subscribeVipUsers();
+            // Llenar select de usuarios al inicio para evitar depender del momento de abrir Admin
+            await renderAllUsersSelect();
             if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
           })();
         })();
@@ -396,10 +502,20 @@
           const adminModal = document.getElementById('admin-modal');
           const adminPanel = document.getElementById('admin-panel');
           const adminPassInput = document.getElementById('admin-pass-input');
-          const adminPassError = document.getElementById('admin-pass-error');
+          const adminPassError = document.getElementById('admin-auth-error');
           const adminPassCancelBtn = document.getElementById('admin-pass-cancel');
           const adminPassConfirmBtn = document.getElementById('admin-pass-confirm');
+          const allUsersSelect = document.getElementById('all-users-select');
+          const vipAddBtn = document.getElementById('vip-add');
+          const adminExitBtn = document.getElementById('admin-exit');
           
+          // NUEVO: referencias del borrado de usuario (modal + botón) dentro de este mismo IIFE
+          const userDeleteBtn = document.getElementById('user-delete');
+          const userDeleteModal = document.getElementById('user-delete-modal');
+          const userDeleteNameSpan = document.getElementById('user-delete-name');
+          const userDeleteCancelBtn = document.getElementById('user-delete-cancel');
+          const userDeleteConfirmBtn = document.getElementById('user-delete-confirm');
+          let pendingUserDelete = null;
           // Abrir/cerrar menú con animación
           function openMenu() {
             if (!menuDropdown) return;
@@ -463,8 +579,8 @@
             if (pass === ADMIN_PASS) {
               adminModal.hidden = true;
               adminPanel.hidden = false;
-              // Renderiza el select de usuarios registrados (función ya definida en tu script)
-              renderAllUsersSelect();
+              // Llenar el select de usuarios registrados desde la función global
+              window.renderAllUsersSelect?.();
             } else {
               adminPassError.hidden = false;
               adminPassInput.focus();
@@ -481,7 +597,78 @@
               tryOpenAdmin();
             }
           });
+
+          // Listener de salida del modo Admin (único, eliminamos duplicado)
+          adminExitBtn?.addEventListener('click', () => {
+            adminPanel.hidden = true;
+            adminModal.hidden = true;
+            adminPassInput.value = '';
+            adminPassError.hidden = true;
+          });
+
+          // NUEVO: abrir modal para borrar usuario registrado
+          userDeleteBtn?.addEventListener('click', () => {
+            const name = allUsersSelect.value.trim();
+            if (!name) {
+              alert('Selecciona un usuario del listado.');
+              return;
+            }
+            if (!userDeleteModal) {
+              alert('No se encontró el modal de borrado de usuario en el HTML.');
+              return;
+            }
+            pendingUserDelete = name;
+            userDeleteNameSpan.textContent = name;
+            userDeleteModal.hidden = false;
+          });
+
+          // NUEVO: cancelar modal de borrado
+          userDeleteCancelBtn?.addEventListener('click', () => {
+            pendingUserDelete = null;
+            userDeleteModal.hidden = true;
+          });
+
+          // NUEVO: confirmar borrado de usuario registrado usando window.db
+          userDeleteConfirmBtn?.addEventListener('click', async () => {
+            if (!pendingUserDelete) return;
+            const name = pendingUserDelete;
+            try {
+              // NUEVO: asegurar sesión antes de escribir
+              await window.ensureAuth?.();
+              
+              // Usa window.db porque db no existe en este IIFE
+              await window.db.collection('users').doc(name.toLowerCase()).delete();
+              
+              // Opcional: también quitar de 'vipUsers' si existía
+              try { await window.db.collection('vipUsers').doc(name).delete(); } catch (_) {}
+              
+              // Refrescar el selector de usuarios registrados
+              if (typeof window.renderAllUsersSelect === 'function') {
+                await window.renderAllUsersSelect();
+              } else {
+                // Fallback: eliminar la opción manualmente
+                const opt = Array.from(allUsersSelect.options).find(o => o.value === name);
+                if (opt) allUsersSelect.remove(opt.index);
+              }
+
+              allUsersSelect.value = '';
+            } catch (err) {
+              console.error('Error al borrar usuario:', err);
+              alert('No se pudo borrar el usuario. Revisa reglas/permisos.');
+            } finally {
+              pendingUserDelete = null;
+              userDeleteModal.hidden = true;
+            }
+          });
+
+          // Listener de salida del modo Admin (asegurar que esté en este mismo IIFE)
+          adminExitBtn?.addEventListener('click', () => {
+            adminPanel.hidden = true;
+            adminModal.hidden = true;
+            adminPassInput.value = '';
+            adminPassError.hidden = true;
+          });
         })();
-      </script>
+      </script>     
 </body>
 </html>
