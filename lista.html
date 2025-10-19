@@ -5,6 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Lista d'Canciones - Zero Radio</title>
   <link rel="stylesheet" href="styles.css" />
+  
+  <!-- Script de sincronización de temas -->
+  <script>
+    // Sincronización global de temas entre pestañas/ventanas
+    window.addEventListener('focus', function() {
+      // Cuando la ventana recibe foco, verificar si hay cambios de tema
+      if (typeof window.applyTheme === 'function') {
+        window.applyTheme();
+      }
+      if (typeof window.updateActiveStates === 'function') {
+        window.updateActiveStates();
+      }
+    });
+  </script>
+  
   <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
@@ -146,19 +161,24 @@
 
       <!-- Modal de cambios por versión (changelog) -->
       <div id="changelog-modal" class="modal-overlay" hidden>
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="changelog-modal-title">
+        <div class="modal changelog-modal" role="dialog" aria-modal="true" aria-labelledby="changelog-modal-title">
           <h2 id="changelog-modal-title">Mejoras por versión</h2>
-
-          <h3>v1.4 (actual)</h3>
+          
+          <div class="changelog-content">
+            <h3>v1.4 (actual)</h3>
           <ul>
             <li>🎮 Modal de gamificación con logros, rachas y estadísticas personales.</li>
             <li>📊 Sistema de estadísticas avanzadas con gráficos y métricas detalladas.</li>
             <li>🔍 Búsqueda global mejorada: navega a cualquier fecha con un click.</li>
             <li>📅 Resultados de búsqueda con fechas formateadas ("Hoy", "Ayer", etc.).</li>
+            <li>🎨 Sistema de temas completo: modo claro/oscuro con 5 colores de acento.</li>
+            <li>🔄 Sincronización de temas en tiempo real entre todas las páginas abiertas.</li>
+            <li>💾 Persistencia de preferencias de tema con migración automática de datos.</li>
+            <li>🎯 Modal de temas rediseñado con botones de cerrar y restablecer funcionales.</li>
+            <li>📱 Centrado perfecto del contenido en pantallas pequeñas y móviles.</li>
+            <li>⚡ Búsqueda con debounce y indicadores de carga para mejor UX.</li>
             <li>🎨 Scrollbars personalizados en secciones de gamificación.</li>
             <li>📱 Calendario de actividad reciente centrado y optimizado.</li>
-            <li>⚡ Búsqueda con debounce y indicadores de carga para mejor UX.</li>
-            <li>🎯 Botón de tema reposicionado con mejor espaciado visual.</li>
           </ul>
 
           <h3>v1.3</h3>
@@ -182,6 +202,7 @@
             <li>Modo Admin básico, filtro VIP y selección de día.</li>
             <li>Suscripción en tiempo real a solicitudes y VIP.</li>
           </ul>
+          </div>
 
           <div class="actions modal-actions">
             <button type="button" id="changelog-close" class="btn">Cerrar</button>
@@ -381,6 +402,7 @@
       <!-- Modal de Temas -->
       <div id="theme-modal" class="modal-overlay" hidden>
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="theme-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar modal">&times;</button>
           <h2 id="theme-modal-title">🎨 Personalizar Tema</h2>
           
           <div class="theme-options">
@@ -1250,6 +1272,7 @@
       // Listeners del changelog (un único bloque)
       menuChangelogOpen?.addEventListener('click', () => {
         closeMenu();
+        hideSearchResults();
         changelogModal.hidden = false;
       });
 
@@ -1344,9 +1367,18 @@
       const statsTabs = document.querySelectorAll('.stats-tab');
       const statsPanels = document.querySelectorAll('.stats-panel');
 
+      // Función para ocultar buscador
+      function hideSearchResults() {
+        const searchResults = document.getElementById('search-results');
+        const searchInput = document.getElementById('search-input');
+        if (searchResults) searchResults.hidden = true;
+        if (searchInput) searchInput.blur();
+      }
+
       // Abrir modal de estadísticas
       menuStatsOpen?.addEventListener('click', async () => {
         closeMenu();
+        hideSearchResults();
         statsModal.hidden = false;
         await calculateStats();
       });
@@ -1547,28 +1579,55 @@
       }
 
       // ===== FUNCIONALIDAD DE TEMAS =====
-      const themeBtn = document.getElementById('theme-btn');
       const themeModal = document.getElementById('theme-modal');
+      const themeBtn = document.getElementById('theme-btn');
       const themeCloseBtn = document.getElementById('theme-close');
+      const themeCloseBtnX = themeModal?.querySelector('.modal-close-btn');
       const themeResetBtn = document.getElementById('theme-reset');
       const themeOptions = document.querySelectorAll('.theme-option');
       const themeColors = document.querySelectorAll('.theme-color');
 
-      // Cargar tema guardado
-      function loadSavedTheme() {
-        const savedTheme = localStorage.getItem('app-theme') || 'light';
-        const savedColor = localStorage.getItem('app-color') || 'default';
+      // Migrar datos de tema de claves antiguas a nuevas (solo una vez)
+      (function migrateThemeData() {
+        const oldTheme = localStorage.getItem('app-theme');
+        const oldColor = localStorage.getItem('app-color');
+        
+        if (oldTheme && !localStorage.getItem('selectedTheme')) {
+          localStorage.setItem('selectedTheme', oldTheme);
+          localStorage.removeItem('app-theme');
+        }
+        
+        if (oldColor && !localStorage.getItem('selectedColor')) {
+          localStorage.setItem('selectedColor', oldColor);
+          localStorage.removeItem('app-color');
+        }
+      })();
+
+      // Función para aplicar tema (sincronizada)
+      function applyTheme() {
+        const savedTheme = localStorage.getItem('selectedTheme') || 'light';
+        const savedColor = localStorage.getItem('selectedColor') || 'default';
+        
+        // Limpiar clases anteriores
+        document.body.classList.remove('dark-theme');
+        document.body.classList.remove('theme-blue', 'theme-green', 'theme-purple', 'theme-red', 'theme-pink');
         
         // Aplicar tema
-        document.body.className = '';
         if (savedTheme === 'dark') {
           document.body.classList.add('dark-theme');
         }
+        
+        // Aplicar color de acento
         if (savedColor !== 'default') {
           document.body.classList.add(`theme-${savedColor}`);
         }
+      }
+
+      // Actualizar estados activos del modal
+      function updateActiveStates() {
+        const savedTheme = localStorage.getItem('selectedTheme') || 'light';
+        const savedColor = localStorage.getItem('selectedColor') || 'default';
         
-        // Actualizar botones activos
         themeOptions.forEach(option => {
           option.classList.toggle('active', option.dataset.theme === savedTheme);
         });
@@ -1577,14 +1636,37 @@
         });
       }
 
+      // Cargar tema guardado
+      function loadSavedTheme() {
+        applyTheme();
+        updateActiveStates();
+      }
+      
+      // Escuchar cambios en localStorage desde otras páginas
+      window.addEventListener('storage', function(e) {
+        if (e.key === 'selectedTheme' || e.key === 'selectedColor') {
+          applyTheme();
+          updateActiveStates();
+        }
+      });
+
       // Abrir modal de temas
       themeBtn?.addEventListener('click', () => {
+        hideSearchResults();
         themeModal.hidden = false;
       });
 
       // Cerrar modal de temas
-      themeCloseBtn?.addEventListener('click', () => {
+      function closeThemeModal() {
         themeModal.hidden = true;
+      }
+
+      themeCloseBtn?.addEventListener('click', closeThemeModal);
+      themeCloseBtnX?.addEventListener('click', closeThemeModal);
+      
+      // Cerrar modal al hacer clic fuera
+      themeModal?.addEventListener('click', function(e) {
+        if (e.target === themeModal) closeThemeModal();
       });
 
       // Cambiar tema (claro/oscuro)
@@ -1592,15 +1674,17 @@
         option.addEventListener('click', () => {
           const theme = option.dataset.theme;
           
-          // Actualizar botones activos
-          themeOptions.forEach(opt => opt.classList.remove('active'));
-          option.classList.add('active');
+          // Guardar preferencia
+          localStorage.setItem('selectedTheme', theme);
           
           // Aplicar tema
-          document.body.classList.toggle('dark-theme', theme === 'dark');
+          applyTheme();
+          updateActiveStates();
           
-          // Guardar preferencia
-          localStorage.setItem('app-theme', theme);
+          // Disparar evento personalizado para sincronización
+          window.dispatchEvent(new CustomEvent('themeChanged', { 
+            detail: { theme, color: localStorage.getItem('selectedColor') || 'default' }
+          }));
         });
       });
 
@@ -1609,34 +1693,26 @@
         color.addEventListener('click', () => {
           const colorName = color.dataset.color;
           
-          // Actualizar botones activos
-          themeColors.forEach(c => c.classList.remove('active'));
-          color.classList.add('active');
-          
-          // Remover clases de color anteriores
-          document.body.className = document.body.className.replace(/theme-\w+/g, '');
-          
-          // Aplicar nuevo color (excepto default)
-          if (colorName !== 'default') {
-            document.body.classList.add(`theme-${colorName}`);
-          }
-          
-          // Mantener tema oscuro si estaba activo
-          const isDark = localStorage.getItem('app-theme') === 'dark';
-          if (isDark) {
-            document.body.classList.add('dark-theme');
-          }
-          
           // Guardar preferencia
-          localStorage.setItem('app-color', colorName);
+          localStorage.setItem('selectedColor', colorName);
+          
+          // Aplicar tema
+          applyTheme();
+          updateActiveStates();
+          
+          // Disparar evento personalizado para sincronización
+          window.dispatchEvent(new CustomEvent('themeChanged', { 
+            detail: { theme: localStorage.getItem('selectedTheme') || 'light', color: colorName }
+          }));
         });
       });
 
       // Restablecer tema
       themeResetBtn?.addEventListener('click', () => {
-        document.body.className = '';
-        localStorage.removeItem('app-theme');
-        localStorage.removeItem('app-color');
+        localStorage.removeItem('selectedTheme');
+        localStorage.removeItem('selectedColor');
+        applyTheme();
+        updateActiveStates();
         
         // Actualizar botones
         themeOptions.forEach(option => {
@@ -2070,6 +2146,7 @@
       gamificationOpenBtn?.addEventListener('click', () => {
         // Cerrar el menú
         closeMenu();
+        hideSearchResults();
         // Inicializar con el usuario actual
         currentSelectedUser = getCurrentUser();
         renderGamificationModal().catch(console.error);
@@ -2203,7 +2280,7 @@
           padding: 16px 20px;
           border-radius: 12px;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-          z-index: 10000;
+          z-index: 1000;
           animation: slideInRight 0.3s ease, slideOutRight 0.3s ease 3.7s forwards;
           max-width: 300px;
         }

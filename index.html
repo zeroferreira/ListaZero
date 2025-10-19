@@ -5,6 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Canciones Zero Radio</title>
   <link rel="stylesheet" href="styles.css" />
+  
+  <!-- Script de sincronización de temas -->
+  <script>
+    // Sincronización global de temas entre pestañas/ventanas
+    window.addEventListener('focus', function() {
+      // Cuando la ventana recibe foco, verificar si hay cambios de tema
+      if (typeof window.applyTheme === 'function') {
+        window.applyTheme();
+      }
+      if (typeof window.updateActiveStates === 'function') {
+        window.updateActiveStates();
+      }
+    });
+  </script>
+  
   <!-- Firebase SDK (compat para uso sencillo en HTML) -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
@@ -15,12 +30,15 @@
     <section class="card" aria-labelledby="titulo">
       <div class="header-with-points">
         <h1 id="titulo">Lista de canciones</h1>
-        <div id="user-points-indicator" class="points-indicator" style="display: none;">
-          <div class="points-icon">🏆</div>
-          <div class="points-info">
-            <div class="points-value" id="header-points">0</div>
-            <div class="points-label">puntos</div>
+        <div class="header-controls">
+          <div id="user-points-indicator" class="points-indicator" style="display: none;">
+            <div class="points-icon">🏆</div>
+            <div class="points-info">
+              <div class="points-value" id="header-points">0</div>
+              <div class="points-label">puntos</div>
+            </div>
           </div>
+          <button type="button" class="theme-btn" id="theme-btn" aria-label="Cambiar tema">🎨</button>
         </div>
       </div>
 
@@ -53,7 +71,217 @@
     </section>
   </main>
 
+  <!-- Modal de Temas -->
+  <div id="theme-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="theme-modal-title">
+      <button type="button" class="modal-close-btn" aria-label="Cerrar modal">&times;</button>
+      <h2 id="theme-modal-title">🎨 Personalizar Tema</h2>
+      
+      <div class="theme-options">
+        <div class="theme-section">
+          <h3>Modo de Color</h3>
+          <div class="theme-grid">
+            <button type="button" class="theme-option active" data-theme="light">
+              <div class="theme-preview light-preview"></div>
+              <span>Claro</span>
+            </button>
+            <button type="button" class="theme-option" data-theme="dark">
+              <div class="theme-preview dark-preview"></div>
+              <span>Oscuro</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="theme-section">
+          <h3>Colores de Acento</h3>
+          <div class="theme-grid">
+            <button type="button" class="theme-color active" data-color="default">
+              <div class="color-preview" style="background: #000;"></div>
+              <span>Negro</span>
+            </button>
+            <button type="button" class="theme-color" data-color="blue">
+              <div class="color-preview" style="background: #2563eb;"></div>
+              <span>Azul</span>
+            </button>
+            <button type="button" class="theme-color" data-color="green">
+              <div class="color-preview" style="background: #16a34a;"></div>
+              <span>Verde</span>
+            </button>
+            <button type="button" class="theme-color" data-color="purple">
+              <div class="color-preview" style="background: #9333ea;"></div>
+              <span>Morado</span>
+            </button>
+            <button type="button" class="theme-color" data-color="red">
+              <div class="color-preview" style="background: #dc2626;"></div>
+              <span>Rojo</span>
+            </button>
+            <button type="button" class="theme-color" data-color="pink">
+              <div class="color-preview" style="background: #ec4899;"></div>
+              <span>Rosa</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions modal-actions">
+        <button type="button" id="theme-reset" class="btn btn-secondary">Restablecer</button>
+        <button type="button" id="theme-close" class="btn">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
+    // Sistema de temas sincronizado
+    (function() {
+      // Función para aplicar tema
+      function applyTheme() {
+        const savedTheme = localStorage.getItem('selectedTheme') || 'light';
+        const savedColor = localStorage.getItem('selectedColor') || 'default';
+        
+        // Limpiar clases anteriores
+        document.body.classList.remove('dark-theme');
+        document.body.classList.remove('theme-blue', 'theme-green', 'theme-purple', 'theme-red', 'theme-pink');
+        
+        // Aplicar tema
+        if (savedTheme === 'dark') {
+          document.body.classList.add('dark-theme');
+        }
+        
+        // Aplicar color de acento
+        if (savedColor !== 'default') {
+          document.body.classList.add(`theme-${savedColor}`);
+        }
+      }
+      
+      // Aplicar tema al cargar
+      applyTheme();
+      
+      // Escuchar cambios en localStorage desde otras páginas
+      window.addEventListener('storage', function(e) {
+        if (e.key === 'selectedTheme' || e.key === 'selectedColor') {
+          applyTheme();
+          // Actualizar estados del modal si está abierto
+          if (typeof updateActiveStates === 'function') {
+            updateActiveStates();
+          }
+        }
+      });
+      
+      // Hacer la función global para uso en el modal
+      window.applyTheme = applyTheme;
+    })();
+
+    // Manejo del modal de tema
+    document.addEventListener('DOMContentLoaded', function() {
+      const themeBtn = document.getElementById('theme-btn');
+      const themeModal = document.getElementById('theme-modal');
+      const modalCloseBtn = themeModal.querySelector('.modal-close-btn');
+      const themeCloseBtn = document.getElementById('theme-close');
+      const themeResetBtn = document.getElementById('theme-reset');
+      const themeOptions = document.querySelectorAll('.theme-option');
+      const themeColors = document.querySelectorAll('.theme-color');
+
+      // Abrir modal
+      themeBtn.addEventListener('click', function() {
+        themeModal.hidden = false;
+        updateActiveStates();
+      });
+
+      // Cerrar modal
+      function closeModal() {
+        themeModal.hidden = true;
+      }
+
+      modalCloseBtn.addEventListener('click', closeModal);
+      themeCloseBtn?.addEventListener('click', closeModal);
+      themeModal.addEventListener('click', function(e) {
+        if (e.target === themeModal) closeModal();
+      });
+
+      // Actualizar estados activos
+      function updateActiveStates() {
+        const currentTheme = localStorage.getItem('selectedTheme') || 'light';
+        const currentColor = localStorage.getItem('selectedColor') || 'default';
+
+        themeOptions.forEach(option => {
+          option.classList.toggle('active', option.dataset.theme === currentTheme);
+        });
+
+        themeColors.forEach(color => {
+          color.classList.toggle('active', color.dataset.color === currentColor);
+        });
+      }
+      
+      // Hacer la función global
+      window.updateActiveStates = updateActiveStates;
+
+      // Cambiar tema
+      themeOptions.forEach(option => {
+        option.addEventListener('click', function() {
+          const theme = this.dataset.theme;
+          
+          // Guardar en localStorage
+          localStorage.setItem('selectedTheme', theme);
+          
+          // Aplicar tema usando la función global
+          window.applyTheme();
+          
+          // Actualizar estados
+          updateActiveStates();
+          
+          // Disparar evento personalizado para sincronización
+          window.dispatchEvent(new CustomEvent('themeChanged', { 
+            detail: { theme, color: localStorage.getItem('selectedColor') || 'default' }
+          }));
+        });
+      });
+
+      // Cambiar color
+      themeColors.forEach(color => {
+        color.addEventListener('click', function() {
+          const colorName = this.dataset.color;
+          
+          // Guardar en localStorage
+          localStorage.setItem('selectedColor', colorName);
+          
+          // Aplicar tema usando la función global
+          window.applyTheme();
+          
+          // Actualizar estados
+          updateActiveStates();
+          
+          // Disparar evento personalizado para sincronización
+          window.dispatchEvent(new CustomEvent('themeChanged', { 
+            detail: { theme: localStorage.getItem('selectedTheme') || 'light', color: colorName }
+          }));
+        });
+      });
+
+      // Restablecer tema
+      themeResetBtn?.addEventListener('click', function() {
+        localStorage.removeItem('selectedTheme');
+        localStorage.removeItem('selectedColor');
+        
+        // Aplicar tema usando la función global
+        window.applyTheme();
+        
+        // Actualizar estados
+        updateActiveStates();
+        
+        // Disparar evento personalizado para sincronización
+        window.dispatchEvent(new CustomEvent('themeChanged', { 
+          detail: { theme: 'light', color: 'default' }
+        }));
+      });
+
+      // Cerrar con Escape
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && !themeModal.hidden) {
+          closeModal();
+        }
+      });
+    });
+
     (function () {
       function getLocalDateKey(ts) {
         const d = ts ? new Date(ts) : new Date();
@@ -761,7 +989,7 @@
       padding: 16px 20px;
       border-radius: 12px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-      z-index: 10000;
+      z-index: 1000;
       animation: slideInRight 0.3s ease;
       max-width: 300px;
       font-family: 'Avenir', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
