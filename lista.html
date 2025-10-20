@@ -1297,13 +1297,21 @@
         const searchInput = document.getElementById('search-input');
         if (!searchInput) return;
 
+        // Detectar si es un dispositivo móvil o pantalla ultra ancha
+        const isMobile = window.innerWidth <= 768 || (window.innerWidth > 2600 && window.innerHeight < 650);
         const texts = ['Buscar canción...', 'Buscar artista...'];
         let currentIndex = 0;
         let isDeleting = false;
         let currentText = '';
         let charIndex = 0;
+        let animationTimeout = null;
 
         function typeEffect() {
+          // Verificar si el elemento aún existe y no tiene foco
+          if (!searchInput || document.activeElement === searchInput) {
+            return;
+          }
+
           const fullText = texts[currentIndex];
           
           if (isDeleting) {
@@ -1314,24 +1322,35 @@
             charIndex++;
           }
 
-          searchInput.placeholder = currentText;
+          // Usar requestAnimationFrame para mejor rendimiento en móviles
+          requestAnimationFrame(() => {
+            if (searchInput && document.activeElement !== searchInput) {
+              searchInput.placeholder = currentText;
+            }
+          });
 
-          let typeSpeed = 100;
+          // Ajustar velocidades para dispositivos móviles
+          let typeSpeed = isMobile ? 150 : 100;
           if (isDeleting) {
-            typeSpeed = 50;
+            typeSpeed = isMobile ? 75 : 50;
           }
 
           if (!isDeleting && charIndex === fullText.length) {
             // Pausa al completar el texto
-            typeSpeed = 3000;
+            typeSpeed = isMobile ? 2000 : 3000;
             isDeleting = true;
           } else if (isDeleting && charIndex === 0) {
             isDeleting = false;
             currentIndex = (currentIndex + 1) % texts.length;
-            typeSpeed = 500;
+            typeSpeed = isMobile ? 300 : 500;
           }
 
-          setTimeout(typeEffect, typeSpeed);
+          animationTimeout = setTimeout(typeEffect, typeSpeed);
+        }
+
+        // Limpiar timeout anterior si existe
+        if (window.placeholderTimeout) {
+          clearTimeout(window.placeholderTimeout);
         }
 
         // Solo iniciar la animación si el campo no tiene foco
@@ -1340,25 +1359,61 @@
         }
 
         // Pausar animación cuando el usuario hace foco en el campo
-        searchInput.addEventListener('focus', () => {
-          clearTimeout(window.placeholderTimeout);
+        const focusHandler = () => {
+          if (animationTimeout) {
+            clearTimeout(animationTimeout);
+            animationTimeout = null;
+          }
+          if (window.placeholderTimeout) {
+            clearTimeout(window.placeholderTimeout);
+          }
           searchInput.placeholder = 'Escribe para buscar...';
-        });
+        };
 
         // Reanudar animación cuando el usuario sale del campo (si está vacío)
-        searchInput.addEventListener('blur', () => {
+        const blurHandler = () => {
           if (!searchInput.value.trim()) {
-            setTimeout(() => {
+            window.placeholderTimeout = setTimeout(() => {
               if (document.activeElement !== searchInput) {
                 animatePlaceholder();
               }
             }, 1000);
           }
-        });
+        };
+
+        // Remover listeners anteriores para evitar duplicados
+        searchInput.removeEventListener('focus', focusHandler);
+        searchInput.removeEventListener('blur', blurHandler);
+        
+        // Agregar nuevos listeners
+        searchInput.addEventListener('focus', focusHandler);
+        searchInput.addEventListener('blur', blurHandler);
       }
 
-      // Iniciar la animación después de un breve delay
-      setTimeout(animatePlaceholder, 1000);
+      // Función para limpiar la animación del placeholder
+      function cleanupPlaceholderAnimation() {
+        if (window.placeholderTimeout) {
+          clearTimeout(window.placeholderTimeout);
+          window.placeholderTimeout = null;
+        }
+      }
+
+      // Iniciar la animación después de un breve delay, solo si no es móvil táctil
+      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isUltraWide = window.innerWidth > 2600 && window.innerHeight < 650;
+      
+      if (!isTouchDevice || isUltraWide) {
+        setTimeout(animatePlaceholder, 1000);
+      } else {
+        // En dispositivos táctiles, usar placeholder estático
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) {
+          searchInput.placeholder = 'Buscar canción...';
+        }
+      }
+
+      // Limpiar animación al cambiar de página
+      window.addEventListener('beforeunload', cleanupPlaceholderAnimation);
 
       // ===== FUNCIONALIDAD DE ESTADÍSTICAS =====
       const statsModal = document.getElementById('stats-modal');
