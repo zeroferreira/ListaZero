@@ -1293,18 +1293,17 @@
       });
 
       // Animación del placeholder del campo de búsqueda
+      let placeholderAnimation = null;
+      
       function animatePlaceholder() {
         const searchInput = document.getElementById('search-input');
         if (!searchInput) return;
 
-        // Detectar si es un dispositivo móvil o pantalla ultra ancha
-        const isMobile = window.innerWidth <= 768 || (window.innerWidth > 2600 && window.innerHeight < 650);
         const texts = ['Buscar canción...', 'Buscar artista...'];
         let currentIndex = 0;
         let isDeleting = false;
         let currentText = '';
         let charIndex = 0;
-        let animationTimeout = null;
 
         function typeEffect() {
           // Verificar si el elemento aún existe y no tiene foco
@@ -1322,50 +1321,40 @@
             charIndex++;
           }
 
-          // Usar requestAnimationFrame para mejor rendimiento en móviles
-          requestAnimationFrame(() => {
-            if (searchInput && document.activeElement !== searchInput) {
-              searchInput.placeholder = currentText;
-            }
-          });
+          // Actualizar el placeholder
+          searchInput.placeholder = currentText;
 
-          // Ajustar velocidades para dispositivos móviles
-          let typeSpeed = isMobile ? 150 : 100;
+          let typeSpeed = 100;
           if (isDeleting) {
-            typeSpeed = isMobile ? 75 : 50;
+            typeSpeed = 50;
           }
 
           if (!isDeleting && charIndex === fullText.length) {
             // Pausa al completar el texto
-            typeSpeed = isMobile ? 2000 : 3000;
+            typeSpeed = 2000;
             isDeleting = true;
           } else if (isDeleting && charIndex === 0) {
             isDeleting = false;
             currentIndex = (currentIndex + 1) % texts.length;
-            typeSpeed = isMobile ? 300 : 500;
+            typeSpeed = 500;
           }
 
-          animationTimeout = setTimeout(typeEffect, typeSpeed);
+          placeholderAnimation = setTimeout(typeEffect, typeSpeed);
         }
 
-        // Limpiar timeout anterior si existe
-        if (window.placeholderTimeout) {
-          clearTimeout(window.placeholderTimeout);
+        // Limpiar animación anterior
+        if (placeholderAnimation) {
+          clearTimeout(placeholderAnimation);
         }
 
-        // Solo iniciar la animación si el campo no tiene foco
-        if (document.activeElement !== searchInput) {
-          typeEffect();
-        }
+        // Iniciar la animación
+        typeEffect();
 
         // Pausar animación cuando el usuario hace foco en el campo
         const focusHandler = () => {
-          if (animationTimeout) {
-            clearTimeout(animationTimeout);
-            animationTimeout = null;
-          }
-          if (window.placeholderTimeout) {
-            clearTimeout(window.placeholderTimeout);
+          if (placeholderAnimation) {
+            clearTimeout(placeholderAnimation);
+            placeholderAnimation = null;
           }
           searchInput.placeholder = 'Escribe para buscar...';
         };
@@ -1373,7 +1362,7 @@
         // Reanudar animación cuando el usuario sale del campo (si está vacío)
         const blurHandler = () => {
           if (!searchInput.value.trim()) {
-            window.placeholderTimeout = setTimeout(() => {
+            setTimeout(() => {
               if (document.activeElement !== searchInput) {
                 animatePlaceholder();
               }
@@ -1392,27 +1381,14 @@
 
       // Función para limpiar la animación del placeholder
       function cleanupPlaceholderAnimation() {
-        if (window.placeholderTimeout) {
-          clearTimeout(window.placeholderTimeout);
-          window.placeholderTimeout = null;
+        if (placeholderAnimation) {
+          clearTimeout(placeholderAnimation);
+          placeholderAnimation = null;
         }
       }
 
       // Iniciar la animación después de un breve delay
-      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      const isUltraWide = window.innerWidth > 2600 && window.innerHeight < 650;
-      const isNubiaZ70Ultra = window.innerWidth === 2688 && window.innerHeight === 1216;
-      
-      // Activar animación en desktop, ultra wide, o Nubia Z70 Ultra específicamente
-      if (!isTouchDevice || isUltraWide || isNubiaZ70Ultra) {
-        setTimeout(animatePlaceholder, 1000);
-      } else {
-        // En otros dispositivos táctiles, usar placeholder estático
-        const searchInput = document.getElementById('search-input');
-        if (searchInput) {
-          searchInput.placeholder = 'Buscar canción...';
-        }
-      }
+      setTimeout(animatePlaceholder, 1000);
 
       // Limpiar animación al cambiar de página
       window.addEventListener('beforeunload', cleanupPlaceholderAnimation);
