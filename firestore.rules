@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Solicitudes de canciones
+    match /solicitudes/{doc} {
+      // Cualquiera puede leer y crear
+      allow read: if true;
+      allow create: if true;
+
+      // Borrado solo con sesión (sirve auth anónima)
+      allow delete: if isSignedIn();
+
+      // No permitimos updates (editar) por ahora
+      allow update: if false;
+    }
+
+    // Usuarios VIP (para el filtro y panel admin)
+    match /vipUsers/{doc} {
+      allow read: if true;
+      // Escribir (crear/actualizar/borrar) solo con sesión (sirve auth anónima)
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Usuarios Z0-VIP (para el filtro y panel admin)
+    match /z0VipUsers/{doc} {
+      allow read: if true;
+      // Escribir (crear/actualizar/borrar) solo con sesión (sirve auth anónima)
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Usuarios Donadores temporales (para el filtro y panel admin)
+    match /donadorUsers/{doc} {
+      allow read: if true;
+      // Escribir (crear/actualizar/borrar) solo con sesión (sirve auth anónima)
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Usuarios registrados (para poblar select en Admin)
+    match /users/{doc} {
+      allow read: if true;
+      // index.html hace upsert del usuario al enviar una solicitud
+      allow create, update: if isSignedIn();
+      // Nuevo: permitir borrar usuarios desde Modo Admin (requiere sesión)
+      allow delete: if isSignedIn();
+    }
+  }
+}

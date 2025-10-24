@@ -97,6 +97,19 @@
           </div>
         </div>
         <div class="admin-row">
+          <label for="all-users-select-donador">Selecciona usuario registrado para Donador (1 día):</label>
+          <select id="all-users-select-donador" class="user-select" aria-label="Usuarios registrados para Donador">
+            <option value="">Selecciona un usuario</option>
+          </select>
+          <div class="admin-btns">
+            <button type="button" id="donador-add" class="btn">Agregar Donador</button>
+          </div>
+          <div class="admin-list-section">
+            <strong>Usuarios Donadores (temporales):</strong>
+            <ul id="donador-list" class="vip-list"></ul>
+          </div>
+        </div>
+        <div class="admin-row">
           <strong>Mantenimiento:</strong>
           <button type="button" id="wipe-all" class="btn">Borrar todas las solicitudes</button>
         </div>
@@ -505,15 +518,21 @@
       const vipListEl = document.getElementById('vip-list');
       const wipeAllBtn = document.getElementById('wipe-all');
 
+      // Elementos para donadores
+      const allUsersSelectDonador = document.getElementById('all-users-select-donador');
+      const donadorAddBtn = document.getElementById('donador-add');
+      const donadorListEl = document.getElementById('donador-list');
+
       const vipRemoveModal = document.getElementById('vip-remove-modal');
       const vipRemoveUserSpan = document.getElementById('vip-remove-user');
       const vipRemoveCancelBtn = document.getElementById('vip-remove-cancel');
       const vipRemoveConfirmBtn = document.getElementById('vip-remove-confirm');
       let pendingVipRemoveUser = null;
-      let pendingVipRemoveType = 'vip'; // 'vip' o 'z0'
+      let pendingVipRemoveType = 'vip'; // 'vip', 'z0' o 'donador'
 
       let vipSet = new Set();
       let z0VipSet = new Set();
+      let donadorSet = new Set();
       let unsubscribeSolicitudes = null;
       let currentDayItems = [];
 
@@ -527,12 +546,15 @@
         items.forEach((it) => {
           const isVip = vipSet.has(it.usuario);
           const isZ0Vip = z0VipSet.has(it.usuario);
+          const isDonador = donadorSet.has(it.usuario);
           const li = document.createElement('li');
           
           if (isZ0Vip) {
             li.className = 'item z0-vip';
           } else if (isVip) {
             li.className = 'item vip';
+          } else if (isDonador) {
+            li.className = 'item donador';
           } else {
             li.className = 'item';
           }
@@ -772,6 +794,45 @@
         });
       }
 
+      function subscribeDonadorUsers() {
+        db.collection('donadorUsers').onSnapshot((snap) => {
+          donadorSet = new Set();
+          if (donadorListEl) {
+            donadorListEl.innerHTML = '';
+          }
+          
+          const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+          
+          snap.forEach((doc) => {
+            const data = doc.data();
+            const { name, expiresAt } = data;
+            
+            if (name && expiresAt) {
+              const expireDate = expiresAt.split('T')[0]; // YYYY-MM-DD
+              
+              // Si ya expiró, eliminar automáticamente
+              if (expireDate < today) {
+                db.collection('donadorUsers').doc(doc.id).delete().catch(console.error);
+                return;
+              }
+              
+              donadorSet.add(name);
+              if (donadorListEl) {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                  <span>${name} (hasta ${expireDate})</span>
+                  <button type="button" class="remove-btn" data-user="${name}" data-type="donador" aria-label="Quitar Donador">×</button>
+                `;
+                donadorListEl.appendChild(li);
+              }
+            }
+          });
+          if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+        }, (err) => {
+          console.error('Error suscripción Donadores:', err);
+        });
+      }
+
       async function renderAllUsersSelect() {
         const snap = await db.collection('users').orderBy('name').get();
         const set = new Set();
@@ -810,6 +871,10 @@
         if (allUsersSelectZ0) {
           allUsersSelectZ0.innerHTML = '<option value="">Selecciona un usuario</option>';
         }
+        if (allUsersSelectDonador) {
+          allUsersSelectDonador.innerHTML = '<option value="">Selecciona un usuario</option>';
+        }
+        
         list.forEach(name => {
           const opt = document.createElement('option');
           opt.value = name;
@@ -821,6 +886,13 @@
             optZ0.value = name;
             optZ0.textContent = name;
             allUsersSelectZ0.appendChild(optZ0);
+          }
+          
+          if (allUsersSelectDonador) {
+            const optDonador = document.createElement('option');
+            optDonador.value = name;
+            optDonador.textContent = name;
+            allUsersSelectDonador.appendChild(optDonador);
           }
         });
       }
@@ -856,6 +928,35 @@
         }
       });
 
+      donadorAddBtn?.addEventListener('click', async () => {
+        const name = allUsersSelectDonador?.value.trim();
+        if (!name) {
+          alert('Selecciona un usuario del listado.');
+          return;
+        }
+        
+        // Calcular fecha de expiración (mañana a las 23:59:59)
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(23, 59, 59, 999);
+        const expiresAt = tomorrow.toISOString();
+        
+        try {
+          await db.collection('donadorUsers').doc(name).set({ 
+            name, 
+            expiresAt,
+            createdAt: new Date().toISOString()
+          }, { merge: true });
+          
+          // Limpiar selección
+          allUsersSelectDonador.value = '';
+          
+        } catch (err) {
+          console.error('Error al agregar Donador:', err);
+          alert('No se pudo agregar el usuario como Donador. Revisa reglas/permisos.');
+        }
+      });
+
       vipListEl?.addEventListener('click', (e) => {
         const btn = e.target.closest('.remove-btn');
         if (!btn) return;
@@ -882,6 +983,19 @@
         vipRemoveModal.hidden = false;
       });
 
+      donadorListEl?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.remove-btn');
+        if (!btn) return;
+        const user = btn.getAttribute('data-user');
+        const type = btn.getAttribute('data-type');
+        if (!user) return;
+
+        pendingVipRemoveUser = user;
+        pendingVipRemoveType = type || 'donador';
+        vipRemoveUserSpan.textContent = user;
+        vipRemoveModal.hidden = false;
+      });
+
       vipRemoveCancelBtn?.addEventListener('click', () => {
         pendingVipRemoveUser = null;
         pendingVipRemoveType = 'vip';
@@ -891,11 +1005,16 @@
       vipRemoveConfirmBtn?.addEventListener('click', async () => {
         if (!pendingVipRemoveUser) return;
         try {
-          const collection = pendingVipRemoveType === 'z0' ? 'z0VipUsers' : 'vipUsers';
+          let collection = 'vipUsers';
+          if (pendingVipRemoveType === 'z0') {
+            collection = 'z0VipUsers';
+          } else if (pendingVipRemoveType === 'donador') {
+            collection = 'donadorUsers';
+          }
           await db.collection(collection).doc(pendingVipRemoveUser).delete();
         } catch (err) {
-          console.error('Error al quitar VIP:', err);
-          alert('No se pudo quitar el VIP. Revisa reglas/permisos.');
+          console.error('Error al quitar insignia:', err);
+          alert('No se pudo quitar la insignia. Revisa reglas/permisos.');
         } finally {
           pendingVipRemoveUser = null;
           pendingVipRemoveType = 'vip';
@@ -968,6 +1087,7 @@
         await loadDays();
         subscribeVipUsers();
         subscribeZ0VipUsers();
+        subscribeDonadorUsers();
         await renderAllUsersSelect();
         if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
       })();
