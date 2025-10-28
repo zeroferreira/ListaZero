@@ -769,6 +769,11 @@
         const clickableItems = solicitudesList.querySelectorAll('.item');
         console.log(`✅ Renderizadas ${clickableItems.length} canciones clickeables`);
         
+        // Forzar estilos en canciones reproducidas después del renderizado
+        setTimeout(() => {
+          forcePlayedSongStyles();
+        }, 100);
+        
         // Actualizar selector de usuarios cuando hay nuevos datos
         if (typeof populateUserSelector === 'function') {
           populateUserSelector().catch(console.error);
@@ -811,6 +816,17 @@
             playedSongs[currentDay] = playedSongs[currentDay].filter(id => id !== songId);
             element.classList.remove('played');
             console.log('Canción desmarcada como reproducida');
+            
+            // Remover indicador visual si existe
+            const indicator = element.querySelector('.played-indicator');
+            if (indicator) {
+              indicator.remove();
+            }
+            
+            // Restaurar estilos originales
+            element.style.backgroundColor = '';
+            element.style.color = '';
+            element.style.opacity = '';
           } else {
             // Marcar como reproducida
             playedSongs[currentDay].push(songId);
@@ -821,6 +837,11 @@
           // Guardar en localStorage
           localStorage.setItem('playedSongs', JSON.stringify(playedSongs));
           console.log('Datos guardados en localStorage:', playedSongs[currentDay]);
+          
+          // Forzar estilos para asegurar que se vean correctamente
+          setTimeout(() => {
+            forcePlayedSongStyles();
+          }, 50);
           
           // Limpiar días antiguos (mantener solo últimos 30 días)
           cleanOldPlayedSongs();
@@ -868,6 +889,64 @@
         document.body.removeChild(testElement);
         
         console.log('Funcionalidad de canciones reproducidas inicializada correctamente');
+      }
+
+      // Función para forzar estilos en canciones reproducidas (fallback)
+      function forcePlayedSongStyles() {
+        const playedItems = document.querySelectorAll('.item.played');
+        console.log(`Forzando estilos en ${playedItems.length} canciones reproducidas`);
+        
+        playedItems.forEach(item => {
+          // Obtener tema actual
+          const isDark = document.body.classList.contains('dark-theme');
+          const themeClass = Array.from(document.body.classList).find(cls => cls.startsWith('theme-'));
+          
+          // Aplicar estilos base
+          item.style.opacity = '0.7';
+          item.style.cursor = 'pointer';
+          item.style.transition = 'all 0.2s ease';
+          item.style.position = 'relative';
+          
+          // Aplicar colores según tema
+          if (themeClass === 'theme-blue') {
+            item.style.backgroundColor = isDark ? '#1e3a8a' : '#dbeafe';
+            item.style.color = isDark ? '#93c5fd' : '#1e40af';
+          } else if (themeClass === 'theme-green') {
+            item.style.backgroundColor = isDark ? '#14532d' : '#dcfce7';
+            item.style.color = isDark ? '#86efac' : '#166534';
+          } else if (themeClass === 'theme-purple') {
+            item.style.backgroundColor = isDark ? '#581c87' : '#f3e8ff';
+            item.style.color = isDark ? '#c4b5fd' : '#7c3aed';
+          } else if (themeClass === 'theme-red') {
+            item.style.backgroundColor = isDark ? '#991b1b' : '#fee2e2';
+            item.style.color = isDark ? '#fca5a5' : '#dc2626';
+          } else if (themeClass === 'theme-pink') {
+            item.style.backgroundColor = isDark ? '#9d174d' : '#fce7f3';
+            item.style.color = isDark ? '#f9a8d4' : '#be185d';
+          } else {
+            // Tema por defecto
+            item.style.backgroundColor = isDark ? '#374151' : '#f3f4f6';
+            item.style.color = isDark ? '#9ca3af' : '#6b7280';
+          }
+          
+          // Agregar indicador ✓ si no existe
+          if (!item.querySelector('.played-indicator')) {
+            const indicator = document.createElement('span');
+            indicator.className = 'played-indicator';
+            indicator.textContent = '✓';
+            indicator.style.cssText = `
+              position: absolute;
+              left: 4px;
+              top: 50%;
+              transform: translateY(-50%);
+              font-size: 12px;
+              font-weight: bold;
+              color: ${isDark ? '#34d399' : '#10b981'};
+              z-index: 1;
+            `;
+            item.insertBefore(indicator, item.firstChild);
+          }
+        });
       }
 
       function toHour(ts) {
@@ -4219,16 +4298,31 @@
             const hasPlayedClass = firstItem.classList.contains('played');
             console.log(`¿Tiene clase 'played'? ${hasPlayedClass}`);
             
+            // Forzar estilos para asegurar que se vean
+            forcePlayedSongStyles();
+            
+            // Verificar estilos aplicados
+            const computedStyles = window.getComputedStyle(firstItem);
+            console.log('Estilos aplicados:', {
+              backgroundColor: computedStyles.backgroundColor,
+              color: computedStyles.color,
+              opacity: computedStyles.opacity
+            });
+            
             if (hasPlayedClass) {
               console.log('✅ ¡La funcionalidad está funcionando correctamente!');
+              console.log('💡 Si no ves los colores, ejecuta: forcePlayedSongStyles()');
             } else {
               console.log('❌ La funcionalidad no está funcionando. Revisa la consola para errores.');
             }
-          }, 100);
+          }, 200);
         } else {
           console.log('❌ No se encontraron canciones para probar');
         }
       };
+      
+      // Función global para forzar estilos manualmente
+      window.forcePlayedSongStyles = forcePlayedSongStyles;
       
       console.log('✅ Script de gamificación cargado completamente');
       console.log('💡 Ejecuta window.testPlayedSongs() en la consola para probar la funcionalidad');
