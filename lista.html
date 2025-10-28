@@ -51,7 +51,7 @@
               <li><button type="button" id="menu-stats-open" class="menu-item" role="menuitem">📊 Estadísticas</button></li>
               <li><button type="button" id="menu-gamification-open" class="menu-item" role="menuitem">🏆 Mi Perfil</button></li>
               <li><button type="button" id="menu-rewards-open" class="menu-item" role="menuitem">🎁 Canje de Puntos</button></li>
-              <li><button type="button" id="menu-changelog-open" class="menu-item" role="menuitem">🚀 Mejoras (v1.5)</button></li>
+              <li><button type="button" id="menu-changelog-open" class="menu-item" role="menuitem">🚀 Mejoras (v1.6)</button></li>
               <li><button type="button" id="menu-admin-open" class="menu-item" role="menuitem">⚙️ Modo Admin</button></li>
             </ul>
           </div>
@@ -267,7 +267,16 @@
           <h2 id="changelog-modal-title">Mejoras por versión</h2>
           
           <div class="changelog-content">
-            <h3>v1.5 (actual)</h3>
+            <h3>v1.6 (actual)</h3>
+          <ul>
+            <li>🎵 Canciones clickeables: Marca las canciones como reproducidas con un simple clic.</li>
+            <li>✅ Indicador visual: Las canciones reproducidas se muestran con colores contrastantes según el tema.</li>
+            <li>💾 Persistencia local: El estado de las canciones se guarda automáticamente por día.</li>
+            <li>🎨 Adaptación temática: Los colores de las canciones reproducidas se adaptan al tema seleccionado.</li>
+            <li>🧹 Limpieza automática: Los datos antiguos se eliminan automáticamente después de 30 días.</li>
+          </ul>
+
+          <h3>v1.5</h3>
           <ul>
             <li>🎁 Sistema de canje de puntos: intercambia tus puntos por recompensas exclusivas.</li>
             <li>💰 Costos de recompensas rebalanceados: ahora desde 600 puntos mínimo para mayor valor.</li>
@@ -707,11 +716,15 @@
           return;
         }
         emptyEl.hidden = true;
-        items.forEach((it) => {
+        items.forEach((it, index) => {
           const isVip = vipSet.has(it.usuario);
           const isZ0Vip = z0VipSet.has(it.usuario);
           const isDonador = donadorSet.has(it.usuario);
           const li = document.createElement('li');
+          
+          // Crear ID único para la canción
+          const songId = `${it.usuario}-${it.cancion}-${it.artista}-${it.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+          li.dataset.songId = songId;
           
           if (isZ0Vip) {
             li.className = 'item z0-vip';
@@ -723,12 +736,29 @@
             li.className = 'item';
           }
           
+          // Verificar si la canción está marcada como reproducida
+          const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+          const currentDay = document.getElementById('day-select')?.value || '';
+          if (playedSongs[currentDay] && playedSongs[currentDay].includes(songId)) {
+            li.classList.add('played');
+          }
+          
           li.innerHTML = `
             <span class="col col-time">${it.hora || ''}</span>
             <span class="col col-usuario usuario">${it.usuario}</span>
             <span class="col col-cancion">${it.cancion}</span>
             <span class="col col-artista">${it.artista}</span>
           `;
+          
+          // Agregar evento de clic para marcar/desmarcar como reproducida
+          li.addEventListener('click', () => {
+            toggleSongPlayed(li, songId, currentDay);
+          });
+          
+          // Agregar cursor pointer para indicar que es clickeable
+          li.style.cursor = 'pointer';
+          li.title = 'Clic para marcar como reproducida/no reproducida';
+          
           solicitudesList.appendChild(li);
         });
         
@@ -739,6 +769,52 @@
         
         // Analizar automáticamente nuevos usuarios
         analyzeNewUsersAutomatically().catch(console.error);
+      }
+
+      // Función para alternar el estado de canción reproducida
+      function toggleSongPlayed(element, songId, currentDay) {
+        if (!currentDay) return;
+        
+        const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+        
+        // Inicializar el día si no existe
+        if (!playedSongs[currentDay]) {
+          playedSongs[currentDay] = [];
+        }
+        
+        const isPlayed = playedSongs[currentDay].includes(songId);
+        
+        if (isPlayed) {
+          // Desmarcar como reproducida
+          playedSongs[currentDay] = playedSongs[currentDay].filter(id => id !== songId);
+          element.classList.remove('played');
+        } else {
+          // Marcar como reproducida
+          playedSongs[currentDay].push(songId);
+          element.classList.add('played');
+        }
+        
+        // Guardar en localStorage
+        localStorage.setItem('playedSongs', JSON.stringify(playedSongs));
+        
+        // Limpiar días antiguos (mantener solo últimos 30 días)
+        cleanOldPlayedSongs();
+      }
+
+      // Función para limpiar canciones reproducidas de días antiguos
+      function cleanOldPlayedSongs() {
+        const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        Object.keys(playedSongs).forEach(day => {
+          const dayDate = new Date(day);
+          if (dayDate < thirtyDaysAgo) {
+            delete playedSongs[day];
+          }
+        });
+        
+        localStorage.setItem('playedSongs', JSON.stringify(playedSongs));
       }
 
       function toHour(ts) {
