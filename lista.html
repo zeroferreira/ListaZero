@@ -751,7 +751,10 @@
           `;
           
           // Agregar evento de clic para marcar/desmarcar como reproducida
-          li.addEventListener('click', () => {
+          li.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Click en canción:', songId, 'Día:', currentDay);
             toggleSongPlayed(li, songId, currentDay);
           });
           
@@ -761,6 +764,10 @@
           
           solicitudesList.appendChild(li);
         });
+        
+        // Verificar que los eventos de clic se hayan agregado correctamente
+        const clickableItems = solicitudesList.querySelectorAll('.item');
+        console.log(`✅ Renderizadas ${clickableItems.length} canciones clickeables`);
         
         // Actualizar selector de usuarios cuando hay nuevos datos
         if (typeof populateUserSelector === 'function') {
@@ -772,33 +779,55 @@
       }
 
       // Función para alternar el estado de canción reproducida
-      function toggleSongPlayed(element, songId, currentDay) {
-        if (!currentDay) return;
-        
-        const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-        
-        // Inicializar el día si no existe
-        if (!playedSongs[currentDay]) {
-          playedSongs[currentDay] = [];
+      function toggleSongPlayed(element, songId, passedDay) {
+        try {
+          // Obtener el día actual del selector o usar el pasado como parámetro
+          const currentDay = passedDay || document.getElementById('day-select')?.value || '';
+          
+          console.log('toggleSongPlayed llamada:', {
+            songId,
+            currentDay,
+            element: element.textContent.trim()
+          });
+          
+          if (!currentDay) {
+            console.warn('No se pudo obtener el día actual');
+            return;
+          }
+          
+          const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+          
+          // Inicializar el día si no existe
+          if (!playedSongs[currentDay]) {
+            playedSongs[currentDay] = [];
+          }
+          
+          const isPlayed = playedSongs[currentDay].includes(songId);
+          
+          console.log('Estado actual:', { isPlayed, playedSongs: playedSongs[currentDay] });
+          
+          if (isPlayed) {
+            // Desmarcar como reproducida
+            playedSongs[currentDay] = playedSongs[currentDay].filter(id => id !== songId);
+            element.classList.remove('played');
+            console.log('Canción desmarcada como reproducida');
+          } else {
+            // Marcar como reproducida
+            playedSongs[currentDay].push(songId);
+            element.classList.add('played');
+            console.log('Canción marcada como reproducida');
+          }
+          
+          // Guardar en localStorage
+          localStorage.setItem('playedSongs', JSON.stringify(playedSongs));
+          console.log('Datos guardados en localStorage:', playedSongs[currentDay]);
+          
+          // Limpiar días antiguos (mantener solo últimos 30 días)
+          cleanOldPlayedSongs();
+          
+        } catch (error) {
+          console.error('Error en toggleSongPlayed:', error);
         }
-        
-        const isPlayed = playedSongs[currentDay].includes(songId);
-        
-        if (isPlayed) {
-          // Desmarcar como reproducida
-          playedSongs[currentDay] = playedSongs[currentDay].filter(id => id !== songId);
-          element.classList.remove('played');
-        } else {
-          // Marcar como reproducida
-          playedSongs[currentDay].push(songId);
-          element.classList.add('played');
-        }
-        
-        // Guardar en localStorage
-        localStorage.setItem('playedSongs', JSON.stringify(playedSongs));
-        
-        // Limpiar días antiguos (mantener solo últimos 30 días)
-        cleanOldPlayedSongs();
       }
 
       // Función para limpiar canciones reproducidas de días antiguos
@@ -815,6 +844,30 @@
         });
         
         localStorage.setItem('playedSongs', JSON.stringify(playedSongs));
+      }
+
+      // Función para verificar que la funcionalidad esté funcionando
+      function initializePlayedSongs() {
+        console.log('Inicializando funcionalidad de canciones reproducidas...');
+        
+        // Verificar localStorage
+        const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+        console.log('Canciones reproducidas en localStorage:', playedSongs);
+        
+        // Verificar que los estilos CSS estén cargados
+        const testElement = document.createElement('div');
+        testElement.className = 'item played';
+        document.body.appendChild(testElement);
+        const styles = window.getComputedStyle(testElement);
+        console.log('Estilos CSS para .item.played:', {
+          backgroundColor: styles.backgroundColor,
+          color: styles.color,
+          opacity: styles.opacity,
+          cursor: styles.cursor
+        });
+        document.body.removeChild(testElement);
+        
+        console.log('Funcionalidad de canciones reproducidas inicializada correctamente');
       }
 
       function toHour(ts) {
@@ -4144,7 +4197,41 @@
       // Cargar tema al iniciar
       loadSavedTheme();
       
+      // Inicializar funcionalidad de canciones reproducidas
+      initializePlayedSongs();
+      
+      // Función global para testing desde la consola
+      window.testPlayedSongs = function() {
+        console.log('🧪 Iniciando prueba de canciones reproducidas...');
+        
+        const items = document.querySelectorAll('.item');
+        console.log(`Encontradas ${items.length} canciones en la página`);
+        
+        if (items.length > 0) {
+          const firstItem = items[0];
+          console.log('Probando clic en la primera canción:', firstItem.textContent.trim());
+          
+          // Simular clic
+          firstItem.click();
+          
+          // Verificar si se agregó la clase 'played'
+          setTimeout(() => {
+            const hasPlayedClass = firstItem.classList.contains('played');
+            console.log(`¿Tiene clase 'played'? ${hasPlayedClass}`);
+            
+            if (hasPlayedClass) {
+              console.log('✅ ¡La funcionalidad está funcionando correctamente!');
+            } else {
+              console.log('❌ La funcionalidad no está funcionando. Revisa la consola para errores.');
+            }
+          }, 100);
+        } else {
+          console.log('❌ No se encontraron canciones para probar');
+        }
+      };
+      
       console.log('✅ Script de gamificación cargado completamente');
+      console.log('💡 Ejecuta window.testPlayedSongs() en la consola para probar la funcionalidad');
     })();
   </script>
 </body>

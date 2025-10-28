@@ -6,6 +6,23 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isValidUser() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isValidData() {
+      return request.resource.data.keys().hasAll(['timestamp']) &&
+             request.resource.data.timestamp is timestamp;
+    }
+
+    function isRecentData() {
+      return request.time < request.resource.data.timestamp + duration.value(1, 'h');
+    }
+
     // Solicitudes de canciones
     match /solicitudes/{doc} {
       // Cualquiera puede leer y crear
@@ -47,6 +64,110 @@ service cloud.firestore {
       allow create, update: if isSignedIn();
       // Nuevo: permitir borrar usuarios desde Modo Admin (requiere sesión)
       allow delete: if isSignedIn();
+    }
+
+    // Estadísticas de usuarios (para gamificación y stats)
+    match /userStats/{userId} {
+      // Los usuarios pueden leer sus propias estadísticas
+      allow read: if isOwner(userId);
+      // Los usuarios pueden crear/actualizar sus propias estadísticas
+      allow create, update: if isOwner(userId);
+      // Solo admins pueden borrar estadísticas (requiere sesión)
+      allow delete: if isSignedIn();
+    }
+
+    // Logros de usuarios (para sistema de gamificación)
+    match /userAchievements/{userId} {
+      // Los usuarios pueden leer sus propios logros
+      allow read: if isOwner(userId);
+      // Los usuarios pueden crear/actualizar sus propios logros
+      allow create, update: if isOwner(userId);
+      // Solo admins pueden borrar logros (requiere sesión)
+      allow delete: if isSignedIn();
+    }
+
+    // Configuraciones de usuario (temas, preferencias)
+    match /userSettings/{userId} {
+      // Los usuarios pueden leer sus propias configuraciones
+      allow read: if isOwner(userId);
+      // Los usuarios pueden crear/actualizar sus propias configuraciones
+      allow create, update: if isOwner(userId);
+      // Solo admins pueden borrar configuraciones (requiere sesión)
+      allow delete: if isSignedIn();
+    }
+
+    // Recompensas disponibles (catálogo de recompensas)
+    match /rewards/{doc} {
+      // Cualquiera puede leer las recompensas disponibles
+      allow read: if true;
+      // Solo admins pueden crear/actualizar/borrar recompensas
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Solicitudes de recompensas de usuarios
+    match /rewardRequests/{doc} {
+      // Los usuarios pueden leer todas las solicitudes (para admins) o sus propias solicitudes
+      allow read: if isSignedIn() || 
+                     (isValidUser() && resource.data.userId == request.auth.uid);
+      // Los usuarios pueden crear solicitudes de recompensas
+      allow create: if isValidUser() && 
+                       request.resource.data.userId == request.auth.uid;
+      // Solo admins pueden actualizar/borrar solicitudes (para aprobar/rechazar)
+      allow update, delete: if isSignedIn();
+    }
+
+    // Historial de recompensas canjeadas
+    match /redeemedRewards/{doc} {
+      // Los usuarios pueden leer su propio historial, admins pueden leer todo
+      allow read: if isSignedIn() || 
+                     (isValidUser() && resource.data.userId == request.auth.uid);
+      // Solo el sistema puede crear registros de recompensas canjeadas
+      allow create: if isValidUser() && 
+                       request.resource.data.userId == request.auth.uid;
+      // Solo admins pueden actualizar/borrar
+      allow update, delete: if isSignedIn();
+    }
+
+    // Configuración global del sistema
+    match /systemConfig/{doc} {
+      // Cualquiera puede leer la configuración del sistema
+      allow read: if true;
+      // Solo admins pueden modificar la configuración del sistema
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Logs de actividad del sistema (opcional, para debugging)
+    match /activityLogs/{doc} {
+      // Solo admins pueden leer logs
+      allow read: if isSignedIn();
+      // El sistema puede crear logs con timestamp válido
+      allow create: if true;
+      // Solo admins pueden actualizar/borrar logs
+      allow update, delete: if isSignedIn();
+    }
+
+    // Datos de sesión temporal (para sincronización en tiempo real)
+    match /sessionData/{userId} {
+      // Los usuarios pueden leer/escribir sus propios datos de sesión
+      allow read, write: if isOwner(userId);
+    }
+
+    // Datos de canciones reproducidas por usuario (nueva funcionalidad)
+    match /playedSongs/{userId} {
+      // Los usuarios pueden leer/escribir sus propias canciones reproducidas
+      allow read, write: if isOwner(userId);
+      // Solo admins pueden borrar datos de canciones reproducidas
+      allow delete: if isSignedIn();
+    }
+
+    // Métricas y analytics del sistema
+    match /analytics/{doc} {
+      // Solo admins pueden leer métricas
+      allow read: if isSignedIn();
+      // El sistema puede crear métricas
+      allow create: if true;
+      // Solo admins pueden actualizar/borrar métricas
+      allow update, delete: if isSignedIn();
     }
   }
 }
