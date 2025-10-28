@@ -783,8 +783,8 @@
         analyzeNewUsersAutomatically().catch(console.error);
       }
 
-      // Función para alternar el estado de canción reproducida
-      function toggleSongPlayed(element, songId, passedDay) {
+      // Función para alternar el estado de canción reproducida (con sincronización Firebase)
+      async function toggleSongPlayed(element, songId, passedDay) {
         try {
           // Obtener el día actual del selector o usar el pasado como parámetro
           const currentDay = passedDay || document.getElementById('day-select')?.value || '';
@@ -800,20 +800,20 @@
             return;
           }
           
-          const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-          
-          // Inicializar el día si no existe
-          if (!playedSongs[currentDay]) {
-            playedSongs[currentDay] = [];
+          // Obtener datos locales como respaldo
+          const localPlayedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+          if (!localPlayedSongs[currentDay]) {
+            localPlayedSongs[currentDay] = [];
           }
           
-          const isPlayed = playedSongs[currentDay].includes(songId);
+          const isPlayed = localPlayedSongs[currentDay].includes(songId);
           
-          console.log('Estado actual:', { isPlayed, playedSongs: playedSongs[currentDay] });
+          console.log('Estado actual:', { isPlayed, playedSongs: localPlayedSongs[currentDay] });
           
+          // Actualizar estado local inmediatamente para UX responsiva
           if (isPlayed) {
             // Desmarcar como reproducida
-            playedSongs[currentDay] = playedSongs[currentDay].filter(id => id !== songId);
+            localPlayedSongs[currentDay] = localPlayedSongs[currentDay].filter(id => id !== songId);
             element.classList.remove('played');
             console.log('Canción desmarcada como reproducida');
             
@@ -829,14 +829,39 @@
             element.style.opacity = '';
           } else {
             // Marcar como reproducida
-            playedSongs[currentDay].push(songId);
+            localPlayedSongs[currentDay].push(songId);
             element.classList.add('played');
             console.log('Canción marcada como reproducida');
           }
           
-          // Guardar en localStorage
-          localStorage.setItem('playedSongs', JSON.stringify(playedSongs));
-          console.log('Datos guardados en localStorage:', playedSongs[currentDay]);
+          // Guardar en localStorage como respaldo
+          localStorage.setItem('playedSongs', JSON.stringify(localPlayedSongs));
+          
+          // Sincronizar con Firebase para que todos los usuarios vean el cambio
+          try {
+            if (window.db) {
+              const playedSongsRef = window.db.collection('playedSongs').doc(currentDay);
+              
+              if (isPlayed) {
+                // Remover canción de la lista en Firebase
+                await playedSongsRef.update({
+                  songs: firebase.firestore.FieldValue.arrayRemove(songId),
+                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                console.log('✅ Canción removida de Firebase:', songId);
+              } else {
+                // Agregar canción a la lista en Firebase
+                await playedSongsRef.set({
+                  songs: firebase.firestore.FieldValue.arrayUnion(songId),
+                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                  day: currentDay
+                }, { merge: true });
+                console.log('✅ Canción agregada a Firebase:', songId);
+              }
+            }
+          } catch (firebaseError) {
+            console.warn('Error sincronizando con Firebase, usando solo localStorage:', firebaseError);
+          }
           
           // Forzar estilos para asegurar que se vean correctamente
           setTimeout(() => {
@@ -1205,6 +1230,100 @@
         });
       }
 
+      // Suscripción en tiempo real para canciones reproducidas (sincronización global)
+      function subscribePlayedSongs(day) {
+        if (!day || !window.db) return;
+        
+        console.log('🎵 Suscribiéndose a canciones reproducidas para el día:', day);
+        
+        // Cancelar suscripción anterior si existe
+        if (window.playedSongsUnsubscribe) {
+          window.playedSongsUnsubscribe();
+        }
+        
+        // Suscribirse a cambios en tiempo real
+        window.playedSongsUnsubscribe = window.db.collection('playedSongs').doc(day)
+          .onSnapshot((doc) => {
+            try {
+              const data = doc.data();
+              const firebaseSongs = data?.songs || [];
+              
+              console.log('🔄 Actualización de Firebase para canciones reproducidas:', {
+                day,
+                songs: firebaseSongs,
+                count: firebaseSongs.length
+              });
+              
+              // Actualizar localStorage con datos de Firebase
+              const localPlayedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+              localPlayedSongs[day] = firebaseSongs;
+              localStorage.setItem('playedSongs', JSON.stringify(localPlayedSongs));
+              
+              // Actualizar interfaz visual
+              updatePlayedSongsUI(day, firebaseSongs);
+              
+            } catch (error) {
+              console.error('Error procesando actualización de canciones reproducidas:', error);
+            }
+          }, (error) => {
+            console.error('Error en suscripción de canciones reproducidas:', error);
+          });
+      }
+
+      // Función para actualizar la interfaz visual de canciones reproducidas
+      function updatePlayedSongsUI(day, playedSongIds) {
+        try {
+          const currentDay = document.getElementById('day-select')?.value;
+          
+          // Solo actualizar si estamos viendo el día correcto
+          if (currentDay !== day) {
+            console.log('Día diferente, no actualizando UI:', { currentDay, day });
+            return;
+          }
+          
+          console.log('🎨 Actualizando UI para canciones reproducidas:', {
+            day,
+            playedSongs: playedSongIds,
+            count: playedSongIds.length
+          });
+          
+          // Obtener todos los elementos de canciones
+          const songItems = document.querySelectorAll('.item[data-song-id]');
+          
+          songItems.forEach(item => {
+            const songId = item.getAttribute('data-song-id');
+            const isPlayed = playedSongIds.includes(songId);
+            
+            if (isPlayed) {
+              // Marcar como reproducida
+              item.classList.add('played');
+            } else {
+              // Desmarcar como reproducida
+              item.classList.remove('played');
+              
+              // Remover indicador visual si existe
+              const indicator = item.querySelector('.played-indicator');
+              if (indicator) {
+                indicator.remove();
+              }
+              
+              // Restaurar estilos originales
+              item.style.backgroundColor = '';
+              item.style.color = '';
+              item.style.opacity = '';
+            }
+          });
+          
+          // Forzar aplicación de estilos
+          setTimeout(() => {
+            forcePlayedSongStyles();
+          }, 100);
+          
+        } catch (error) {
+          console.error('Error actualizando UI de canciones reproducidas:', error);
+        }
+      }
+
       async function renderAllUsersSelect() {
         const snap = await db.collection('users').orderBy('name').get();
         const set = new Set();
@@ -1449,7 +1568,10 @@
       });
 
       daySelect?.addEventListener('change', () => {
-        if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+        if (daySelect.value) {
+          subscribeSolicitudesForDay(daySelect.value);
+          subscribePlayedSongs(daySelect.value);
+        }
       });
       vipOnly?.addEventListener('change', () => {
         if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
@@ -1461,7 +1583,10 @@
         subscribeZ0VipUsers();
         subscribeDonadorUsers();
         await renderAllUsersSelect();
-        if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+        if (daySelect.value) {
+          subscribeSolicitudesForDay(daySelect.value);
+          subscribePlayedSongs(daySelect.value);
+        }
       })();
     })();
   </script>

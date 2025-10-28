@@ -23,6 +23,92 @@ service cloud.firestore {
       return request.time < request.resource.data.timestamp + duration.value(1, 'h');
     }
 
+    function isValidPlayedSongsData() {
+      return request.resource.data.keys().hasAll(['songs', 'day']) &&
+             request.resource.data.songs is list &&
+             request.resource.data.day is string &&
+             request.resource.data.day.size() == 10; // YYYY-MM-DD format
+    }
+
+    function isValidDayFormat(day) {
+      return day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function isValidPlayedSongsData() {
+      return request.resource.data.keys().hasAll(['day', 'songs', 'lastUpdated']) &&
+             request.resource.data.day is string &&
+             request.resource.data.songs is list &&
+             request.resource.data.lastUpdated is timestamp;
+    }
+
+    // Datos de canciones reproducidas por día (funcionalidad global)
+    match /playedSongs/{day} {
+      // Cualquiera puede leer las canciones reproducidas (para sincronización global)
+      allow read: if true;
+      
+      // Crear datos de canciones reproducidas con validación
+      allow create: if isValidDayFormat(day) && 
+                       isValidPlayedSongsData() &&
+                       request.resource.data.day == day;
+      
+      // Actualizar canciones reproducidas (agregar/quitar canciones de la lista)
+      allow update: if isValidDayFormat(day) && 
+                       resource.data.day == day &&
+                       (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['songs', 'lastUpdated']));
+      
+      // Solo admins pueden borrar completamente los datos de un día
+      allow delete: if isSignedIn();
+    }
+
+    // Métricas y analytics del sistema
+    match /analytics/{doc} {
+      // Solo admins pueden leer métricas
+      allow read: if isSignedIn();
+      // El sistema puede crear métricas
+      allow create: if true;
+      // Solo admins pueden actualizar/borrar métricas
+      allow update, delete: if isSignedIn();
+    }
+
+    // Notificaciones globales del sistema (opcional para futuras funcionalidades)
+    match /globalNotifications/{doc} {
+      // Cualquiera puede leer notificaciones globales
+      allow read: if true;
+      // Solo admins pueden crear/actualizar/borrar notificaciones globales
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Eventos del sistema en tiempo real (para sincronización avanzada)
+    match /systemEvents/{doc} {
+      // Cualquiera puede leer eventos del sistema
+      allow read: if true;
+      // El sistema puede crear eventos con timestamp válido
+      allow create: if isValidData() && isRecentData();
+      // Solo admins pueden actualizar/borrar eventos
+      allow update, delete: if isSignedIn();
+    }
+
+    // Backup de datos del sistema
+    match /backups/{doc} {
+      // Solo admins pueden leer backups
+      allow read: if isSignedIn();
+      // Solo admins pueden crear/actualizar/borrar backups
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // Historial de canciones reproducidas (para análisis y estadísticas)
+    match /playedSongsHistory/{doc} {
+      // Solo admins pueden leer el historial completo
+      allow read: if isSignedIn();
+      // El sistema puede crear entradas de historial automáticamente
+      allow create: if isValidData();
+      // Solo admins pueden actualizar/borrar historial
+      allow update, delete: if isSignedIn();
+    }
+  }
+});
+    }
+
     // Solicitudes de canciones
     match /solicitudes/{doc} {
       // Cualquiera puede leer y crear
@@ -152,11 +238,13 @@ service cloud.firestore {
       allow read, write: if isOwner(userId);
     }
 
-    // Datos de canciones reproducidas por usuario (nueva funcionalidad)
-    match /playedSongs/{userId} {
-      // Los usuarios pueden leer/escribir sus propias canciones reproducidas
-      allow read, write: if isOwner(userId);
-      // Solo admins pueden borrar datos de canciones reproducidas
+    // Datos de canciones reproducidas por día (funcionalidad global)
+    match /playedSongs/{day} {
+      // Cualquiera puede leer las canciones reproducidas (para sincronización global)
+      allow read: if true;
+      // Cualquiera puede crear/actualizar canciones reproducidas (para marcar/desmarcar)
+      allow create, update: if true;
+      // Solo admins pueden borrar completamente los datos de un día
       allow delete: if isSignedIn();
     }
 
