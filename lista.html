@@ -783,12 +783,36 @@
       }
 
       // Función para alternar el estado de canción reproducida (con sincronización Firebase)
+      // Función para verificar si este es el dispositivo DJ (tu equipo)
+      function isDJDevice() {
+        // Verificar si ya existe un ID de DJ en localStorage
+        let djDeviceId = localStorage.getItem('djDeviceId');
+        
+        if (!djDeviceId) {
+          // Si es la primera vez, generar un ID único y marcarlo como DJ
+          djDeviceId = 'dj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          localStorage.setItem('djDeviceId', djDeviceId);
+          localStorage.setItem('isDJDevice', 'true');
+          console.log('🎧 Este dispositivo ha sido configurado como DJ principal');
+          return true;
+        }
+        
+        // Verificar si este dispositivo está marcado como DJ
+        return localStorage.getItem('isDJDevice') === 'true';
+      }
+
       async function toggleSongPlayed(element, songId, passedDay) {
         try {
+          // Verificar si este dispositivo puede modificar canciones
+          if (!isDJDevice()) {
+            console.log('🚫 Solo el DJ puede marcar canciones como reproducidas');
+            return;
+          }
+          
           // Obtener el día actual del selector o usar el pasado como parámetro
           const currentDay = passedDay || document.getElementById('day-select')?.value || '';
           
-          console.log('toggleSongPlayed llamada:', {
+          console.log('🎧 DJ toggleSongPlayed llamada:', {
             songId,
             currentDay,
             element: element.textContent.trim()
@@ -872,9 +896,56 @@
         }
       }
 
+      // Función para mostrar el estado del dispositivo
+      function showDJStatus() {
+        const isDJ = isDJDevice();
+        const statusElement = document.createElement('div');
+        statusElement.id = 'dj-status';
+        statusElement.style.cssText = `
+          position: fixed;
+          top: 10px;
+          right: 10px;
+          padding: 8px 12px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: bold;
+          z-index: 1000;
+          ${isDJ ? 
+            'background: #10b981; color: white; border: 2px solid #059669;' : 
+            'background: #f59e0b; color: white; border: 2px solid #d97706;'
+          }
+        `;
+        statusElement.textContent = isDJ ? '🎧 DJ Principal' : '👁️ Solo Lectura';
+        statusElement.title = isDJ ? 
+          'Este dispositivo puede marcar canciones como reproducidas' : 
+          'Este dispositivo solo puede ver las canciones reproducidas';
+        
+        // Remover status anterior si existe
+        const existingStatus = document.getElementById('dj-status');
+        if (existingStatus) {
+          existingStatus.remove();
+        }
+        
+        document.body.appendChild(statusElement);
+        
+        // Auto-ocultar después de 5 segundos
+        setTimeout(() => {
+          if (statusElement && statusElement.parentNode) {
+            statusElement.style.opacity = '0.3';
+          }
+        }, 5000);
+      }
+
       // Función para verificar que la funcionalidad esté funcionando
       function initializePlayedSongs() {
         console.log('Inicializando funcionalidad de canciones reproducidas...');
+        
+        // Inicializar modo DJ
+        const isDJ = isDJDevice();
+        console.log(isDJ ? '🎧 Dispositivo configurado como DJ principal' : '👁️ Dispositivo en modo solo lectura');
+        
+        // Mostrar estado del dispositivo
+        showDJStatus();
         
         // Verificar localStorage
         const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
@@ -4384,6 +4455,41 @@
       // Inicializar funcionalidad de canciones reproducidas
       initializePlayedSongs();
       
+      // Funciones globales para gestión del modo DJ
+      window.resetDJMode = function() {
+        localStorage.removeItem('djDeviceId');
+        localStorage.removeItem('isDJDevice');
+        console.log('🔄 Modo DJ reseteado. Recarga la página para reconfigurar.');
+        showDJStatus();
+      };
+      
+      window.setAsDJ = function() {
+        localStorage.setItem('isDJDevice', 'true');
+        if (!localStorage.getItem('djDeviceId')) {
+          const djDeviceId = 'dj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          localStorage.setItem('djDeviceId', djDeviceId);
+        }
+        console.log('🎧 Este dispositivo ha sido configurado como DJ principal');
+        showDJStatus();
+      };
+      
+      window.setAsReadOnly = function() {
+        localStorage.setItem('isDJDevice', 'false');
+        console.log('👁️ Este dispositivo ha sido configurado como solo lectura');
+        showDJStatus();
+      };
+      
+      window.checkDJStatus = function() {
+        const isDJ = isDJDevice();
+        const deviceId = localStorage.getItem('djDeviceId');
+        console.log('📊 Estado del dispositivo:', {
+          isDJ: isDJ,
+          deviceId: deviceId,
+          mode: isDJ ? 'DJ Principal' : 'Solo Lectura'
+        });
+        return { isDJ, deviceId };
+      };
+
       // Función global para testing desde la consola
       window.testPlayedSongs = function() {
         console.log('🧪 Iniciando prueba de canciones reproducidas...');
