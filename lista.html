@@ -787,20 +787,20 @@
       // Función para alternar el estado de canción reproducida (con sincronización Firebase)
       // Función para verificar si este es el dispositivo DJ (tu equipo)
       function isDJDevice() {
-        // ID fijo del dispositivo DJ principal (solo tu dispositivo)
-        const MASTER_DJ_ID = 'zero_fm_dj_master_2024';
+        // Verificar si ya existe un ID de DJ en localStorage
+        let djDeviceId = localStorage.getItem('djDeviceId');
         
-        // Verificar si este dispositivo tiene el ID de DJ correcto
-        const djDeviceId = localStorage.getItem('djDeviceId');
-        const isDJ = djDeviceId === MASTER_DJ_ID;
-        
-        if (isDJ) {
-          console.log('🎧 Dispositivo DJ principal verificado');
-        } else {
-          console.log('👁️ Dispositivo en modo solo lectura');
+        if (!djDeviceId) {
+          // Si es la primera vez, generar un ID único y marcarlo como DJ
+          djDeviceId = 'dj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          localStorage.setItem('djDeviceId', djDeviceId);
+          localStorage.setItem('isDJDevice', 'true');
+          console.log('🎧 Este dispositivo ha sido configurado como DJ principal');
+          return true;
         }
         
-        return isDJ;
+        // Verificar si este dispositivo está marcado como DJ
+        return localStorage.getItem('isDJDevice') === 'true';
       }
 
       async function toggleSongPlayed(element, songId, passedDay) {
@@ -866,12 +866,14 @@
           try {
             if (window.db) {
               const playedSongsRef = window.db.collection('playedSongs').doc(currentDay);
+              const djDeviceId = localStorage.getItem('djDeviceId') || 'unknown';
               
               if (isPlayed) {
                 // Remover canción de la lista en Firebase
                 await playedSongsRef.update({
                   songs: firebase.firestore.FieldValue.arrayRemove(songId),
-                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                  djDeviceId: djDeviceId
                 });
                 console.log('✅ Canción removida de Firebase:', songId);
               } else {
@@ -879,7 +881,8 @@
                 await playedSongsRef.set({
                   songs: firebase.firestore.FieldValue.arrayUnion(songId),
                   lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
-                  day: currentDay
+                  day: currentDay,
+                  djDeviceId: djDeviceId
                 }, { merge: true });
                 console.log('✅ Canción agregada a Firebase:', songId);
               }
