@@ -24,20 +24,37 @@ service cloud.firestore {
     }
 
     function isValidPlayedSongsData() {
-      return request.resource.data.keys().hasAll(['day', 'songs', 'lastUpdated']) &&
-             request.resource.data.day is string &&
+      return request.resource.data.keys().hasAll(['songs', 'lastUpdated']) &&
              request.resource.data.songs is list &&
              request.resource.data.lastUpdated is timestamp;
     }
 
     function isValidDayFormat(day) {
-      return day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+      return day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2});
+    }
+
+    function isValidSolicitudData() {
+      return request.resource.data.keys().hasAll(['cancion', 'usuario', 'day']) &&
+             request.resource.data.cancion is string &&
+             request.resource.data.usuario is string &&
+             request.resource.data.day is string &&
+             request.resource.data.cancion.size() > 0 &&
+             request.resource.data.usuario.size() > 0 &&
+             isValidDayFormat(request.resource.data.day);
+    }
+
+    function isValidUserData() {
+      return request.resource.data.keys().hasAll(['name']) &&
+             request.resource.data.name is string &&
+             request.resource.data.name.size() > 0;
     }
 
     // Solicitudes de canciones
     match /solicitudes/{doc} {
       allow read: if true;
-      allow create: if true;
+      allow create: if isValidSolicitudData() &&
+                       request.resource.data.cancion.size() <= 200 &&
+                       request.resource.data.usuario.size() <= 50;
       allow delete: if isSignedIn();
       allow update: if false;
     }
@@ -45,25 +62,32 @@ service cloud.firestore {
     // Usuarios VIP (para el filtro y panel admin)
     match /vipUsers/{doc} {
       allow read: if true;
-      allow create, update, delete: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidUserData();
+      allow delete: if isSignedIn();
     }
 
     // Usuarios Z0-VIP (para el filtro y panel admin)
     match /z0VipUsers/{doc} {
       allow read: if true;
-      allow create, update, delete: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidUserData();
+      allow delete: if isSignedIn();
     }
 
     // Usuarios Donadores temporales (para el filtro y panel admin)
     match /donadorUsers/{doc} {
       allow read: if true;
-      allow create, update, delete: if isSignedIn();
+      allow create, update: if isSignedIn() && 
+                               request.resource.data.keys().hasAll(['name', 'expiresAt']) &&
+                               request.resource.data.name is string &&
+                               request.resource.data.expiresAt is timestamp &&
+                               request.resource.data.name.size() > 0;
+      allow delete: if isSignedIn();
     }
 
     // Usuarios registrados (para poblar select en Admin)
     match /users/{doc} {
       allow read: if true;
-      allow create, update: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidUserData();
       allow delete: if isSignedIn();
     }
 
@@ -132,10 +156,11 @@ service cloud.firestore {
       allow create: if isSignedIn() &&
                        isValidDayFormat(day) &&
                        isValidPlayedSongsData() &&
-                       request.resource.data.day == day;
+                       request.resource.data.songs.size() <= 1000;
       allow update: if isSignedIn() &&
                        isValidDayFormat(day) &&
-                       resource.data.day == day &&
+                       isValidPlayedSongsData() &&
+                       request.resource.data.songs.size() <= 1000 &&
                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['songs', 'lastUpdated']);
       allow delete: if isSignedIn();
     }
@@ -156,8 +181,36 @@ service cloud.firestore {
     // Eventos del sistema en tiempo real (para sincronización avanzada)
     match /systemEvents/{doc} {
       allow read: if true;
-      allow create: if isValidData() && isRecentData();
+      allow create: if isValidData() && 
+                       isRecentData() &&
+                       request.resource.data.size() <= 10;
       allow update, delete: if isSignedIn();
+    }
+
+    // Rate limiting para prevenir spam
+    match /rateLimiting/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Logs de seguridad (para monitoreo)
+    match /securityLogs/{doc} {
+      allow read: if isSignedIn();
+      allow create: if request.resource.data.keys().hasAll(['action', 'timestamp', 'userId']) &&
+                       request.resource.data.action is string &&
+                       request.resource.data.timestamp is timestamp &&
+                       request.resource.data.userId is string;
+      allow update, delete: if false;
+    }
+
+    // Configuración de dispositivos DJ (para el nuevo sistema)
+    match /djDevices/{deviceId} {
+      allow read: if true;
+      allow create, update: if isSignedIn() &&
+                               request.resource.data.keys().hasAll(['fingerprint', 'isMaster', 'lastSeen']) &&
+                               request.resource.data.fingerprint is string &&
+                               request.resource.data.isMaster is bool &&
+                               request.resource.data.lastSeen is timestamp;
+      allow delete: if isSignedIn();
     }
 
     // Backup de datos del sistema
@@ -169,8 +222,14 @@ service cloud.firestore {
     // Historial de canciones reproducidas (para análisis y estadísticas)
     match /playedSongsHistory/{doc} {
       allow read: if isSignedIn();
-      allow create: if isValidData();
+      allow create: if isValidData() &&
+                       request.resource.data.size() <= 20;
       allow update, delete: if isSignedIn();
+    }
+
+    // Regla catch-all para denegar acceso a cualquier otra colección
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

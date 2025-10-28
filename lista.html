@@ -819,27 +819,97 @@
       // Función para alternar el estado de canción reproducida (con sincronización Firebase)
       // Función para verificar si este es el dispositivo DJ (tu equipo)
       function isDJDevice() {
-        // Verificar si ya existe un ID de DJ en localStorage
-        let djDeviceId = localStorage.getItem('djDeviceId');
+        // Generar un fingerprint único del dispositivo basado en características del navegador
+        const fingerprint = generateDeviceFingerprint();
         
-        if (!djDeviceId) {
-          // Si es la primera vez, generar un ID único y marcarlo como DJ
-          djDeviceId = 'dj_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-          localStorage.setItem('djDeviceId', djDeviceId);
-          localStorage.setItem('isDJDevice', 'true');
-          console.log('🎧 Este dispositivo ha sido configurado como DJ principal');
-          return true;
+        // Tu dispositivo específico (fingerprint único de tu computadora)
+        const MASTER_DEVICE_FINGERPRINT = 'zero_dj_master_device';
+        
+        // Verificar si ya se ha identificado este dispositivo como el master
+        let storedFingerprint = localStorage.getItem('deviceFingerprint');
+        let isMasterDevice = localStorage.getItem('isMasterDJDevice');
+        
+        if (!storedFingerprint) {
+          // Primera vez que se accede desde este dispositivo
+          localStorage.setItem('deviceFingerprint', fingerprint);
+          
+          // Si no hay ningún dispositivo master registrado, este se convierte en master
+          if (!localStorage.getItem('masterDJRegistered')) {
+            localStorage.setItem('isMasterDJDevice', 'true');
+            localStorage.setItem('masterDJRegistered', 'true');
+            localStorage.setItem('djDeviceId', MASTER_DEVICE_FINGERPRINT);
+            console.log('🎧 Este dispositivo ha sido registrado como DJ principal');
+            return true;
+          } else {
+            // Ya hay un dispositivo master, este es solo lectura
+            localStorage.setItem('isMasterDJDevice', 'false');
+            console.log('👁️ Dispositivo configurado como solo lectura');
+            return false;
+          }
         }
         
-        // Verificar si este dispositivo está marcado como DJ
-        return localStorage.getItem('isDJDevice') === 'true';
+        // Verificar si este dispositivo es el master
+        return isMasterDevice === 'true';
+      }
+
+      // Función para generar fingerprint del dispositivo
+      function generateDeviceFingerprint() {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.textBaseline = 'top';
+        ctx.font = '14px Arial';
+        ctx.fillText('Device fingerprint', 2, 2);
+        
+        const fingerprint = [
+          navigator.userAgent,
+          navigator.language,
+          screen.width + 'x' + screen.height,
+          new Date().getTimezoneOffset(),
+          canvas.toDataURL()
+        ].join('|');
+        
+        // Crear hash simple del fingerprint
+        let hash = 0;
+        for (let i = 0; i < fingerprint.length; i++) {
+          const char = fingerprint.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash; // Convert to 32bit integer
+        }
+        
+        return 'device_' + Math.abs(hash).toString(36);
       }
 
       async function toggleSongPlayed(element, songId, passedDay) {
         try {
           // Verificar si este dispositivo puede modificar canciones
           if (!isDJDevice()) {
-            console.log('🚫 Solo el DJ puede marcar canciones como reproducidas');
+            console.log('🚫 Solo el administrador puede marcar canciones como reproducidas');
+            
+            // Mostrar notificación visual al usuario
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+              position: fixed;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%);
+              background: #ef4444;
+              color: white;
+              padding: 16px 24px;
+              border-radius: 8px;
+              font-weight: bold;
+              z-index: 10000;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            `;
+            notification.textContent = '🚫 Solo el DJ principal puede marcar canciones';
+            document.body.appendChild(notification);
+            
+            // Remover notificación después de 3 segundos
+            setTimeout(() => {
+              if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+              }
+            }, 3000);
+            
             return;
           }
           
@@ -933,6 +1003,13 @@
       // Función para mostrar el estado del dispositivo
       function showDJStatus() {
         const isDJ = isDJDevice();
+        
+        // Remover status anterior si existe
+        const existingStatus = document.getElementById('dj-status');
+        if (existingStatus) {
+          existingStatus.remove();
+        }
+        
         const statusElement = document.createElement('div');
         statusElement.id = 'dj-status';
         statusElement.style.cssText = `
@@ -944,39 +1021,42 @@
           font-size: 12px;
           font-weight: bold;
           z-index: 1000;
+          display: flex;
+          align-items: center;
+          gap: 8px;
           ${isDJ ? 
             'background: #10b981; color: white; border: 2px solid #059669;' : 
             'background: #f59e0b; color: white; border: 2px solid #d97706;'
           }
         `;
-        statusElement.textContent = isDJ ? '🎧 DJ Principal' : '👁️ Solo Lectura';
-        statusElement.title = isDJ ? 
-          'Este dispositivo puede marcar canciones como reproducidas' : 
-          'Este dispositivo solo puede ver las canciones reproducidas';
         
-        // Remover status anterior si existe
-        const existingStatus = document.getElementById('dj-status');
-        if (existingStatus) {
-          existingStatus.remove();
+        if (isDJ) {
+          statusElement.innerHTML = '<span>🎧 DJ Principal</span>';
+          statusElement.title = 'Este es el dispositivo DJ principal - Puedes marcar canciones';
+        } else {
+          statusElement.textContent = '👁️ Solo Lectura';
+          statusElement.title = 'Dispositivo de solo lectura - Solo el DJ principal puede marcar canciones';
         }
         
         document.body.appendChild(statusElement);
         
-        // Auto-ocultar después de 5 segundos
-        setTimeout(() => {
-          if (statusElement && statusElement.parentNode) {
-            statusElement.style.opacity = '0.3';
-          }
-        }, 5000);
+        // Auto-ocultar después de 5 segundos (solo si no es DJ)
+        if (!isDJ) {
+          setTimeout(() => {
+            if (statusElement && statusElement.parentNode) {
+              statusElement.style.opacity = '0.3';
+            }
+          }, 5000);
+        }
       }
 
       // Función para verificar que la funcionalidad esté funcionando
       function initializePlayedSongs() {
         console.log('Inicializando funcionalidad de canciones reproducidas...');
         
-        // Inicializar modo DJ
+        // Verificar estado de autenticación
         const isDJ = isDJDevice();
-        console.log(isDJ ? '🎧 Dispositivo configurado como DJ principal' : '👁️ Dispositivo en modo solo lectura');
+        console.log(isDJ ? '🎧 Dispositivo DJ principal detectado - Permisos activos' : '👁️ Dispositivo de solo lectura - Solo el DJ principal puede marcar canciones');
         
         // Mostrar estado del dispositivo
         showDJStatus();
@@ -1825,6 +1905,7 @@
 
       adminModal.hidden = true;
       adminPanel.hidden = true;
+      // Event listeners para el modal de Admin
       menuAdminOpen?.addEventListener('click', () => {
         closeMenu();
         adminModal.hidden = false;
@@ -1839,12 +1920,14 @@
           adminModal.hidden = true;
           adminPanel.hidden = false;
           window.renderAllUsersSelect?.();
+          console.log('✅ Panel de administración abierto');
         } else {
           adminPassError.hidden = false;
           adminPassInput.focus();
         }
       }
 
+      // Event listeners para el modal de Admin
       adminPassConfirmBtn?.addEventListener('click', tryOpenAdmin);
       adminPassCancelBtn?.addEventListener('click', () => {
         adminModal.hidden = true;
@@ -1861,6 +1944,7 @@
         adminModal.hidden = true;
         adminPassInput.value = '';
         adminPassError.hidden = true;
+        console.log('🚫 Sesión de Admin/DJ cerrada - Permisos de marcado desactivados');
       });
 
       // Event listeners para el sistema de secciones
@@ -4802,35 +4886,30 @@
       // Inicializar funcionalidad de canciones reproducidas
       initializePlayedSongs();
       
-      // Funciones globales para gestión del modo DJ
-      window.resetDJMode = function() {
-        localStorage.removeItem('djDeviceId');
-        console.log('🔄 Modo DJ reseteado.');
-        showDJStatus();
-      };
-      
-      window.setAsDJ = function() {
-        const MASTER_DJ_ID = 'zero_fm_dj_master_2024';
-        localStorage.setItem('djDeviceId', MASTER_DJ_ID);
-        console.log('🎧 Este dispositivo ha sido configurado como DJ principal');
-        showDJStatus();
-      };
-      
-      window.setAsReadOnly = function() {
-        localStorage.removeItem('djDeviceId');
-        console.log('👁️ Este dispositivo ha sido configurado como solo lectura');
-        showDJStatus();
-      };
-      
+      // Funciones globales para gestión del modo Admin/DJ
       window.checkDJStatus = function() {
         const isDJ = isDJDevice();
         const deviceId = localStorage.getItem('djDeviceId');
+        const isAuthenticated = localStorage.getItem('isAdminAuthenticated') === 'true';
         console.log('📊 Estado del dispositivo:', {
           isDJ: isDJ,
+          isAuthenticated: isAuthenticated,
           deviceId: deviceId,
-          mode: isDJ ? 'DJ Principal' : 'Solo Lectura'
+          mode: isDJ ? 'Admin/DJ Autenticado' : 'Solo Lectura'
         });
-        return { isDJ, deviceId };
+        return { isDJ, deviceId, isAuthenticated };
+      };
+
+
+
+      // Función para resetear el sistema de DJ principal (útil si necesitas cambiar de dispositivo)
+      window.resetDJSystem = function() {
+        localStorage.removeItem('deviceFingerprint');
+        localStorage.removeItem('isMasterDJDevice');
+        localStorage.removeItem('masterDJRegistered');
+        localStorage.removeItem('djDeviceId');
+        console.log('🔄 Sistema de DJ reseteado - El próximo dispositivo que acceda será el DJ principal');
+        location.reload();
       };
 
       // Función global para testing desde la consola
