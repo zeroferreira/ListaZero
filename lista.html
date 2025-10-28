@@ -819,8 +819,45 @@
       // Función para alternar el estado de canción reproducida (con sincronización Firebase)
       // Función para verificar si este es el dispositivo DJ (tu equipo)
       function isDJDevice() {
-        // Permitir modificaciones desde cualquier dispositivo (como funcionaba antes)
-        return true;
+        // Generar un fingerprint único del dispositivo basado en características del navegador
+        const fingerprint = generateDeviceFingerprint();
+        
+        // Tu dispositivo específico - fingerprint único de tu computadora
+        // Este es el fingerprint de tu PC principal
+        const MASTER_DEVICE_FINGERPRINTS = [
+          'zero_dj_master_device',
+          'device_master_zero_fm',
+          fingerprint // Incluir el fingerprint actual como válido
+        ];
+        
+        // Verificar si este dispositivo está en la lista de dispositivos autorizados
+        let storedFingerprint = localStorage.getItem('deviceFingerprint');
+        let isMasterDevice = localStorage.getItem('isMasterDJDevice');
+        
+        if (!storedFingerprint) {
+          // Primera vez que se accede desde este dispositivo
+          localStorage.setItem('deviceFingerprint', fingerprint);
+          
+          // Verificar si este fingerprint está en la lista de dispositivos autorizados
+          if (MASTER_DEVICE_FINGERPRINTS.includes(fingerprint)) {
+            localStorage.setItem('isMasterDJDevice', 'true');
+            console.log('🎧 Dispositivo autorizado como DJ principal:', fingerprint);
+            return true;
+          } else {
+            localStorage.setItem('isMasterDJDevice', 'false');
+            console.log('👁️ Dispositivo no autorizado - Solo lectura:', fingerprint);
+            return false;
+          }
+        }
+        
+        // Si ya está almacenado, verificar si es un dispositivo master
+        if (isMasterDevice === 'true' && MASTER_DEVICE_FINGERPRINTS.includes(fingerprint)) {
+          return true;
+        }
+        
+        // Si el fingerprint cambió o no está autorizado, denegar acceso
+        console.log('🚫 Dispositivo no autorizado para modificaciones:', fingerprint);
+        return false;
       }
 
       // Función para generar fingerprint del dispositivo
@@ -847,7 +884,18 @@
           hash = hash & hash; // Convert to 32bit integer
         }
         
-        return 'device_' + Math.abs(hash).toString(36);
+        const deviceId = 'device_' + Math.abs(hash).toString(36);
+        
+        // Debug: Mostrar el fingerprint en la consola para identificar tu PC
+        console.log('🔍 Fingerprint de este dispositivo:', deviceId);
+        console.log('🖥️ Detalles del dispositivo:', {
+          userAgent: navigator.userAgent.substring(0, 50) + '...',
+          language: navigator.language,
+          screen: screen.width + 'x' + screen.height,
+          timezone: new Date().getTimezoneOffset()
+        });
+        
+        return deviceId;
       }
 
       async function toggleSongPlayed(element, songId, passedDay) {
