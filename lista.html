@@ -822,42 +822,31 @@
         // Generar un fingerprint único del dispositivo basado en características del navegador
         const fingerprint = generateDeviceFingerprint();
         
-        // SOLO tu dispositivo específico - fingerprint único de tu computadora
-        // Estos son los únicos fingerprints autorizados (sin incluir el actual automáticamente)
-        const MASTER_DEVICE_FINGERPRINTS = [
-          'zero_dj_master_device',
-          'device_master_zero_fm'
-          // NO incluir fingerprint actual automáticamente
-        ];
-        
         // Verificar si este dispositivo está en la lista de dispositivos autorizados
         let storedFingerprint = localStorage.getItem('deviceFingerprint');
         let isMasterDevice = localStorage.getItem('isMasterDJDevice');
         
+        // Si es la primera vez desde este dispositivo
         if (!storedFingerprint) {
-          // Primera vez que se accede desde este dispositivo
           localStorage.setItem('deviceFingerprint', fingerprint);
           
-          // Verificar si este fingerprint está en la lista de dispositivos autorizados
-          if (MASTER_DEVICE_FINGERPRINTS.includes(fingerprint)) {
+          // Verificar si es un dispositivo de escritorio (tu PC)
+          const isDesktop = !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+          const hasLargeScreen = screen.width >= 1024;
+          
+          if (isDesktop && hasLargeScreen) {
             localStorage.setItem('isMasterDJDevice', 'true');
-            console.log('🎧 Dispositivo autorizado como DJ principal:', fingerprint);
+            console.log('🎧 Dispositivo de escritorio autorizado como DJ:', fingerprint);
             return true;
           } else {
             localStorage.setItem('isMasterDJDevice', 'false');
-            console.log('👁️ Dispositivo no autorizado - Solo lectura:', fingerprint);
+            console.log('👁️ Dispositivo móvil - Solo lectura:', fingerprint);
             return false;
           }
         }
         
-        // Si ya está almacenado, verificar si es un dispositivo master
-        if (isMasterDevice === 'true' && MASTER_DEVICE_FINGERPRINTS.includes(fingerprint)) {
-          return true;
-        }
-        
-        // Si el fingerprint cambió o no está autorizado, denegar acceso
-        console.log('🚫 Dispositivo no autorizado para modificaciones:', fingerprint);
-        return false;
+        // Si ya está almacenado, usar la configuración guardada
+        return isMasterDevice === 'true';
       }
 
       // Función para generar fingerprint del dispositivo
