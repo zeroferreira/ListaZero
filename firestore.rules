@@ -2,12 +2,46 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Solicitudes de canciones
+    // Solicitudes de canciones (colección principal)
     match /solicitudes/{doc} {
       allow read: if true;
       allow create: if true;
       allow delete: if true;
-      allow update: if false; // Las solicitudes no se modifican, solo se crean y eliminan
+      allow update: if true; // Permitir actualizaciones para timestamps y metadatos
+      
+      // Validaciones para nuevas solicitudes
+      allow create: if request.resource.data.keys().hasAll(['usuario', 'cancion', 'artista', 'timestamp']) &&
+        request.resource.data.usuario is string &&
+        request.resource.data.cancion is string &&
+        request.resource.data.artista is string &&
+        request.resource.data.timestamp is timestamp &&
+        request.resource.data.usuario.size() > 0 &&
+        request.resource.data.cancion.size() > 0 &&
+        request.resource.data.artista.size() > 0;
+    }
+
+    // Colección alternativa: requests (para compatibilidad)
+    match /requests/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow delete: if true;
+      allow update: if true;
+    }
+
+    // Colección alternativa: songs (para compatibilidad)
+    match /songs/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow delete: if true;
+      allow update: if true;
+    }
+
+    // Colección alternativa: canciones (para compatibilidad)
+    match /canciones/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow delete: if true;
+      allow update: if true;
     }
 
     // Usuarios VIP (para el filtro y panel admin)
@@ -37,12 +71,62 @@ service cloud.firestore {
 
     // Estadísticas de usuarios (para gamificación y stats)
     match /userStats/{userId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
     }
 
     // Logros de usuarios (para sistema de gamificación)
     match /userAchievements/{userId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    // Actividad diaria de usuarios (para calendario de racha)
+    match /userActivity/{userId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Subcolección para actividad por día
+      match /days/{dayId} {
+        allow read: if true;
+        allow create: if true;
+        allow update: if true;
+        allow delete: if true;
+      }
+    }
+
+    // Índice de actividad por día (para optimizar consultas del calendario)
+    match /dailyActivity/{date} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Validar formato de fecha
+      allow write: if resource == null || 
+        (request.resource.data.keys().hasAll(['date', 'users']) &&
+         request.resource.data.date is string &&
+         request.resource.data.users is map);
+    }
+
+    // Calendario de racha por usuario (cache optimizado)
+    match /userStreakCalendar/{userId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Validar estructura del calendario
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['userId', 'lastUpdated']) &&
+         request.resource.data.userId is string &&
+         request.resource.data.lastUpdated is timestamp);
     }
 
     // Configuraciones de usuario (temas, preferencias)

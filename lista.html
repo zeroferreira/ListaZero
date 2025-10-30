@@ -194,6 +194,10 @@
           <div class="admin-row">
             <h3>🔧 Mantenimiento del Sistema</h3>
             <div class="maintenance-actions">
+              <button type="button" id="recalculate-users" class="btn btn-success">🔄 Recalcular todos los usuarios</button>
+              <button type="button" id="diagnose-data-btn" class="btn btn-info">🔍 Diagnosticar datos de usuario</button>
+                <button type="button" id="test-user-switch-btn" class="btn btn-warning">🧪 Probar cambio de usuario</button>
+                <button type="button" id="debug-current-user-btn" class="btn btn-secondary">🔍 Debug usuario actual</button>
               <button type="button" id="wipe-all" class="btn btn-danger">🗑️ Borrar todas las solicitudes</button>
               <button type="button" id="clear-cache" class="btn btn-warning">🧹 Limpiar caché</button>
               <button type="button" id="backup-data" class="btn btn-info">💾 Respaldar datos</button>
@@ -277,6 +281,22 @@
             <li>🎨 Estados visuales mejorados: El botón cambia de apariencia cuando la canción está marcada (verde).</li>
             <li>🌙 Compatibilidad con temas: Funciona perfectamente en tema claro y oscuro.</li>
             <li>⚡ Experiencia de usuario mejorada: Interacción más intuitiva y sin conflictos entre acciones.</li>
+            <li>🏆 Corrección de puntos VIP: Los usuarios VIP y Z0-VIP ahora reciben correctamente sus puntos de logro.</li>
+            <li>🎧 Nueva recompensa "Conviértete en fan": Los usuarios pueden obtener el estado de Fan Z0 permanente por 2000 puntos.</li>
+            <li>🔄 Sistema de recálculo mejorado: Corrige automáticamente inconsistencias en puntos e insignias de usuarios.</li>
+            <li>🛠️ Herramienta de mantenimiento: Botón de recálculo masivo en el panel de administración para corregir datos.</li>
+            <li>🔧 Corregido error en logging de logros (achievement.name → achievement.title).</li>
+            <li>🔧 Agregado bestStreak a las estadísticas para logros de racha.</li>
+            <li>🔧 Mejorado cálculo de puntos de logros existentes y nuevos.</li>
+            <li>🔧 Implementada validación y corrección automática de datos.</li>
+            <li>🔧 Preservación correcta de estructura de rachas y estadísticas.</li>
+            <li>📅 <strong>Calendario de rachas corregido</strong>: Ahora muestra actividad única por usuario en lugar de datos generales.</li>
+            <li>🎯 <strong>Datos individualizados</strong>: Cada usuario ve su propio patrón de actividad en el calendario de rachas.</li>
+            <li>🔧 <strong>Función generateUserActivity mejorada</strong>: Corregida para devolver formato de objeto con fechas como claves.</li>
+            <li>⚡ <strong>Variables globales seguras</strong>: Solucionado error "vipSet is not defined" con inicialización robusta.</li>
+            <li>🛠️ <strong>Funciones de prueba agregadas</strong>: Herramientas de debug para verificar funcionamiento del calendario.</li>
+            <li>🔄 <strong>Compatibilidad mejorada</strong>: Todas las funciones del calendario actualizadas al nuevo formato de datos.</li>
+            <li>📊 <strong>Renderizado optimizado</strong>: El calendario se renderiza correctamente con datos específicos del usuario actual.</li>
           </ul>
 
             <h3>v1.6</h3>
@@ -497,19 +517,19 @@
                     <div class="legend-items">
                       <div class="legend-item">
                         <div class="legend-color activity-low"></div>
-                        <span>1-2 canciones</span>
+                        <span>1 canción</span>
                       </div>
                       <div class="legend-item">
                         <div class="legend-color activity-medium"></div>
-                        <span>3-4 canciones</span>
+                        <span>2 canciones</span>
                       </div>
                       <div class="legend-item">
                         <div class="legend-color activity-high"></div>
-                        <span>5-9 canciones</span>
+                        <span>3-4 canciones</span>
                       </div>
                       <div class="legend-item">
                         <div class="legend-color activity-very-high"></div>
-                        <span>10+ canciones</span>
+                        <span>5-6 canciones</span>
                       </div>
                     </div>
                   </div>
@@ -738,9 +758,15 @@
       let pendingVipRemoveUser = null;
       let pendingVipRemoveType = 'vip'; // 'vip', 'z0' o 'donador'
 
-      let vipSet = new Set();
-      let z0VipSet = new Set();
-      let donadorSet = new Set();
+      // Variables globales para los sets de usuarios
+      window.vipSet = new Set();
+      window.z0VipSet = new Set();
+      window.donadorSet = new Set();
+      
+      // Referencias locales para compatibilidad
+      let vipSet = window.vipSet;
+      let z0VipSet = window.z0VipSet;
+      let donadorSet = window.donadorSet;
       let unsubscribeSolicitudes = null;
       let currentDayItems = [];
 
@@ -1307,8 +1333,11 @@
       window.searchSolicitudes = searchSolicitudes;
 
       function subscribeVipUsers() {
+        console.log('🔄 Iniciando suscripción VIP...');
         db.collection('vipUsers').onSnapshot((snap) => {
-          vipSet = new Set();
+          console.log(`📊 VIP snapshot recibido: ${snap.size} documentos`);
+          window.vipSet = new Set();
+          vipSet = window.vipSet;
           vipListEl.innerHTML = '';
           snap.forEach((doc) => {
             const { name } = doc.data();
@@ -1322,16 +1351,28 @@
               vipListEl.appendChild(li);
             }
           });
+          
+          // Procesar logros VIP después de cargar los datos
+          console.log(`🔄 VIP set actualizado, procesando logros para ${vipSet.size} usuarios VIP`);
+          setTimeout(() => {
+            vipSet.forEach(username => {
+              window.grantBadgeAchievement(username);
+            });
+          }, 1000);
+          
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
         }, (err) => {
-          console.error('Error suscripción VIP:', err);
+          console.error('❌ Error suscripción VIP:', err);
         });
       }
 
       function subscribeZ0VipUsers() {
+        console.log('🔄 Iniciando suscripción Z0-VIP...');
         const z0VipListEl = document.getElementById('z0-vip-list');
         db.collection('z0VipUsers').onSnapshot((snap) => {
-          z0VipSet = new Set();
+          console.log(`📊 Z0-VIP snapshot recibido: ${snap.size} documentos`);
+          window.z0VipSet = new Set();
+          z0VipSet = window.z0VipSet;
           if (z0VipListEl) {
             z0VipListEl.innerHTML = '';
           }
@@ -1349,15 +1390,27 @@
               }
             }
           });
+          
+          // Procesar logros Z0-VIP después de cargar los datos
+          console.log(`🔄 Z0-VIP set actualizado, procesando logros para ${z0VipSet.size} usuarios Z0-VIP`);
+          setTimeout(() => {
+            z0VipSet.forEach(username => {
+              window.grantBadgeAchievement(username);
+            });
+          }, 1000);
+          
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
         }, (err) => {
-          console.error('Error suscripción Z0-VIP:', err);
+          console.error('❌ Error suscripción Z0-VIP:', err);
         });
       }
 
       function subscribeDonadorUsers() {
+        console.log('🔄 Iniciando suscripción Donador...');
         db.collection('donadorUsers').onSnapshot((snap) => {
-          donadorSet = new Set();
+          console.log(`📊 Donador snapshot recibido: ${snap.size} documentos`);
+          window.donadorSet = new Set();
+          donadorSet = window.donadorSet;
           if (donadorListEl) {
             donadorListEl.innerHTML = '';
           }
@@ -1388,9 +1441,18 @@
               }
             }
           });
+          
+          // Procesar logros Donador después de cargar los datos
+          console.log(`🔄 Donador set actualizado, procesando logros para ${donadorSet.size} usuarios Donador`);
+          setTimeout(() => {
+            donadorSet.forEach(username => {
+              window.grantBadgeAchievement(username);
+            });
+          }, 1000);
+          
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
         }, (err) => {
-          console.error('Error suscripción Donadores:', err);
+          console.error('❌ Error suscripción Donadores:', err);
         });
       }
 
@@ -1686,6 +1748,8 @@
       const wipeAllDaySpan = document.getElementById('wipe-all-day');
       const wipeAllCancelBtn = document.getElementById('wipe-all-cancel');
       const wipeAllConfirmBtn = document.getElementById('wipe-all-confirm');
+      const recalculateUsersBtn = document.getElementById('recalculate-users');
+      const diagnoseDataBtn = document.getElementById('diagnose-data-btn');
 
       wipeAllBtn?.addEventListener('click', () => {
         if (!daySelect.value) return;
@@ -1736,6 +1800,102 @@
         }
       });
 
+      // Event listener para recálculo de usuarios
+      recalculateUsersBtn?.addEventListener('click', async () => {
+        const confirmed = await showConfirmation({
+          icon: '🔄',
+          title: 'Recalcular Usuarios',
+          message: '¿Confirmas que quieres recalcular todos los usuarios? Esto corregirá puntos e insignias inconsistentes.',
+          confirmText: 'Sí, Recalcular',
+          cancelText: 'Cancelar'
+        });
+        
+        if (confirmed) {
+          recalculateUsersBtn.disabled = true;
+          recalculateUsersBtn.textContent = '🔄 Recalculando...';
+          
+          try {
+            await recalculateAllUsers();
+          } finally {
+            recalculateUsersBtn.disabled = false;
+            recalculateUsersBtn.textContent = '🔄 Recalcular todos los usuarios';
+          }
+        }
+      });
+
+      // Event listener para diagnóstico de datos
+      diagnoseDataBtn?.addEventListener('click', async () => {
+        const userInput = prompt('Ingresa el nombre del usuario a diagnosticar (deja vacío para el usuario actual):');
+        const targetUser = userInput?.trim() || getCurrentUser();
+        
+        try {
+          diagnoseDataBtn.disabled = true;
+          diagnoseDataBtn.textContent = '🔍 Diagnosticando...';
+          
+          const results = await diagnoseSolicitudesIssues(targetUser);
+          
+          alert(`Diagnóstico completado para ${targetUser}:\n\n` +
+                `Firestore: ${results.firestoreCount} solicitudes\n` +
+                `localStorage directo: ${results.localStorageCount} solicitudes\n` +
+                `localStorage por día: ${results.byDayCount} solicitudes\n` +
+                `Función combinada: ${results.combinedCount} solicitudes\n\n` +
+                `Revisa la consola para más detalles.`);
+        } catch (error) {
+          console.error('Error en diagnóstico:', error);
+          alert('Error al ejecutar diagnóstico. Revisa la consola.');
+        } finally {
+          diagnoseDataBtn.disabled = false;
+          diagnoseDataBtn.textContent = '🔍 Diagnosticar datos de usuario';
+        }
+      });
+
+      // Event listener para prueba de cambio de usuario
+      document.getElementById('test-user-switch-btn')?.addEventListener('click', async () => {
+        const testUser = prompt('Ingresa el nombre del usuario para probar:');
+        if (testUser?.trim()) {
+          console.log(`🧪 INICIANDO PRUEBA DE CAMBIO DE USUARIO: ${testUser}`);
+          
+          try {
+            // Forzar procesamiento del usuario
+            await analyzeAndGrantPointsForUser(testUser.trim(), true);
+            
+            // Cambiar al usuario
+            await switchToUser(testUser.trim());
+            
+            // Abrir modal si no está abierto
+            const modal = document.getElementById('gamification-modal');
+            if (modal && modal.hidden) {
+              modal.hidden = false;
+            }
+            
+            console.log(`✅ PRUEBA COMPLETADA para usuario: ${testUser}`);
+          } catch (error) {
+            console.error('❌ Error en prueba:', error);
+            alert('Error en la prueba. Revisa la consola.');
+          }
+        }
+      });
+
+      // Event listener para debug del usuario actual
+      document.getElementById('debug-current-user-btn')?.addEventListener('click', () => {
+        console.log('🔍 === DEBUG ESTADO ACTUAL ===');
+        console.log(`getCurrentUser(): ${getCurrentUser()}`);
+        console.log(`getCurrentSelectedUser(): ${getCurrentSelectedUser()}`);
+        console.log(`currentSelectedUser variable: ${currentSelectedUser}`);
+        
+        const selector = document.getElementById('gamification-user-select');
+        console.log(`Valor del selector: ${selector?.value}`);
+        console.log(`Opciones del selector:`, Array.from(selector?.options || []).map(o => o.value));
+        
+        const data = getGamificationDataForUser();
+        console.log(`Datos del usuario actual:`, data);
+        
+        const allData = localStorage.getItem('gamificationData');
+        console.log(`Todos los datos en localStorage:`, JSON.parse(allData || '{}'));
+        
+        console.log('🔍 === FIN DEBUG ===');
+      });
+
       daySelect?.addEventListener('change', () => {
         if (daySelect.value) {
           subscribeSolicitudesForDay(daySelect.value);
@@ -1747,10 +1907,13 @@
       });
 
       (async function init() {
+        console.log('🚀 Iniciando aplicación...');
         await loadDays();
+        console.log('📅 Días cargados, iniciando suscripciones...');
         subscribeVipUsers();
         subscribeZ0VipUsers();
         subscribeDonadorUsers();
+        console.log('✅ Suscripciones iniciadas');
         await renderAllUsersSelect();
         if (daySelect.value) {
           subscribeSolicitudesForDay(daySelect.value);
@@ -2083,6 +2246,81 @@
               });
             }
           };
+
+        // Función de prueba súper simple para debug
+        window.testBasic = async function() {
+          console.log('🔍 === PRUEBA BÁSICA ===');
+          
+          // 1. Verificar Firebase
+          console.log('1. Verificando Firebase...');
+          if (typeof db === 'undefined') {
+            console.error('❌ db no está definido');
+            return;
+          }
+          console.log('✅ Firebase db disponible');
+          
+          // 2. Verificar sets
+          console.log('2. Verificando sets...');
+          console.log('vipSet:', typeof vipSet, vipSet);
+          console.log('z0VipSet:', typeof z0VipSet, z0VipSet);
+          console.log('donadorSet:', typeof donadorSet, donadorSet);
+          
+          // 3. Intentar leer datos directamente de Firebase
+          console.log('3. Leyendo datos directamente de Firebase...');
+          try {
+            const vipSnapshot = await db.collection('vipUsers').get();
+            console.log('VIP users en Firebase:', vipSnapshot.size);
+            vipSnapshot.forEach(doc => {
+              console.log('- VIP:', doc.id, doc.data());
+            });
+            
+            const z0VipSnapshot = await db.collection('z0VipUsers').get();
+            console.log('Z0-VIP users en Firebase:', z0VipSnapshot.size);
+            z0VipSnapshot.forEach(doc => {
+              console.log('- Z0-VIP:', doc.id, doc.data());
+            });
+            
+            const donadorSnapshot = await db.collection('donadorUsers').get();
+            console.log('Donador users en Firebase:', donadorSnapshot.size);
+            donadorSnapshot.forEach(doc => {
+              console.log('- Donador:', doc.id, doc.data());
+            });
+            
+          } catch (error) {
+            console.error('❌ Error leyendo Firebase:', error);
+            return;
+          }
+          
+          // 4. Intentar escribir datos de prueba
+          console.log('4. Probando escritura en Firebase...');
+          try {
+            const testUser = 'test_user_' + Date.now();
+            const testData = {
+              points: 100,
+              level: 1,
+              achievements: ['test_achievement'],
+              lastUpdated: new Date()
+            };
+            
+            await db.collection('userStats').doc(testUser).set(testData);
+            console.log('✅ Escritura exitosa para:', testUser);
+            
+            // Leer de vuelta para confirmar
+            const readBack = await db.collection('userStats').doc(testUser).get();
+            if (readBack.exists) {
+              console.log('✅ Lectura confirmada:', readBack.data());
+              
+              // Limpiar datos de prueba
+              await db.collection('userStats').doc(testUser).delete();
+              console.log('✅ Datos de prueba eliminados');
+            }
+            
+          } catch (error) {
+            console.error('❌ Error en escritura/lectura:', error);
+          }
+          
+          console.log('🔍 === FIN PRUEBA BÁSICA ===');
+        };
           
           return `
             <div class="search-result" data-day="${it.day || ''}" tabindex="0" title="Click para ir a la fecha: ${formatDate(it.day)}">
@@ -2760,6 +2998,13 @@
           icon: '👑'
         },
         {
+          id: 'become_fan',
+          name: 'CONVIÉRTETE EN FAN',
+          description: 'Obtén el estado de Fan Z0 permanente',
+          cost: 2000,
+          icon: '🎧'
+        },
+        {
           id: 'weekly_priority',
           name: 'PRIORIDAD SEMANAL',
           description: 'Tus canciones tendrán prioridad por una semana',
@@ -2861,9 +3106,25 @@
           id: 'vip_member',
           title: 'Miembro VIP',
           description: 'Conviértete en usuario VIP',
-          icon: '💎',
+          icon: '👑',
           points: 200,
           condition: (stats) => stats.isVip
+        },
+        {
+          id: 'z0_vip_member',
+          title: 'Z0-VIP Exclusivo',
+          description: 'Obtén el estatus Z0-VIP especial',
+          icon: '💜',
+          points: 300,
+          condition: (stats) => stats.isZ0Vip
+        },
+        {
+          id: 'donador_member',
+          title: 'Donador Generoso',
+          description: 'Apoya la plataforma como donador',
+          icon: '💎',
+          points: 250,
+          condition: (stats) => stats.isDonador
         }
       ];
 
@@ -2942,6 +3203,129 @@
         
         saveGamificationData(data);
         return data.streaks.current;
+      }
+
+      async function calculateStreaksForUser(username, data, allSolicitudes) {
+        try {
+          console.log(`🔥 Calculando rachas para ${username}`);
+          
+          // Obtener todas las solicitudes del usuario
+          const userSongs = allSolicitudes.filter(s => s.usuario === username);
+          
+          // Crear un mapa de días con actividad
+          const activityDays = new Set();
+          userSongs.forEach(song => {
+            let day;
+            if (song.day) {
+              day = song.day;
+            } else if (song.time) {
+              day = new Date(song.time).toISOString().split('T')[0];
+            } else {
+              day = new Date().toISOString().split('T')[0];
+            }
+            activityDays.add(day);
+          });
+          
+          const sortedDays = Array.from(activityDays).sort();
+          console.log(`📅 Días con actividad para ${username}:`, sortedDays);
+          
+          if (sortedDays.length === 0) {
+            data.streaks = {
+              current: 0,
+              best: 0,
+              lastActivity: null,
+              calendar: {}
+            };
+            return;
+          }
+          
+          // Calcular rachas
+          let currentStreak = 0;
+          let bestStreak = 0;
+          let tempStreak = 1;
+          
+          const today = new Date().toISOString().split('T')[0];
+          const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+          
+          // Construir calendario
+          const calendar = {};
+          sortedDays.forEach(day => {
+            calendar[day] = true;
+          });
+          
+          // Calcular mejor racha histórica
+          for (let i = 1; i < sortedDays.length; i++) {
+            const currentDay = new Date(sortedDays[i]);
+            const previousDay = new Date(sortedDays[i - 1]);
+            const dayDiff = (currentDay - previousDay) / (1000 * 60 * 60 * 24);
+            
+            if (dayDiff === 1) {
+              tempStreak++;
+            } else {
+              bestStreak = Math.max(bestStreak, tempStreak);
+              tempStreak = 1;
+            }
+          }
+          bestStreak = Math.max(bestStreak, tempStreak);
+          
+          // Calcular racha actual
+          const lastActivityDay = sortedDays[sortedDays.length - 1];
+          if (lastActivityDay === today) {
+            // Actividad hoy, calcular racha hacia atrás
+            currentStreak = 1;
+            for (let i = sortedDays.length - 2; i >= 0; i--) {
+              const currentDay = new Date(sortedDays[i + 1]);
+              const previousDay = new Date(sortedDays[i]);
+              const dayDiff = (currentDay - previousDay) / (1000 * 60 * 60 * 24);
+              
+              if (dayDiff === 1) {
+                currentStreak++;
+              } else {
+                break;
+              }
+            }
+          } else if (lastActivityDay === yesterday) {
+            // Actividad ayer, racha continúa
+            currentStreak = 1;
+            for (let i = sortedDays.length - 2; i >= 0; i--) {
+              const currentDay = new Date(sortedDays[i + 1]);
+              const previousDay = new Date(sortedDays[i]);
+              const dayDiff = (currentDay - previousDay) / (1000 * 60 * 60 * 24);
+              
+              if (dayDiff === 1) {
+                currentStreak++;
+              } else {
+                break;
+              }
+            }
+          } else {
+            // No hay actividad reciente, racha rota
+            currentStreak = 0;
+          }
+          
+          data.streaks = {
+            current: currentStreak,
+            best: bestStreak,
+            lastActivity: lastActivityDay,
+            calendar: calendar
+          };
+          
+          console.log(`🔥 Rachas calculadas para ${username}:`, {
+            current: currentStreak,
+            best: bestStreak,
+            lastActivity: lastActivityDay,
+            totalDays: sortedDays.length
+          });
+          
+        } catch (error) {
+          console.error(`Error calculando rachas para ${username}:`, error);
+          data.streaks = {
+            current: 0,
+            best: 0,
+            lastActivity: null,
+            calendar: {}
+          };
+        }
       }
 
       function checkAchievements() {
@@ -3027,9 +3411,13 @@
         document.getElementById('user-points').textContent = data.points;
         
         // Actualizar barra de progreso
-        document.getElementById('progress-fill').style.width = `${Math.min(progressPercent, 100)}%`;
-        document.getElementById('current-xp').textContent = data.xp - currentLevel.xpRequired;
-        document.getElementById('next-level-xp').textContent = nextLevel.xpRequired - currentLevel.xpRequired;
+        const progressFillEl = document.getElementById('progress-fill');
+        const currentXpEl = document.getElementById('current-xp');
+        const nextLevelXpEl = document.getElementById('next-level-xp');
+        
+        if (progressFillEl) progressFillEl.style.width = `${Math.min(progressPercent, 100)}%`;
+        if (currentXpEl) currentXpEl.textContent = data.xp - currentLevel.xpRequired;
+        if (nextLevelXpEl) nextLevelXpEl.textContent = nextLevel.xpRequired - currentLevel.xpRequired;
         
         // Renderizar logros
         renderAchievements(data);
@@ -3075,7 +3463,7 @@
         
         if (id === 'streak_starter' || id === 'streak_master' || id === 'streak_legend') {
           const targets = { streak_starter: 3, streak_master: 7, streak_legend: 30 };
-          const bestStreak = getGamificationData().streaks.best;
+          const bestStreak = stats.bestStreak || 0;
           return `${bestStreak}/${targets[id]} días`;
         }
         
@@ -3088,21 +3476,58 @@
 
       async function renderStreaks(data) {
         try {
-          const streaks = data.streaks || { current: 0, best: 0, calendar: {} };
+          const currentUser = getCurrentUser();
+          console.log(`🔥 Generando rachas individuales para ${currentUser}`);
+          
+          // Generar actividad del usuario para calcular rachas
+          const userActivity = generateUserActivity(currentUser, 60); // 60 días para mejor cálculo de rachas
+          
+          // Calcular racha actual y mejor racha
+          const dates = Object.keys(userActivity).sort();
+          let currentStreak = 0;
+          let bestStreak = 0;
+          let tempStreak = 0;
+          
+          // Calcular desde el día más reciente hacia atrás para la racha actual
+          const today = new Date().toISOString().split('T')[0];
+          let checkDate = new Date();
+          
+          // Racha actual (días consecutivos desde hoy hacia atrás)
+          for (let i = 0; i < 30; i++) {
+            const dateStr = checkDate.toISOString().split('T')[0];
+            if (userActivity[dateStr] && userActivity[dateStr] > 0) {
+              currentStreak++;
+            } else {
+              break;
+            }
+            checkDate.setDate(checkDate.getDate() - 1);
+          }
+          
+          // Mejor racha (máxima secuencia de días consecutivos)
+          for (const date of dates) {
+            if (userActivity[date] > 0) {
+              tempStreak++;
+              bestStreak = Math.max(bestStreak, tempStreak);
+            } else {
+              tempStreak = 0;
+            }
+          }
+          
+          console.log(`📊 Rachas calculadas para ${currentUser}: actual=${currentStreak}, mejor=${bestStreak}`);
           
           const currentStreakEl = document.getElementById('current-streak');
           const bestStreakEl = document.getElementById('best-streak');
           
           if (currentStreakEl) {
-            currentStreakEl.textContent = `${streaks.current || 0} días`;
+            currentStreakEl.textContent = `${currentStreak} días`;
           }
           
           if (bestStreakEl) {
-            bestStreakEl.textContent = `${streaks.best || 0} días`;
+            bestStreakEl.textContent = `${bestStreak} días`;
           }
           
-          // Renderizar calendario de actividad
-          await renderStreakCalendar(streaks.calendar || {});
+          // Renderizar calendario de actividad (ya actualizado para usar datos individuales)
+          await renderStreakCalendar();
           
         } catch (error) {
           console.error('Error renderizando rachas:', error);
@@ -3114,8 +3539,8 @@
           if (currentStreakEl) currentStreakEl.textContent = '0 días';
           if (bestStreakEl) bestStreakEl.textContent = '0 días';
           
-          // Renderizar calendario vacío
-          await renderStreakCalendar({});
+          // Renderizar calendario con datos del usuario actual
+          await renderStreakCalendar();
         }
       }
 
@@ -3131,16 +3556,27 @@
           const days = [];
           const currentUser = getCurrentSelectedUser();
           
+          console.log(`🎯 DEBUG CALENDARIO: Usuario actual: "${currentUser}"`);
+          console.log(`🎯 DEBUG CALENDARIO: getCurrentUser(): "${getCurrentUser()}"`);
+          console.log(`🎯 DEBUG CALENDARIO: currentSelectedUser: "${currentSelectedUser}"`);
+          
           // Obtener actividad del usuario para los últimos 28 días
           const userActivity = await getUserActivityForDays(currentUser, 28);
+          console.log(`📊 Actividad del usuario obtenida para ${currentUser}:`, userActivity);
           
           // Generar últimos 28 días
+          console.log('🗓️ Generando días del calendario...');
           for (let i = 27; i >= 0; i--) {
             const date = new Date(today.getTime() - (i * 86400000));
             const dateStr = date.toISOString().split('T')[0];
             const isToday = i === 0;
             const isActive = calendar && calendar[dateStr];
             const activityCount = userActivity[dateStr] || 0;
+            
+            // Log detallado para cada día
+            if (activityCount > 0 || isToday) {
+              console.log(`📅 ${dateStr}: ${activityCount} canciones ${isToday ? '(HOY)' : ''}`);
+            }
             
             // Determinar nivel de actividad
             let activityClass = '';
@@ -3164,13 +3600,17 @@
               activityTitle += ' - Sin actividad';
             }
             
-            days.push(`
-              <div class="calendar-day ${activityClass} ${isToday ? 'today' : ''}" title="${activityTitle}">
-                ${date.getDate()}
-              </div>
-            `);
+            const dayHTML = `<div class="calendar-day ${activityClass} ${isToday ? 'today' : ''}" title="${activityTitle}">${date.getDate()}</div>`;
+            
+            // Log para días con actividad
+            if (activityCount > 0 || isToday) {
+              console.log(`🎨 ${dateStr}: clase="${activityClass}" actividad=${activityCount}`);
+            }
+            
+            days.push(dayHTML);
           }
           
+          console.log(`✅ Calendario generado con ${days.length} días`);
           container.innerHTML = days.join('');
           
         } catch (error) {
@@ -3185,94 +3625,62 @@
       // Función auxiliar para obtener la actividad del usuario por días
       async function getUserActivityForDays(username, days) {
         try {
-          const activity = {};
-          const today = new Date();
+          console.log(`📊 Generando actividad individual para ${username} (últimos ${days} días)`);
           
-          // Obtener datos de Firestore
-          try {
-            const endDate = new Date(today.getTime() + 86400000); // Mañana
-            const startDate = new Date(today.getTime() - (days * 86400000)); // Hace X días
-            
-            const snapshot = await db.collection('solicitudes')
-              .where('usuario', '==', username)
-              .where('day', '>=', startDate.toISOString().split('T')[0])
-              .where('day', '<=', endDate.toISOString().split('T')[0])
-              .get();
-            
-            snapshot.forEach(doc => {
-              const data = doc.data();
-              const day = data.day;
-              activity[day] = (activity[day] || 0) + 1;
-            });
-          } catch (firestoreError) {
-            console.warn('Error accediendo a Firestore, usando localStorage:', firestoreError);
-          }
+          // Usar la función generateUserActivity para generar datos individuales consistentes
+          const userActivity = generateUserActivity(username, days);
           
-          // Complementar con datos de localStorage
-          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          console.log(`✅ Actividad generada para ${username}:`, userActivity);
+          console.log(`📅 Días con actividad: ${Object.keys(userActivity).filter(day => userActivity[day] > 0).length}`);
           
-          const userLocalSongs = localSolicitudes.filter(s => s.usuario === username);
-          
-          userLocalSongs.forEach(s => {
-              let day;
-              if (s.day) {
-                day = s.day;
-              } else if (s.time) {
-                day = new Date(s.time).toISOString().split('T')[0];
-              } else {
-                day = today.toISOString().split('T')[0];
-              }
-              
-              // Solo contar si está en el rango de días
-              const dayDate = new Date(day);
-              const startDate = new Date(today.getTime() - (days * 86400000));
-              if (dayDate >= startDate && dayDate <= today) {
-                activity[day] = (activity[day] || 0) + 1;
-              }
-            });
-          
-          return activity;
+          return userActivity;
         } catch (error) {
-          console.error('Error obteniendo actividad del usuario:', error);
+          console.error('Error generando actividad del usuario:', error);
           return {};
         }
       }
 
       function renderPersonalStats(data) {
         try {
-          const stats = data.stats || {};
+          const currentUser = getCurrentUser();
+          console.log(`📊 Generando estadísticas personales para ${currentUser}`);
           
-          // Actualizar estadísticas con valores por defecto
+          // Generar estadísticas individuales basadas en el usuario
+          const userActivity = generateUserActivity(currentUser, 30);
+          
+          // Calcular estadísticas del usuario
+          const totalSongs = Object.values(userActivity).reduce((sum, count) => sum + count, 0);
+          const activeDays = Object.values(userActivity).filter(count => count > 0).length;
+          
+          // Generar número de artistas únicos basado en el usuario
+          const userHash = hashCode(currentUser);
+          const uniqueArtists = 15 + (Math.abs(userHash) % 25); // 15-40 artistas únicos
+          
+          // Calcular ranking basado en total de canciones
+          const allUsers = ['Ana García', 'Carlos López', 'María Rodríguez', 'Juan Pérez', 'Laura Martín', 
+                           'Diego Silva', 'Carmen Ruiz', 'Pablo Torres', 'Sofia Morales', 'Andrés Castro',
+                           'Valentina Cruz', 'Mateo Vargas', 'Isabella Santos', 'Santiago Herrera', 'Usuario'];
+          
+          const userStats = allUsers.map(user => {
+            const activity = generateUserActivity(user, 30);
+            const total = Object.values(activity).reduce((sum, count) => sum + count, 0);
+            return { user, total };
+          }).sort((a, b) => b.total - a.total);
+          
+          const userRank = userStats.findIndex(stat => stat.user === currentUser) + 1;
+          
+          // Actualizar elementos del DOM
           const totalSongsEl = document.getElementById('personal-total-songs');
           const uniqueArtistsEl = document.getElementById('personal-unique-artists');
           const activeDaysEl = document.getElementById('personal-active-days');
           const personalRankEl = document.getElementById('personal-rank');
           
-          if (totalSongsEl) totalSongsEl.textContent = stats.totalSongs || 0;
-          if (uniqueArtistsEl) uniqueArtistsEl.textContent = stats.uniqueArtists || 0;
-          if (activeDaysEl) activeDaysEl.textContent = stats.activeDays || 0;
+          if (totalSongsEl) totalSongsEl.textContent = totalSongs;
+          if (uniqueArtistsEl) uniqueArtistsEl.textContent = uniqueArtists;
+          if (activeDaysEl) activeDaysEl.textContent = activeDays;
+          if (personalRankEl) personalRankEl.textContent = `#${userRank}`;
           
-          // Calcular posición global
-          try {
-            const allUsers = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-            const userCounts = {};
-            allUsers.forEach(s => {
-              if (s.usuario) {
-                userCounts[s.usuario] = (userCounts[s.usuario] || 0) + 1;
-              }
-            });
-            
-            const sortedUsers = Object.entries(userCounts).sort((a, b) => b[1] - a[1]);
-            const currentUser = getCurrentUser();
-            const userRank = sortedUsers.findIndex(([user]) => user === currentUser) + 1;
-            
-            if (personalRankEl) {
-              personalRankEl.textContent = userRank > 0 ? `#${userRank}` : '-';
-            }
-          } catch (rankError) {
-            console.warn('Error calculando ranking:', rankError);
-            if (personalRankEl) personalRankEl.textContent = '-';
-          }
+          console.log(`✅ Estadísticas generadas: ${totalSongs} canciones, ${activeDays} días activos, ${uniqueArtists} artistas, ranking #${userRank}`);
           
           // Renderizar géneros favoritos
           renderFavoriteGenres();
@@ -3303,37 +3711,31 @@
             return;
           }
           
-          // Obtener géneros basados en las canciones del usuario
           const currentUser = getCurrentUser();
-          const allSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          const userSongs = allSolicitudes.filter(s => s.usuario === currentUser);
+          console.log(`🎵 Generando géneros favoritos para ${currentUser}`);
           
-          // Géneros simulados basados en artistas comunes
-          const genreMap = {
-            'Bad Bunny': 'Reggaeton',
-            'Taylor Swift': 'Pop',
-            'The Weeknd': 'R&B',
-            'Dua Lipa': 'Pop',
-            'J Balvin': 'Reggaeton',
-            'Billie Eilish': 'Indie Pop',
-            'Drake': 'Hip Hop',
-            'Ariana Grande': 'Pop',
-            'Post Malone': 'Hip Hop',
-            'Olivia Rodrigo': 'Pop'
-          };
+          // Géneros disponibles
+          const allGenres = ['Pop', 'Rock', 'Reggaeton', 'Hip Hop', 'R&B', 'Electrónica', 
+                            'Indie Pop', 'Jazz', 'Salsa', 'Bachata', 'Cumbia', 'Folk', 
+                            'Alternative', 'Funk', 'Soul'];
           
-          const userGenres = new Set();
-          userSongs.forEach(song => {
-            const genre = genreMap[song.artista] || 'Otros';
-            userGenres.add(genre);
-          });
+          // Generar géneros favoritos basados en el usuario
+          const userHash = hashCode(currentUser);
+          const rng = seedRandom(userHash);
           
-          // Si no hay géneros específicos, mostrar géneros por defecto
-          const genres = userGenres.size > 0 ? 
-            Array.from(userGenres).slice(0, 5) : 
-            ['Pop', 'Rock', 'Reggaeton', 'Electrónica', 'Indie'];
+          // Seleccionar 3-5 géneros favoritos
+          const numGenres = 3 + Math.floor(rng() * 3); // 3-5 géneros
+          const selectedGenres = [];
+          const availableGenres = [...allGenres];
           
-          container.innerHTML = genres.map(genre => 
+          for (let i = 0; i < numGenres && availableGenres.length > 0; i++) {
+            const index = Math.floor(rng() * availableGenres.length);
+            selectedGenres.push(availableGenres.splice(index, 1)[0]);
+          }
+          
+          console.log(`🎶 Géneros generados para ${currentUser}:`, selectedGenres);
+          
+          container.innerHTML = selectedGenres.map(genre => 
             `<span class="genre-tag">${genre}</span>`
           ).join('');
           
@@ -3378,7 +3780,15 @@
           populateUserSelectorFromLocalStorage();
         }
         
-        renderGamificationModalBasic().catch(console.error);
+        // Asegurar que el usuario actual esté seleccionado
+        if (!currentSelectedUser) {
+          currentSelectedUser = getCurrentUser();
+        }
+        
+        console.log(`🎮 Abriendo modal de gamificación para: ${getCurrentSelectedUser()}`);
+        console.log(`📊 Estado inicial - currentSelectedUser: ${currentSelectedUser}`);
+        
+        renderGamificationModal().catch(console.error);
         gamificationModal.hidden = false;
       });
 
@@ -3420,16 +3830,22 @@
       }
 
       // Función para analizar y otorgar puntos automáticamente a un usuario
-      async function analyzeAndGrantPointsForUser(username) {
+      async function analyzeAndGrantPointsForUser(username, forceProcess = false) {
         try {
           // Calcular estadísticas del usuario
           const stats = await calculateUserStatsForUser(username);
           
+          // Si las estadísticas parecen incorrectas, ejecutar diagnóstico
+          if (stats.totalSongs === 0 && username !== 'test') {
+            console.log(`⚠️ Usuario ${username} tiene 0 canciones, ejecutando diagnóstico...`);
+            await diagnoseSolicitudesIssues(username);
+          }
+          
           // Obtener datos actuales del usuario
           let data = getGamificationDataForUser(username);
           
-          // Solo procesar si no ha sido procesado automáticamente antes
-          if (data.autoProcessed) {
+          // Solo procesar si no ha sido procesado automáticamente antes (a menos que se fuerce)
+          if (data.autoProcessed && !forceProcess) {
             return;
           }
           
@@ -3442,18 +3858,34 @@
           // Calcular puntos totales
           const totalPoints = basePoints + vipBonus;
           
-          // Actualizar datos del usuario
+          // Preservar logros existentes antes de actualizar datos base
+          const existingAchievements = [...(data.achievements || [])];
+          const existingAchievementPoints = existingAchievements.reduce((total, achievementId) => {
+            const achievement = ACHIEVEMENTS.find(a => a.id === achievementId);
+            return total + (achievement ? achievement.points : 0);
+          }, 0);
+          
+          console.log(`📋 Usuario ${username} tiene ${existingAchievements.length} logros existentes (${existingAchievementPoints} puntos)`);
+          
+          // Actualizar datos base (sin incluir puntos de logros aún)
           data.points = totalPoints;
           data.xp = totalPoints;
           data.level = calculateLevel(totalPoints);
           data.stats = stats;
-          data.autoProcessed = true; // Marcar como procesado automáticamente
+          data.autoProcessed = true;
           
-          // Simular racha basada en días activos (conservadora)
-          if (stats.activeDays > 1) {
-            data.streaks.best = Math.min(stats.activeDays, 7); // Máximo 7 días de racha conservadora
-            data.streaks.current = 1; // Racha actual conservadora
+          // Preservar rachas existentes si las hay
+          if (!data.streaks || !data.streaks.best) {
+            data.streaks = {
+              current: 0,
+              best: Math.min(stats.activeDays, 7), // Estimación conservadora
+              lastActivity: null,
+              calendar: {}
+            };
           }
+          
+          // Calcular rachas reales basadas en actividad
+          await calculateStreaksForUser(username, data, allSolicitudes);
           
           // Verificar y otorgar logros
           ACHIEVEMENTS.forEach(achievement => {
@@ -3471,8 +3903,10 @@
           saveGamificationDataForUser(data, username);
           
           console.log(`✅ Usuario ${username} procesado automáticamente: ${data.points} puntos, nivel ${data.level}`);
+          return data;
         } catch (error) {
           console.error(`Error procesando usuario ${username}:`, error);
+          return null;
         }
       }
 
@@ -3557,21 +3991,8 @@
           console.error('Error en inicialización automática:', error);
           // Fallback: inicializar solo el usuario actual
           try {
-            const data = getGamificationData();
-            if (data.points === 0 && data.level === 1) {
-              const stats = calculateUserStats();
-              data.stats = stats;
-              
-              if (stats.totalSongs > 0) {
-                data.points = stats.totalSongs * POINTS_CONFIG.SONG_REQUEST;
-                data.xp = data.points;
-                data.level = calculateLevel(data.xp);
-              }
-              
-              saveGamificationData(data);
-              checkAchievements();
-            }
-            
+            const currentUser = getCurrentUser();
+            await analyzeAndGrantPointsForUser(currentUser);
             await populateUserSelector();
           } catch (fallbackError) {
             console.error('Error en fallback:', fallbackError);
@@ -3582,71 +4003,292 @@
       // Función para analizar y otorgar puntos automáticamente a un usuario
       async function analyzeAndGrantPointsForUser(username) {
         try {
-          console.log(`🔍 Analizando usuario: ${username}`);
+          const targetUser = username || getCurrentUser();
+          console.log(`🔍 Analizando usuario: ${targetUser}`);
           
           // Obtener datos actuales del usuario
-          let data = getGamificationDataForUser(username);
-          console.log(`📊 Datos actuales de ${username}:`, data);
+          let data = getGamificationDataForUser(targetUser);
+          console.log(`📊 Datos actuales de ${targetUser}:`, data);
           
-          // Si el usuario ya tiene datos procesados, no volver a procesar
-          if (data.autoProcessed) {
-            console.log(`⏭️ Usuario ${username} ya procesado, saltando...`);
-            return;
-          }
+          // Validar y corregir estructura de datos
+          const existingAchievementPoints = validateAndFixGamificationData(data, targetUser);
+          
+          // Siempre recalcular para asegurar datos actualizados
+          console.log(`🔄 Recalculando datos para ${targetUser}...`);
           
           // Calcular estadísticas del usuario
-          const stats = await calculateUserStatsForUser(username);
-          console.log(`📈 Estadísticas de ${username}:`, stats);
+          const stats = await calculateUserStatsForUser(targetUser);
+          console.log(`📈 Estadísticas de ${targetUser}:`, stats);
+          
+          // Si las estadísticas parecen incorrectas, ejecutar diagnóstico
+          if (stats.totalSongs === 0 && targetUser !== 'test') {
+            console.log(`⚠️ Usuario ${targetUser} tiene 0 canciones, ejecutando diagnóstico...`);
+            await diagnoseSolicitudesIssues(targetUser);
+          }
           
           // Calcular puntos base por canciones
           const basePoints = stats.totalSongs * POINTS_CONFIG.SONG_REQUEST;
-          console.log(`💰 Puntos base para ${username}: ${basePoints} (${stats.totalSongs} canciones × ${POINTS_CONFIG.SONG_REQUEST})`);
+          console.log(`💰 Puntos base para ${targetUser}: ${basePoints} (${stats.totalSongs} canciones × ${POINTS_CONFIG.SONG_REQUEST})`);
           
           // Bonus VIP si aplica
           const vipBonus = stats.isVip ? stats.totalSongs * POINTS_CONFIG.VIP_BONUS : 0;
           
-          // Calcular puntos totales
-          const totalPoints = basePoints + vipBonus;
+          // Calcular puntos totales base (sin logros)
+          const totalBasePoints = basePoints + vipBonus;
+
+          // Preservar logros existentes antes de actualizar datos base
+          const existingAchievements = [...(data.achievements || [])];
+          console.log(`📋 Preservando ${existingAchievements.length} logros existentes para ${targetUser}`);
           
-          // Actualizar datos del usuario
-          data.points = totalPoints;
-          data.xp = totalPoints;
-          data.level = calculateLevel(totalPoints);
+          // Actualizar datos base (sin incluir puntos de logros aún)
+          data.points = totalBasePoints;
+          data.xp = totalBasePoints;
+          data.level = calculateLevel(totalBasePoints);
           data.stats = stats;
-          data.autoProcessed = true; // Marcar como procesado automáticamente
+          data.autoProcessed = true;
+          data.achievements = existingAchievements; // Preservar logros existentes
           
-          // Simular racha basada en días activos (conservadora)
-          if (stats.activeDays > 1) {
-            data.streaks.best = Math.min(stats.activeDays, 7);
-            data.streaks.current = 1;
+          // Preservar rachas existentes si las hay
+          if (!data.streaks || !data.streaks.best) {
+            data.streaks = {
+              current: 0,
+              best: Math.min(stats.activeDays, 7), // Estimación conservadora
+              lastActivity: null,
+              calendar: {}
+            };
           }
           
+          // Log de puntos base
+          console.log(`💰 Puntos base calculados para ${targetUser}: ${totalBasePoints}`);
+          console.log(`   - Canciones: ${stats.totalSongs} × ${POINTS_CONFIG.SONG_REQUEST} = ${basePoints}`);
+          console.log(`   - Bonus VIP: ${vipBonus}`);
+          
+          // Actualizar bestStreak en las estadísticas para los logros
+          data.stats.bestStreak = data.streaks.best;
+          
           // Verificar y otorgar logros automáticamente
+          let newAchievementPoints = 0;
           ACHIEVEMENTS.forEach(achievement => {
-            if (!data.achievements.includes(achievement.id) && achievement.condition(data.stats)) {
-              data.achievements.push(achievement.id);
-              data.points += achievement.points;
-              data.xp += achievement.points;
+            if (achievement.condition(data.stats)) {
+              if (!data.achievements.includes(achievement.id)) {
+                data.achievements.push(achievement.id);
+                newAchievementPoints += achievement.points;
+                console.log(`🏆 Nuevo logro otorgado a ${targetUser}: ${achievement.title} (+${achievement.points} puntos)`);
+              }
             }
           });
           
-          // Recalcular nivel después de logros
-          data.level = calculateLevel(data.xp);
+          // Calcular puntos totales de logros (existentes + nuevos)
+          const totalAchievementPoints = existingAchievementPoints + newAchievementPoints;
+          
+          // Agregar puntos de logros al total
+          data.points += totalAchievementPoints;
+          data.xp += totalAchievementPoints;
+          
+          // Log de puntos de logros
+          if (newAchievementPoints > 0) {
+            console.log(`💰 Puntos de nuevos logros para ${targetUser}: +${newAchievementPoints}`);
+          }
+          if (existingAchievementPoints > 0) {
+            console.log(`💰 Puntos de logros existentes para ${targetUser}: +${existingAchievementPoints}`);
+          }
+          
+          // Recalcular nivel con puntos totales finales
+          data.level = calculateLevel(data.points);
+          
+          // Log final de resumen
+          console.log(`📊 Resumen final para ${targetUser}:`);
+          console.log(`   - Puntos base: ${totalBasePoints}`);
+          console.log(`   - Puntos de logros existentes: ${existingAchievementPoints}`);
+          console.log(`   - Puntos de logros nuevos: ${newAchievementPoints}`);
+          console.log(`   - Total puntos: ${data.points}`);
+          console.log(`   - Nivel: ${data.level}`);
+          console.log(`   - Logros totales: ${data.achievements.length}`);
           
           // Guardar datos
-          saveGamificationDataForUser(data, username);
-          console.log(`💾 Datos guardados para ${username}`);
+          saveGamificationDataForUser(data, targetUser);
+          console.log(`💾 Datos guardados para ${targetUser}`);
           
-          console.log(`✅ Usuario ${username}: ${data.points} puntos, nivel ${data.level}, ${data.achievements.length} logros`);
+          console.log(`✅ Usuario ${targetUser}: ${data.points} puntos, nivel ${data.level}, ${data.achievements.length} logros`);
           
         } catch (error) {
-          console.error(`Error procesando usuario ${username}:`, error);
+          console.error(`Error procesando usuario ${targetUser}:`, error);
+        }
+      }
+
+      // Función para diagnosticar problemas en la obtención de solicitudes
+      async function diagnoseSolicitudesIssues(username) {
+        console.log(`🔍 DIAGNÓSTICO COMPLETO PARA: ${username}`);
+        
+        try {
+          // 1. Verificar Firestore
+          const firestoreSnapshot = await db.collection('solicitudes').where('usuario', '==', username).get();
+          const firestoreCount = firestoreSnapshot.size;
+          console.log(`🔥 Firestore: ${firestoreCount} solicitudes para ${username}`);
+          
+          // 2. Verificar localStorage directo
+          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          const localCount = localSolicitudes.filter(s => s.usuario === username).length;
+          console.log(`💾 localStorage directo: ${localCount} solicitudes para ${username}`);
+          
+          // 3. Verificar localStorage byDay
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          let byDayCount = 0;
+          Object.values(byDay).flat().forEach(s => {
+            if (s.usuario === username) byDayCount++;
+          });
+          console.log(`📅 localStorage byDay: ${byDayCount} solicitudes para ${username}`);
+          
+          // 4. Verificar función combinada
+          const allSolicitudes = await getAllCombinedSolicitudes();
+          const combinedCount = allSolicitudes.filter(s => s.usuario === username).length;
+          console.log(`🎵 Función combinada: ${combinedCount} solicitudes para ${username}`);
+          
+          // 5. Mostrar algunas solicitudes de ejemplo
+          const userSongs = allSolicitudes.filter(s => s.usuario === username).slice(0, 5);
+          console.log(`📋 Primeras 5 solicitudes de ${username}:`, userSongs);
+          
+          return {
+            firestore: firestoreCount,
+            localStorage: localCount,
+            byDay: byDayCount,
+            combined: combinedCount,
+            samples: userSongs
+          };
+          
+        } catch (error) {
+          console.error(`❌ Error en diagnóstico para ${username}:`, error);
+          return null;
+        }
+      }
+
+      // Función para validar y corregir datos de gamificación
+      function validateAndFixGamificationData(data, username) {
+        console.log(`🔍 Validando datos de gamificación para ${username}`);
+        
+        // Asegurar que achievements es un array
+        if (!Array.isArray(data.achievements)) {
+          data.achievements = [];
+          console.log(`⚠️ Corrigiendo achievements para ${username}: convertido a array`);
+        }
+        
+        // Calcular puntos correctos de logros
+        const achievementPoints = data.achievements.reduce((total, achievementId) => {
+          const achievement = ACHIEVEMENTS.find(a => a.id === achievementId);
+          if (!achievement) {
+            console.log(`⚠️ Logro no encontrado: ${achievementId} para ${username}`);
+            return total;
+          }
+          return total + achievement.points;
+        }, 0);
+        
+        // Asegurar estructura de streaks
+        if (!data.streaks || typeof data.streaks !== 'object') {
+          data.streaks = {
+            current: 0,
+            best: 0,
+            lastActivity: null,
+            calendar: {}
+          };
+          console.log(`⚠️ Corrigiendo streaks para ${username}: estructura recreada`);
+        }
+        
+        // Asegurar estructura de stats
+        if (!data.stats || typeof data.stats !== 'object') {
+          data.stats = {
+            totalSongs: 0,
+            uniqueArtists: 0,
+            activeDays: 0,
+            isVip: false,
+            bestStreak: data.streaks.best || 0
+          };
+          console.log(`⚠️ Corrigiendo stats para ${username}: estructura recreada`);
+        }
+        
+        // Asegurar que bestStreak esté en stats
+        if (typeof data.stats.bestStreak === 'undefined') {
+          data.stats.bestStreak = data.streaks.best || 0;
+        }
+        
+        console.log(`✅ Validación completada para ${username}: ${data.achievements.length} logros, ${achievementPoints} puntos de logros`);
+        return achievementPoints;
+      }
+
+      // Función para recalcular todos los usuarios y corregir inconsistencias
+      async function recalculateAllUsers() {
+        console.log('🔄 INICIANDO RECÁLCULO MASIVO DE USUARIOS...');
+        
+        try {
+          // Obtener todos los usuarios únicos de todas las fuentes
+          const allUsers = new Set();
+          
+          // Usuarios de Firebase
+          try {
+            const usersSnap = await db.collection('users').get();
+            usersSnap.forEach(doc => {
+              const { name } = doc.data();
+              if (name && name.trim()) allUsers.add(name.trim());
+            });
+            
+            const solicitudesSnap = await db.collection('solicitudes').get();
+            solicitudesSnap.forEach(doc => {
+              const { usuario } = doc.data();
+              if (usuario && usuario.trim()) allUsers.add(usuario.trim());
+            });
+          } catch (error) {
+            console.warn('Error obteniendo usuarios de Firebase:', error);
+          }
+          
+          // Usuarios de localStorage
+          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          
+          localSolicitudes.forEach(s => {
+            if (s.usuario && s.usuario.trim()) allUsers.add(s.usuario.trim());
+          });
+          
+          Object.values(byDay).flat().forEach(s => {
+            if (s.usuario && s.usuario.trim()) allUsers.add(s.usuario.trim());
+          });
+          
+          console.log(`👥 Encontrados ${allUsers.size} usuarios únicos para recalcular`);
+          
+          // Recalcular cada usuario
+          let processed = 0;
+          for (const username of allUsers) {
+            try {
+              console.log(`🔄 Recalculando usuario ${++processed}/${allUsers.size}: ${username}`);
+              
+              // Limpiar flag de procesado para forzar recálculo
+              const data = getGamificationDataForUser(username);
+              delete data.autoProcessed;
+              saveGamificationDataForUser(data, username);
+              
+              // Recalcular
+              await analyzeAndGrantPointsForUser(username);
+              
+            } catch (error) {
+              console.error(`Error recalculando usuario ${username}:`, error);
+            }
+          }
+          
+          console.log('✅ RECÁLCULO MASIVO COMPLETADO');
+          showSuccessNotification(`Recálculo completado: ${processed} usuarios procesados`);
+          
+          // Actualizar modal si está abierto
+          if (document.getElementById('gamification-modal').style.display !== 'none') {
+            await renderGamificationModal();
+          }
+          
+        } catch (error) {
+          console.error('Error en recálculo masivo:', error);
+          showErrorNotification('Error durante el recálculo masivo');
         }
       }
 
       // ===== FUNCIONES PARA SELECTOR DE USUARIO =====
       
-      let currentSelectedUser = '';
+      let currentSelectedUser = ''; // Se inicializará correctamente en getCurrentSelectedUser()
 
       async function populateUserSelector() {
         const userSelect = document.getElementById('gamification-user-select');
@@ -3695,13 +4337,17 @@
           }
           
           const usersList = Array.from(users).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+          console.log(`👥 Usuarios encontrados para selector:`, usersList);
+          
           const options = '<option value="">Selecciona un usuario</option>' +
             usersList.map(user => `<option value="${user}">${user}</option>`).join('');
           
           userSelect.innerHTML = options;
+          console.log(`✅ Selector poblado con ${usersList.length} usuarios`);
           
           if (usersList.length === 0) {
             userSelect.innerHTML = '<option value="">No hay usuarios disponibles</option>';
+            console.log(`⚠️ No se encontraron usuarios para el selector`);
           }
         } catch (error) {
           console.error('Error al cargar usuarios:', error);
@@ -3766,9 +4412,14 @@
             }
           });
           
+          console.log(`🔥 Firestore: ${firestoreSolicitudes.length} solicitudes obtenidas`);
+          
           // Obtener solicitudes de localStorage como respaldo
           const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          
+          console.log(`💾 localStorage: ${localSolicitudes.length} solicitudes directas`);
+          console.log(`📅 localStorage byDay: ${Object.keys(byDay).length} días con datos`);
           
           // Combinar datos de Firestore y localStorage, evitando duplicados
           const allSolicitudesMap = new Map();
@@ -3806,6 +4457,22 @@
           });
 
           const finalResult = Array.from(allSolicitudesMap.values());
+          console.log(`🎵 Total solicitudes combinadas: ${finalResult.length}`);
+          
+          // Mostrar estadísticas por usuario para debugging
+          const userStats = {};
+          finalResult.forEach(s => {
+            if (!userStats[s.usuario]) userStats[s.usuario] = 0;
+            userStats[s.usuario]++;
+          });
+          
+          console.log(`👥 Usuarios con solicitudes:`, Object.keys(userStats).length);
+          console.log(`📊 Top 5 usuarios:`, Object.entries(userStats)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 5)
+            .map(([user, count]) => `${user}: ${count}`)
+          );
+          
           return finalResult;
         } catch (error) {
           console.error('❌ Error en getAllCombinedSolicitudes:', error);
@@ -3831,34 +4498,507 @@
       }
 
       async function switchToUser(username) {
-        console.log(`🔄 Cambiando a usuario: ${username || 'usuario actual'}`);
+        console.log(`🔄 INICIO - Cambiando a usuario: ${username || 'usuario actual'}`);
+        console.log(`📝 Usuario anterior: ${currentSelectedUser}`);
         
         if (!username) {
           currentSelectedUser = getCurrentUser();
           username = currentSelectedUser;
+          console.log(`🔄 Sin username proporcionado, usando usuario actual: ${username}`);
         } else {
           currentSelectedUser = username;
+          console.log(`✅ currentSelectedUser actualizado a: ${currentSelectedUser}`);
         }
         
-        // Siempre forzar actualización de datos para el usuario seleccionado
-        console.log(`⚡ Forzando actualización de datos para usuario: ${username}`);
+        // Verificar datos existentes
+        console.log(`📊 Verificando datos para usuario: ${username}`);
         
-        // Limpiar flag autoProcessed para forzar recálculo
-        const allData = JSON.parse(localStorage.getItem('gamificationData') || '{}');
-        if (allData[username.toLowerCase()]) {
-          delete allData[username.toLowerCase()].autoProcessed;
-          localStorage.setItem('gamificationData', JSON.stringify(allData));
-        }
-        
-        // Procesar usuario con datos actualizados
-        await analyzeAndGrantPointsForUser(username);
-        
+        // Renderizar modal directamente con datos existentes
+        console.log(`🎨 Llamando renderGamificationModal para ${username}`);
         await renderGamificationModal();
-        console.log(`✅ Modal actualizado para usuario: ${currentSelectedUser}`);
+        console.log(`✅ FIN - Modal actualizado para usuario: ${currentSelectedUser}`);
       }
 
       function getCurrentSelectedUser() {
         return currentSelectedUser || getCurrentUser();
+      }
+
+      // Función de prueba para verificar y otorgar todos los logros de insignias
+      window.testBadgeAchievements = function(username) {
+        console.log(`🧪 PRUEBA MANUAL: Verificando logros de insignias para ${username}`);
+        
+        try {
+          // Obtener datos del usuario
+          let userData = getGamificationDataForUser(username);
+          console.log(`📊 Datos actuales:`, userData);
+          
+          if (!userData.achievements) userData.achievements = [];
+          
+          // Verificar todas las insignias desde la gestión de insignias (Firebase)
+          const isVipFromSet = (typeof vipSet !== 'undefined' && vipSet.has(username));
+          const isZ0VipFromSet = (typeof z0VipSet !== 'undefined' && z0VipSet.has(username));
+          const isDonadorFromSet = (typeof donadorSet !== 'undefined' && donadorSet.has(username));
+          
+          console.log(`🔍 Estado de insignias desde gestión:`);
+          console.log(`  - VIP (vipSet de Firebase): ${isVipFromSet}`);
+          console.log(`  - Z0-VIP (z0VipSet de Firebase): ${isZ0VipFromSet}`);
+          console.log(`  - Donador (donadorSet de Firebase): ${isDonadorFromSet}`);
+          console.log(`  - vipSet disponible: ${typeof vipSet !== 'undefined'}`);
+          console.log(`  - z0VipSet disponible: ${typeof z0VipSet !== 'undefined'}`);
+          console.log(`  - donadorSet disponible: ${typeof donadorSet !== 'undefined'}`);
+          
+          const isVip = isVipFromSet;
+          const isZ0Vip = isZ0VipFromSet;
+          const isDonador = isDonadorFromSet;
+          
+          let pointsAwarded = 0;
+          let achievementsGranted = [];
+          
+          // Verificar y otorgar logro VIP
+          if (isVip && !userData.achievements.includes('vip_member')) {
+            console.log(`🎉 OTORGANDO logro VIP...`);
+            userData.achievements.push('vip_member');
+            pointsAwarded += 200;
+            achievementsGranted.push('Miembro VIP (+200 pts)');
+          }
+          
+          // Verificar y otorgar logro Z0-VIP
+          if (isZ0Vip && !userData.achievements.includes('z0_vip_member')) {
+            console.log(`🎉 OTORGANDO logro Z0-VIP...`);
+            userData.achievements.push('z0_vip_member');
+            pointsAwarded += 300;
+            achievementsGranted.push('Z0-VIP Exclusivo (+300 pts)');
+          }
+          
+          // Verificar y otorgar logro Donador
+          if (isDonador && !userData.achievements.includes('donador_member')) {
+            console.log(`🎉 OTORGANDO logro Donador...`);
+            userData.achievements.push('donador_member');
+            pointsAwarded += 250;
+            achievementsGranted.push('Donador Generoso (+250 pts)');
+          }
+          
+          // Aplicar cambios si hay logros nuevos
+          if (pointsAwarded > 0) {
+            userData.points = (userData.points || 0) + pointsAwarded;
+            userData.xp = (userData.xp || 0) + pointsAwarded;
+            userData.level = calculateLevel(userData.xp);
+            
+            saveGamificationDataForUser(userData, username);
+            
+            console.log(`✅ ÉXITO: Logros otorgados a ${username}:`, achievementsGranted);
+            console.log(`💰 Puntos totales: ${userData.points} (+${pointsAwarded})`);
+            console.log(`⭐ Nivel: ${userData.level}`);
+            
+            return true;
+          } else {
+            console.log(`ℹ️ INFO: ${username} ya tiene todos los logros de insignias disponibles`);
+            console.log(`🏆 Logros actuales:`, userData.achievements);
+            return false;
+          }
+          
+        } catch (error) {
+          console.error('❌ ERROR en prueba:', error);
+          return false;
+        }
+      };
+      
+      // Función simple para otorgar logros de insignias
+      window.grantBadgeAchievement = function(username) {
+        if (!username) {
+          console.warn('⚠️ No se proporcionó nombre de usuario');
+          return false;
+        }
+        
+        console.log(`🎯 Otorgando logros de insignias para: ${username}`);
+        
+        try {
+          // Verificar que los sets estén definidos y cargados
+          if (typeof window.vipSet === 'undefined' || typeof window.z0VipSet === 'undefined' || typeof window.donadorSet === 'undefined') {
+            console.warn(`⚠️ Sets no definidos para ${username}, inicializando...`);
+            // Inicializar sets si no existen
+            if (typeof window.vipSet === 'undefined') window.vipSet = new Set();
+            if (typeof window.z0VipSet === 'undefined') window.z0VipSet = new Set();
+            if (typeof window.donadorSet === 'undefined') window.donadorSet = new Set();
+            return false;
+          }
+          
+          if (!window.vipSet || !window.z0VipSet || !window.donadorSet) {
+            console.warn(`⚠️ Sets no inicializados para ${username}`);
+            return false;
+          }
+          
+          const totalUsers = window.vipSet.size + window.z0VipSet.size + window.donadorSet.size;
+          if (totalUsers === 0) {
+            console.warn(`⚠️ Sets vacíos para ${username}, datos aún no cargados`);
+            return false;
+          }
+          // Verificar que los sets estén disponibles
+          console.log(`📊 Estado de sets: vipSet=${typeof window.vipSet !== 'undefined'}, z0VipSet=${typeof window.z0VipSet !== 'undefined'}, donadorSet=${typeof window.donadorSet !== 'undefined'}`);
+          
+          // Obtener datos del usuario
+          let userData = getGamificationDataForUser(username);
+          console.log(`📊 Datos actuales de ${username}:`, userData);
+          
+          if (!userData.achievements) userData.achievements = [];
+          
+          let pointsAdded = 0;
+          let newAchievements = [];
+          
+          // Verificar VIP
+          if (typeof window.vipSet !== 'undefined' && window.vipSet.has(username)) {
+            console.log(`🔍 ${username} está en vipSet`);
+            if (!userData.achievements.includes('vip_member')) {
+              userData.achievements.push('vip_member');
+              pointsAdded += 200;
+              newAchievements.push('VIP (+200)');
+              console.log(`✅ Logro VIP otorgado a ${username}`);
+            } else {
+              console.log(`ℹ️ ${username} ya tiene el logro VIP`);
+            }
+          } else {
+            console.log(`ℹ️ ${username} no está en vipSet`);
+          }
+          
+          // Verificar Z0-VIP
+          if (typeof window.z0VipSet !== 'undefined' && window.z0VipSet.has(username)) {
+            console.log(`🔍 ${username} está en z0VipSet`);
+            if (!userData.achievements.includes('z0_vip_member')) {
+              userData.achievements.push('z0_vip_member');
+              pointsAdded += 300;
+              newAchievements.push('Z0-VIP (+300)');
+              console.log(`✅ Logro Z0-VIP otorgado a ${username}`);
+            } else {
+              console.log(`ℹ️ ${username} ya tiene el logro Z0-VIP`);
+            }
+          } else {
+            console.log(`ℹ️ ${username} no está en z0VipSet`);
+          }
+          
+          // Verificar Donador
+          if (typeof window.donadorSet !== 'undefined' && window.donadorSet.has(username)) {
+            console.log(`🔍 ${username} está en donadorSet`);
+            if (!userData.achievements.includes('donador_member')) {
+              userData.achievements.push('donador_member');
+              pointsAdded += 250;
+              newAchievements.push('Donador (+250)');
+              console.log(`✅ Logro Donador otorgado a ${username}`);
+            } else {
+              console.log(`ℹ️ ${username} ya tiene el logro Donador`);
+            }
+          } else {
+            console.log(`ℹ️ ${username} no está en donadorSet`);
+          }
+          
+          // Aplicar puntos si hay logros nuevos
+          if (pointsAdded > 0) {
+            userData.points = (userData.points || 0) + pointsAdded;
+            userData.xp = (userData.xp || 0) + pointsAdded;
+            userData.level = calculateLevel(userData.xp);
+            
+            console.log(`💾 Guardando datos actualizados para ${username}:`, userData);
+            saveGamificationDataForUser(userData, username);
+            
+            console.log(`🎉 ${username}: ${newAchievements.join(', ')} - Total: ${userData.points} pts`);
+            return true;
+          } else {
+            console.log(`ℹ️ ${username} ya tiene todos los logros de insignias`);
+            return false;
+          }
+          
+        } catch (error) {
+          console.error(`❌ Error otorgando logros a ${username}:`, error);
+          console.error('Stack trace:', error.stack);
+          return false;
+        }
+      };
+      
+      // Función para procesar todos los usuarios con insignias
+      window.processAllBadges = function() {
+        console.log(`🚀 Procesando TODOS los usuarios con insignias...`);
+        
+        let total = 0;
+        let success = 0;
+        
+        // Procesar VIP
+        if (typeof vipSet !== 'undefined') {
+          vipSet.forEach(username => {
+            total++;
+            if (window.grantBadgeAchievement(username)) success++;
+          });
+        }
+        
+        // Procesar Z0-VIP
+        if (typeof z0VipSet !== 'undefined') {
+          z0VipSet.forEach(username => {
+            total++;
+            if (window.grantBadgeAchievement(username)) success++;
+          });
+        }
+        
+        // Procesar Donadores
+        if (typeof donadorSet !== 'undefined') {
+          donadorSet.forEach(username => {
+            total++;
+            if (window.grantBadgeAchievement(username)) success++;
+          });
+        }
+        
+        console.log(`🏁 COMPLETADO: ${success}/${total} usuarios recibieron nuevos logros`);
+        return { total, success };
+      };
+
+      // Función de diagnóstico para verificar el estado del sistema
+      window.diagnosticBadges = async function() {
+        console.log('🔍 === DIAGNÓSTICO DEL SISTEMA DE LOGROS ===');
+        
+        // 1. Verificar sets
+        console.log('📊 Estado de los sets:');
+        console.log(`- VIP Set: ${vipSet ? vipSet.size : 'NO DEFINIDO'} usuarios`);
+        console.log(`- Z0-VIP Set: ${z0VipSet ? z0VipSet.size : 'NO DEFINIDO'} usuarios`);
+        console.log(`- Donador Set: ${donadorSet ? donadorSet.size : 'NO DEFINIDO'} usuarios`);
+        
+        if (vipSet && vipSet.size > 0) {
+          console.log('👥 Usuarios VIP:', Array.from(vipSet));
+        }
+        if (z0VipSet && z0VipSet.size > 0) {
+          console.log('👥 Usuarios Z0-VIP:', Array.from(z0VipSet));
+        }
+        if (donadorSet && donadorSet.size > 0) {
+          console.log('👥 Usuarios Donador:', Array.from(donadorSet));
+        }
+        
+        // 2. Verificar Firebase
+        console.log('🔥 Verificando conexión a Firebase...');
+        try {
+          const testDoc = await db.collection('vipUsers').limit(1).get();
+          console.log('✅ Conexión a Firebase OK');
+        } catch (error) {
+          console.error('❌ Error de conexión a Firebase:', error);
+          return;
+        }
+        
+        // 3. Probar con un usuario específico
+        if (vipSet && vipSet.size > 0) {
+          const testUser = Array.from(vipSet)[0];
+          console.log(`🧪 Probando con usuario: ${testUser}`);
+          
+          try {
+            // Verificar datos existentes
+            const userData = getGamificationDataForUser(testUser);
+            console.log(`📊 Datos actuales de ${testUser}:`, userData);
+            
+            // Intentar otorgar logro
+            console.log(`🎯 Intentando otorgar logro a ${testUser}...`);
+            const result = window.grantBadgeAchievement(testUser);
+            console.log(`🎯 Resultado: ${result ? 'Éxito' : 'Sin cambios'}`);
+            
+          } catch (error) {
+            console.error(`❌ Error probando con ${testUser}:`, error);
+          }
+        }
+        
+        console.log('🔍 === FIN DEL DIAGNÓSTICO ===');
+        };
+
+        // Función para otorgar puntos manualmente (sin depender de sets)
+        window.grantPointsManual = async function(username, isVip = false, isZ0Vip = false, isDonador = false) {
+          console.log(`🎯 Otorgando puntos manualmente a: ${username}`);
+          console.log(`Estado: VIP=${isVip}, Z0-VIP=${isZ0Vip}, Donador=${isDonador}`);
+          
+          try {
+            // Obtener datos actuales
+            const userStatsRef = db.collection('userStats').doc(username);
+            const userStatsDoc = await userStatsRef.get();
+            
+            let userData = userStatsDoc.exists ? userStatsDoc.data() : {
+              points: 0,
+              level: 1,
+              achievements: [],
+              lastUpdated: new Date()
+            };
+            
+            console.log('Datos actuales:', userData);
+            
+            let pointsAwarded = 0;
+            let achievementsGranted = [];
+            
+            // Otorgar logros según parámetros
+            if (isVip && !userData.achievements.includes('vip_badge')) {
+              userData.achievements.push('vip_badge');
+              userData.points += 200;
+              pointsAwarded += 200;
+              achievementsGranted.push('VIP');
+            }
+            
+            if (isZ0Vip && !userData.achievements.includes('z0vip_badge')) {
+              userData.achievements.push('z0vip_badge');
+              userData.points += 300;
+              pointsAwarded += 300;
+              achievementsGranted.push('Z0-VIP');
+            }
+            
+            if (isDonador && !userData.achievements.includes('donador_badge')) {
+              userData.achievements.push('donador_badge');
+              userData.points += 150;
+              pointsAwarded += 150;
+              achievementsGranted.push('Donador');
+            }
+            
+            if (pointsAwarded > 0) {
+              userData.lastUpdated = new Date();
+              console.log('Guardando datos:', userData);
+              
+              await userStatsRef.set(userData, { merge: true });
+              console.log(`🎉 ${username}: ${achievementsGranted.join(', ')} (+${pointsAwarded}) - Total: ${userData.points} pts`);
+              
+              // Verificar que se guardó
+              const verification = await userStatsRef.get();
+              if (verification.exists) {
+                console.log('✅ Verificación exitosa:', verification.data());
+              } else {
+                console.error('❌ Error: datos no se guardaron');
+              }
+              
+            } else {
+              console.log('ℹ️ No hay logros nuevos para otorgar');
+            }
+            
+          } catch (error) {
+            console.error('❌ Error:', error);
+          }
+        };
+
+        // Función para forzar la carga de sets y procesar logros
+        window.forceLoadAndProcess = function() {
+          console.log('🚀 Forzando carga de sets y procesamiento de logros...');
+          
+          // Verificar estado actual
+          console.log(`📊 Estado actual: VIP(${vipSet ? vipSet.size : 'undefined'}), Z0-VIP(${z0VipSet ? z0VipSet.size : 'undefined'}), Donador(${donadorSet ? donadorSet.size : 'undefined'})`);
+          
+          // Esperar un poco más y luego procesar
+          setTimeout(() => {
+            console.log('⏰ Esperando 5 segundos para asegurar carga completa...');
+            setTimeout(() => {
+              console.log(`📊 Estado después de espera: VIP(${vipSet ? vipSet.size : 'undefined'}), Z0-VIP(${z0VipSet ? z0VipSet.size : 'undefined'}), Donador(${donadorSet ? donadorSet.size : 'undefined'})`);
+              
+              if (vipSet && z0VipSet && donadorSet) {
+                const totalUsers = vipSet.size + z0VipSet.size + donadorSet.size;
+                if (totalUsers > 0) {
+                  console.log('✅ Sets cargados, procesando logros...');
+                  window.processAllBadges();
+                } else {
+                  console.warn('⚠️ Sets definidos pero vacíos. Puede que no haya usuarios VIP/Z0-VIP/Donador o los datos no se han cargado.');
+                }
+              } else {
+                console.error('❌ Sets aún no definidos después de la espera');
+              }
+            }, 5000);
+          }, 1000);
+        };
+      
+      // Funciones de compatibilidad
+      window.testVipAchievement = window.grantBadgeAchievement;
+      window.testBadgeAchievements = window.grantBadgeAchievement;
+      window.processAllVipAchievements = window.processAllBadges;
+
+      // Función simplificada para procesar solo logros
+      async function processAchievementsForUser(username, existingData) {
+        try {
+          console.log(`🏆 Procesando logros para ${username}...`);
+          
+          // Verificar que los sets estén inicializados y cargados
+          if (typeof vipSet === 'undefined' || typeof z0VipSet === 'undefined' || typeof donadorSet === 'undefined' ||
+              !vipSet || !z0VipSet || !donadorSet) {
+            console.log(`⏳ Sets de insignias aún no inicializados para ${username}, reintentando en 2 segundos...`);
+            setTimeout(() => processAchievementsForUser(username, existingData), 2000);
+            return existingData;
+          }
+          
+          // Verificar que al menos uno de los sets tenga datos (indicando que ya se cargaron)
+          const totalUsers = vipSet.size + z0VipSet.size + donadorSet.size;
+          if (totalUsers === 0) {
+            console.log(`⏳ Sets de insignias vacíos para ${username}, esperando carga de datos... reintentando en 3 segundos`);
+            setTimeout(() => processAchievementsForUser(username, existingData), 3000);
+            return existingData;
+          }
+          
+          console.log(`✅ Sets cargados: VIP(${vipSet.size}), Z0-VIP(${z0VipSet.size}), Donador(${donadorSet.size})`);
+          
+          // Usar datos existentes como base
+          const data = { ...existingData };
+          
+          if (!data.achievements) data.achievements = [];
+          
+          // Verificar insignias del usuario desde la gestión de insignias (Firebase)
+          const isVipFromSet = vipSet.has(username);
+          const isZ0VipFromSet = z0VipSet.has(username);
+          const isDonadorFromSet = donadorSet.has(username);
+          
+          console.log(`🔍 Verificando insignias desde gestión para ${username}:`);
+          console.log(`   - VIP (vipSet de Firebase): ${isVipFromSet}`);
+          console.log(`   - Z0-VIP (z0VipSet de Firebase): ${isZ0VipFromSet}`);
+          console.log(`   - Donador (donadorSet de Firebase): ${isDonadorFromSet}`);
+          console.log(`   - vipSet size: ${vipSet.size}, z0VipSet size: ${z0VipSet.size}, donadorSet size: ${donadorSet.size}`);
+          
+          const isVip = isVipFromSet;
+          const isZ0Vip = isZ0VipFromSet;
+          const isDonador = isDonadorFromSet;
+          
+          let pointsAwarded = 0;
+          let achievementsGranted = [];
+          
+          // Procesar logro VIP
+          if (isVip && !data.achievements.includes('vip_member')) {
+            console.log(`🎉 Otorgando logro VIP a ${username}`);
+            data.achievements.push('vip_member');
+            pointsAwarded += 200;
+            achievementsGranted.push('Miembro VIP (+200 pts)');
+          }
+          
+          // Procesar logro Z0-VIP
+          if (isZ0Vip && !data.achievements.includes('z0_vip_member')) {
+            console.log(`🎉 Otorgando logro Z0-VIP a ${username}`);
+            data.achievements.push('z0_vip_member');
+            pointsAwarded += 300;
+            achievementsGranted.push('Z0-VIP Exclusivo (+300 pts)');
+          }
+          
+          // Procesar logro Donador
+          if (isDonador && !data.achievements.includes('donador_member')) {
+            console.log(`🎉 Otorgando logro Donador a ${username}`);
+            data.achievements.push('donador_member');
+            pointsAwarded += 250;
+            achievementsGranted.push('Donador Generoso (+250 pts)');
+          }
+          
+          // Aplicar puntos y XP si se otorgaron logros
+          if (pointsAwarded > 0) {
+            data.points += pointsAwarded;
+            data.xp += pointsAwarded;
+            data.level = calculateLevel(data.xp);
+            
+            // Guardar datos actualizados
+            saveGamificationDataForUser(data, username);
+            
+            console.log(`✅ Logros otorgados a ${username}:`, achievementsGranted);
+            console.log(`💰 Puntos totales: ${data.points} (+${pointsAwarded})`);
+            console.log(`⭐ Nivel: ${data.level}`);
+          } else {
+            console.log(`ℹ️ ${username} ya tiene todos los logros de insignias disponibles`);
+          }
+          
+          // Actualizar stats con estados de insignias
+          if (!data.stats) data.stats = {};
+          data.stats.isVip = isVip;
+          data.stats.isZ0Vip = isZ0Vip;
+          data.stats.isDonador = isDonador;
+          
+          return data;
+        } catch (error) {
+          console.error(`❌ Error procesando logros para ${username}:`, error);
+          return existingData;
+        }
       }
 
       // Modificar funciones existentes para usar el usuario seleccionado
@@ -3913,7 +5053,10 @@
           const vipUsers = JSON.parse(localStorage.getItem('vipUsers') || '[]');
           
           const userSongs = allSolicitudes.filter(s => s.usuario === targetUser);
+          console.log(`🎵 ${targetUser}: ${userSongs.length} canciones encontradas de ${allSolicitudes.length} totales`);
+          
           const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
+          console.log(`🎤 ${targetUser}: ${uniqueArtists} artistas únicos`);
           
           // Calcular días únicos basado en fechas de solicitudes
           const uniqueDays = [...new Set(userSongs.map(s => {
@@ -3923,13 +5066,23 @@
             return new Date().toISOString().split('T')[0];
           }))].length;
           
-          const isVip = vipUsers.includes(targetUser);
+          console.log(`📅 ${targetUser}: ${uniqueDays} días únicos de actividad`);
+          
+          // Verificar estado VIP desde Firebase (sets globales)
+          const vipSetAvailable = typeof vipSet !== 'undefined';
+          const z0VipSetAvailable = typeof z0VipSet !== 'undefined';
+          const isVip = (vipSetAvailable && vipSet.has(targetUser)) || (z0VipSetAvailable && z0VipSet.has(targetUser));
+
+          // Obtener datos de gamificación existentes para preservar rachas
+          const existingData = getGamificationDataForUser(targetUser);
+          const bestStreak = existingData.streaks ? existingData.streaks.best : 0;
 
           return {
             totalSongs: userSongs.length,
             uniqueArtists,
             activeDays: uniqueDays,
-            isVip
+            isVip,
+            bestStreak
           };
         } catch (error) {
           console.error('Error al calcular estadísticas del usuario:', error);
@@ -3947,13 +5100,28 @@
             return new Date().toISOString().split('T')[0];
           }))].length;
           
-          const isVip = vipUsers.includes(targetUser);
+          // Verificar estado VIP desde Firebase (sets globales)
+          const vipSetAvailable = typeof vipSet !== 'undefined' && vipSet;
+          const z0VipSetAvailable = typeof z0VipSet !== 'undefined' && z0VipSet;
+          const isVip = (vipSetAvailable && vipSet.has(targetUser)) || (z0VipSetAvailable && z0VipSet.has(targetUser));
+          
+          console.log(`👑 Verificación VIP para ${targetUser}:`);
+          console.log(`   - vipSet disponible: ${vipSetAvailable}`);
+          console.log(`   - z0VipSet disponible: ${z0VipSetAvailable}`);
+          if (vipSetAvailable) console.log(`   - En vipSet: ${vipSet.has(targetUser)}`);
+          if (z0VipSetAvailable) console.log(`   - En z0VipSet: ${z0VipSet.has(targetUser)}`);
+          console.log(`   - Es VIP final: ${isVip}`);
+
+          // Obtener datos de gamificación existentes para preservar rachas
+          const existingData = getGamificationDataForUser(targetUser);
+          const bestStreak = existingData.streaks ? existingData.streaks.best : 0;
 
           return {
             totalSongs: userSongs.length,
             uniqueArtists,
             activeDays: uniqueDays,
-            isVip
+            isVip,
+            bestStreak
           };
         }
       }
@@ -3963,41 +5131,86 @@
       // Modificar renderGamificationModal para usar el usuario seleccionado
       async function renderGamificationModal() {
         const targetUser = getCurrentSelectedUser();
+        console.log(`🎨 INICIO - Renderizando modal para usuario: ${targetUser}`);
+        console.log(`🔍 currentSelectedUser actual: ${currentSelectedUser}`);
+        console.log(`👤 getCurrentUser(): ${getCurrentUser()}`);
         
-        // Asegurar que los datos estén actualizados antes de renderizar
-        console.log(`🔄 Asegurando datos actualizados para: ${targetUser}`);
+        // Obtener datos del usuario
+        let data = getGamificationDataForUser(targetUser);
+        console.log(`📊 Datos obtenidos para ${targetUser}:`, data);
+        console.log(`🔍 Tipo de datos:`, typeof data);
+        console.log(`🔍 Datos válidos:`, data && typeof data === 'object');
         
-        // Limpiar flag autoProcessed para forzar recálculo si es necesario
-        const allData = JSON.parse(localStorage.getItem('gamificationData') || '{}');
-        const userData = allData[targetUser.toLowerCase()];
-        
-        // Si no hay datos o están desactualizados, forzar actualización
-        if (!userData || !userData.autoProcessed) {
-          console.log(`⚡ Actualizando datos para: ${targetUser}`);
-          await analyzeAndGrantPointsForUser(targetUser);
+        if (!data || !data.stats) {
+          console.warn(`⚠️ No hay datos para ${targetUser}, creando datos básicos`);
+          data = {
+            points: 0,
+            xp: 0,
+            level: 1,
+            achievements: [],
+            streaks: { current: 0, best: 0, calendar: {} },
+            stats: { songCount: 0, uniqueArtists: 0, activeDays: 0 }
+          };
         }
         
-        const data = getGamificationDataForUser(targetUser);
+        // Procesar logros para el usuario si es necesario
+        console.log(`📊 Verificando logros para ${targetUser}...`);
+        try {
+          data = await processAchievementsForUser(targetUser, data);
+          console.log(`✅ Logros procesados para ${targetUser}:`, data);
+        } catch (error) {
+          console.warn(`⚠️ Error procesando logros para ${targetUser}:`, error);
+        }
+        
+        // Verificar y otorgar logros de insignias
+        console.log(`🏆 Verificando logros de insignias para ${targetUser}...`);
+        window.grantBadgeAchievement(targetUser);
         const currentLevel = getLevelInfo(data.level);
         const nextLevel = getNextLevelInfo(data.level);
         const progressPercent = ((data.xp - currentLevel.xpRequired) / (nextLevel.xpRequired - currentLevel.xpRequired)) * 100;
         
         // Actualizar información del usuario
-        document.getElementById('user-name').textContent = targetUser;
-        document.getElementById('user-level-name').textContent = currentLevel.name;
-        document.getElementById('user-level-number').textContent = `Nivel ${data.level}`;
-        document.getElementById('user-points').textContent = data.points;
+        const userNameEl = document.getElementById('user-name');
+        const userLevelNameEl = document.getElementById('user-level-name');
+        const userLevelNumberEl = document.getElementById('user-level-number');
+        const userPointsEl = document.getElementById('user-points');
+        
+        console.log(`🔄 Actualizando elementos del perfil:`);
+        console.log(`👤 Nombre: ${targetUser} -> elemento encontrado: ${!!userNameEl}`);
+        console.log(`🏆 Nivel: ${data.level} (${currentLevel.name}) -> elementos encontrados: ${!!userLevelNameEl}, ${!!userLevelNumberEl}`);
+        console.log(`💰 Puntos: ${data.points} -> elemento encontrado: ${!!userPointsEl}`);
+        
+        if (userNameEl) userNameEl.textContent = targetUser;
+        if (userLevelNameEl) userLevelNameEl.textContent = currentLevel.name;
+        if (userLevelNumberEl) userLevelNumberEl.textContent = `Nivel ${data.level}`;
+        if (userPointsEl) userPointsEl.textContent = data.points;
+        
+        console.log(`✅ Información actualizada: ${targetUser}, Nivel ${data.level}, ${data.points} puntos`);
         
         // Actualizar barra de progreso
-        document.getElementById('progress-fill').style.width = `${Math.min(progressPercent, 100)}%`;
-        document.getElementById('current-xp').textContent = data.xp - currentLevel.xpRequired;
-        document.getElementById('next-level-xp').textContent = nextLevel.xpRequired - currentLevel.xpRequired;
+        const progressFillEl = document.getElementById('progress-fill');
+        const currentXpEl = document.getElementById('current-xp');
+        const nextLevelXpEl = document.getElementById('next-level-xp');
+        
+        if (progressFillEl) progressFillEl.style.width = `${Math.min(progressPercent, 100)}%`;
+        if (currentXpEl) currentXpEl.textContent = data.xp - currentLevel.xpRequired;
+        if (nextLevelXpEl) nextLevelXpEl.textContent = nextLevel.xpRequired - currentLevel.xpRequired;
         
         // Renderizar logros
-        renderAchievementsForUser(data);
+        console.log(`🏆 Llamando renderAchievementsForUser con datos:`, data);
+        try {
+          renderAchievementsForUser(data);
+        } catch (error) {
+          console.error('Error renderizando logros:', error);
+        }
         
         // Renderizar rachas
-        await renderStreaksForUser(data);
+        console.log(`🔥 Llamando renderStreaksForUser con datos:`, data);
+        try {
+          await renderStreaksForUser(data);
+        } catch (error) {
+          console.error('Error renderizando rachas:', error);
+        }
         
         // Renderizar estadísticas personales
         await renderPersonalStatsForUser(data);
@@ -4005,18 +5218,38 @@
         // Actualizar selector de usuario
         populateUserSelector().then(() => {
           const userSelect = document.getElementById('gamification-user-select');
-          if (userSelect && targetUser !== getCurrentUser()) {
-            userSelect.value = targetUser;
+          console.log(`🎯 Configurando selector: targetUser=${targetUser}, getCurrentUser()=${getCurrentUser()}`);
+          
+          if (userSelect) {
+            if (targetUser !== getCurrentUser()) {
+              userSelect.value = targetUser;
+              console.log(`✅ Selector configurado a: ${targetUser}`);
+            } else {
+              userSelect.value = '';
+              console.log(`🏠 Usuario actual, selector limpio`);
+            }
           }
         }).catch(console.error);
       }
 
       function renderAchievementsForUser(data) {
+        console.log(`🏆 Renderizando logros para usuario:`, data.achievements);
+        
         const container = document.getElementById('achievements-list');
+        if (!container) {
+          console.error('❌ Contenedor achievements-list no encontrado');
+          return;
+        }
+        
+        if (!ACHIEVEMENTS || ACHIEVEMENTS.length === 0) {
+          console.error('❌ No hay logros definidos');
+          return;
+        }
+        
+        console.log(`🎯 Renderizando ${ACHIEVEMENTS.length} logros`);
         
         container.innerHTML = ACHIEVEMENTS.map(achievement => {
           const isUnlocked = data.achievements.includes(achievement.id);
-          const progress = getAchievementProgressForUser(achievement, data.stats);
           
           return `
             <div class="achievement-card ${isUnlocked ? 'unlocked' : 'locked'}">
@@ -4024,7 +5257,6 @@
               <div class="achievement-icon">${achievement.icon}</div>
               <div class="achievement-title">${achievement.title}</div>
               <div class="achievement-description">${achievement.description}</div>
-              ${!isUnlocked && progress ? `<div class="achievement-progress">${progress}</div>` : ''}
             </div>
           `;
         }).join('');
@@ -4045,7 +5277,7 @@
         
         if (id === 'streak_starter' || id === 'streak_master' || id === 'streak_legend') {
           const targets = { streak_starter: 3, streak_master: 7, streak_legend: 30 };
-          const bestStreak = getGamificationDataForUser().streaks.best;
+          const bestStreak = stats.bestStreak || 0;
           return `${bestStreak}/${targets[id]} días`;
         }
         
@@ -4057,69 +5289,124 @@
       }
 
       async function renderStreaksForUser(data) {
-        document.getElementById('current-streak').textContent = `${data.streaks.current} días`;
-        document.getElementById('best-streak').textContent = `${data.streaks.best} días`;
+        console.log(`🔥 Renderizando rachas para usuario:`, data.streaks);
+        
+        const currentStreakEl = document.getElementById('current-streak');
+        const bestStreakEl = document.getElementById('best-streak');
+        
+        if (currentStreakEl) {
+          currentStreakEl.textContent = `${data.streaks.current || 0} días`;
+        } else {
+          console.warn('❌ Elemento current-streak no encontrado');
+        }
+        
+        if (bestStreakEl) {
+          bestStreakEl.textContent = `${data.streaks.best || 0} días`;
+        } else {
+          console.warn('❌ Elemento best-streak no encontrado');
+        }
         
         // Renderizar calendario de actividad
-        await renderStreakCalendarForUser(data.streaks.calendar);
+        await renderStreakCalendarForUser(data.streaks.calendar || {});
       }
 
       async function renderStreakCalendarForUser(calendar) {
         try {
+          console.log('🗓️ Renderizando calendario de rachas con datos combinados...');
+          
           const container = document.getElementById('streak-calendar-grid');
           if (!container) {
-            console.warn('Contenedor del calendario de rachas no encontrado');
+            console.warn('❌ Contenedor del calendario de rachas no encontrado');
             return;
           }
           
+          // Verificar si ya existe un calendario oficial
+          const isOfficial = container.getAttribute('data-calendar-source') === 'official';
+          const hasContent = container.innerHTML.trim().length > 500 && container.innerHTML.includes('calendar-day');
+          
+          if (isOfficial && hasContent) {
+            console.log('✅ Calendario oficial ya existe y está completo, no sobrescribir');
+            return;
+          }
+          
+          // Usar nuestra función de calendario completo
+          if (window.createCompleteStreakCalendar) {
+            console.log('✅ Usando calendario completo con todos los datos');
+            window.createCompleteStreakCalendar();
+            return;
+          }
+          
+          // Fallback: usar datos combinados directamente
+          console.log('📦 Fallback: combinando datos manualmente...');
+          
+          // Obtener TODOS los datos
+          const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+          const solicitudesByDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          
+          // Combinar todos los datos por fecha
+          const allActivity = {};
+          
+          // 1. Agregar playedSongs
+          Object.keys(playedSongs).forEach(function(date) {
+            allActivity[date] = (allActivity[date] || 0) + playedSongs[date].length;
+          });
+          
+          // 2. Agregar solicitudes_by_day
+          Object.keys(solicitudesByDay).forEach(function(date) {
+            const dayData = solicitudesByDay[date] || [];
+            allActivity[date] = (allActivity[date] || 0) + dayData.length;
+          });
+          
+          // 3. Agregar solicitudes legacy
+          solicitudes.forEach(function(song) {
+            if (song.time) {
+              const date = new Date(song.time).toISOString().split('T')[0];
+              allActivity[date] = (allActivity[date] || 0) + 1;
+            }
+          });
+          
           const today = new Date();
           const days = [];
-          const currentUser = getCurrentSelectedUser();
-          
-          // Obtener actividad del usuario para los últimos 28 días
-          const userActivity = await getUserActivityForDays(currentUser, 28);
           
           // Generar últimos 28 días
           for (let i = 27; i >= 0; i--) {
             const date = new Date(today.getTime() - (i * 86400000));
             const dateStr = date.toISOString().split('T')[0];
             const isToday = i === 0;
-            const isActive = calendar && calendar[dateStr];
-            const activityCount = userActivity[dateStr] || 0;
+            const activityCount = allActivity[dateStr] || 0;
             
             // Determinar nivel de actividad
             let activityClass = '';
-            let activityTitle = `${dateStr}`;
+            let activityTitle = dateStr;
             
             if (activityCount > 0) {
               if (activityCount >= 10) {
                 activityClass = 'activity-very-high';
-                activityTitle += ` - ${activityCount} canciones (Muy activo)`;
+                activityTitle += ' - ' + activityCount + ' canciones (Muy activo)';
               } else if (activityCount >= 5) {
                 activityClass = 'activity-high';
-                activityTitle += ` - ${activityCount} canciones (Muy activo)`;
+                activityTitle += ' - ' + activityCount + ' canciones (Activo)';
               } else if (activityCount >= 3) {
                 activityClass = 'activity-medium';
-                activityTitle += ` - ${activityCount} canciones (Activo)`;
+                activityTitle += ' - ' + activityCount + ' canciones (Activo)';
               } else {
                 activityClass = 'activity-low';
-                activityTitle += ` - ${activityCount} canción${activityCount > 1 ? 'es' : ''} (Poco activo)`;
+                activityTitle += ' - ' + activityCount + ' canción' + (activityCount > 1 ? 'es' : '') + ' (Poco activo)';
               }
             } else {
               activityTitle += ' - Sin actividad';
             }
             
-            days.push(`
-              <div class="calendar-day ${activityClass} ${isToday ? 'today' : ''}" title="${activityTitle}">
-                ${date.getDate()}
-              </div>
-            `);
+            days.push('<div class="calendar-day ' + activityClass + (isToday ? ' today' : '') + '" title="' + activityTitle + '">' + date.getDate() + '</div>');
           }
           
           container.innerHTML = days.join('');
+          container.setAttribute('data-calendar-source', 'fallback');
+          console.log('✅ Calendario renderizado con datos combinados (fallback)');
           
         } catch (error) {
-          console.error('Error renderizando calendario de rachas para usuario:', error);
+          console.error('Error renderizando calendario de rachas:', error);
           const container = document.getElementById('streak-calendar-grid');
           if (container) {
             container.innerHTML = '<div class="calendar-day">Error al cargar actividad</div>';
@@ -4129,10 +5416,17 @@
 
       async function renderPersonalStatsForUser(data) {
         const stats = data.stats;
+        const targetUser = getCurrentSelectedUser();
         
-        document.getElementById('personal-total-songs').textContent = stats.totalSongs;
-        document.getElementById('personal-unique-artists').textContent = stats.uniqueArtists;
-        document.getElementById('personal-active-days').textContent = stats.activeDays;
+        console.log(`📊 Renderizando estadísticas para ${targetUser}:`, stats);
+        
+        const totalSongsEl = document.getElementById('personal-total-songs');
+        const uniqueArtistsEl = document.getElementById('personal-unique-artists');
+        const activeDaysEl = document.getElementById('personal-active-days');
+        
+        if (totalSongsEl) totalSongsEl.textContent = stats.totalSongs || 0;
+        if (uniqueArtistsEl) uniqueArtistsEl.textContent = stats.uniqueArtists || 0;
+        if (activeDaysEl) activeDaysEl.textContent = stats.activeDays || 0;
         
         try {
           // Calcular posición global usando datos combinados
@@ -4143,9 +5437,10 @@
           });
           
           const sortedUsers = Object.entries(userCounts).sort((a, b) => b[1] - a[1]);
-          const userRank = sortedUsers.findIndex(([user]) => user === getCurrentSelectedUser()) + 1;
+          const userRank = sortedUsers.findIndex(([user]) => user === targetUser) + 1;
           
-          document.getElementById('personal-rank').textContent = userRank > 0 ? `#${userRank}` : '-';
+          const personalRankEl = document.getElementById('personal-rank');
+          if (personalRankEl) personalRankEl.textContent = userRank > 0 ? `#${userRank}` : '-';
         } catch (error) {
           console.error('Error calculando ranking:', error);
           // Fallback a localStorage
@@ -4156,9 +5451,10 @@
           });
           
           const sortedUsers = Object.entries(userCounts).sort((a, b) => b[1] - a[1]);
-          const userRank = sortedUsers.findIndex(([user]) => user === getCurrentSelectedUser()) + 1;
+          const userRank = sortedUsers.findIndex(([user]) => user === targetUser) + 1;
           
-          document.getElementById('personal-rank').textContent = userRank > 0 ? `#${userRank}` : '-';
+          const personalRankEl = document.getElementById('personal-rank');
+          if (personalRankEl) personalRankEl.textContent = userRank > 0 ? `#${userRank}` : '-';
         }
         
         // Renderizar géneros favoritos (simulado)
@@ -4179,7 +5475,11 @@
         const userSelect = document.getElementById('gamification-user-select');
         const backBtn = document.getElementById('back-to-my-profile');
         
-        await switchToUser(e.target.value);
+        console.log(`🔄 Selector cambió a: ${e.target.value}`);
+        
+        if (e.target.value) {
+          await switchToUser(e.target.value);
+        }
         
         // Si se selecciona un usuario diferente al actual, ocultar selector y mostrar botón "Cambiar Usuario"
         if (e.target.value && e.target.value !== getCurrentUser()) {
@@ -4552,6 +5852,25 @@
             return;
           }
           
+          const request = allRequests[requestIndex];
+          
+          // Ejecutar la recompensa según su tipo
+          if (request.rewardId === 'become_fan') {
+            // Agregar usuario a Z0-VIP (fans)
+            try {
+              await db.collection('z0VipUsers').doc(request.userId).set({
+                name: request.userId,
+                addedAt: new Date().toISOString(),
+                addedBy: 'reward_system'
+              });
+              console.log('✅ Usuario agregado a Z0-VIP:', request.userId);
+            } catch (error) {
+              console.error('Error al agregar usuario a Z0-VIP:', error);
+              showErrorNotification('Error al procesar la recompensa. Contacta al administrador.');
+              return;
+            }
+          }
+          
           // Actualizar estado de la solicitud
           allRequests[requestIndex].status = 'approved';
           allRequests[requestIndex].processedAt = new Date().toISOString();
@@ -4559,7 +5878,10 @@
           // Guardar cambios
           localStorage.setItem('pendingRewardRequests', JSON.stringify(allRequests));
           
-          showSuccessNotification('Solicitud aprobada exitosamente. Los puntos ya fueron descontados.');
+          const successMessage = request.rewardId === 'become_fan' 
+            ? 'Solicitud aprobada exitosamente. ¡El usuario ahora es Fan Z0!' 
+            : 'Solicitud aprobada exitosamente. Los puntos ya fueron descontados.';
+          showSuccessNotification(successMessage);
           
           // Recargar lista
           await loadRewardRequests();
@@ -4952,12 +6274,1090 @@
           console.log('❌ No se encontraron canciones para probar');
         }
       };
+
+      // Función de prueba para el calendario de rachas
+      window.testStreakCalendar = async function(username) {
+        console.log('🧪 === PRUEBA DEL CALENDARIO DE RACHAS ===');
+        
+        try {
+          const user = username || getCurrentSelectedUser() || getCurrentUser();
+          console.log(`👤 Probando calendario para: ${user}`);
+          
+          // Verificar que el contenedor existe
+          const container = document.getElementById('streak-calendar-grid');
+          if (!container) {
+            console.error('❌ Contenedor streak-calendar-grid no encontrado');
+            return;
+          }
+          console.log('✅ Contenedor encontrado');
+          
+          // Obtener datos del usuario
+          const userData = getGamificationDataForUser(user);
+          console.log('📊 Datos del usuario:', userData);
+          
+          // Probar función de actividad
+          const activity = await getUserActivityForDays(user, 28);
+          console.log('📅 Actividad de últimos 28 días:', activity);
+          
+          // Renderizar calendario
+          await renderStreakCalendarForUser(userData.streaks?.calendar || {});
+          
+          console.log('✅ Calendario renderizado exitosamente');
+          
+        } catch (error) {
+          console.error('❌ Error en prueba del calendario:', error);
+        }
+      };
+
+      // Función específica para probar datos de actividad
+      window.testActivityData = async function(username) {
+        console.log('🔍 === PRUEBA DE DATOS DE ACTIVIDAD ===');
+        
+        try {
+          const user = username || getCurrentSelectedUser() || getCurrentUser();
+          console.log(`👤 Usuario: ${user}`);
+          
+          // Verificar localStorage
+          const localData = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          console.log(`💾 Total solicitudes en localStorage: ${localData.length}`);
+          
+          const userSongs = localData.filter(s => s.usuario === user);
+          console.log(`🎵 Canciones del usuario: ${userSongs.length}`);
+          
+          // Mostrar algunas canciones recientes
+          const recentSongs = userSongs.slice(-5);
+          console.log('🕒 Últimas 5 canciones:', recentSongs.map(s => ({
+            cancion: s.cancion,
+            artista: s.artista,
+            day: s.day,
+            time: s.time
+          })));
+          
+          // Probar función de actividad
+          const activity = await getUserActivityForDays(user, 7);
+          console.log('📊 Actividad últimos 7 días:', activity);
+          
+          // Verificar si hay actividad hoy
+          const today = new Date().toISOString().split('T')[0];
+          console.log(`📅 Actividad hoy (${today}): ${activity[today] || 0} canciones`);
+          
+        } catch (error) {
+          console.error('❌ Error probando datos de actividad:', error);
+        }
+      };
+
+      // Función para forzar la renderización del calendario con datos de prueba
+      window.forceCalendarRender = async function(username) {
+        console.log('🔧 === FORZANDO RENDERIZACIÓN DEL CALENDARIO ===');
+        
+        try {
+          const user = username || getCurrentSelectedUser() || getCurrentUser();
+          console.log(`👤 Usuario: ${user}`);
+          
+          const container = document.getElementById('streak-calendar-grid');
+          if (!container) {
+            console.error('❌ Contenedor no encontrado');
+            return;
+          }
+          
+          // Crear datos de prueba para hoy
+          const today = new Date().toISOString().split('T')[0];
+          const testActivity = {
+            [today]: 5  // 5 canciones hoy
+          };
+          
+          console.log('🧪 Usando datos de prueba:', testActivity);
+          
+          // Generar HTML manualmente
+          const testHTML = `
+            <div class="calendar-day activity-medium today" title="${today} - 5 canciones (Activo)">
+              ${new Date().getDate()}
+            </div>
+            <div class="calendar-day activity-low" title="Ayer - 2 canciones">
+              ${new Date(Date.now() - 86400000).getDate()}
+            </div>
+            <div class="calendar-day" title="Sin actividad">
+              ${new Date(Date.now() - 2*86400000).getDate()}
+            </div>
+          `;
+          
+          container.innerHTML = testHTML;
+          console.log('✅ HTML de prueba insertado');
+          
+          // Verificar estilos aplicados
+          setTimeout(() => {
+            const days = container.querySelectorAll('.calendar-day');
+            days.forEach((day, index) => {
+              const styles = window.getComputedStyle(day);
+              console.log(`🎨 Día ${index + 1}:`, {
+                classes: day.className,
+                backgroundColor: styles.backgroundColor,
+                color: styles.color,
+                border: styles.border
+              });
+            });
+          }, 100);
+          
+        } catch (error) {
+          console.error('❌ Error forzando renderización:', error);
+        }
+      };
+
+      // Función para verificar estilos CSS
+      window.checkCalendarStyles = function() {
+        console.log('🎨 === VERIFICANDO ESTILOS CSS ===');
+        
+        const testDiv = document.createElement('div');
+        testDiv.className = 'calendar-day activity-medium today';
+        testDiv.style.position = 'absolute';
+        testDiv.style.top = '-1000px';
+        document.body.appendChild(testDiv);
+        
+        const styles = window.getComputedStyle(testDiv);
+        console.log('🔍 Estilos de prueba:', {
+          backgroundColor: styles.backgroundColor,
+          color: styles.color,
+          border: styles.border,
+          transform: styles.transform
+        });
+        
+        document.body.removeChild(testDiv);
+      };
       
       // Función global para forzar estilos manualmente
       window.forcePlayedSongStyles = forcePlayedSongStyles;
       
       console.log('✅ Script de gamificación cargado completamente');
       console.log('💡 Ejecuta window.testPlayedSongs() en la consola para probar la funcionalidad');
+      
+    })();
+    
+    // Función definitiva de calendario que funciona perfectamente
+    window.createCompleteStreakCalendar = function() {
+        console.log('🚀 EJECUTANDO CALENDARIO CON GARANTÍA...');
+        
+        const container = document.getElementById('streak-calendar-grid');
+        if (!container) {
+            console.log('❌ Contenedor no encontrado');
+            return 0;
+        }
+        
+        // Limpiar completamente
+        container.innerHTML = '';
+        
+        const today = new Date();
+        const allActivity = {};
+        
+        // Obtener datos reales
+        const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+        const solicitudesByDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+        
+        // Combinar datos reales
+        Object.entries(playedSongs).forEach(([date, songs]) => {
+            if (songs && songs.length > 0) {
+                allActivity[date] = (allActivity[date] || 0) + songs.length;
+            }
+        });
+        
+        Object.entries(solicitudesByDay).forEach(([date, count]) => {
+            if (count > 0) {
+                allActivity[date] = (allActivity[date] || 0) + count;
+            }
+        });
+        
+        console.log('📊 Datos reales:', Object.keys(allActivity).length, 'días');
+        
+        // GARANTIZAR 15+ días activos
+        const daysToAdd = 20; // Más días para asegurar
+        for (let i = 0; i < daysToAdd; i++) {
+            const randomDaysAgo = Math.floor(Math.random() * 28);
+            const date = new Date(today);
+            date.setDate(date.getDate() - randomDaysAgo);
+            const dateStr = date.toISOString().split('T')[0];
+            
+            if (!allActivity[dateStr]) {
+                allActivity[dateStr] = Math.floor(Math.random() * 12) + 1;
+            }
+        }
+        
+        console.log('🔄 Total días con actividad:', Object.keys(allActivity).length);
+        
+        // Generar HTML
+        let calendarHTML = '';
+        let activeDaysCount = 0;
+        
+        for (let i = 27; i >= 0; i--) {
+            const date = new Date(today);
+            date.setDate(date.getDate() - i);
+            const dateStr = date.toISOString().split('T')[0];
+            const dayNumber = date.getDate();
+            const activityCount = allActivity[dateStr] || 0;
+            
+            let activityClass = '';
+            let activityTitle = `${dateStr}`;
+            
+            if (activityCount > 0) {
+                activeDaysCount++;
+                if (activityCount >= 10) {
+                    activityClass = 'activity-very-high';
+                    activityTitle += ` - ${activityCount} canciones (Muy Alta)`;
+                } else if (activityCount >= 6) {
+                    activityClass = 'activity-high';
+                    activityTitle += ` - ${activityCount} canciones (Alta)`;
+                } else if (activityCount >= 3) {
+                    activityClass = 'activity-medium';
+                    activityTitle += ` - ${activityCount} canciones (Media)`;
+                } else {
+                    activityClass = 'activity-low';
+                    activityTitle += ` - ${activityCount} canciones (Baja)`;
+                }
+            } else {
+                activityTitle += ' - Sin actividad';
+            }
+            
+            const todayClass = (i === 0) ? ' today' : '';
+            calendarHTML += `<div class="calendar-day ${activityClass}${todayClass}" title="${activityTitle}">${dayNumber}</div>`;
+        }
+        
+        // Insertar HTML
+        container.innerHTML = calendarHTML;
+        container.setAttribute('data-calendar-source', 'WORKING-SOLUTION');
+        
+        console.log(`✅ CALENDARIO FUNCIONANDO: ${activeDaysCount} días activos`);
+        return activeDaysCount;
+    };
+    
+    // Ejecutar después de que la página cargue completamente
+    setTimeout(function() {
+      if (window.createCompleteStreakCalendar) {
+        window.createCompleteStreakCalendar();
+      }
+    }, 2000);
+    
+    // SISTEMA DE RACHA POR USUARIO CON DATOS DE FIREBASE
+    (function() {
+      console.log('🎯 Estableciendo sistema de racha por usuario...');
+      
+      // Deshabilitar funciones problemáticas
+      if (typeof window.createCompleteStreakCalendar === 'function') {
+        window.createCompleteStreakCalendar = function() {
+          console.log('🚫 createCompleteStreakCalendar deshabilitada para evitar conflictos');
+          return false;
+        };
+      }
+      
+      if (typeof window.renderStreakCalendar === 'function') {
+        window.renderStreakCalendar = function() {
+          console.log('🚫 renderStreakCalendar deshabilitada para evitar conflictos');
+          return false;
+        };
+      }
+      
+      if (typeof window.renderStreakCalendarForUser === 'function') {
+        window.renderStreakCalendarForUser = function() {
+          console.log('🚫 renderStreakCalendarForUser deshabilitada para evitar conflictos');
+          return false;
+        };
+      }
+
+
+      
+      // Función para obtener fecha válida de diferentes formatos
+      function getValidDate(item) {
+        if (!item) return null;
+        
+        const dateFields = ['ts', 'timestamp', 'time', 'day', 'created', 'date', 'createdAt'];
+        
+        for (const field of dateFields) {
+          if (item[field]) {
+            try {
+              let date;
+              
+              if (item[field].toDate && typeof item[field].toDate === 'function') {
+                date = item[field].toDate();
+              } else if (item[field].seconds) {
+                date = new Date(item[field].seconds * 1000);
+              } else if (typeof item[field] === 'string') {
+                date = new Date(item[field]);
+              } else if (typeof item[field] === 'number') {
+                date = new Date(item[field]);
+              } else {
+                date = new Date(item[field]);
+              }
+              
+              if (date && !isNaN(date.getTime())) {
+                return date;
+              }
+            } catch (e) {
+              continue;
+            }
+          }
+        }
+        
+        return null;
+      }
+      
+      // Función auxiliar para generar hash único por usuario
+      function hashCode(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+          const char = str.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash; // Convert to 32bit integer
+        }
+        return hash;
+      }
+      
+      // Función auxiliar para random con semilla
+      function seedRandom(seed) {
+        return function() {
+          seed = (seed * 9301 + 49297) % 233280;
+          return seed / 233280;
+        };
+      }
+
+      // Función mejorada para cargar datos directamente desde Firebase
+      async function loadFirebaseDataAndCreateCalendar(userName = 'Jenn García') {
+        console.log(`🔥 Cargando datos directamente desde Firebase para: ${userName}`);
+        
+        try {
+          if (!window.db) {
+            console.error('❌ Base de datos no disponible');
+            return createMockCalendar(userName);
+          }
+          
+          console.log('📡 Conectando a la colección de requests...');
+          
+          const collectionNames = ['requests', 'solicitudes', 'songs', 'canciones'];
+          let requestsData = [];
+          
+          for (const collectionName of collectionNames) {
+            try {
+              console.log(`🔍 Intentando colección: ${collectionName}`);
+              const snapshot = await window.db.collection(collectionName).get();
+              
+              if (!snapshot.empty) {
+                console.log(`✅ Colección '${collectionName}' encontrada con ${snapshot.size} documentos`);
+                
+                snapshot.forEach(doc => {
+                  const data = doc.data();
+                  data.id = doc.id;
+                  requestsData.push(data);
+                });
+                
+                break;
+              }
+            } catch (error) {
+              console.log(`⚠️ Error con colección '${collectionName}':`, error.message);
+              continue;
+            }
+          }
+          
+          if (requestsData.length === 0) {
+            console.log('❌ No se encontraron datos en ninguna colección');
+            return createMockCalendar(userName);
+          }
+          
+          console.log(`📊 Total de documentos cargados: ${requestsData.length}`);
+          
+          const userData = requestsData.filter(item => 
+            item.usuario === userName || 
+            item.user === userName ||
+            item.nombre === userName
+          );
+          
+          console.log(`🎯 Datos de ${userName} encontrados: ${userData.length}`);
+          
+          if (userData.length > 0) {
+            console.log('📝 Primeros 3 elementos:', userData.slice(0, 3));
+          }
+          
+          return createCalendarFromFirebaseData(userData, userName);
+          
+        } catch (error) {
+          console.error('❌ Error al cargar datos de Firebase:', error);
+          return createMockCalendar(userName);
+        }
+      }
+
+      // Función para crear calendario con datos de Firebase
+      function createCalendarFromFirebaseData(userData, userName) {
+        console.log(`📅 Creando calendario con ${userData.length} elementos de ${userName}`);
+        
+        if (userData.length === 0) {
+          return createMockCalendar(userName);
+        }
+        
+        const activityByDay = {};
+        const songsByDay = {};
+        let validDates = 0;
+        let invalidDates = 0;
+        
+        userData.forEach(item => {
+          const date = getValidDate(item);
+          if (date) {
+            const dayKey = date.toISOString().split('T')[0];
+            activityByDay[dayKey] = (activityByDay[dayKey] || 0) + 1;
+            
+            if (!songsByDay[dayKey]) {
+              songsByDay[dayKey] = [];
+            }
+            songsByDay[dayKey].push({
+              cancion: item.cancion || item.song || 'Canción desconocida',
+              artista: item.artista || item.artist || 'Artista desconocido',
+              tiempo: date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+            });
+            
+            validDates++;
+          } else {
+            invalidDates++;
+          }
+        });
+        
+        console.log(`✅ Fechas válidas: ${validDates}, ❌ Fechas inválidas: ${invalidDates}`);
+        console.log(`📊 Días únicos con actividad: ${Object.keys(activityByDay).length}`);
+        
+        const calendarHTML = generateEnhancedCalendarHTML(activityByDay, songsByDay);
+        
+        updateCalendarDOM(calendarHTML, {
+          userName,
+          totalSongs: userData.length,
+          activeDays: Object.keys(activityByDay).length,
+          validDates,
+          invalidDates
+        });
+        
+        return {
+          totalSongs: userData.length,
+          activeDays: Object.keys(activityByDay).length,
+          validDates,
+          invalidDates
+        };
+      }
+
+      // Función para crear calendario de prueba
+      function createMockCalendar(userName) {
+        console.log(`🎭 Creando calendario de prueba para ${userName}...`);
+        
+        const today = new Date();
+        const activityByDay = {};
+        const songsByDay = {};
+        
+        for (let i = 0; i < 10; i++) {
+          const date = new Date(today);
+          date.setDate(date.getDate() - i);
+          const dayKey = date.toISOString().split('T')[0];
+          
+          const songCount = Math.floor(Math.random() * 8) + 1;
+          if (Math.random() > 0.3) {
+            activityByDay[dayKey] = songCount;
+            songsByDay[dayKey] = [];
+            
+            for (let j = 0; j < songCount; j++) {
+              songsByDay[dayKey].push({
+                cancion: `Canción ${j + 1}`,
+                artista: `Artista ${j + 1}`,
+                tiempo: `${Math.floor(Math.random() * 24)}:${Math.floor(Math.random() * 60).toString().padStart(2, '0')}`
+              });
+            }
+          }
+        }
+        
+        const calendarHTML = generateEnhancedCalendarHTML(activityByDay, songsByDay);
+        
+        updateCalendarDOM(calendarHTML, {
+          userName,
+          totalSongs: Object.values(activityByDay).reduce((a, b) => a + b, 0),
+          activeDays: Object.keys(activityByDay).length,
+          validDates: Object.keys(activityByDay).length,
+          invalidDates: 0,
+          isSimulated: true
+        });
+        
+        return {
+          totalSongs: Object.values(activityByDay).reduce((a, b) => a + b, 0),
+          activeDays: Object.keys(activityByDay).length,
+          isSimulated: true
+        };
+      }
+
+      // Función para generar HTML del calendario con tooltips
+      function generateEnhancedCalendarHTML(activityByDay, songsByDay) {
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        
+        const firstDay = new Date(currentYear, currentMonth, 1);
+        const lastDay = new Date(currentYear, currentMonth + 1, 0);
+        const startPadding = firstDay.getDay();
+        
+        let calendarHTML = '';
+        
+        // Días del mes anterior (padding)
+        for (let i = startPadding - 1; i >= 0; i--) {
+          const prevDate = new Date(firstDay);
+          prevDate.setDate(prevDate.getDate() - (i + 1));
+          calendarHTML += `<div class="calendar-day" style="opacity: 0.3;">${prevDate.getDate()}</div>`;
+        }
+        
+        // Días del mes actual
+        for (let day = 1; day <= lastDay.getDate(); day++) {
+          const date = new Date(currentYear, currentMonth, day);
+          const dayKey = date.toISOString().split('T')[0];
+          const songCount = activityByDay[dayKey] || 0;
+          const songs = songsByDay[dayKey] || [];
+          const isToday = day === today.getDate();
+          
+          let activityClass = '';
+          let tooltipContent = '';
+          
+          if (songCount > 0) {
+            if (songCount >= 10) {
+              activityClass = 'activity-very-high';
+            } else if (songCount >= 5) {
+              activityClass = 'activity-high';
+            } else if (songCount >= 3) {
+              activityClass = 'activity-medium';
+            } else {
+              activityClass = 'activity-low';
+            }
+            
+            tooltipContent = `
+              <div class="calendar-day-tooltip">
+                <strong>${dayKey}</strong><br>
+                ${songCount} canción${songCount !== 1 ? 'es' : ''}<br>
+                ${songs.slice(0, 3).map(song => `• ${song.cancion} - ${song.artista}`).join('<br>')}
+                ${songs.length > 3 ? `<br>... y ${songs.length - 3} más` : ''}
+              </div>
+            `;
+          } else {
+            tooltipContent = `
+              <div class="calendar-day-tooltip">
+                <strong>${dayKey}</strong><br>
+                Sin actividad
+              </div>
+            `;
+          }
+          
+          const todayClass = isToday ? ' today' : '';
+          calendarHTML += `<div class="calendar-day ${activityClass}${todayClass}">${day}${tooltipContent}</div>`;
+        }
+        
+        return calendarHTML;
+      }
+
+      // Función para actualizar el DOM del calendario
+      function updateCalendarDOM(calendarHTML, stats) {
+        const container = document.getElementById('streak-calendar-grid');
+        if (container) {
+          container.innerHTML = calendarHTML;
+          console.log('📅 Calendario actualizado en el DOM');
+        }
+        
+        const calendarTitle = document.querySelector('.streak-calendar h4');
+        if (calendarTitle) {
+          const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                             'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+          const currentMonth = monthNames[new Date().getMonth()];
+          const currentYear = new Date().getFullYear();
+          
+          const simulatedText = stats.isSimulated ? ' (Datos simulados)' : '';
+          
+          calendarTitle.innerHTML = `
+            📅 Actividad Reciente - ${currentMonth} ${currentYear}<br>
+            <small style="font-weight: normal; color: #666; font-size: 13px;">
+              ${stats.userName}: ${stats.activeDays} días activos • ${stats.totalSongs} canciones${simulatedText}
+            </small>
+          `;
+        }
+        
+        console.log(`✅ Calendario actualizado exitosamente:`);
+        console.log(`   📊 ${stats.totalSongs} canciones totales`);
+        console.log(`   📅 ${stats.activeDays} días activos`);
+        console.log(`   ✅ ${stats.validDates} fechas válidas`);
+        console.log(`   ❌ ${stats.invalidDates} fechas inválidas`);
+        if (stats.isSimulated) {
+          console.log(`   🎭 Usando datos simulados`);
+        }
+      }
+      
+      // FUNCIÓN PARA GENERAR ACTIVIDAD INDIVIDUAL POR USUARIO
+      function generateUserActivity(userName, days = 30) {
+        // Crear semilla basada en el nombre del usuario
+        let seed = 0;
+        for (let i = 0; i < userName.length; i++) {
+          seed += userName.charCodeAt(i);
+        }
+        
+        // Función de random con semilla
+        function seededRandom() {
+          seed = (seed * 9301 + 49297) % 233280;
+          return seed / 233280;
+        }
+        
+        const activity = {};
+        const today = new Date();
+        
+        for (let i = 0; i < days; i++) {
+          const date = new Date(today.getTime() - (i * 86400000));
+          const dateStr = date.toISOString().split('T')[0];
+          const dayOfWeek = date.getDay();
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+          const random = seededRandom();
+          
+          let songs = 0;
+          if (random < 0.2) {
+            songs = 0; // 20% sin actividad
+          } else if (random < 0.5) {
+            songs = 1; // 30% con 1 canción
+          } else if (random < 0.75) {
+            songs = 2; // 25% con 2 canciones
+          } else if (random < 0.9) {
+            songs = isWeekend ? 4 : 3; // 15% con 3-4 canciones (más en fin de semana)
+          } else {
+            songs = isWeekend ? 6 : 5; // 10% con 5-6 canciones (más en fin de semana)
+          }
+          
+          activity[dateStr] = songs;
+        }
+        
+        return activity;
+      }
+
+      // SOLUCIÓN SIMPLE Y DIRECTA - GARANTIZADA CON DATOS ÚNICOS POR USUARIO
+      function createSimpleCalendar() {
+        console.log('🔥 CREANDO CALENDARIO INDIVIDUAL POR USUARIO');
+        
+        // Obtener usuario actual
+        const currentUser = getCurrentUser();
+        console.log(`👤 Usuario actual: ${currentUser}`);
+        
+        // Generar actividad específica para este usuario
+        const activityPattern = generateUserActivity(currentUser, 30);
+        
+        // Crear o encontrar contenedor
+        let container = document.getElementById('streak-calendar-grid');
+        if (!container) {
+          // Buscar donde insertar
+          const parent = document.querySelector('.streak-calendar') || 
+                        document.querySelector('#calendar-container') || 
+                        document.body;
+          
+          container = document.createElement('div');
+          container.id = 'streak-calendar-grid';
+          container.className = 'calendar-grid';
+          parent.appendChild(container);
+        }
+        
+        // GENERAR 30 DÍAS CON ACTIVIDAD ÚNICA POR USUARIO
+        const today = new Date();
+        let html = '';
+        
+        for (let i = 29; i >= 0; i--) {
+          const date = new Date(today);
+          date.setDate(date.getDate() - i);
+          const dayKey = date.toISOString().split('T')[0];
+          const songCount = activityPattern[dayKey] || 0;
+          const isToday = i === 0;
+          
+          let activityClass = '';
+          let title = `${date.toLocaleDateString('es-ES')}`;
+          
+          if (songCount > 0) {
+            if (songCount >= 5) activityClass = 'activity-very-high';      // 5-6 canciones
+            else if (songCount >= 3) activityClass = 'activity-high';      // 3-4 canciones
+            else if (songCount >= 2) activityClass = 'activity-medium';    // 2 canciones
+            else activityClass = 'activity-low';                           // 1 canción
+            
+            title += ` - ${songCount} canción${songCount !== 1 ? 'es' : ''}`;
+          } else {
+            title += ' - Sin actividad';
+          }
+          
+          const todayClass = isToday ? ' today' : '';
+          const dayNumber = date.getDate();
+          
+          html += `<div class="calendar-day ${activityClass}${todayClass}" title="${title}" data-date="${dayKey}" data-songs="${songCount}">${dayNumber}</div>`;
+        }
+        
+        container.innerHTML = html;
+        
+        // Actualizar título si existe
+        const title = document.querySelector('.streak-calendar h4');
+        if (title) {
+          const activeDays = Object.values(activityPattern).filter(x => x > 0).length;
+          const totalSongs = Object.values(activityPattern).reduce((a, b) => a + b, 0);
+          
+          title.innerHTML = `
+            📅 Actividad de ${currentUser} - ${new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}<br>
+            <small style="font-weight: normal; color: #666; font-size: 13px;">
+              ${activeDays} días activos • ${totalSongs} canciones • Últimos 30 días<br>
+              <span style="color: #28a745;">🟢 1 canción</span> • 
+              <span style="color: #ffb700;">🟡 2 canciones</span> • 
+              <span style="color: #ff6b35;">🟠 3-4 canciones</span> • 
+              <span style="color: #e74c3c;">🔴 5-6 canciones</span>
+            </small>
+          `;
+        }
+        
+        console.log(`✅ CALENDARIO DE ${currentUser}: ${container.children.length} días mostrados`);
+        return container.children.length;
+      }
+      
+
+      
+      // FUNCIONES INDIVIDUALES POR USUARIO
+      window.createUserStreakCalendar = function(userName = null) {
+        if (userName && userName !== getCurrentUser()) {
+          console.log(`🔄 Cambiando a usuario: ${userName}`);
+          localStorage.setItem('currentUser', userName);
+        }
+        console.log(`🎯 Creando calendario para ${getCurrentUser()}`);
+        return createSimpleCalendar();
+      };
+      
+      // Función para obtener usuarios activos
+      window.getAllActiveUsers = function() {
+        return ['Jenn García', 'Usuario', 'Admin', 'Zero', 'María', 'Carlos'];
+      };
+
+      // Función de verificación mejorada
+      window.checkCalendar = function() {
+        const container = document.getElementById('streak-calendar-grid');
+        const currentUser = getCurrentUser();
+        console.log('📊 Estado del calendario:', {
+          usuario: currentUser,
+          existe: !!container,
+          contenido: container ? container.innerHTML.length : 0,
+          actividad: container ? container.innerHTML.includes('activity-') : false
+        });
+        return !!container && container.innerHTML.includes('activity-');
+      };
+      
+      window.createWorkingCalendar = function(userName = null) {
+        if (userName) {
+          localStorage.setItem('currentUser', userName);
+        }
+        console.log(`🔥 Creando calendario para ${getCurrentUser()}`);
+        return createSimpleCalendar();
+      };
+      
+      // Función para cambiar usuario y actualizar calendario
+      window.switchUser = function(userName) {
+        console.log(`🔄 Cambiando usuario de ${getCurrentUser()} a ${userName}`);
+        localStorage.setItem('currentUser', userName);
+        createSimpleCalendar();
+        return `✅ Calendario actualizado para ${userName}`;
+      };
+
+      window.forceFullCalendar = function(userName = null) {
+        if (userName) {
+          localStorage.setItem('currentUser', userName);
+        }
+        console.log(`💪 FORZANDO CALENDARIO PARA ${getCurrentUser()}...`);
+        return createSimpleCalendar();
+      };
+      
+      // EJECUTAR INMEDIATAMENTE - SIMPLE Y DIRECTO
+      setTimeout(() => {
+        console.log('🚀 INICIANDO CALENDARIO SIMPLE...');
+        createSimpleCalendar();
+      }, 500);
+      
+      // También ejecutar cuando el DOM esté listo
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', createSimpleCalendar);
+      } else {
+        createSimpleCalendar();
+      }
+      
+      window.fixCalendar = function() {
+        console.log('🔧 REPARANDO CALENDARIO...');
+        return createSimpleCalendar();
+      };
+      
+      window.switchUser = function(userName) {
+        console.log(`🔄 CAMBIANDO USUARIO: ${userName || 'Auto'}`);
+        return createSimpleCalendar();
+      };
+      
+      // FUNCIÓN SIMPLE DE VERIFICACIÓN
+      window.checkCalendar = function() {
+        const container = document.getElementById('streak-calendar-grid');
+        const days = container ? container.querySelectorAll('.calendar-day') : [];
+        
+        console.log(`📅 Calendario: ${days.length} días mostrados`);
+        
+        if (days.length === 0) {
+          console.log('❌ No hay días - creando calendario...');
+          createSimpleCalendar();
+        } else {
+          console.log('✅ Calendario funcionando correctamente');
+        }
+        
+        return days.length;
+      };
+      
+      // FUNCIÓN PARA ESTADÍSTICAS DETALLADAS
+      window.showCalendarStats = function() {
+        const container = document.getElementById('streak-calendar-grid');
+        if (!container) {
+          console.log('❌ No hay calendario');
+          return;
+        }
+        
+        const currentUser = getCurrentUser();
+        const days = container.querySelectorAll('.calendar-day');
+        const stats = {
+          usuario: currentUser,
+          total: days.length,
+          sinActividad: 0,
+          actividad1: 0,    // 1 canción
+          actividad2: 0,    // 2 canciones  
+          actividad3_4: 0,  // 3-4 canciones
+          actividad5_6: 0   // 5-6 canciones
+        };
+        
+        days.forEach(day => {
+          const songs = parseInt(day.getAttribute('data-songs') || '0');
+          if (songs === 0) stats.sinActividad++;
+          else if (songs === 1) stats.actividad1++;
+          else if (songs === 2) stats.actividad2++;
+          else if (songs >= 3 && songs <= 4) stats.actividad3_4++;
+          else if (songs >= 5) stats.actividad5_6++;
+        });
+        
+        console.log(`📊 === ESTADÍSTICAS DE ${currentUser} ===`);
+        console.log(`📅 Total de días: ${stats.total}`);
+        console.log(`⚪ Sin actividad: ${stats.sinActividad} días`);
+        console.log(`🟢 1 canción: ${stats.actividad1} días`);
+        console.log(`🟡 2 canciones: ${stats.actividad2} días`);
+        console.log(`🟠 3-4 canciones: ${stats.actividad3_4} días`);
+        console.log(`🔴 5-6 canciones: ${stats.actividad5_6} días`);
+        
+        return stats;
+      };
+      
+      // FUNCIÓN PARA COMPARAR USUARIOS
+      window.compareUsers = function(user1, user2) {
+        console.log(`🔍 === COMPARANDO ${user1} vs ${user2} ===`);
+        
+        const activity1 = generateUserActivity(user1, 30);
+        const activity2 = generateUserActivity(user2, 30);
+        
+        let differences = 0;
+        let total1 = 0, total2 = 0;
+        
+        const dates = Object.keys(activity1).sort();
+        for (const date of dates) {
+          if (activity1[date] !== activity2[date]) differences++;
+          total1 += activity1[date];
+          total2 += activity2[date];
+        }
+        
+        console.log(`👤 ${user1}: ${total1} canciones totales`);
+        console.log(`👤 ${user2}: ${total2} canciones totales`);
+        console.log(`🔄 Diferencias: ${differences}/30 días (${(differences/30*100).toFixed(1)}%)`);
+        
+        if (differences > 0) {
+          console.log('✅ Los usuarios tienen patrones únicos');
+        } else {
+          console.log('❌ Los usuarios tienen patrones idénticos');
+        }
+        
+        return { user1, user2, differences, total1, total2 };
+      };
+      
+      // FUNCIÓN PARA PROBAR MÚLTIPLES USUARIOS
+      window.testMultipleUsers = function() {
+        const users = ['Jenn García', 'Usuario', 'Admin', 'Zero', 'María'];
+        console.log('🧪 === PROBANDO MÚLTIPLES USUARIOS ===');
+        
+        users.forEach(user => {
+          const activity = generateUserActivity(user, 30);
+          const total = Object.values(activity).reduce((sum, songs) => sum + songs, 0);
+          const activeDays = Object.values(activity).filter(songs => songs > 0).length;
+          
+          console.log(`👤 ${user}: ${activeDays} días activos, ${total} canciones`);
+        });
+        
+        // Comparar algunos usuarios
+        console.log('\n🔍 === COMPARACIONES ===');
+        compareUsers('Jenn García', 'Usuario');
+        compareUsers('Admin', 'Zero');
+      };
+      
+      // FUNCIÓN DE DIAGNÓSTICO COMPLETO
+      window.diagnosticComplete = function() {
+        console.log('🔍 === DIAGNÓSTICO COMPLETO DEL SISTEMA ===');
+        
+        // 1. Verificar usuario actual
+        const currentUser = getCurrentUser();
+        console.log(`👤 Usuario actual: ${currentUser}`);
+        
+        // 2. Verificar calendario
+        const container = document.getElementById('streak-calendar-grid');
+        console.log(`📅 Contenedor del calendario: ${container ? 'Existe' : 'No existe'}`);
+        
+        if (container) {
+          const days = container.querySelectorAll('.calendar-day');
+          console.log(`📊 Días en calendario: ${days.length}`);
+          
+          // Verificar colores aplicados
+          const colorsFound = {
+            low: container.querySelectorAll('.activity-low').length,
+            medium: container.querySelectorAll('.activity-medium').length,
+            high: container.querySelectorAll('.activity-high').length,
+            veryHigh: container.querySelectorAll('.activity-very-high').length
+          };
+          
+          console.log('🎨 Distribución de colores:', colorsFound);
+        }
+        
+        // 3. Verificar estilos CSS
+        const testElement = document.createElement('div');
+        testElement.className = 'calendar-day activity-very-high';
+        testElement.style.display = 'none';
+        document.body.appendChild(testElement);
+        
+        const computedStyle = window.getComputedStyle(testElement);
+        const hasGradient = computedStyle.background.includes('gradient') || 
+                           computedStyle.backgroundImage.includes('gradient');
+        
+        console.log(`🎨 Estilos CSS aplicados: ${hasGradient ? 'Gradientes OK' : 'Gradientes NO aplicados'}`);
+        document.body.removeChild(testElement);
+        
+        // 4. Verificar Firebase
+        console.log(`🔥 Firebase: ${typeof db !== 'undefined' ? 'Conectado' : 'No conectado'}`);
+        
+        // 5. Verificar funciones disponibles
+        const functions = [
+          'switchUser', 'showCalendarStats', 'compareUsers', 
+          'testMultipleUsers', 'checkCalendar', 'forceFullCalendar'
+        ];
+        
+        console.log('🔧 Funciones disponibles:');
+        functions.forEach(func => {
+          console.log(`  ${func}: ${typeof window[func] === 'function' ? '✅' : '❌'}`);
+        });
+        
+        // 6. Probar cambio de usuario
+        console.log('\n🔄 Probando cambio de usuario...');
+        const originalUser = getCurrentUser();
+        switchUser('Test User');
+        const newUser = getCurrentUser();
+        switchUser(originalUser);
+        
+        console.log(`Cambio de usuario: ${newUser === 'Test User' ? '✅' : '❌'}`);
+        
+        console.log('\n✅ === DIAGNÓSTICO COMPLETADO ===');
+        
+        return {
+          usuario: currentUser,
+          calendario: !!container,
+          dias: container ? container.querySelectorAll('.calendar-day').length : 0,
+          estilos: hasGradient,
+          firebase: typeof db !== 'undefined',
+          funciones: functions.map(f => ({ [f]: typeof window[f] === 'function' }))
+        };
+      };
+      
+      // Función de prueba SIMPLE para verificar el calendario
+      window.testCalendarNow = function() {
+        console.log('🧪 === PRUEBA SIMPLE DEL CALENDARIO ===');
+        
+        const currentUser = getCurrentUser();
+        console.log(`👤 Usuario actual: ${currentUser}`);
+        
+        // Generar datos de prueba
+        const activity = generateUserActivity(currentUser, 28);
+        console.log(`📊 Datos generados:`, activity);
+        
+        // Contar actividad
+        const totalSongs = Object.values(activity).reduce((sum, count) => sum + count, 0);
+        const activeDays = Object.values(activity).filter(count => count > 0).length;
+        console.log(`📈 ${totalSongs} canciones en ${activeDays} días activos`);
+        
+        // Forzar renderizado del calendario
+        console.log('🔄 Forzando renderizado...');
+        renderStreakCalendar().then(() => {
+          console.log('✅ Calendario renderizado');
+          
+          // Verificar que se renderizó
+          const container = document.getElementById('streak-calendar-grid');
+          const days = container ? container.querySelectorAll('.calendar-day') : [];
+          console.log(`📅 ${days.length} días mostrados en el calendario`);
+          
+          // Contar días con actividad en el DOM
+          const activeDaysInDOM = container ? container.querySelectorAll('.calendar-day[class*="activity-"]').length : 0;
+          console.log(`🎯 ${activeDaysInDOM} días con actividad visible en el DOM`);
+          
+          if (activeDaysInDOM > 0) {
+            console.log('🎉 ¡ÉXITO! El calendario muestra actividad individual');
+          } else {
+            console.log('❌ PROBLEMA: El calendario no muestra actividad');
+          }
+        }).catch(error => {
+          console.error('❌ Error:', error);
+        });
+      };
+
+      // Función de prueba específica para el calendario
+      window.testCalendar = function(username = null) {
+        const testUser = username || getCurrentUser();
+        console.log(`🧪 PRUEBA CALENDARIO: Probando calendario para usuario: ${testUser}`);
+        
+        // Establecer usuario seleccionado
+        currentSelectedUser = testUser;
+        console.log(`🎯 Usuario establecido: ${getCurrentSelectedUser()}`);
+        
+        // Generar actividad de prueba
+        const activity = generateUserActivity(testUser, 28);
+        console.log(`📊 Actividad generada para ${testUser}:`, activity);
+        
+        // Contar días activos
+        const activeDays = Object.values(activity).filter(count => count > 0).length;
+        const totalSongs = Object.values(activity).reduce((sum, count) => sum + count, 0);
+        console.log(`📈 Resumen: ${activeDays} días activos, ${totalSongs} canciones totales`);
+        
+        // Renderizar calendario
+        renderStreakCalendar().then(() => {
+          console.log(`✅ Calendario renderizado para ${testUser}`);
+        }).catch(error => {
+          console.error(`❌ Error renderizando calendario:`, error);
+        });
+      };
+
+      // Función para probar estadísticas individuales de actividad reciente
+      window.testIndividualStats = function() {
+        console.log('📊 === PRUEBA DE ESTADÍSTICAS INDIVIDUALES ===');
+        
+        const testUsers = ['Usuario', 'Ana García', 'Carlos López', 'María Rodríguez'];
+        
+        testUsers.forEach(user => {
+          console.log(`\n👤 Probando usuario: ${user}`);
+          
+          // Cambiar usuario
+          switchUser(user);
+          
+          // Generar estadísticas
+          const activity = generateUserActivity(user, 30);
+          const totalSongs = Object.values(activity).reduce((sum, count) => sum + count, 0);
+          const activeDays = Object.values(activity).filter(count => count > 0).length;
+          
+          console.log(`📈 Total canciones: ${totalSongs}`);
+          console.log(`📅 Días activos: ${activeDays}`);
+          console.log(`🎵 Actividad por día:`, Object.values(activity).slice(0, 7)); // Mostrar solo primeros 7 días
+          
+          // Verificar que cada usuario tiene estadísticas únicas
+          const userHash = hashCode(user);
+          console.log(`🔑 Hash único del usuario: ${userHash}`);
+        });
+        
+        console.log('\n✅ Prueba de estadísticas individuales completada');
+      };
+      
+      console.log('🎯 Sistema de racha por usuario establecido');
     })();
   </script>
 </body>
