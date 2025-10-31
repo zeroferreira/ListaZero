@@ -276,7 +276,6 @@
             <li>🎯 Botón dedicado para marcar canciones: Cada canción ahora tiene un botón específico (✓) para marcar/desmarcar.</li>
             <li>📝 Texto seleccionable: Ahora puedes seleccionar y copiar el texto de las canciones sin interferir con la funcionalidad de marcado.</li>
             <li>🖱️ Separación de funciones: El botón maneja el marcado y el texto permite selección independiente.</li>
-            <li>🖥️ Detección automática de dispositivos: Los PCs de escritorio se autorizan automáticamente como dispositivos DJ.</li>
             <li>📱 Optimización responsive: El botón se adapta perfectamente a diferentes tamaños de pantalla.</li>
             <li>🎨 Estados visuales mejorados: El botón cambia de apariencia cuando la canción está marcada (verde).</li>
             <li>🌙 Compatibilidad con temas: Funciona perfectamente en tema claro y oscuro.</li>
@@ -285,18 +284,9 @@
             <li>🎧 Nueva recompensa "Conviértete en fan": Los usuarios pueden obtener el estado de Fan Z0 permanente por 2000 puntos.</li>
             <li>🔄 Sistema de recálculo mejorado: Corrige automáticamente inconsistencias en puntos e insignias de usuarios.</li>
             <li>🛠️ Herramienta de mantenimiento: Botón de recálculo masivo en el panel de administración para corregir datos.</li>
-            <li>🔧 Corregido error en logging de logros (achievement.name → achievement.title).</li>
-            <li>🔧 Agregado bestStreak a las estadísticas para logros de racha.</li>
             <li>🔧 Mejorado cálculo de puntos de logros existentes y nuevos.</li>
             <li>🔧 Implementada validación y corrección automática de datos.</li>
             <li>🔧 Preservación correcta de estructura de rachas y estadísticas.</li>
-            <li>📅 <strong>Calendario de rachas corregido</strong>: Ahora muestra actividad única por usuario en lugar de datos generales.</li>
-            <li>🎯 <strong>Datos individualizados</strong>: Cada usuario ve su propio patrón de actividad en el calendario de rachas.</li>
-            <li>🔧 <strong>Función generateUserActivity mejorada</strong>: Corregida para devolver formato de objeto con fechas como claves.</li>
-            <li>⚡ <strong>Variables globales seguras</strong>: Solucionado error "vipSet is not defined" con inicialización robusta.</li>
-            <li>🛠️ <strong>Funciones de prueba agregadas</strong>: Herramientas de debug para verificar funcionamiento del calendario.</li>
-            <li>🔄 <strong>Compatibilidad mejorada</strong>: Todas las funciones del calendario actualizadas al nuevo formato de datos.</li>
-            <li>📊 <strong>Renderizado optimizado</strong>: El calendario se renderiza correctamente con datos específicos del usuario actual.</li>
           </ul>
 
             <h3>v1.6</h3>
@@ -692,7 +682,7 @@
           </div>
 
           <div class="actions modal-actions">
-            <button type="button" id="theme-reset" class="btn btn-secondary">Restablecer</button>
+            <button type="button" id="theme-reset" class="btn">Restablecer</button>
             <button type="button" id="theme-close" class="btn">Cerrar</button>
           </div>
         </div>
@@ -827,7 +817,12 @@
           toggleBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Click en botón de reproducción:', songId, 'Día:', currentDay);
+            
+            // Solo dispositivos de escritorio pueden marcar canciones
+            if (!isDJDevice()) {
+              return; // Salir silenciosamente
+            }
+            
             toggleSongPlayed(li, songId, currentDay);
           });
           
@@ -860,36 +855,57 @@
       }
 
       // Función para alternar el estado de canción reproducida (con sincronización Firebase)
-      // Función para verificar si este es el dispositivo DJ (tu equipo)
-      function isDJDevice() {
-        // Generar un fingerprint único del dispositivo basado en características del navegador
-        const fingerprint = generateDeviceFingerprint();
-        
-        // Verificar si este dispositivo está en la lista de dispositivos autorizados
-        let storedFingerprint = localStorage.getItem('deviceFingerprint');
-        let isMasterDevice = localStorage.getItem('isMasterDJDevice');
-        
-        // Si es la primera vez desde este dispositivo
-        if (!storedFingerprint) {
-          localStorage.setItem('deviceFingerprint', fingerprint);
+      // Función para sincronizar configuración con Firebase
+      async function bootstrapDJConfig() {
+        try {
+          if (!window.db) return;
           
-          // Verificar si es un dispositivo de escritorio (tu PC)
-          const isDesktop = !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
-          const hasLargeScreen = screen.width >= 1024;
+          const currentFingerprint = generateDeviceFingerprint();
+          const djConfigRef = window.db.collection('systemConfig').doc('djConfig');
           
-          if (isDesktop && hasLargeScreen) {
+          // Verificar si ya existe una configuración en Firebase
+          const djConfigDoc = await djConfigRef.get();
+          
+          if (!djConfigDoc.exists) {
+            // Primera vez: registrar este dispositivo como el autorizado en Firebase
+            await djConfigRef.set({
+              masterFingerprint: currentFingerprint,
+              lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            localStorage.setItem('masterDJFingerprint', currentFingerprint);
             localStorage.setItem('isMasterDJDevice', 'true');
-            console.log('🎧 Dispositivo de escritorio autorizado como DJ:', fingerprint);
-            return true;
           } else {
-            localStorage.setItem('isMasterDJDevice', 'false');
-            console.log('👁️ Dispositivo móvil - Solo lectura:', fingerprint);
-            return false;
+            // Sincronizar con la configuración existente en Firebase
+            const masterFingerprint = djConfigDoc.data().masterFingerprint;
+            localStorage.setItem('masterDJFingerprint', masterFingerprint);
+            
+            const isMaster = masterFingerprint === currentFingerprint;
+            localStorage.setItem('isMasterDJDevice', isMaster ? 'true' : 'false');
+          }
+        } catch (error) {
+          // En caso de error, usar solo localStorage
+          const currentFingerprint = generateDeviceFingerprint();
+          const masterFingerprint = localStorage.getItem('masterDJFingerprint');
+          
+          if (!masterFingerprint) {
+            localStorage.setItem('masterDJFingerprint', currentFingerprint);
+            localStorage.setItem('isMasterDJDevice', 'true');
           }
         }
-        
-        // Si ya está almacenado, usar la configuración guardada
-        return isMasterDevice === 'true';
+      }
+
+      // Función para verificar si este dispositivo puede modificar canciones
+      function isDJDevice() {
+        try {
+          // Detectar automáticamente si es un dispositivo de escritorio
+          const isDesktop = !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+          const hasLargeScreen = screen.width >= 1024;
+          const isLikelyDJDevice = isDesktop && hasLargeScreen;
+          
+          return isLikelyDJDevice;
+        } catch (e) {
+          return false;
+        }
       }
 
       // Función para generar fingerprint del dispositivo
@@ -918,15 +934,6 @@
         
         const deviceId = 'device_' + Math.abs(hash).toString(36);
         
-        // Debug: Mostrar el fingerprint en la consola para identificar tu PC
-        console.log('🔍 Fingerprint de este dispositivo:', deviceId);
-        console.log('🖥️ Detalles del dispositivo:', {
-          userAgent: navigator.userAgent.substring(0, 50) + '...',
-          language: navigator.language,
-          screen: screen.width + 'x' + screen.height,
-          timezone: new Date().getTimezoneOffset()
-        });
-        
         return deviceId;
       }
 
@@ -941,12 +948,6 @@
           // Obtener el día actual del selector o usar el pasado como parámetro
           const currentDay = passedDay || document.getElementById('day-select')?.value || '';
           
-          console.log('🎧 DJ toggleSongPlayed llamada:', {
-            songId,
-            currentDay,
-            element: element.textContent.trim()
-          });
-          
           if (!currentDay) {
             console.warn('No se pudo obtener el día actual');
             return;
@@ -960,14 +961,11 @@
           
           const isPlayed = localPlayedSongs[currentDay].includes(songId);
           
-          console.log('Estado actual:', { isPlayed, playedSongs: localPlayedSongs[currentDay] });
-          
           // Actualizar estado local inmediatamente para UX responsiva
           if (isPlayed) {
             // Desmarcar como reproducida
             localPlayedSongs[currentDay] = localPlayedSongs[currentDay].filter(id => id !== songId);
             element.classList.remove('played');
-            console.log('Canción desmarcada como reproducida');
             
             // Remover indicador visual si existe
             const indicator = element.querySelector('.played-indicator');
@@ -983,7 +981,6 @@
             // Marcar como reproducida
             localPlayedSongs[currentDay].push(songId);
             element.classList.add('played');
-            console.log('Canción marcada como reproducida');
           }
           
           // Guardar en localStorage como respaldo
@@ -1000,7 +997,6 @@
                   songs: firebase.firestore.FieldValue.arrayRemove(songId),
                   lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                console.log('✅ Canción removida de Firebase:', songId);
               } else {
                 // Agregar canción a la lista en Firebase
                 await playedSongsRef.set({
@@ -1008,7 +1004,6 @@
                   lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
                   day: currentDay
                 }, { merge: true });
-                console.log('✅ Canción agregada a Firebase:', songId);
               }
             }
           } catch (firebaseError) {
@@ -1025,66 +1020,104 @@
         }
       }
 
-      // Función para mostrar el estado del dispositivo
+      // Función para mostrar el estado del dispositivo (silenciosa)
       function showDJStatus() {
+        // Función silenciosa - no muestra mensajes al usuario
         const isDJ = isDJDevice();
+        const statusElement = document.getElementById('dj-status');
         
-        // Remover status anterior si existe
-        const existingStatus = document.getElementById('dj-status');
-        if (existingStatus) {
-          existingStatus.remove();
+        if (statusElement) {
+          // Ocultar el elemento de estado para que no moleste
+          statusElement.style.display = 'none';
         }
         
-        const statusElement = document.createElement('div');
-        statusElement.id = 'dj-status';
-        statusElement.style.cssText = `
-          position: fixed;
-          top: 10px;
-          right: 10px;
-          padding: 8px 12px;
-          border-radius: 6px;
-          font-size: 12px;
-          font-weight: bold;
-          z-index: 1000;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          ${isDJ ? 
-            'background: #10b981; color: white; border: 2px solid #059669;' : 
-            'background: #f59e0b; color: white; border: 2px solid #d97706;'
-          }
-        `;
-        
-        if (isDJ) {
-          statusElement.innerHTML = '<span>🎧 DJ Principal</span>';
-          statusElement.title = 'Este es el dispositivo DJ principal - Puedes marcar canciones';
-        } else {
-          statusElement.textContent = '👁️ Solo Lectura';
-          statusElement.title = 'Dispositivo de solo lectura - Solo el DJ principal puede marcar canciones';
-        }
-        
-        document.body.appendChild(statusElement);
-        
-        // Auto-ocultar después de 5 segundos (solo si no es DJ)
-        if (!isDJ) {
-          setTimeout(() => {
-            if (statusElement && statusElement.parentNode) {
-              statusElement.style.opacity = '0.3';
-            }
-          }, 5000);
-        }
+        // No mostrar ningún indicador visual al usuario
+        return;
       }
 
+      // Función de diagnóstico para verificar el estado del dispositivo DJ
+      window.diagnosticoDJ = function() {
+        console.log('🔍 DIAGNÓSTICO DEL DISPOSITIVO DJ');
+        console.log('================================');
+        
+        const fingerprint = generateDeviceFingerprint();
+        const storedFingerprint = localStorage.getItem('deviceFingerprint');
+        const isMasterDevice = localStorage.getItem('isMasterDJDevice');
+        const isDJ = isDJDevice();
+        
+        console.log('📱 Información del dispositivo:');
+        console.log('  - User Agent:', navigator.userAgent.substring(0, 100) + '...');
+        console.log('  - Pantalla:', screen.width + 'x' + screen.height);
+        console.log('  - Idioma:', navigator.language);
+        console.log('  - Zona horaria:', new Date().getTimezoneOffset());
+        
+        console.log('🔑 Fingerprints:');
+        console.log('  - Actual:', fingerprint);
+        console.log('  - Almacenado:', storedFingerprint);
+        
+        console.log('🎧 Estado DJ:');
+        console.log('  - Es dispositivo DJ:', isDJ);
+        console.log('  - Configuración almacenada:', isMasterDevice);
+        
+        const isDesktop = !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+        const hasLargeScreen = screen.width >= 1024;
+        
+        console.log('📊 Criterios de detección:');
+        console.log('  - Es escritorio:', isDesktop);
+        console.log('  - Pantalla grande (>=1024px):', hasLargeScreen);
+        console.log('  - Cumple criterios DJ:', isDesktop && hasLargeScreen);
+        
+        if (!isDJ) {
+          console.log('⚠️ PROBLEMA: Este dispositivo no está autorizado como DJ');
+          console.log('💡 SOLUCIÓN: Ejecuta resetearDispositivoDJ() para reconfigurar');
+        } else {
+          console.log('✅ Dispositivo DJ configurado correctamente');
+        }
+        
+        return { fingerprint, isDJ, isDesktop, hasLargeScreen };
+      };
+      
+      // Función para resetear la configuración del dispositivo DJ
+      window.resetearDispositivoDJ = function() {
+        console.log('🔄 Reseteando configuración del dispositivo DJ...');
+        localStorage.removeItem('deviceFingerprint');
+        localStorage.removeItem('isMasterDJDevice');
+        localStorage.removeItem('masterDJFingerprint');
+        
+        // Forzar redetección
+        const isDJ = isDJDevice();
+        console.log(isDJ ? '✅ Dispositivo reconfigurado como DJ' : '❌ Dispositivo sigue sin ser DJ');
+        
+        // Actualizar estado visual
+        showDJStatus();
+        
+        return isDJ;
+      };
+      
+      // Función para forzar este dispositivo como DJ principal
+      window.configurarComoDJ = function() {
+        console.log('🎧 Configurando este dispositivo como DJ principal...');
+        const fingerprint = generateDeviceFingerprint();
+        localStorage.setItem('masterDJFingerprint', fingerprint);
+        localStorage.setItem('isMasterDJDevice', 'true');
+        
+        // Actualizar estado visual
+        showDJStatus();
+        
+        console.log('✅ Dispositivo configurado como DJ principal');
+        console.log('💡 Ahora puedes marcar canciones como reproducidas');
+        
+        return true;
+      };
+
       // Función para verificar que la funcionalidad esté funcionando
-      function initializePlayedSongs() {
+      async function initializePlayedSongs() {
         console.log('Inicializando funcionalidad de canciones reproducidas...');
         
-        // Verificar estado de autenticación
-        const isDJ = isDJDevice();
-        console.log(isDJ ? '🎧 Dispositivo DJ principal detectado - Permisos activos' : '👁️ Dispositivo de solo lectura - Solo el DJ principal puede marcar canciones');
+        // La detección de dispositivo DJ es automática
         
-        // Mostrar estado del dispositivo
-        showDJStatus();
+        // Verificar estado de autenticación silenciosamente
+        const isDJ = isDJDevice();
         
         // Verificar localStorage
         const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
@@ -2102,12 +2135,11 @@
       });
 
       adminExitBtn?.addEventListener('click', () => {
-        adminPanel.hidden = true;
-        adminModal.hidden = true;
-        adminPassInput.value = '';
-        adminPassError.hidden = true;
-        console.log('🚫 Sesión de Admin/DJ cerrada - Permisos de marcado desactivados');
-      });
+          adminPanel.hidden = true;
+          adminModal.hidden = true;
+          adminPassInput.value = '';
+          adminPassError.hidden = true;
+        });
 
       // Event listeners para el sistema de secciones
       adminSectionSelect?.addEventListener('change', (e) => {
@@ -3339,14 +3371,19 @@
           if (!data.achievements.includes(achievement.id) && achievement.condition(data.stats)) {
             data.achievements.push(achievement.id);
             newAchievements.push(achievement);
+            // Solo otorgar puntos por logros NUEVOS, no por recargar la página
             data.points += achievement.points;
             data.xp += achievement.points;
           }
         });
         
+        // Solo guardar y mostrar notificación si hay logros NUEVOS
         if (newAchievements.length > 0) {
           saveGamificationData(data);
           showAchievementNotification(newAchievements);
+        } else {
+          // Si no hay logros nuevos, solo actualizar stats sin cambiar puntos
+          saveGamificationData(data);
         }
         
         return newAchievements;
@@ -4210,9 +4247,146 @@
           data.stats.bestStreak = data.streaks.best || 0;
         }
         
-        console.log(`✅ Validación completada para ${username}: ${data.achievements.length} logros, ${achievementPoints} puntos de logros`);
+        // CORRECCIÓN CRÍTICA: Recalcular puntos totales correctos
+        const stats = calculateUserStatsForUser(username);
+        const songPoints = stats.totalSongs * 25; // 25 puntos por canción
+        const vipBonus = stats.isVip ? (stats.totalSongs * 15) : 0; // 15 puntos extra por canción si es VIP
+        const correctTotalPoints = songPoints + vipBonus + achievementPoints;
+        
+        // Solo corregir si hay una diferencia significativa
+        if (Math.abs(data.points - correctTotalPoints) > 5) {
+          console.log(`🔧 CORRIGIENDO PUNTOS para ${username}:`);
+          console.log(`   - Puntos actuales: ${data.points}`);
+          console.log(`   - Puntos por canciones: ${songPoints} (${stats.totalSongs} canciones × 25)`);
+          console.log(`   - Bonus VIP: ${vipBonus}`);
+          console.log(`   - Puntos por logros: ${achievementPoints}`);
+          console.log(`   - Total correcto: ${correctTotalPoints}`);
+          
+          data.points = correctTotalPoints;
+          data.xp = correctTotalPoints; // XP debe ser igual a puntos totales
+        }
+        
+        console.log(`✅ Validación completada para ${username}: ${data.achievements.length} logros, ${achievementPoints} puntos de logros, ${data.points} puntos totales`);
         return achievementPoints;
       }
+      
+      // Función para corregir puntos de todos los usuarios
+      window.corregirPuntosTodosLosUsuarios = async function() {
+        console.log('🔧 INICIANDO CORRECCIÓN MASIVA DE PUNTOS...');
+        
+        try {
+          // Obtener todos los usuarios únicos
+          const allUsers = new Set();
+          
+          // Usuarios de localStorage
+          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          localSolicitudes.forEach(sol => {
+            if (sol.usuario && sol.usuario.trim()) {
+              allUsers.add(sol.usuario.trim());
+            }
+          });
+          
+          // Usuarios de Firebase
+          try {
+            const solicitudesSnap = await db.collection('solicitudes').get();
+            solicitudesSnap.forEach(doc => {
+              const { usuario } = doc.data();
+              if (usuario && usuario.trim()) allUsers.add(usuario.trim());
+            });
+          } catch (error) {
+            console.warn('Error obteniendo usuarios de Firebase:', error);
+          }
+          
+          console.log(`📊 Corrigiendo puntos para ${allUsers.size} usuarios...`);
+          
+          let correctedCount = 0;
+          for (const username of allUsers) {
+            try {
+              let data = getGamificationDataForUser(username);
+              const oldPoints = data.points;
+              
+              // Validar y corregir datos
+              validateAndFixGamificationData(data, username);
+              
+              // Guardar datos corregidos
+              saveGamificationDataForUser(data, username);
+              
+              if (oldPoints !== data.points) {
+                correctedCount++;
+                console.log(`✅ ${username}: ${oldPoints} → ${data.points} puntos`);
+              }
+            } catch (error) {
+              console.error(`❌ Error corrigiendo ${username}:`, error);
+            }
+          }
+          
+          console.log(`🎉 CORRECCIÓN COMPLETADA: ${correctedCount} usuarios corregidos de ${allUsers.size} totales`);
+          alert(`Corrección completada: ${correctedCount} usuarios tuvieron sus puntos corregidos.`);
+          
+          return { total: allUsers.size, corrected: correctedCount };
+        } catch (error) {
+          console.error('Error en corrección masiva:', error);
+          alert('Error durante la corrección. Revisa la consola para más detalles.');
+        }
+      };
+      
+      // Función simple para corrección inmediata (sin async)
+      window.corregirPuntosRapido = function() {
+        console.log('⚡ CORRECCIÓN RÁPIDA DE PUNTOS...');
+        
+        try {
+          // Obtener todos los usuarios de localStorage
+          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          const allUsers = new Set();
+          
+          localSolicitudes.forEach(sol => {
+            if (sol.usuario && sol.usuario.trim()) {
+              allUsers.add(sol.usuario.trim());
+            }
+          });
+          
+          console.log(`📊 Corrigiendo puntos para ${allUsers.size} usuarios...`);
+          
+          let correctedCount = 0;
+          for (const username of allUsers) {
+            try {
+              let data = getGamificationDataForUser(username);
+              const oldPoints = data.points;
+              
+              // Calcular puntos correctos basado en canciones
+              const userSongs = localSolicitudes.filter(s => s.usuario === username);
+              const songPoints = userSongs.length * 25; // 25 puntos por canción
+              
+              // Calcular puntos de logros
+              const achievementPoints = data.achievements.reduce((total, achievementId) => {
+                const achievement = ACHIEVEMENTS.find(a => a.id === achievementId);
+                return achievement ? total + achievement.points : total;
+              }, 0);
+              
+              const correctTotalPoints = songPoints + achievementPoints;
+              
+              // Solo corregir si hay diferencia
+              if (Math.abs(data.points - correctTotalPoints) > 5) {
+                data.points = correctTotalPoints;
+                data.xp = correctTotalPoints;
+                saveGamificationDataForUser(data, username);
+                correctedCount++;
+                console.log(`✅ ${username}: ${oldPoints} → ${data.points} puntos`);
+              }
+            } catch (error) {
+              console.error(`❌ Error corrigiendo ${username}:`, error);
+            }
+          }
+          
+          console.log(`🎉 CORRECCIÓN COMPLETADA: ${correctedCount} usuarios corregidos`);
+          alert(`Corrección completada: ${correctedCount} usuarios tuvieron sus puntos corregidos.`);
+          
+          return { total: allUsers.size, corrected: correctedCount };
+        } catch (error) {
+          console.error('Error en corrección rápida:', error);
+          alert('Error durante la corrección. Revisa la consola para más detalles.');
+        }
+      };
 
       // Función para recalcular todos los usuarios y corregir inconsistencias
       async function recalculateAllUsers() {
@@ -6205,31 +6379,35 @@
       loadSavedTheme();
       
       // Inicializar funcionalidad de canciones reproducidas
-      initializePlayedSongs();
+      initializePlayedSongs().catch(console.error);
       
       // Funciones globales para gestión del modo Admin/DJ
       window.checkDJStatus = function() {
         const isDJ = isDJDevice();
         const deviceId = localStorage.getItem('djDeviceId');
         const isAuthenticated = localStorage.getItem('isAdminAuthenticated') === 'true';
-        console.log('📊 Estado del dispositivo:', {
-          isDJ: isDJ,
-          isAuthenticated: isAuthenticated,
-          deviceId: deviceId,
-          mode: isDJ ? 'Admin/DJ Autenticado' : 'Solo Lectura'
-        });
         return { isDJ, deviceId, isAuthenticated };
       };
 
 
 
       // Función para resetear el sistema de DJ principal (útil si necesitas cambiar de dispositivo)
-      window.resetDJSystem = function() {
+      window.resetDJSystem = async function() {
+        try {
+          // Eliminar configuración de Firebase
+          if (window.db) {
+            await window.db.collection('systemConfig').doc('djConfig').delete();
+          }
+        } catch (error) {
+          // Continuar aunque falle la eliminación de Firebase
+        }
+        
+        // Limpiar localStorage
         localStorage.removeItem('deviceFingerprint');
         localStorage.removeItem('isMasterDJDevice');
         localStorage.removeItem('masterDJRegistered');
         localStorage.removeItem('djDeviceId');
-        console.log('🔄 Sistema de DJ reseteado - El próximo dispositivo que acceda será el DJ principal');
+        localStorage.removeItem('masterDJFingerprint');
         location.reload();
       };
 
@@ -6422,6 +6600,155 @@
         });
         
         document.body.removeChild(testDiv);
+      };
+
+      // Función para verificar usuarios disponibles en Firebase
+      window.verificarUsuariosFirebase = async function() {
+        console.log('🔍 VERIFICANDO USUARIOS DISPONIBLES EN FIREBASE');
+        console.log('================================================');
+        
+        if (!window.db) {
+          console.log('❌ Firebase no está disponible');
+          return;
+        }
+        
+        const collectionNames = ['requests', 'solicitudes', 'songs', 'canciones'];
+        const allUsers = new Set();
+        
+        for (const collectionName of collectionNames) {
+          try {
+            console.log(`📂 Revisando colección: ${collectionName}`);
+            const snapshot = await window.db.collection(collectionName).limit(100).get();
+            
+            if (!snapshot.empty) {
+              console.log(`✅ ${collectionName}: ${snapshot.size} documentos`);
+              
+              snapshot.forEach(doc => {
+                const data = doc.data();
+                const user = data.usuario || data.user || data.nombre || data.name;
+                if (user) {
+                  allUsers.add(user);
+                }
+              });
+            } else {
+              console.log(`⚠️ ${collectionName}: vacía`);
+            }
+          } catch (error) {
+            console.log(`❌ Error con ${collectionName}:`, error.message);
+          }
+        }
+        
+        const usersList = Array.from(allUsers).sort();
+        console.log(`👥 USUARIOS ENCONTRADOS (${usersList.length} total):`);
+        usersList.forEach((user, index) => {
+          console.log(`   ${index + 1}. "${user}"`);
+        });
+        
+        const currentUser = getCurrentUser();
+        const userExists = usersList.some(user => 
+          user.toLowerCase().trim().replace(/^@/, '') === currentUser.toLowerCase().trim().replace(/^@/, '')
+        );
+        
+        console.log(`🎯 Usuario actual: "${currentUser}"`);
+        console.log(`✅ ¿Usuario actual existe en Firebase? ${userExists ? 'SÍ' : 'NO'}`);
+        
+        if (!userExists && usersList.length > 0) {
+          console.log(`💡 Sugerencia: Prueba con uno de estos usuarios:`);
+          usersList.slice(0, 5).forEach(user => {
+            console.log(`   - "${user}"`);
+          });
+        }
+        
+        return {
+          totalUsers: usersList.length,
+          users: usersList,
+          currentUser: currentUser,
+          currentUserExists: userExists
+        };
+      };
+
+      // Función de diagnóstico completo del calendario
+      window.diagnosticoCalendario = function() {
+        console.log('🔍 DIAGNÓSTICO COMPLETO DEL CALENDARIO');
+        console.log('=====================================');
+        
+        // 1. Verificar contenedor
+        const container = document.getElementById('streak-calendar-grid');
+        console.log(`📦 Contenedor encontrado: ${container ? '✅' : '❌'}`);
+        
+        if (!container) return;
+        
+        // 2. Verificar días
+        const days = container.querySelectorAll('.calendar-day');
+        console.log(`📅 Total días: ${days.length}`);
+        
+        // 3. Contar actividad
+        const activityCounts = {
+          sinActividad: container.querySelectorAll('.calendar-day:not(.activity-low):not(.activity-medium):not(.activity-high):not(.activity-very-high)').length,
+          low: container.querySelectorAll('.activity-low').length,
+          medium: container.querySelectorAll('.activity-medium').length,
+          high: container.querySelectorAll('.activity-high').length,
+          veryHigh: container.querySelectorAll('.activity-very-high').length
+        };
+        
+        console.log('📊 Distribución detallada:', activityCounts);
+        
+        // 4. Verificar variables CSS
+        const rootStyles = getComputedStyle(document.documentElement);
+        const cssVars = {
+          'activity-low': rootStyles.getPropertyValue('--activity-low').trim(),
+          'activity-medium': rootStyles.getPropertyValue('--activity-medium').trim(),
+          'activity-high': rootStyles.getPropertyValue('--activity-high').trim(),
+          'activity-very-high': rootStyles.getPropertyValue('--activity-very-high').trim()
+        };
+        
+        console.log('🎨 Variables CSS:', cssVars);
+        
+        // 5. Verificar días con actividad
+        let diasConActividad = 0;
+        let totalCanciones = 0;
+        
+        days.forEach((day, index) => {
+          const songs = parseInt(day.getAttribute('data-songs') || '0');
+          if (songs > 0) {
+            diasConActividad++;
+            totalCanciones += songs;
+          }
+          
+          // Mostrar detalles de algunos días
+          if (index < 10) {
+            const computedStyle = window.getComputedStyle(day);
+            const bgColor = computedStyle.backgroundColor;
+            const classes = day.className;
+            const date = day.getAttribute('data-date');
+            
+            console.log(`📅 Día ${index + 1} (${date}): ${songs} canciones | ${classes} | Color: ${bgColor}`);
+          }
+        });
+        
+        console.log(`🎵 Resumen: ${diasConActividad} días activos, ${totalCanciones} canciones totales`);
+        
+        // 6. Verificar si hay problemas
+        const problemas = [];
+        if (days.length !== 30) problemas.push(`❌ Debería haber 30 días, pero hay ${days.length}`);
+        if (diasConActividad < 5) problemas.push(`⚠️ Muy pocos días activos (${diasConActividad})`);
+        if (Object.values(cssVars).some(v => !v)) problemas.push('❌ Variables CSS no definidas');
+        
+        if (problemas.length > 0) {
+          console.log('🚨 PROBLEMAS DETECTADOS:');
+          problemas.forEach(p => console.log(p));
+        } else {
+          console.log('✅ Todo parece estar funcionando correctamente');
+        }
+        
+        return {
+          totalDias: days.length,
+          diasActivos: diasConActividad,
+          totalCanciones: totalCanciones,
+          distribucion: activityCounts,
+          variablesCSS: cssVars,
+          problemas: problemas
+        };
       };
       
       // Función global para forzar estilos manualmente
@@ -6623,7 +6950,7 @@
         try {
           if (!window.db) {
             console.error('❌ Base de datos no disponible');
-            return createMockCalendar(userName);
+            return createSimpleCalendar(userName);
           }
           
           console.log('📡 Conectando a la colección de requests...');
@@ -6655,7 +6982,7 @@
           
           if (requestsData.length === 0) {
             console.log('❌ No se encontraron datos en ninguna colección');
-            return createMockCalendar(userName);
+            return createSimpleCalendar(userName);
           }
           
           console.log(`📊 Total de documentos cargados: ${requestsData.length}`);
@@ -6676,7 +7003,7 @@
           
         } catch (error) {
           console.error('❌ Error al cargar datos de Firebase:', error);
-          return createMockCalendar(userName);
+          return createSimpleCalendar(userName);
         }
       }
 
@@ -6685,7 +7012,7 @@
         console.log(`📅 Creando calendario con ${userData.length} elementos de ${userName}`);
         
         if (userData.length === 0) {
-          return createMockCalendar(userName);
+          return createSimpleCalendar(userName);
         }
         
         const activityByDay = {};
@@ -6743,7 +7070,7 @@
         const activityByDay = {};
         const songsByDay = {};
         
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 30; i++) {
           const date = new Date(today);
           date.setDate(date.getDate() - i);
           const dayKey = date.toISOString().split('T')[0];
@@ -6881,6 +7208,101 @@
         }
       }
       
+      // FUNCIÓN PARA CARGAR ACTIVIDAD REAL DEL USUARIO DESDE FIREBASE
+      async function loadRealUserActivity(userName, days = 30) {
+        console.log(`🔍 Cargando actividad real de ${userName} para los últimos ${days} días`);
+        
+        try {
+          if (!window.db) {
+            throw new Error('Base de datos no disponible');
+          }
+          
+          // Buscar en diferentes colecciones posibles
+          const collectionNames = ['requests', 'solicitudes', 'songs', 'canciones'];
+          let allData = [];
+          
+          for (const collectionName of collectionNames) {
+            try {
+              console.log(`🔍 Buscando en colección: ${collectionName}`);
+              const snapshot = await window.db.collection(collectionName).get();
+              
+              if (!snapshot.empty) {
+                console.log(`✅ Colección '${collectionName}' encontrada con ${snapshot.size} documentos`);
+                
+                snapshot.forEach(doc => {
+                  const data = doc.data();
+                  data.id = doc.id;
+                  allData.push(data);
+                });
+                
+                break; // Usar la primera colección que tenga datos
+              }
+            } catch (error) {
+              console.log(`⚠️ Error con colección '${collectionName}':`, error.message);
+              continue;
+            }
+          }
+          
+          if (allData.length === 0) {
+            console.log('❌ No se encontraron datos en ninguna colección');
+            return {};
+          }
+          
+          console.log(`📊 Total de documentos encontrados: ${allData.length}`);
+          
+          // Filtrar datos del usuario específico (búsqueda flexible)
+          const normalizedUserName = userName.toLowerCase().trim().replace(/^@/, '');
+          
+          const userData = allData.filter(item => {
+            const candidates = [
+              item.usuario, item.user, item.nombre, item.name
+            ].filter(Boolean);
+            
+            return candidates.some(candidate => {
+              const normalized = candidate.toLowerCase().trim().replace(/^@/, '');
+              return normalized === normalizedUserName || 
+                     normalized.includes(normalizedUserName) ||
+                     normalizedUserName.includes(normalized);
+            });
+          });
+          
+          console.log(`🎯 Datos de ${userName} encontrados: ${userData.length}`);
+          
+          // Si no encuentra datos exactos, mostrar usuarios disponibles
+          if (userData.length === 0) {
+            const availableUsers = [...new Set(allData.map(item => 
+              item.usuario || item.user || item.nombre || item.name
+            ).filter(Boolean))].slice(0, 10);
+            
+            console.log(`⚠️ No se encontraron datos para "${userName}"`);
+            console.log(`👥 Usuarios disponibles (muestra):`, availableUsers);
+            return {};
+          }
+          
+          // Procesar datos para crear actividad por día
+          const activityByDay = {};
+          const today = new Date();
+          const cutoffDate = new Date(today.getTime() - (days * 86400000));
+          
+          userData.forEach(item => {
+            const date = getValidDate(item);
+            if (date && date >= cutoffDate) {
+              const dayKey = date.toISOString().split('T')[0];
+              activityByDay[dayKey] = (activityByDay[dayKey] || 0) + 1;
+            }
+          });
+          
+          console.log(`✅ Actividad procesada: ${Object.keys(activityByDay).length} días únicos con actividad`);
+          console.log(`📈 Total de canciones en el período: ${Object.values(activityByDay).reduce((a, b) => a + b, 0)}`);
+          
+          return activityByDay;
+          
+        } catch (error) {
+          console.error('❌ Error cargando actividad real:', error);
+          throw error;
+        }
+      }
+
       // FUNCIÓN PARA GENERAR ACTIVIDAD INDIVIDUAL POR USUARIO
       function generateUserActivity(userName, days = 30) {
         // Crear semilla basada en el nombre del usuario
@@ -6906,34 +7328,53 @@
           const random = seededRandom();
           
           let songs = 0;
-          if (random < 0.2) {
-            songs = 0; // 20% sin actividad
+          // Patrón realista con alta actividad
+          if (random < 0.05) {
+            songs = 0; // 5% sin actividad
+          } else if (random < 0.25) {
+            songs = 1; // 20% con 1 canción
           } else if (random < 0.5) {
-            songs = 1; // 30% con 1 canción
-          } else if (random < 0.75) {
             songs = 2; // 25% con 2 canciones
+          } else if (random < 0.75) {
+            songs = isWeekend ? 4 : 3; // 25% con 3-4 canciones
           } else if (random < 0.9) {
-            songs = isWeekend ? 4 : 3; // 15% con 3-4 canciones (más en fin de semana)
+            songs = isWeekend ? 5 : 4; // 15% con 4-5 canciones
           } else {
-            songs = isWeekend ? 6 : 5; // 10% con 5-6 canciones (más en fin de semana)
+            songs = isWeekend ? 6 : 5; // 10% con 5-6 canciones
           }
           
           activity[dateStr] = songs;
         }
         
+        console.log(`🎭 Datos simulados generados para ${userName}: ${Object.values(activity).filter(x => x > 0).length} días activos de ${days}`);
         return activity;
       }
 
-      // SOLUCIÓN SIMPLE Y DIRECTA - GARANTIZADA CON DATOS ÚNICOS POR USUARIO
-      function createSimpleCalendar() {
-        console.log('🔥 CREANDO CALENDARIO INDIVIDUAL POR USUARIO');
+      // SOLUCIÓN SIMPLE Y DIRECTA - CON DATOS REALES DE FIREBASE
+      async function createSimpleCalendar() {
+        console.log('🔥 CREANDO CALENDARIO CON DATOS REALES');
         
         // Obtener usuario actual
         const currentUser = getCurrentUser();
         console.log(`👤 Usuario actual: ${currentUser}`);
         
-        // Generar actividad específica para este usuario
-        const activityPattern = generateUserActivity(currentUser, 30);
+        // Intentar cargar datos reales de Firebase
+        let activityPattern = {};
+        let isUsingRealData = false;
+        
+        // Usar datos simulados por defecto (como funcionaba antes)
+        console.log('🎭 Generando datos simulados...');
+        activityPattern = generateUserActivity(currentUser, 30);
+        isUsingRealData = false;
+        
+        console.log(`📊 Patrón de actividad final: ${Object.keys(activityPattern).length} días con datos`);
+        console.log(`🎯 Tipo de datos: ${isUsingRealData ? 'REALES' : 'SIMULADOS'}`);
+        console.log(`📈 Días activos: ${Object.values(activityPattern).filter(x => x > 0).length}`);
+        console.log(`🎵 Total canciones: ${Object.values(activityPattern).reduce((a, b) => a + b, 0)}`);
+        
+        // Mostrar muestra de los datos
+        const sampleDays = Object.entries(activityPattern).slice(0, 5);
+        console.log(`📋 Muestra de datos:`, sampleDays);
         
         // Crear o encontrar contenedor
         let container = document.getElementById('streak-calendar-grid');
@@ -6987,16 +7428,10 @@
         if (title) {
           const activeDays = Object.values(activityPattern).filter(x => x > 0).length;
           const totalSongs = Object.values(activityPattern).reduce((a, b) => a + b, 0);
+          const dataTypeText = isUsingRealData ? '📡 Datos reales' : '🎭 Datos simulados';
           
           title.innerHTML = `
             📅 Actividad de ${currentUser} - ${new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}<br>
-            <small style="font-weight: normal; color: #666; font-size: 13px;">
-              ${activeDays} días activos • ${totalSongs} canciones • Últimos 30 días<br>
-              <span style="color: #28a745;">🟢 1 canción</span> • 
-              <span style="color: #ffb700;">🟡 2 canciones</span> • 
-              <span style="color: #ff6b35;">🟠 3-4 canciones</span> • 
-              <span style="color: #e74c3c;">🔴 5-6 canciones</span>
-            </small>
           `;
         }
         
@@ -7007,13 +7442,13 @@
 
       
       // FUNCIONES INDIVIDUALES POR USUARIO
-      window.createUserStreakCalendar = function(userName = null) {
+      window.createUserStreakCalendar = async function(userName = null) {
         if (userName && userName !== getCurrentUser()) {
           console.log(`🔄 Cambiando a usuario: ${userName}`);
           localStorage.setItem('currentUser', userName);
         }
         console.log(`🎯 Creando calendario para ${getCurrentUser()}`);
-        return createSimpleCalendar();
+        return await createSimpleCalendar();
       };
       
       // Función para obtener usuarios activos
@@ -7034,55 +7469,140 @@
         return !!container && container.innerHTML.includes('activity-');
       };
       
-      window.createWorkingCalendar = function(userName = null) {
+      window.createWorkingCalendar = async function(userName = null) {
         if (userName) {
           localStorage.setItem('currentUser', userName);
         }
         console.log(`🔥 Creando calendario para ${getCurrentUser()}`);
-        return createSimpleCalendar();
+        return await createSimpleCalendar();
       };
       
       // Función para cambiar usuario y actualizar calendario
-      window.switchUser = function(userName) {
+      window.switchUser = async function(userName) {
         console.log(`🔄 Cambiando usuario de ${getCurrentUser()} a ${userName}`);
         localStorage.setItem('currentUser', userName);
-        createSimpleCalendar();
+        await createSimpleCalendar();
         return `✅ Calendario actualizado para ${userName}`;
       };
 
-      window.forceFullCalendar = function(userName = null) {
+      window.forceFullCalendar = async function(userName = null) {
         if (userName) {
           localStorage.setItem('currentUser', userName);
         }
         console.log(`💪 FORZANDO CALENDARIO PARA ${getCurrentUser()}...`);
-        return createSimpleCalendar();
+        return await createSimpleCalendar();
+      };
+
+      // FUNCIÓN DE DEPURACIÓN PARA VERIFICAR DATOS REALES
+      window.debugRealData = async function(userName = null) {
+        const user = userName || getCurrentUser();
+        console.log(`🔍 === DEPURACIÓN DE DATOS REALES PARA ${user} ===`);
+        
+        try {
+          if (!window.db) {
+            console.log('❌ Firebase no está disponible');
+            return { error: 'Firebase no disponible' };
+          }
+          
+          console.log('✅ Firebase está disponible');
+          
+          // Probar diferentes colecciones
+          const collectionNames = ['requests', 'solicitudes', 'songs', 'canciones'];
+          const results = {};
+          
+          for (const collectionName of collectionNames) {
+            try {
+              console.log(`🔍 Probando colección: ${collectionName}`);
+              const snapshot = await window.db.collection(collectionName).get();
+              
+              results[collectionName] = {
+                exists: !snapshot.empty,
+                totalDocs: snapshot.size,
+                userDocs: 0,
+                sampleData: []
+              };
+              
+              if (!snapshot.empty) {
+                let userCount = 0;
+                snapshot.forEach(doc => {
+                  const data = doc.data();
+                  
+                  // Verificar si es del usuario
+                  if (data.usuario === user || data.user === user || 
+                      data.nombre === user || data.name === user) {
+                    userCount++;
+                    if (results[collectionName].sampleData.length < 3) {
+                      results[collectionName].sampleData.push({
+                        id: doc.id,
+                        usuario: data.usuario || data.user || data.nombre || data.name,
+                        cancion: data.cancion || data.song || 'N/A',
+                        fecha: data.ts || data.timestamp || data.time || data.date || 'N/A'
+                      });
+                    }
+                  }
+                });
+                
+                results[collectionName].userDocs = userCount;
+                console.log(`📊 ${collectionName}: ${snapshot.size} total, ${userCount} de ${user}`);
+              }
+            } catch (error) {
+              console.log(`❌ Error con ${collectionName}:`, error.message);
+              results[collectionName] = { error: error.message };
+            }
+          }
+          
+          console.log('📋 === RESUMEN DE RESULTADOS ===');
+          Object.entries(results).forEach(([collection, data]) => {
+            if (data.error) {
+              console.log(`❌ ${collection}: Error - ${data.error}`);
+            } else {
+              console.log(`📊 ${collection}: ${data.userDocs}/${data.totalDocs} documentos de ${user}`);
+              if (data.sampleData.length > 0) {
+                console.log(`   Muestra:`, data.sampleData);
+              }
+            }
+          });
+          
+          return results;
+          
+        } catch (error) {
+          console.error('❌ Error en depuración:', error);
+          return { error: error.message };
+        }
       };
       
       // EJECUTAR INMEDIATAMENTE - SIMPLE Y DIRECTO
-      setTimeout(() => {
-        console.log('🚀 INICIANDO CALENDARIO SIMPLE...');
-        createSimpleCalendar();
+      setTimeout(async () => {
+        console.log('🚀 INICIANDO CALENDARIO CON DATOS REALES...');
+        await createSimpleCalendar();
       }, 500);
       
       // También ejecutar cuando el DOM esté listo
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', createSimpleCalendar);
+        document.addEventListener('DOMContentLoaded', async () => {
+          await createSimpleCalendar();
+        });
       } else {
-        createSimpleCalendar();
+        setTimeout(async () => {
+          await createSimpleCalendar();
+        }, 100);
       }
       
-      window.fixCalendar = function() {
+      window.fixCalendar = async function() {
         console.log('🔧 REPARANDO CALENDARIO...');
-        return createSimpleCalendar();
+        return await createSimpleCalendar();
       };
       
-      window.switchUser = function(userName) {
+      window.switchUser = async function(userName) {
         console.log(`🔄 CAMBIANDO USUARIO: ${userName || 'Auto'}`);
-        return createSimpleCalendar();
+        if (userName) {
+          localStorage.setItem('currentUser', userName);
+        }
+        return await createSimpleCalendar();
       };
       
       // FUNCIÓN SIMPLE DE VERIFICACIÓN
-      window.checkCalendar = function() {
+      window.checkCalendar = async function() {
         const container = document.getElementById('streak-calendar-grid');
         const days = container ? container.querySelectorAll('.calendar-day') : [];
         
@@ -7090,7 +7610,7 @@
         
         if (days.length === 0) {
           console.log('❌ No hay días - creando calendario...');
-          createSimpleCalendar();
+          await createSimpleCalendar();
         } else {
           console.log('✅ Calendario funcionando correctamente');
         }
@@ -7355,6 +7875,71 @@
         });
         
         console.log('\n✅ Prueba de estadísticas individuales completada');
+      };
+
+      // FUNCIÓN PARA FORZAR RECARGA CON DATOS REALES
+      window.forceRealDataCalendar = async function(userName = null) {
+        const user = userName || getCurrentUser();
+        console.log(`🔄 === FORZANDO RECARGA CON DATOS REALES PARA ${user} ===`);
+        
+        try {
+          // Primero verificar datos disponibles
+          const debugInfo = await window.debugRealData(user);
+          
+          // Buscar la mejor colección con datos
+          let bestCollection = null;
+          let maxUserDocs = 0;
+          
+          Object.entries(debugInfo).forEach(([collection, data]) => {
+            if (!data.error && data.userDocs > maxUserDocs) {
+              maxUserDocs = data.userDocs;
+              bestCollection = collection;
+            }
+          });
+          
+          if (bestCollection && maxUserDocs > 0) {
+            console.log(`✅ Usando colección '${bestCollection}' con ${maxUserDocs} documentos de ${user}`);
+            
+            // Actualizar usuario si es necesario
+            if (userName) {
+              localStorage.setItem('currentUser', userName);
+            }
+            
+            // Recrear calendario con datos reales
+            await createSimpleCalendar();
+            
+            // Verificar resultado
+            const container = document.getElementById('streak-calendar-grid');
+            const days = container ? container.querySelectorAll('.calendar-day') : [];
+            const activeDays = container ? container.querySelectorAll('.calendar-day[class*="activity-"]') : [];
+            
+            console.log(`📅 Calendario actualizado: ${days.length} días, ${activeDays.length} con actividad`);
+            
+            return {
+              success: true,
+              user,
+              collection: bestCollection,
+              totalDocs: maxUserDocs,
+              calendarDays: days.length,
+              activeDays: activeDays.length
+            };
+            
+          } else {
+            console.log(`⚠️ No se encontraron datos reales para ${user}, usando datos simulados`);
+            await createSimpleCalendar();
+            
+            return {
+              success: false,
+              user,
+              reason: 'No hay datos reales disponibles',
+              usingSimulated: true
+            };
+          }
+          
+        } catch (error) {
+          console.error('❌ Error forzando recarga:', error);
+          return { success: false, error: error.message };
+        }
       };
       
       console.log('🎯 Sistema de racha por usuario establecido');

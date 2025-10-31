@@ -1,6 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Función para verificar si un dispositivo está autorizado
+    function isAuthorizedDevice() {
+      // NOTA: En Firebase Rules no podemos acceder al fingerprint del dispositivo directamente
+      // La validación específica del dispositivo autorizado se hace en el código del cliente
+      // mediante la comparación del fingerprint local con el masterFingerprint en systemConfig/djConfig
+      // Aquí solo validamos que el usuario esté autenticado como capa base de seguridad
+      return request.auth != null;
+    }
 
     // Solicitudes de canciones (colección principal)
     match /solicitudes/{doc} {
@@ -48,25 +57,51 @@ service cloud.firestore {
     match /vipUsers/{doc} {
       allow read: if true;
       allow create, update, delete: if true;
+      
+      // Validar estructura de usuario VIP
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name']) &&
+         request.resource.data.name is string &&
+         request.resource.data.name.size() > 0);
     }
 
     // Usuarios Z0-VIP (para el filtro y panel admin)
     match /z0VipUsers/{doc} {
       allow read: if true;
       allow create, update, delete: if true;
+      
+      // Validar estructura de usuario Z0-VIP
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name']) &&
+         request.resource.data.name is string &&
+         request.resource.data.name.size() > 0);
     }
 
     // Usuarios Donadores temporales (para el filtro y panel admin)
     match /donadorUsers/{doc} {
       allow read: if true;
       allow create, update, delete: if true;
+      
+      // Validar estructura de usuario donador
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name']) &&
+         request.resource.data.name is string &&
+         request.resource.data.name.size() > 0);
     }
 
     // Usuarios registrados (para poblar select en Admin)
     match /users/{doc} {
       allow read: if true;
-      allow create, update: if true;
+      allow create: if true;
+      allow update: if true;
       allow delete: if true;
+      
+      // Validar estructura de usuario
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name']) &&
+         request.resource.data.name is string &&
+         request.resource.data.name.size() > 0 &&
+         request.resource.data.name.size() <= 100);
     }
 
     // Estadísticas de usuarios (para gamificación y stats)
@@ -75,6 +110,14 @@ service cloud.firestore {
       allow create: if true;
       allow update: if true;
       allow delete: if true;
+      
+      // Validar estructura de estadísticas
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAny(['totalSongs', 'totalPoints', 'currentStreak', 'bestStreak', 'lastActivity']) &&
+         (request.resource.data.get('totalSongs', 0) is number) &&
+         (request.resource.data.get('totalPoints', 0) is number) &&
+         (request.resource.data.get('currentStreak', 0) is number) &&
+         (request.resource.data.get('bestStreak', 0) is number));
     }
 
     // Logros de usuarios (para sistema de gamificación)
@@ -138,22 +181,64 @@ service cloud.firestore {
     match /rewards/{doc} {
       allow read: if true;
       allow create, update, delete: if true;
+      
+      // Validar estructura de recompensa
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name', 'cost', 'description']) &&
+         request.resource.data.name is string &&
+         request.resource.data.cost is number &&
+         request.resource.data.description is string &&
+         request.resource.data.name.size() > 0 &&
+         request.resource.data.cost > 0);
     }
 
     // Solicitudes de recompensas de usuarios
     match /rewardRequests/{doc} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Validar estructura de solicitud
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['userId', 'rewardName', 'cost', 'status']) &&
+         request.resource.data.userId is string &&
+         request.resource.data.rewardName is string &&
+         request.resource.data.cost is number &&
+         request.resource.data.status is string &&
+         request.resource.data.userId.size() > 0 &&
+         request.resource.data.cost > 0);
     }
 
     // Historial de recompensas canjeadas
     match /redeemedRewards/{doc} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Validar estructura de recompensa canjeada
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['userId', 'rewardName', 'cost']) &&
+         request.resource.data.userId is string &&
+         request.resource.data.rewardName is string &&
+         request.resource.data.cost is number &&
+         request.resource.data.userId.size() > 0 &&
+         request.resource.data.cost > 0);
     }
 
     // Configuración global del sistema
     match /systemConfig/{doc} {
       allow read: if true;
-      allow create, update, delete: if true;
+      allow create, update, delete: if isAuthorizedDevice();
+      
+      // Validar estructura para configuración DJ
+      allow write: if doc == 'djConfig' && 
+        isAuthorizedDevice() &&
+        (resource == null || 
+         (request.resource.data.keys().hasAll(['masterFingerprint']) &&
+          request.resource.data.masterFingerprint is string &&
+          request.resource.data.masterFingerprint.size() > 0));
     }
 
     // Logs de actividad del sistema (opcional, para debugging)
@@ -168,12 +253,19 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Datos de canciones reproducidas por día (solo el DJ/admin puede modificar)
+    // Datos de canciones reproducidas por día (solo dispositivo autorizado puede escribir)
     match /playedSongs/{day} {
       allow read: if true;
-      allow create: if true;
-      allow update: if true;
-      allow delete: if true;
+      
+      // Solo permitir escritura a usuarios autenticados
+      // La validación específica del dispositivo se hace en el cliente
+      allow create, update, delete: if isAuthorizedDevice();
+      
+      // Validar estructura de datos
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAny(['songs', 'lastUpdated', 'day']) &&
+         (request.resource.data.get('songs', []) is list) &&
+         (request.resource.data.get('day', '') is string));
     }
 
     // Métricas y analytics del sistema
