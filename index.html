@@ -944,23 +944,47 @@
     const data = getGamificationData(usuario);
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    
-    if (data.streaks.lastActivity === yesterday) {
-      // Continuar racha
+
+    function getRequestsForDay(day) {
+      const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+      if (Array.isArray(byDay[day]) && byDay[day].length) return byDay[day];
+      const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+      return arr.filter(s => {
+        const sday = s.day || (s.time ? new Date(s.time).toISOString().split('T')[0] : '');
+        return sday === day;
+      });
+    }
+
+    const norm = v => String(v || '').trim().replace(/^@/, '').toLowerCase();
+    const todayRequests = getRequestsForDay(today);
+    const distinctUsersToday = new Set(todayRequests.map(s => s && norm(s.usuario))).size;
+    const userRequestedToday = todayRequests.some(s => s && norm(s.usuario) === norm(usuario));
+
+    // Día válido: 2+ usuarios distintos y el usuario actual solicitó
+    const todayValid = distinctUsersToday >= 2 && userRequestedToday;
+
+    if (!todayValid) {
+      // Día inválido: no modificar la racha ni el calendario
+      saveGamificationData(usuario, data);
+      return data.streaks.current;
+    }
+
+    // Consecutividad: incrementa solo si ayer también fue válido
+    const yesterdayValid = !!data.streaks.calendar[yesterday];
+    if (yesterdayValid) {
       data.streaks.current++;
     } else if (data.streaks.lastActivity !== today) {
-      // Nueva racha o racha rota
       data.streaks.current = 1;
     }
-    
-    // Actualizar mejor racha
+
+    // Record: conservar y actualizar si se supera
     if (data.streaks.current > data.streaks.best) {
       data.streaks.best = data.streaks.current;
     }
-    
+
     data.streaks.lastActivity = today;
-    data.streaks.calendar[today] = true;
-    
+    data.streaks.calendar[today] = true; // solo marcamos días válidos
+
     saveGamificationData(usuario, data);
     return data.streaks.current;
   }

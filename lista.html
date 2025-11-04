@@ -5,6 +5,58 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Lista d'Canciones - Zero Radio</title>
   <link rel="stylesheet" href="styles.css" />
+  <style>
+    .calendar-navigation {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin: 8px 0 10px;
+    }
+    .calendar-nav-btn {
+      border: none;
+      background: var(--btn-bg, #eee);
+      color: var(--btn-fg, #333);
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      transition: background 0.2s ease, transform 0.1s ease;
+    }
+    .calendar-nav-btn:hover { transform: translateY(-1px); }
+    .dark-theme .calendar-nav-btn { background: #2f3237; color: #ddd; }
+
+    .calendar-month-selector { display: flex; gap: 6px; align-items: center; }
+    .calendar-select {
+      appearance: none;
+      -webkit-appearance: none;
+      border: 1px solid rgba(0,0,0,0.1);
+      background: var(--select-bg, #fff);
+      color: var(--select-fg, #111);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .dark-theme .calendar-select { background: #1f2328; color: #e5e7eb; border-color: rgba(255,255,255,0.15); }
+
+    .calendar-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      margin-bottom: 6px;
+      font-weight: 600;
+      opacity: 0.8;
+    }
+    .weekday { text-align: center; font-size: 12px; }
+    .dark-theme .calendar-weekdays { opacity: 0.9; }
+
+    .calendar-day.other-month { opacity: 0.35; }
+    @media (max-width: 480px) {
+      .calendar-select { font-size: 13px; }
+      .calendar-nav-btn { font-size: 16px; }
+    }
+  </style>
   
   <!-- Script de sincronización de temas -->
   <script>
@@ -287,6 +339,11 @@
             <li>🔧 Mejorado cálculo de puntos de logros existentes y nuevos.</li>
             <li>🔧 Implementada validación y corrección automática de datos.</li>
             <li>🔧 Preservación correcta de estructura de rachas y estadísticas.</li>
+            <li>📅 Calendario de rachas mensual con navegación por mes y año.</li>
+            <li>🗓️ Días de otros meses atenuados y cabecera de días de la semana.</li>
+            <li>🌙📱 Controles del calendario con soporte para tema oscuro y responsive.</li>
+            <li>🎨 Leyenda de niveles de actividad mostrada en una sola línea.</li>
+            <li>🔥 Reglas de racha refinadas: día válido con 2+ usuarios distintos y tú participando; continuidad solo si el día previo fue válido; récord preservado.</li>
           </ul>
 
             <h3>v1.6</h3>
@@ -499,7 +556,41 @@
 
                 <div class="streak-calendar">
                   <h4>📅 Actividad Reciente</h4>
-                  <div id="streak-calendar-grid" class="calendar-grid">
+                  <!-- Controles de navegación del calendario de rachas -->
+                  <div class="calendar-navigation" aria-label="Navegación de calendario">
+                    <button type="button" id="prev-month" class="calendar-nav-btn" title="Mes anterior" aria-label="Mes anterior">‹</button>
+                    <div class="calendar-month-selector">
+                      <select id="month-select" class="calendar-select" aria-label="Seleccionar mes">
+                        <option value="0">Enero</option>
+                        <option value="1">Febrero</option>
+                        <option value="2">Marzo</option>
+                        <option value="3">Abril</option>
+                        <option value="4">Mayo</option>
+                        <option value="5">Junio</option>
+                        <option value="6">Julio</option>
+                        <option value="7">Agosto</option>
+                        <option value="8">Septiembre</option>
+                        <option value="9">Octubre</option>
+                        <option value="10">Noviembre</option>
+                        <option value="11">Diciembre</option>
+                      </select>
+                      <select id="year-select" class="calendar-select" aria-label="Seleccionar año">
+                        <!-- Se llena dinámicamente -->
+                      </select>
+                    </div>
+                    <button type="button" id="next-month" class="calendar-nav-btn" title="Mes siguiente" aria-label="Mes siguiente">›</button>
+                  </div>
+                  <!-- Cabecera de días de la semana -->
+                  <div class="calendar-weekdays" aria-hidden="true">
+                    <div class="weekday">Dom</div>
+                    <div class="weekday">Lun</div>
+                    <div class="weekday">Mar</div>
+                    <div class="weekday">Mié</div>
+                    <div class="weekday">Jue</div>
+                    <div class="weekday">Vie</div>
+                    <div class="weekday">Sáb</div>
+                  </div>
+                  <div id="streak-calendar-grid" class="calendar-grid" aria-live="polite">
                     <!-- El calendario se generará dinámicamente -->
                   </div>
                   <div class="activity-legend">
@@ -3219,25 +3310,46 @@
 
       function updateStreak() {
         const data = getGamificationData();
+        const currentUser = (typeof getCurrentUser === 'function')
+          ? getCurrentUser()
+          : (localStorage.getItem('currentUser') || '').trim();
+
         const today = new Date().toISOString().split('T')[0];
         const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-        
-        if (data.streaks.lastActivity === yesterday) {
-          // Continuar racha
+
+        function getRequestsForDay(day) {
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          if (Array.isArray(byDay[day]) && byDay[day].length) return byDay[day];
+          const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          return arr.filter(s => {
+            const sday = s.day || (s.time ? new Date(s.time).toISOString().split('T')[0] : day);
+            return sday === day;
+          });
+        }
+
+        const todayRequests = getRequestsForDay(today);
+        const distinctUsersToday = new Set(todayRequests.map(s => s && s.usuario)).size;
+        const userRequestedToday = todayRequests.some(s => s && s.usuario === currentUser);
+
+        const todayValid = distinctUsersToday >= 2 && userRequestedToday;
+        if (!todayValid) {
+          return data.streaks.current;
+        }
+
+        const yesterdayValid = !!data.streaks.calendar[yesterday];
+        if (yesterdayValid) {
           data.streaks.current++;
         } else if (data.streaks.lastActivity !== today) {
-          // Nueva racha o racha rota
           data.streaks.current = 1;
         }
-        
-        // Actualizar mejor racha
+
         if (data.streaks.current > data.streaks.best) {
           data.streaks.best = data.streaks.current;
         }
-        
+
         data.streaks.lastActivity = today;
         data.streaks.calendar[today] = true;
-        
+
         saveGamificationData(data);
         return data.streaks.current;
       }
@@ -3245,58 +3357,80 @@
       async function calculateStreaksForUser(username, data, allSolicitudes) {
         try {
           console.log(`🔥 Calculando rachas para ${username}`);
-          
-          // Obtener todas las solicitudes del usuario
-          const userSongs = allSolicitudes.filter(s => s.usuario === username);
-          
-          // Crear un mapa de días con actividad
-          const activityDays = new Set();
-          userSongs.forEach(song => {
+
+          // Mapear usuarios distintos por día
+          const usersByDay = {};
+          allSolicitudes.forEach(s => {
             let day;
-            if (song.day) {
-              day = song.day;
-            } else if (song.time) {
-              day = new Date(song.time).toISOString().split('T')[0];
+            if (s.day) {
+              day = s.day;
+            } else if (s.time) {
+              day = new Date(s.time).toISOString().split('T')[0];
+            } else if (s.ts) {
+              try {
+                day = new Date(s.ts).toISOString().split('T')[0];
+              } catch (_) {
+                day = new Date().toISOString().split('T')[0];
+              }
             } else {
               day = new Date().toISOString().split('T')[0];
             }
-            activityDays.add(day);
+            const user = s.usuario;
+            if (!usersByDay[day]) usersByDay[day] = new Set();
+            if (user) usersByDay[day].add(user);
           });
-          
-          const sortedDays = Array.from(activityDays).sort();
-          console.log(`📅 Días con actividad para ${username}:`, sortedDays);
-          
+
+          // Días en los que el usuario solicitó algo
+          const userDays = new Set();
+          allSolicitudes.forEach(s => {
+            if (s && s.usuario === username) {
+              let day;
+              if (s.day) {
+                day = s.day;
+              } else if (s.time) {
+                day = new Date(s.time).toISOString().split('T')[0];
+              } else if (s.ts) {
+                try {
+                  day = new Date(s.ts).toISOString().split('T')[0];
+                } catch (_) {
+                  day = new Date().toISOString().split('T')[0];
+                }
+              } else {
+                day = new Date().toISOString().split('T')[0];
+              }
+              userDays.add(day);
+            }
+          });
+
+          // Días válidos: al menos 2 usuarios distintos y el usuario solicitó
+          const validDays = Array.from(userDays).filter(day => (usersByDay[day]?.size || 0) >= 2);
+          const sortedDays = validDays.sort();
+          console.log(`📅 Días válidos para racha de ${username}:`, sortedDays);
+
           if (sortedDays.length === 0) {
             data.streaks = {
               current: 0,
-              best: 0,
+              best: Math.max(data.streaks?.best || 0, 0),
               lastActivity: null,
               calendar: {}
             };
             return;
           }
-          
-          // Calcular rachas
-          let currentStreak = 0;
-          let bestStreak = 0;
-          let tempStreak = 1;
-          
-          const today = new Date().toISOString().split('T')[0];
-          const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-          
-          // Construir calendario
+
+          // Construir calendario con días válidos
           const calendar = {};
           sortedDays.forEach(day => {
             calendar[day] = true;
           });
-          
-          // Calcular mejor racha histórica
+
+          // Calcular mejor racha histórica (días válidos consecutivos)
+          let bestStreak = 0;
+          let tempStreak = sortedDays.length ? 1 : 0;
           for (let i = 1; i < sortedDays.length; i++) {
-            const currentDay = new Date(sortedDays[i]);
-            const previousDay = new Date(sortedDays[i - 1]);
-            const dayDiff = (currentDay - previousDay) / (1000 * 60 * 60 * 24);
-            
-            if (dayDiff === 1) {
+            const curr = new Date(sortedDays[i]);
+            const prev = new Date(sortedDays[i - 1]);
+            const diff = (curr - prev) / (1000 * 60 * 60 * 24);
+            if (diff === 1) {
               tempStreak++;
             } else {
               bestStreak = Math.max(bestStreak, tempStreak);
@@ -3304,61 +3438,47 @@
             }
           }
           bestStreak = Math.max(bestStreak, tempStreak);
-          
-          // Calcular racha actual
+
+          // Calcular racha actual (hasta hoy o ayer)
+          const today = new Date().toISOString().split('T')[0];
+          const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+          let currentStreak = 0;
+
           const lastActivityDay = sortedDays[sortedDays.length - 1];
-          if (lastActivityDay === today) {
-            // Actividad hoy, calcular racha hacia atrás
+          if (lastActivityDay === today || lastActivityDay === yesterday) {
             currentStreak = 1;
             for (let i = sortedDays.length - 2; i >= 0; i--) {
-              const currentDay = new Date(sortedDays[i + 1]);
-              const previousDay = new Date(sortedDays[i]);
-              const dayDiff = (currentDay - previousDay) / (1000 * 60 * 60 * 24);
-              
-              if (dayDiff === 1) {
-                currentStreak++;
-              } else {
-                break;
-              }
-            }
-          } else if (lastActivityDay === yesterday) {
-            // Actividad ayer, racha continúa
-            currentStreak = 1;
-            for (let i = sortedDays.length - 2; i >= 0; i--) {
-              const currentDay = new Date(sortedDays[i + 1]);
-              const previousDay = new Date(sortedDays[i]);
-              const dayDiff = (currentDay - previousDay) / (1000 * 60 * 60 * 24);
-              
-              if (dayDiff === 1) {
+              const curr = new Date(sortedDays[i + 1]);
+              const prev = new Date(sortedDays[i]);
+              const diff = (curr - prev) / (1000 * 60 * 60 * 24);
+              if (diff === 1) {
                 currentStreak++;
               } else {
                 break;
               }
             }
           } else {
-            // No hay actividad reciente, racha rota
             currentStreak = 0;
           }
-          
+
           data.streaks = {
             current: currentStreak,
-            best: bestStreak,
-            lastActivity: lastActivityDay,
-            calendar: calendar
+            best: Math.max(data.streaks?.best || 0, bestStreak),
+            lastActivity: lastActivityDay || null,
+            calendar
           };
-          
-          console.log(`🔥 Rachas calculadas para ${username}:`, {
-            current: currentStreak,
-            best: bestStreak,
-            lastActivity: lastActivityDay,
-            totalDays: sortedDays.length
+
+          console.log(`🔥 Rachas (validadas) para ${username}:`, {
+            current: data.streaks.current,
+            best: data.streaks.best,
+            lastActivity: data.streaks.lastActivity,
+            totalValidDays: sortedDays.length
           });
-          
         } catch (error) {
           console.error(`Error calculando rachas para ${username}:`, error);
           data.streaks = {
             current: 0,
-            best: 0,
+            best: Math.max(data.streaks?.best || 0, 0),
             lastActivity: null,
             calendar: {}
           };
@@ -3586,75 +3706,35 @@
         }
       }
 
+      // Estado del mes/año mostrado (calendario de rachas)
+      let currentCalendarMonth = new Date().getMonth();
+      let currentCalendarYear = new Date().getFullYear();
+
       async function renderStreakCalendar(calendar) {
         try {
           const container = document.getElementById('streak-calendar-grid');
-          if (!container) {
-            console.warn('Contenedor del calendario de rachas no encontrado');
-            return;
-          }
-          
-          const today = new Date();
-          const days = [];
+          if (!container) return;
+
           const currentUser = getCurrentSelectedUser();
-          
-          console.log(`🎯 DEBUG CALENDARIO: Usuario actual: "${currentUser}"`);
-          console.log(`🎯 DEBUG CALENDARIO: getCurrentUser(): "${getCurrentUser()}"`);
-          console.log(`🎯 DEBUG CALENDARIO: currentSelectedUser: "${currentSelectedUser}"`);
-          
-          // Obtener actividad del usuario para los últimos 28 días
-          const userActivity = await getUserActivityForDays(currentUser, 28);
-          console.log(`📊 Actividad del usuario obtenida para ${currentUser}:`, userActivity);
-          
-          // Generar últimos 28 días
-          console.log('🗓️ Generando días del calendario...');
-          for (let i = 27; i >= 0; i--) {
-            const date = new Date(today.getTime() - (i * 86400000));
-            const dateStr = date.toISOString().split('T')[0];
-            const isToday = i === 0;
-            const isActive = calendar && calendar[dateStr];
-            const activityCount = userActivity[dateStr] || 0;
-            
-            // Log detallado para cada día
-            if (activityCount > 0 || isToday) {
-              console.log(`📅 ${dateStr}: ${activityCount} canciones ${isToday ? '(HOY)' : ''}`);
-            }
-            
-            // Determinar nivel de actividad
-            let activityClass = '';
-            let activityTitle = `${dateStr}`;
-            
-            if (activityCount > 0) {
-              if (activityCount >= 10) {
-                activityClass = 'activity-very-high';
-                activityTitle += ` - ${activityCount} canciones (Muy activo)`;
-              } else if (activityCount >= 5) {
-                activityClass = 'activity-high';
-                activityTitle += ` - ${activityCount} canciones (Muy activo)`;
-              } else if (activityCount >= 3) {
-                activityClass = 'activity-medium';
-                activityTitle += ` - ${activityCount} canciones (Activo)`;
-              } else {
-                activityClass = 'activity-low';
-                activityTitle += ` - ${activityCount} canción${activityCount > 1 ? 'es' : ''} (Poco activo)`;
-              }
-            } else {
-              activityTitle += ' - Sin actividad';
-            }
-            
-            const dayHTML = `<div class="calendar-day ${activityClass} ${isToday ? 'today' : ''}" title="${activityTitle}">${date.getDate()}</div>`;
-            
-            // Log para días con actividad
-            if (activityCount > 0 || isToday) {
-              console.log(`🎨 ${dateStr}: clase="${activityClass}" actividad=${activityCount}`);
-            }
-            
-            days.push(dayHTML);
-          }
-          
-          console.log(`✅ Calendario generado con ${days.length} días`);
+
+          // Actividad del usuario para el mes mostrado
+          const userActivity = await getUserActivityForMonth(
+            currentUser,
+            currentCalendarYear,
+            currentCalendarMonth
+          );
+
+          // Render del mes (6 semanas, 42 días)
+          const days = generateMonthCalendar(
+            currentCalendarYear,
+            currentCalendarMonth,
+            userActivity
+          );
+
           container.innerHTML = days.join('');
-          
+
+          // Sincronizar selects de mes/año
+          updateCalendarSelectors();
         } catch (error) {
           console.error('Error renderizando calendario de rachas:', error);
           const container = document.getElementById('streak-calendar-grid');
@@ -3662,6 +3742,156 @@
             container.innerHTML = '<div class="calendar-day">Error al cargar actividad</div>';
           }
         }
+      }
+
+      function generateMonthCalendar(year, month, userActivity) {
+        const today = new Date();
+        const firstDay = new Date(year, month, 1);
+        const startDate = new Date(firstDay);
+        // Ajuste al domingo anterior
+        startDate.setDate(startDate.getDate() - firstDay.getDay());
+
+        const days = [];
+        const currentDate = new Date(startDate);
+
+        // Generar 6 semanas para cubrir el mes
+        for (let i = 0; i < 42; i++) {
+          const dateStr = currentDate.toISOString().split('T')[0];
+          const isCurrentMonth = currentDate.getMonth() === month;
+          const isToday = currentDate.toDateString() === today.toDateString();
+          const activityCount = userActivity[dateStr] || 0;
+
+          const classes = ['calendar-day'];
+          let activityTitle = `${currentDate.getDate()}`;
+
+          if (!isCurrentMonth) {
+            classes.push('other-month');
+            activityTitle += ' (otro mes)';
+          } else {
+            if (activityCount > 0) {
+              if (activityCount >= 10) {
+                classes.push('activity-very-high');
+                activityTitle += ` - ${activityCount} canciones (Muy activo)`;
+              } else if (activityCount >= 5) {
+                classes.push('activity-high');
+                activityTitle += ` - ${activityCount} canciones (Muy activo)`;
+              } else if (activityCount >= 3) {
+                classes.push('activity-medium');
+                activityTitle += ` - ${activityCount} canciones (Activo)`;
+              } else {
+                classes.push('activity-low');
+                activityTitle += ` - ${activityCount} canción${activityCount > 1 ? 'es' : ''} (Poco activo)`;
+              }
+            } else {
+              activityTitle += ' - Sin actividad';
+            }
+          }
+
+          if (isToday) classes.push('today');
+
+          days.push(
+            `<div class="${classes.join(' ')}" title="${activityTitle}">${currentDate.getDate()}</div>`
+          );
+
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+
+        return days;
+      }
+
+      async function getUserActivityForMonth(username, year, month) {
+        try {
+          // Intentar usar datos reales si la función existe
+          if (typeof computeActivityForMonth === 'function') {
+            const activity = await computeActivityForMonth(username, month, year);
+            return activity || {};
+          }
+        } catch (e) {
+          // Continuar con datos simulados
+        }
+
+        // Fallback con datos simulados por usuario y mes
+        const result = {};
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const userHash = typeof hashCode === 'function' ? hashCode(username) : 0;
+        const rng = typeof seedRandom === 'function' ? seedRandom(userHash) : null;
+
+        for (let d = 1; d <= daysInMonth; d++) {
+          const date = new Date(year, month, d);
+          const dateStr = date.toISOString().split('T')[0];
+          const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+          let r = rng ? rng() : Math.random();
+          let songs = 0;
+          if (r < 0.05) songs = 0;
+          else if (r < 0.25) songs = 1;
+          else if (r < 0.5) songs = 2;
+          else if (r < 0.75) songs = isWeekend ? 4 : 3;
+          else if (r < 0.9) songs = isWeekend ? 5 : 4;
+          else songs = isWeekend ? 6 : 5;
+          result[dateStr] = songs;
+        }
+
+        return result;
+      }
+
+      function updateCalendarSelectors() {
+        const monthSelect = document.getElementById('month-select');
+        const yearSelect = document.getElementById('year-select');
+
+        if (monthSelect) {
+          monthSelect.value = String(currentCalendarMonth);
+        }
+
+        if (yearSelect) {
+          const currentYear = new Date().getFullYear();
+          // Mantener opciones razonables de años
+          const existingYears = Array.from(yearSelect.options).map(o => parseInt(o.value, 10));
+          if (!existingYears.length) {
+            yearSelect.innerHTML = '';
+            for (let year = currentYear - 2; year <= currentYear + 1; year++) {
+              const option = document.createElement('option');
+              option.value = String(year);
+              option.textContent = String(year);
+              yearSelect.appendChild(option);
+            }
+          }
+          yearSelect.value = String(currentCalendarYear);
+        }
+      }
+
+      function initializeCalendarNavigation() {
+        const prevBtn = document.getElementById('prev-month');
+        const nextBtn = document.getElementById('next-month');
+        const monthSelect = document.getElementById('month-select');
+        const yearSelect = document.getElementById('year-select');
+
+        prevBtn?.addEventListener('click', () => {
+          currentCalendarMonth--;
+          if (currentCalendarMonth < 0) {
+            currentCalendarMonth = 11;
+            currentCalendarYear--;
+          }
+          renderStreakCalendar();
+        });
+
+        nextBtn?.addEventListener('click', () => {
+          currentCalendarMonth++;
+          if (currentCalendarMonth > 11) {
+            currentCalendarMonth = 0;
+            currentCalendarYear++;
+          }
+          renderStreakCalendar();
+        });
+
+        monthSelect?.addEventListener('change', (e) => {
+          currentCalendarMonth = parseInt(e.target.value, 10);
+          renderStreakCalendar();
+        });
+
+        yearSelect?.addEventListener('change', (e) => {
+          currentCalendarYear = parseInt(e.target.value, 10);
+          renderStreakCalendar();
+        });
       }
 
       // Función auxiliar para obtener la actividad del usuario por días
@@ -3841,7 +4071,7 @@
       });
 
       // Event listeners para modal de gamificación
-      gamificationOpenBtn?.addEventListener('click', () => {
+      gamificationOpenBtn?.addEventListener('click', async () => {
         // Cerrar el menú
         closeMenu();
         hideSearchResults();
@@ -3867,7 +4097,13 @@
         console.log(`📊 Estado inicial - currentSelectedUser: ${currentSelectedUser}`);
         
         renderGamificationModal().catch(console.error);
-        gamificationModal.hidden = false;
+  // Asegurar inicialización de la navegación una sola vez y render del mes actual
+  if (!window.__calendarNavInit__) {
+    initializeCalendarNavigation();
+    window.__calendarNavInit__ = true;
+  }
+  await renderStreakCalendar();
+  gamificationModal.hidden = false;
       });
 
       // Event listener para el botón X de cerrar
@@ -5629,6 +5865,185 @@
         }
       }
 
+      // ===== Navegación de calendario de rachas (mes completo) =====
+      const monthNamesEs = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      const calendarState = { month: new Date().getMonth(), year: new Date().getFullYear(), initialized: false };
+
+      async function populateYearOptionsForCalendar() {
+        const yearSelect = document.getElementById('year-select');
+        if (!yearSelect) return;
+        let minYear = new Date().getFullYear() - 2;
+        let maxYear = new Date().getFullYear() + 1;
+        try {
+          const all = await getAllCombinedSolicitudes();
+          const years = all.map(s => {
+            const d = s.ts ? new Date(s.ts) : (s.day ? new Date(s.day) : null);
+            return d && !isNaN(d.getTime()) ? d.getFullYear() : null;
+          }).filter(Boolean);
+          if (years.length) {
+            minYear = Math.min(...years);
+            maxYear = Math.max(...years);
+          }
+        } catch (e) {}
+        const options = [];
+        for (let y = maxYear; y >= minYear; y--) {
+          options.push(`<option value="${y}">${y}</option>`);
+        }
+        yearSelect.innerHTML = options.join('');
+      }
+
+      function setCalendarTitle(month, year) {
+        const titleEl = document.querySelector('.streak-calendar h4');
+        if (titleEl) {
+          titleEl.textContent = `📅 Actividad - ${monthNamesEs[month]} ${year}`;
+        }
+      }
+
+      async function initStreakCalendarNavigation() {
+        const prevBtn = document.getElementById('prev-month');
+        const nextBtn = document.getElementById('next-month');
+        const monthSelect = document.getElementById('month-select');
+        const yearSelect = document.getElementById('year-select');
+        const grid = document.getElementById('streak-calendar-grid');
+        if (!grid || !monthSelect || !yearSelect || !prevBtn || !nextBtn) {
+          return;
+        }
+        if (!calendarState.initialized) {
+          await populateYearOptionsForCalendar();
+          const now = new Date();
+          calendarState.month = now.getMonth();
+          calendarState.year = now.getFullYear();
+          monthSelect.value = String(calendarState.month);
+          yearSelect.value = String(calendarState.year);
+          prevBtn.addEventListener('click', async () => {
+            if (calendarState.month === 0) {
+              calendarState.month = 11;
+              calendarState.year--;
+              yearSelect.value = String(calendarState.year);
+            } else {
+              calendarState.month--;
+            }
+            monthSelect.value = String(calendarState.month);
+            await renderSelectedMonth();
+          });
+          nextBtn.addEventListener('click', async () => {
+            if (calendarState.month === 11) {
+              calendarState.month = 0;
+              calendarState.year++;
+              yearSelect.value = String(calendarState.year);
+            } else {
+              calendarState.month++;
+            }
+            monthSelect.value = String(calendarState.month);
+            await renderSelectedMonth();
+          });
+          monthSelect.addEventListener('change', async () => {
+            calendarState.month = parseInt(monthSelect.value, 10) || calendarState.month;
+            await renderSelectedMonth();
+          });
+          yearSelect.addEventListener('change', async () => {
+            calendarState.year = parseInt(yearSelect.value, 10) || calendarState.year;
+            await renderSelectedMonth();
+          });
+          calendarState.initialized = true;
+        }
+        await renderSelectedMonth();
+      }
+
+      async function renderSelectedMonth() {
+        const username = getCurrentSelectedUser ? getCurrentSelectedUser() : getCurrentUser();
+        await renderMonthForUser(username, calendarState.month, calendarState.year);
+      }
+
+      async function renderMonthForUser(username, month, year) {
+        try {
+          const activity = await computeActivityForMonth(username, month, year);
+          renderMonthGrid(activity, month, year);
+          setCalendarTitle(month, year);
+        } catch (e) {
+          console.error('Error renderizando mes:', e);
+        }
+      }
+
+      async function computeActivityForMonth(username, month, year) {
+        const activity = {};
+        try {
+          const all = await getAllCombinedSolicitudes();
+          all.forEach(s => {
+            if (s.usuario !== username) return;
+            let d = null;
+            if (s.ts) {
+              d = new Date(s.ts);
+            } else if (s.day) {
+              const parts = String(s.day).split('-');
+              if (parts.length === 3) {
+                d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10));
+              } else {
+                d = new Date(s.day);
+              }
+            }
+            if (!d || isNaN(d.getTime())) return;
+            if (d.getMonth() === month && d.getFullYear() === year) {
+              const key = d.toISOString().split('T')[0];
+              activity[key] = (activity[key] || 0) + 1;
+            }
+          });
+        } catch (e) {}
+        return activity;
+      }
+
+      function renderMonthGrid(activityByDay, month, year) {
+        const grid = document.getElementById('streak-calendar-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        const firstDay = new Date(year, month, 1);
+        const startDow = firstDay.getDay(); // 0=Domingo
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const prevMonthDays = new Date(year, month, 0).getDate();
+        const totalCells = 42; // 6 semanas
+        const today = new Date();
+        for (let i = 0; i < totalCells; i++) {
+          let displayDay, displayMonth = month, displayYear = year, isOther = false;
+          if (i < startDow) {
+            displayDay = prevMonthDays - (startDow - 1 - i);
+            if (month === 0) {
+              displayMonth = 11; displayYear = year - 1;
+            } else {
+              displayMonth = month - 1;
+            }
+            isOther = true;
+          } else if (i >= startDow + daysInMonth) {
+            displayDay = i - (startDow + daysInMonth) + 1;
+            if (month === 11) {
+              displayMonth = 0; displayYear = year + 1;
+            } else {
+              displayMonth = month + 1;
+            }
+            isOther = true;
+          } else {
+            displayDay = i - startDow + 1;
+          }
+          const dateObj = new Date(displayYear, displayMonth, displayDay);
+          const dateKey = dateObj.toISOString().split('T')[0];
+          const count = activityByDay[dateKey] || 0;
+          let activityClass = '';
+          if (count > 0) {
+            if (count >= 10) activityClass = 'activity-very-high';
+            else if (count >= 5) activityClass = 'activity-high';
+            else if (count >= 3) activityClass = 'activity-medium';
+            else activityClass = 'activity-low';
+          }
+          const isToday = today.getFullYear() === displayYear && today.getMonth() === displayMonth && today.getDate() === displayDay;
+          const cell = document.createElement('div');
+          cell.className = `calendar-day ${activityClass}${isToday ? ' today' : ''}${isOther ? ' other-month' : ''}`;
+          cell.setAttribute('title', `${dateKey}${count ? ` - ${count} canción${count!==1?'es':''}` : ' - Sin actividad'}`);
+          cell.setAttribute('data-date', dateKey);
+          cell.setAttribute('data-songs', String(count));
+          cell.textContent = String(displayDay);
+          grid.appendChild(cell);
+        }
+      }
+
       async function renderPersonalStatsForUser(data) {
         const stats = data.stats;
         const targetUser = getCurrentSelectedUser();
@@ -6915,17 +7330,11 @@
       }
       
       if (typeof window.renderStreakCalendar === 'function') {
-        window.renderStreakCalendar = function() {
-          console.log('🚫 renderStreakCalendar deshabilitada para evitar conflictos');
-          return false;
-        };
+        console.log('ℹ️ renderStreakCalendar habilitada');
       }
       
       if (typeof window.renderStreakCalendarForUser === 'function') {
-        window.renderStreakCalendarForUser = function() {
-          console.log('🚫 renderStreakCalendarForUser deshabilitada para evitar conflictos');
-          return false;
-        };
+        console.log('ℹ️ renderStreakCalendarForUser habilitada');
       }
 
 
@@ -7345,7 +7754,7 @@
       }
 
       // FUNCIÓN PARA GENERAR ACTIVIDAD INDIVIDUAL POR USUARIO
-      function generateUserActivity(userName, days = 30) {
+      function generateUserActivity(userName, days = 30, startDate = null) {
         // Crear semilla basada en el nombre del usuario
         let seed = 0;
         for (let i = 0; i < userName.length; i++) {
@@ -7359,10 +7768,12 @@
         }
         
         const activity = {};
-        const today = new Date();
+        const baseDate = startDate ? new Date(startDate) : new Date();
         
         for (let i = 0; i < days; i++) {
-          const date = new Date(today.getTime() - (i * 86400000));
+          const date = startDate
+            ? new Date(baseDate.getTime() + (i * 86400000)) // hacia adelante desde startDate
+            : new Date(baseDate.getTime() - (i * 86400000)); // hacia atrás desde hoy
           const dateStr = date.toISOString().split('T')[0];
           const dayOfWeek = date.getDay();
           const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
@@ -7622,10 +8033,20 @@
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', async () => {
           await createSimpleCalendar();
+          if (typeof initializeCalendarNavigation === 'function') {
+            initializeCalendarNavigation();
+          } else if (typeof initStreakCalendarNavigation === 'function') {
+            initStreakCalendarNavigation();
+          }
         });
       } else {
         setTimeout(async () => {
           await createSimpleCalendar();
+          if (typeof initializeCalendarNavigation === 'function') {
+            initializeCalendarNavigation();
+          } else if (typeof initStreakCalendarNavigation === 'function') {
+            initStreakCalendarNavigation();
+          }
         }, 100);
       }
       
