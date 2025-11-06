@@ -91,6 +91,10 @@
           <button id="theme-btn" class="theme-btn" type="button" aria-label="Cambiar tema" title="Cambiar tema">
             🎨
           </button>
+          <!-- Botón de lápiz para modo edición (visible solo en modo admin) -->
+          <button id="edit-toggle-btn" class="edit-toggle-btn" type="button" title="Editar lista (eliminar / mover)" aria-pressed="false" hidden>
+            ✏️
+          </button>
           <button id="menu-btn" class="menu-btn" type="button" aria-label="Abrir menú" aria-haspopup="true" aria-expanded="false" aria-controls="menu-dropdown">
             <span class="bar bar1"></span>
             <span class="bar bar2"></span>
@@ -323,7 +327,17 @@
           <h2 id="changelog-modal-title">Mejoras por versión</h2>
           
           <div class="changelog-content">
-            <h3>v1.7 (actual)</h3>
+            <h3>v1.8 (actual)</h3>
+          <ul>
+            <li>🏅 Barras de progreso en logros con metas claras.</li>
+            <li>🎯 Nuevos logros: canciones (200/500/1000), días activos (25/50/100), variedad (50/100), rachas (14/30/60), mismo artista (20/50), primero en pedir (1/3/6/9/12/15/18/21).</li>
+            <li>📊 Métricas añadidas: conteo máximo por artista y “primero en pedir”.</li>
+            <li>📅 Unificación del cálculo de día con util de fecha para evitar inconsistencias.</li>
+            <li>👑 Recompensa “Conviértete en VIP” actualizada: 21000 puntos y otorga VIP permanente.</li>
+            <li>📱 Ajustes responsive: barras y tarjetas compactas para móviles (incl. Nubia).</li>
+          </ul>
+
+            <h3>v1.7</h3>
           <ul>
             <li>🎯 Botón dedicado para marcar canciones: Cada canción ahora tiene un botón específico (✓) para marcar/desmarcar.</li>
             <li>📝 Texto seleccionable: Ahora puedes seleccionar y copiar el texto de las canciones sin interferir con la funcionalidad de marcado.</li>
@@ -863,16 +877,19 @@
           return;
         }
         emptyEl.hidden = true;
+        const isEditing = solicitudesList.classList.contains('editing');
+
         items.forEach((it, index) => {
           const isVip = vipSet.has(it.usuario);
           const isZ0Vip = z0VipSet.has(it.usuario);
           const isDonador = donadorSet.has(it.usuario);
           const li = document.createElement('li');
-          
+
           // Crear ID único para la canción
           const songId = `${it.usuario}-${it.cancion}-${it.artista}-${it.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
           li.dataset.songId = songId;
-          
+          if (it.id) li.dataset.docId = it.id;
+
           if (isZ0Vip) {
             li.className = 'item z0-vip';
           } else if (isVip) {
@@ -882,58 +899,138 @@
           } else {
             li.className = 'item';
           }
-          
+
           // Verificar si la canción está marcada como reproducida
           const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
           const currentDay = document.getElementById('day-select')?.value || '';
           if (playedSongs[currentDay] && playedSongs[currentDay].includes(songId)) {
             li.classList.add('played');
           }
-          
+
+          // Modo edición: draggable
+          li.draggable = !!isEditing;
+
           li.innerHTML = `
             <span class="col col-time">${it.hora || ''}</span>
             <span class="col col-usuario usuario">${it.usuario}</span>
             <span class="col col-cancion">${it.cancion}</span>
             <span class="col col-artista">${it.artista}</span>
-            <span class="col col-cancion-artista">
-              <div class="cancion-line">${it.cancion}</div>
-              <div class="artista-line">${it.artista}</div>
-            </span>
             <button class="play-toggle-btn" title="Marcar como reproducida/no reproducida">
               <span class="play-icon">▶️</span>
             </button>
+            <button class="delete-btn" title="Eliminar canción" aria-label="Eliminar">🗑️</button>
+            <span class="drag-handle" title="Arrastrar para reordenar">≡</span>
           `;
-          
-          // Hacer el texto seleccionable
+
+          // Texto seleccionable / cursor según modo
           li.style.userSelect = 'text';
-          li.style.cursor = 'text';
-          
-          // Agregar evento de clic solo al botón para marcar/desmarcar
+          li.style.cursor = isEditing ? 'grab' : 'text';
+
+          // Toggle reproducida
           const toggleBtn = li.querySelector('.play-toggle-btn');
           toggleBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            
-            // Solo dispositivos de escritorio pueden marcar canciones
             if (!isDJDevice()) {
-              return; // Salir silenciosamente
+              return;
             }
-            
             toggleSongPlayed(li, songId, currentDay);
           });
-          
+
+          // Eliminar canción (solo en modo edición)
+          const deleteBtn = li.querySelector('.delete-btn');
+          deleteBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!solicitudesList.classList.contains('editing')) return;
+
+            const docId = li.dataset.docId;
+            const day = currentDay;
+            try {
+              if (docId && window.db) {
+                await window.db.collection('solicitudes').doc(docId).delete();
+              } else {
+                const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+                const arr = Array.isArray(byDay[day]) ? byDay[day] : [];
+                const idx = arr.findIndex(x =>
+                  x.usuario === it.usuario &&
+                  x.cancion === it.cancion &&
+                  x.artista === it.artista &&
+                  toHour(x.time) === it.hora
+                );
+                if (idx >= 0) {
+                  arr.splice(idx, 1);
+                  byDay[day] = arr;
+                  localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+                }
+              }
+
+              // Limpiar estado reproducida del localStorage
+              const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+              if (localPlayed[day]) {
+                localPlayed[day] = localPlayed[day].filter(id => id !== songId);
+                localStorage.setItem('playedSongs', JSON.stringify(localPlayed));
+              }
+
+              // Quitar del arreglo y re-render
+              currentDayItems = currentDayItems.filter(item => {
+                const sid = `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+                return sid !== songId;
+              });
+              renderSolicitudes(currentDayItems);
+            } catch (err) {
+              console.error('Error eliminando canción:', err);
+              alert('No se pudo eliminar la canción. Revisa permisos o inténtalo de nuevo.');
+            }
+          });
+
+          // Drag & drop para reordenar (solo en modo edición)
+          li.addEventListener('dragstart', (e) => {
+            if (!solicitudesList.classList.contains('editing')) return;
+            li.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', songId);
+          });
+          li.addEventListener('dragend', () => {
+            li.classList.remove('dragging');
+          });
+          li.addEventListener('dragover', (e) => {
+            if (!solicitudesList.classList.contains('editing')) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+          });
+          li.addEventListener('drop', (e) => {
+            if (!solicitudesList.classList.contains('editing')) return;
+            e.preventDefault();
+            const fromId = e.dataTransfer.getData('text/plain');
+            const toId = songId;
+            if (!fromId || !toId || fromId === toId) return;
+
+            const fromIdx = currentDayItems.findIndex(item => `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, '') === fromId);
+            const toIdx = currentDayItems.findIndex(item => `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, '') === toId);
+            if (fromIdx < 0 || toIdx < 0) return;
+
+            const [moved] = currentDayItems.splice(fromIdx, 1);
+            currentDayItems.splice(toIdx, 0, moved);
+
+            // Persistir orden manual por día
+            persistManualOrder(currentDayItems, currentDay);
+
+            renderSolicitudes(currentDayItems);
+          });
+
           solicitudesList.appendChild(li);
         });
-        
+
         // Verificar que los eventos de clic se hayan agregado correctamente
         const clickableItems = solicitudesList.querySelectorAll('.item');
         console.log(`✅ Renderizadas ${clickableItems.length} canciones clickeables`);
-        
+
         // Forzar estilos en canciones reproducidas después del renderizado
         setTimeout(() => {
           forcePlayedSongStyles();
         }, 100);
-        
+
         // Actualizar selector de usuarios cuando hay nuevos datos
         setTimeout(() => {
           if (typeof populateUserSelector === 'function') {
@@ -945,10 +1042,111 @@
             populateUserSelectorFromLocalStorage();
           }
         }, 100);
-        
+
         // Analizar automáticamente nuevos usuarios
         analyzeNewUsersAutomatically().catch(console.error);
       }
+
+      // Orden manual: aplicar y persistir
+      function applyManualOrder(items, day) {
+        try {
+          const key = `manualOrder:${day}`;
+          const order = JSON.parse(localStorage.getItem(key) || '[]');
+          if (!Array.isArray(order) || !order.length) return items;
+
+          // Helper para crear el ID único de cada elemento
+          const idOf = (item) =>
+            `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+
+          const inOrderSet = new Set(order);
+
+          // 1) Construir lista de elementos en el orden guardado (si existen)
+          const ordered = [];
+          order.forEach((sid) => {
+            const found = items.find((it) => idOf(it) === sid);
+            if (found) ordered.push(found);
+          });
+
+          // 2) Mantener "nuevos" (no presentes en 'order') arriba en su orden natural (ts desc)
+          const notInOrder = items.filter((it) => !inOrderSet.has(idOf(it)));
+
+          // Resultado: nuevos arriba, orden manual debajo
+          return [...notInOrder, ...ordered];
+        } catch {
+          return items;
+        }
+      }
+
+      function persistManualOrder(items, day) {
+        const key = `manualOrder:${day}`;
+        const order = items.map(item => `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, ''));
+        localStorage.setItem(key, JSON.stringify(order));
+      }
+
+      // Control del lápiz y modo edición
+      (function () {
+        const editToggleBtn = document.getElementById('edit-toggle-btn');
+        const adminPanelEl = document.getElementById('admin-panel');
+        const adminModalEl = document.getElementById('admin-modal');
+        const adminPassInputEl = document.getElementById('admin-pass-input');
+        const adminPassErrorEl = document.getElementById('admin-auth-error');
+        const adminExitBtnEl = document.getElementById('admin-exit');
+
+        function updateEditToggleVisibility() {
+          if (!editToggleBtn) return;
+          const isAdminOpen = !!adminPanelEl && !adminPanelEl.hidden;
+          editToggleBtn.hidden = !isAdminOpen;
+          editToggleBtn.setAttribute('aria-pressed', 'false');
+          solicitudesList?.classList.remove('editing');
+          if (currentDayItems?.length) renderSolicitudes(currentDayItems);
+        }
+
+        function toggleEditMode() {
+          if (!editToggleBtn) return;
+          const isAdminOpen = !!adminPanelEl && !adminPanelEl.hidden;
+          if (!isAdminOpen) {
+            if (adminModalEl) {
+              adminModalEl.hidden = false;
+              if (adminPassInputEl) adminPassInputEl.value = '';
+              if (adminPassErrorEl) adminPassErrorEl.hidden = true;
+              adminPassInputEl?.focus();
+            }
+            return;
+          }
+          const isEditing = editToggleBtn.getAttribute('aria-pressed') === 'true';
+          const next = !isEditing;
+          editToggleBtn.setAttribute('aria-pressed', String(next));
+          solicitudesList?.classList.toggle('editing', next);
+          if (currentDayItems?.length) renderSolicitudes(currentDayItems);
+        }
+
+        editToggleBtn?.addEventListener('click', (e) => {
+          e.preventDefault();
+          toggleEditMode();
+        });
+
+        // Observar cambios en el panel admin para actualizar visibilidad del lápiz
+        if (adminPanelEl) {
+          const mo = new MutationObserver(() => updateEditToggleVisibility());
+          mo.observe(adminPanelEl, { attributes: true, attributeFilter: ['hidden'] });
+        }
+
+        // Integración opcional con tryOpenAdmin si está expuesto
+        const originalTryOpenAdmin = typeof window.tryOpenAdmin === 'function' ? window.tryOpenAdmin : null;
+        if (originalTryOpenAdmin) {
+          window.tryOpenAdmin = function () {
+            originalTryOpenAdmin();
+            updateEditToggleVisibility();
+          };
+        }
+
+        adminExitBtnEl?.addEventListener('click', () => {
+          updateEditToggleVisibility();
+        });
+
+        // Inicial
+        updateEditToggleVisibility();
+      })();
 
       // Función para alternar el estado de canción reproducida (con sincronización Firebase)
       // Función para sincronizar configuración con Firebase
@@ -1299,6 +1497,17 @@
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       }
 
+      // Utilidad para obtener el día (YYYY-MM-DD) desde una entrada con distintos tipos de timestamp
+      function getSongDay(entry) {
+        const t = entry?.timestamp || entry?.ts || entry?.time;
+        try {
+          const d = t && t.toDate ? t.toDate() : (t ? new Date(t) : new Date());
+          return d.toISOString().split('T')[0];
+        } catch (_) {
+          return new Date().toISOString().split('T')[0];
+        }
+      }
+
       async function loadDays() {
         const snap = await db.collection('solicitudes').orderBy('day', 'desc').limit(500).get();
         const days = new Set();
@@ -1347,6 +1556,7 @@
             const isVip = vipSet.has(data.usuario) || z0VipSet.has(data.usuario);
             if (vipOnly.checked && !isVip) return;
             items.push({
+              id: doc.id,
               usuario: data.usuario,
               cancion: data.cancion,
               artista: data.artista,
@@ -1369,8 +1579,45 @@
               }));
           }
 
-          currentDayItems = items;
-          renderSolicitudes(items);
+          // Aplicar orden manual SOLO cuando el modo edición (lápiz) esté activo.
+          // Además, mantener ARRIBA las nuevas solicitudes (no presentes en el orden guardado)
+          // y DEBAJO las que sí están en el orden, preservando el orden natural de Firestore para las nuevas.
+          const isEditing = solicitudesList?.classList.contains('editing');
+          if (isEditing) {
+            const key = `manualOrder:${dayValue}`;
+            let savedOrder = [];
+            try {
+              const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+              if (Array.isArray(parsed)) savedOrder = parsed;
+            } catch (_) {}
+
+            // Construir IDs para comparar contra el orden guardado
+            const withIds = items.map(item => ({
+              __sid: `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, ''),
+              ...item
+            }));
+
+            // Nuevas (no presentes en el orden guardado) conservan el orden natural (Firestore desc)
+            const unknownFirst = withIds
+              .filter(it => !savedOrder.includes(it.__sid))
+              .map(({ __sid, ...rest }) => rest);
+
+            // Las conocidas siguen el orden manual guardado
+            const knownOrdered = [];
+            savedOrder.forEach(sid => {
+              const found = withIds.find(it => it.__sid === sid);
+              if (found) {
+                const { __sid, ...rest } = found;
+                knownOrdered.push(rest);
+              }
+            });
+
+            currentDayItems = [...unknownFirst, ...knownOrdered];
+          } else {
+            currentDayItems = items;
+          }
+
+          renderSolicitudes(currentDayItems);
         }, (err) => {
           console.error('Error suscripción solicitudes:', err);
         });
@@ -3101,21 +3348,21 @@
           id: 'next',
           name: 'NEXT',
           description: 'Tu canción será la siguiente en reproducirse',
-          cost: 600,
+          cost: 690,
           icon: '⏭️'
         },
         {
           id: 'two_songs',
           name: '2 CANCIONES',
           description: 'Pide dos canciones que se reproducirán seguidas',
-          cost: 800,
+          cost: 1200,
           icon: '🎵'
         },
         {
           id: 'next_v2',
           name: 'NEXT V2',
           description: 'Interrumpe la canción actual y reproduce la tuya',
-          cost: 1200,
+          cost: 1000,
           icon: '⚡'
         },
         {
@@ -3127,23 +3374,23 @@
         },
         {
           id: 'become_fan',
-          name: 'CONVIÉRTETE EN FAN',
-          description: 'Obtén el estado de Fan Z0 permanente',
-          cost: 2000,
-          icon: '🎧'
+          name: 'CONVIÉRTETE EN VIP',
+          description: 'Obtén el estado VIP permanente',
+          cost: 21000,
+          icon: '👑'
         },
         {
           id: 'weekly_priority',
           name: 'PRIORIDAD SEMANAL',
-          description: 'Tus canciones tendrán prioridad por una semana',
-          cost: 2500,
+          description: 'Tus canciones tendrán prioridad por una semana (1 canción)',
+          cost: 6000,
           icon: '🌟'
         },
         {
           id: 'custom_badge',
           name: 'INSIGNIA PERSONALIZADA',
           description: 'Crea una insignia personalizada para tu perfil',
-          cost: 3500,
+          cost: 12000,
           icon: '🏆'
         }
       ];
@@ -3182,6 +3429,32 @@
           points: 200,
           condition: (stats) => stats.totalSongs >= 100
         },
+        // Progresión por canciones nuevas
+        {
+          id: 'music_pro_200',
+          title: 'Pro de la Música',
+          description: 'Pide 200 canciones',
+          icon: '🎧',
+          points: 250,
+          condition: (stats) => (stats.totalSongs || 0) >= 200
+        },
+        {
+          id: 'music_elite_500',
+          title: 'Élite Musical',
+          description: 'Pide 500 canciones',
+          icon: '🏅',
+          points: 800,
+          condition: (stats) => (stats.totalSongs || 0) >= 500
+        },
+        {
+          id: 'music_legend_1000',
+          title: 'Leyenda Musical',
+          description: 'Pide 1000 canciones',
+          icon: '👑',
+          points: 2000,
+          condition: (stats) => (stats.totalSongs || 0) >= 1000
+        },
+        // Variedad de artistas existentes y nuevas
         {
           id: 'diverse_taste',
           title: 'Gusto Diverso',
@@ -3198,6 +3471,31 @@
           points: 150,
           condition: (stats) => stats.uniqueArtists >= 25
         },
+        {
+          id: 'varied_tastes_30',
+          title: 'Gustos Variados',
+          description: 'Pide canciones de 30 artistas diferentes',
+          icon: '🌈',
+          points: 300,
+          condition: (stats) => (stats.uniqueArtists || 0) >= 30
+        },
+        {
+          id: 'diverse_50',
+          title: 'Curador Musical',
+          description: 'Pide canciones de 50 artistas diferentes',
+          icon: '🧩',
+          points: 500,
+          condition: (stats) => (stats.uniqueArtists || 0) >= 50
+        },
+        {
+          id: 'diverse_100',
+          title: 'Enciclopedia Musical',
+          description: 'Pide canciones de 100 artistas diferentes',
+          icon: '📚',
+          points: 1500,
+          condition: (stats) => (stats.uniqueArtists || 0) >= 100
+        },
+        // Rachas existentes y nuevas
         {
           id: 'streak_starter',
           title: 'Inicio de Racha',
@@ -3223,6 +3521,31 @@
           condition: (stats) => stats.bestStreak >= 30
         },
         {
+          id: 'streak_14',
+          title: 'Racha 14',
+          description: 'Mantén una racha de 14 días',
+          icon: '🔥',
+          points: 300,
+          condition: (stats) => (stats.bestStreak || 0) >= 14
+        },
+        {
+          id: 'streak_30',
+          title: 'Racha 30',
+          description: 'Mantén una racha de 30 días',
+          icon: '🏆',
+          points: 800,
+          condition: (stats) => (stats.bestStreak || 0) >= 30
+        },
+        {
+          id: 'streak_60',
+          title: 'Racha 60',
+          description: 'Mantén una racha de 60 días',
+          icon: '🌟',
+          points: 2000,
+          condition: (stats) => (stats.bestStreak || 0) >= 60
+        },
+        // Días activos existentes y nuevos
+        {
           id: 'daily_user',
           title: 'Usuario Diario',
           description: 'Usa la app durante 10 días diferentes',
@@ -3231,11 +3554,36 @@
           condition: (stats) => stats.activeDays >= 10
         },
         {
+          id: 'daily_25',
+          title: 'Constante',
+          description: 'Usa la app 25 días distintos',
+          icon: '📆',
+          points: 250,
+          condition: (stats) => (stats.activeDays || 0) >= 25
+        },
+        {
+          id: 'daily_50',
+          title: 'Persistente',
+          description: 'Usa la app 50 días distintos',
+          icon: '🗓️',
+          points: 600,
+          condition: (stats) => (stats.activeDays || 0) >= 50
+        },
+        {
+          id: 'daily_100',
+          title: 'Inquebrantable',
+          description: 'Usa la app 100 días distintos',
+          icon: '📅',
+          points: 1500,
+          condition: (stats) => (stats.activeDays || 0) >= 100
+        },
+        // Insignias existentes
+        {
           id: 'vip_member',
           title: 'Miembro VIP',
           description: 'Conviértete en usuario VIP',
           icon: '👑',
-          points: 200,
+          points: 1200,
           condition: (stats) => stats.isVip
         },
         {
@@ -3243,7 +3591,7 @@
           title: 'Z0-VIP Exclusivo',
           description: 'Obtén el estatus Z0-VIP especial',
           icon: '💜',
-          points: 300,
+          points: 1500,
           condition: (stats) => stats.isZ0Vip
         },
         {
@@ -3253,6 +3601,104 @@
           icon: '💎',
           points: 250,
           condition: (stats) => stats.isDonador
+        },
+        // Mismo artista existentes y nuevos
+        {
+          id: 'same_artist_5',
+          title: 'Fan Fiel',
+          description: 'Pide 5 canciones del mismo artista',
+          icon: '📀',
+          points: 100,
+          condition: (stats) => (stats.topArtistCount || 0) >= 5
+        },
+        {
+          id: 'same_artist_10',
+          title: 'Fan Devoto',
+          description: 'Pide 10 canciones del mismo artista',
+          icon: '💿',
+          points: 250,
+          condition: (stats) => (stats.topArtistCount || 0) >= 10
+        },
+        {
+          id: 'same_artist_20',
+          title: 'Fan Acérrimo',
+          description: 'Pide 20 canciones del mismo artista',
+          icon: '💿',
+          points: 600,
+          condition: (stats) => (stats.topArtistCount || 0) >= 20
+        },
+        {
+          id: 'same_artist_50',
+          title: 'Fan Histórico',
+          description: 'Pide 50 canciones del mismo artista',
+          icon: '🏛️',
+          points: 2000,
+          condition: (stats) => (stats.topArtistCount || 0) >= 50
+        },
+        // Ser el primero en pedir
+        {
+          id: 'first_request_1',
+          title: 'Primero en la fila',
+          description: 'Sé el primero en pedir 1 vez',
+          icon: '⏰',
+          points: 50,
+          condition: (stats) => (stats.firstRequests || 0) >= 1
+        },
+        {
+          id: 'first_request_3',
+          title: 'Rápido y Furioso',
+          description: 'Sé el primero en pedir 3 veces',
+          icon: '⚡',
+          points: 150,
+          condition: (stats) => (stats.firstRequests || 0) >= 3
+        },
+        {
+          id: 'first_request_6',
+          title: 'Sprint',
+          description: 'Sé el primero en pedir 6 veces',
+          icon: '🏃',
+          points: 300,
+          condition: (stats) => (stats.firstRequests || 0) >= 6
+        },
+        {
+          id: 'first_request_9',
+          title: 'Velocista',
+          description: 'Sé el primero en pedir 9 veces',
+          icon: '🚀',
+          points: 500,
+          condition: (stats) => (stats.firstRequests || 0) >= 9
+        },
+        {
+          id: 'first_request_12',
+          title: 'Marcapasos',
+          description: 'Sé el primero en pedir 12 veces',
+          icon: '🏁',
+          points: 800,
+          condition: (stats) => (stats.firstRequests || 0) >= 12
+        },
+        {
+          id: 'first_request_15',
+          title: 'Siempre Primero',
+          description: 'Sé el primero en pedir 15 veces',
+          icon: '🥇',
+          points: 1200,
+          condition: (stats) => (stats.firstRequests || 0) >= 15
+        },
+        {
+          id: 'first_request_18',
+          title: 'Reflejos de Acero',
+          description: 'Sé el primero en pedir 18 veces',
+          icon: '🛡️',
+          points: 1600,
+          condition: (stats) => (stats.firstRequests || 0) >= 18
+        },
+        {
+          id: 'first_request_21',
+          title: 'Imbatible',
+          description: 'Sé el primero en pedir 21 veces',
+          icon: '🏆',
+          points: 2000,
+          condition: (stats) => (stats.firstRequests || 0) >= 21
         }
       ];
 
@@ -3382,22 +3828,35 @@
 
           // Días en los que el usuario solicitó algo
           const userDays = new Set();
+          // Utilidad robusta para obtener el día (YYYY-MM-DD) desde una solicitud
+          const getSongDay = (entry) => {
+            try {
+              if (entry.day && typeof entry.day === 'string') {
+                const parts = entry.day.split('-');
+                if (parts.length === 3) {
+                  const y = parseInt(parts[0], 10);
+                  const m = parseInt(parts[1], 10) - 1;
+                  const d = parseInt(parts[2], 10);
+                  const dt = new Date(y, m, d);
+                  if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+                }
+                const d2 = new Date(entry.day);
+                if (!isNaN(d2.getTime())) return d2.toISOString().split('T')[0];
+              }
+              if (entry.ts) {
+                const dt = entry.ts && entry.ts.toDate ? entry.ts.toDate() : new Date(entry.ts);
+                if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+              }
+              if (entry.time) {
+                const dt = entry.time && entry.time.toDate ? entry.time.toDate() : new Date(entry.time);
+                if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+              }
+            } catch (_) {}
+            return new Date().toISOString().split('T')[0];
+          };
           allSolicitudes.forEach(s => {
             if (s && s.usuario === username) {
-              let day;
-              if (s.day) {
-                day = s.day;
-              } else if (s.time) {
-                day = new Date(s.time).toISOString().split('T')[0];
-              } else if (s.ts) {
-                try {
-                  day = new Date(s.ts).toISOString().split('T')[0];
-                } catch (_) {
-                  day = new Date().toISOString().split('T')[0];
-                }
-              } else {
-                day = new Date().toISOString().split('T')[0];
-              }
+              const day = getSongDay(s);
               userDays.add(day);
             }
           });
@@ -3596,7 +4055,7 @@
         
         container.innerHTML = ACHIEVEMENTS.map(achievement => {
           const isUnlocked = data.achievements.includes(achievement.id);
-          const progress = getAchievementProgress(achievement, data.stats);
+          const prog = getAchievementProgress(achievement, data.stats);
           
           return `
             <div class="achievement-card ${isUnlocked ? 'unlocked' : 'locked'}">
@@ -3604,7 +4063,13 @@
               <div class="achievement-icon">${achievement.icon}</div>
               <div class="achievement-title">${achievement.title}</div>
               <div class="achievement-description">${achievement.description}</div>
-              ${!isUnlocked && progress ? `<div class="achievement-progress">${progress}</div>` : ''}
+              ${prog ? `
+              <div class="achievement-progress">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: ${prog.percent}%;"></div>
+                </div>
+                <div class="progress-text">${prog.current}/${prog.target} ${prog.unit}</div>
+              </div>` : ''}
             </div>
           `;
         }).join('');
@@ -3612,27 +4077,72 @@
 
       function getAchievementProgress(achievement, stats) {
         const id = achievement.id;
-        
-        if (id === 'first_song' || id === 'music_lover' || id === 'music_addict' || id === 'music_master') {
-          const targets = { first_song: 1, music_lover: 10, music_addict: 50, music_master: 100 };
-          return `${stats.totalSongs}/${targets[id]} canciones`;
+        const safe = (v) => typeof v === 'number' && isFinite(v) ? v : 0;
+
+        // Objetivos por cantidad de canciones
+        const songTargets = {
+          first_song: 1, music_lover: 10, music_addict: 50, music_master: 100,
+          music_pro_200: 200, music_elite_500: 500, music_legend_1000: 1000
+        };
+        if (id in songTargets) {
+          const current = safe(stats.totalSongs || 0);
+          const target = songTargets[id];
+          return { current, target, unit: 'canciones', percent: Math.min(100, Math.round((current / target) * 100)) };
         }
-        
-        if (id === 'diverse_taste' || id === 'explorer') {
-          const targets = { diverse_taste: 10, explorer: 25 };
-          return `${stats.uniqueArtists}/${targets[id]} artistas`;
+
+        // Objetivos por artistas únicos
+        const artistTargets = {
+          diverse_taste: 10, explorer: 25, diverse_50: 50, diverse_100: 100
+        };
+        if (id in artistTargets) {
+          const current = safe(stats.uniqueArtists || 0);
+          const target = artistTargets[id];
+          return { current, target, unit: 'artistas', percent: Math.min(100, Math.round((current / target) * 100)) };
         }
-        
-        if (id === 'streak_starter' || id === 'streak_master' || id === 'streak_legend') {
-          const targets = { streak_starter: 3, streak_master: 7, streak_legend: 30 };
-          const bestStreak = stats.bestStreak || 0;
-          return `${bestStreak}/${targets[id]} días`;
+
+        // Objetivos por racha
+        const streakTargets = {
+          streak_starter: 3, streak_master: 7, streak_legend: 30,
+          streak_14: 14, streak_30: 30, streak_60: 60
+        };
+        if (id in streakTargets) {
+          const current = safe(stats.bestStreak || 0);
+          const target = streakTargets[id];
+          return { current, target, unit: 'días', percent: Math.min(100, Math.round((current / target) * 100)) };
         }
-        
-        if (id === 'daily_user') {
-          return `${stats.activeDays}/10 días`;
+
+        // Objetivos por días activos
+        const activeDayTargets = {
+          daily_user: 10, daily_25: 25, daily_50: 50, daily_100: 100
+        };
+        if (id in activeDayTargets) {
+          const current = safe(stats.activeDays || 0);
+          const target = activeDayTargets[id];
+          return { current, target, unit: 'días', percent: Math.min(100, Math.round((current / target) * 100)) };
         }
-        
+
+        // Objetivos por mismo artista
+        const sameArtistTargets = {
+          same_artist_5: 5, same_artist_10: 10, same_artist_20: 20, same_artist_50: 50
+        };
+        if (id in sameArtistTargets) {
+          const current = safe(stats.topArtistCount || 0);
+          const target = sameArtistTargets[id];
+          return { current, target, unit: 'canciones', percent: Math.min(100, Math.round((current / target) * 100)) };
+        }
+
+        // Objetivos por ser el primero en pedir
+        const firstRequestTargets = {
+          first_request_1: 1, first_request_3: 3, first_request_6: 6, first_request_9: 9,
+          first_request_12: 12, first_request_15: 15, first_request_18: 18, first_request_21: 21
+        };
+        if (id in firstRequestTargets) {
+          const current = safe(stats.firstRequests || 0);
+          const target = firstRequestTargets[id];
+          return { current, target, unit: 'veces', percent: Math.min(100, Math.round((current / target) * 100)) };
+        }
+
+        // Logros de estado (VIP/Z0/Donador) no muestran progreso
         return null;
       }
 
@@ -5498,10 +6008,40 @@
       async function calculateUserStatsForUser(usuario = null) {
         const targetUser = usuario || getCurrentSelectedUser();
         
+        // Utilitario para estandarizar el día (YYYY-MM-DD) de una solicitud
+        const getSongDay = (s) => {
+          try {
+            if (s.day && typeof s.day === 'string') {
+              const parts = s.day.split('-');
+              if (parts.length === 3) {
+                const y = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10) - 1;
+                const d = parseInt(parts[2], 10);
+                const dt = new Date(y, m, d);
+                if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+              }
+              const d2 = new Date(s.day);
+              if (!isNaN(d2.getTime())) return d2.toISOString().split('T')[0];
+            }
+            if (s.ts) {
+              const dt = s.ts && s.ts.toDate ? s.ts.toDate() : new Date(s.ts);
+              if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+            }
+            if (s.timestamp) {
+              const dt = s.timestamp && s.timestamp.toDate ? s.timestamp.toDate() : new Date(s.timestamp);
+              if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+            }
+            if (s.time) {
+              const dt = s.time && s.time.toDate ? s.time.toDate() : new Date(s.time);
+              if (!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+            }
+          } catch (_) {}
+          return new Date().toISOString().split('T')[0];
+        };
+        
         try {
           // Obtener datos combinados de Firebase y localStorage
           const allSolicitudes = await getAllCombinedSolicitudes();
-          const vipUsers = JSON.parse(localStorage.getItem('vipUsers') || '[]');
           
           const userSongs = allSolicitudes.filter(s => s.usuario === targetUser);
           console.log(`🎵 ${targetUser}: ${userSongs.length} canciones encontradas de ${allSolicitudes.length} totales`);
@@ -5509,15 +6049,43 @@
           const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
           console.log(`🎤 ${targetUser}: ${uniqueArtists} artistas únicos`);
           
-          // Calcular días únicos basado en fechas de solicitudes
-          const uniqueDays = [...new Set(userSongs.map(s => {
-            if (s.ts) {
-              return new Date(s.ts).toISOString().split('T')[0];
-            }
-            return new Date().toISOString().split('T')[0];
-          }))].length;
+          // Calcular el máximo de pedidos por artista (para logros del mismo artista)
+          const artistCounts = userSongs.reduce((acc, s) => {
+            const k = (s.artista || '').toLowerCase();
+            if (!k) return acc;
+            acc[k] = (acc[k] || 0) + 1;
+            return acc;
+          }, {});
+          const topArtistCount = Object.values(artistCounts).reduce((max, n) => Math.max(max, n), 0);
           
+          // Calcular días únicos usando getSongDay
+          const uniqueDays = [...new Set(userSongs.map(getSongDay))].length;
           console.log(`📅 ${targetUser}: ${uniqueDays} días únicos de actividad`);
+          
+          // “Primero en pedir”: contar días donde el primer pedido del día es del usuario
+          // SOLO si hubo al menos 2 solicitudes ese día
+          const allWithTime = allSolicitudes.filter(s => s.timestamp || s.ts || s.time);
+          const earliestByDay = new Map();
+          const countsByDay = new Map();
+          
+          allWithTime.forEach(s => {
+            let dt;
+            try {
+              dt = s.ts && s.ts.toDate ? s.ts.toDate() : new Date(s.timestamp || s.ts || s.time);
+            } catch (_) {
+              dt = new Date(s.timestamp || s.ts || s.time);
+            }
+            const day = getSongDay(s);
+            countsByDay.set(day, (countsByDay.get(day) || 0) + 1);
+            const curr = earliestByDay.get(day);
+            if (!curr || dt < curr.dt) {
+              earliestByDay.set(day, { usuario: s.usuario, dt, day });
+            }
+          });
+          let firstRequests = 0;
+          earliestByDay.forEach(({ usuario, day }) => {
+            if (usuario === targetUser && (countsByDay.get(day) || 0) >= 2) firstRequests++;
+          });
           
           // Verificar estado VIP desde Firebase (sets globales)
           const vipSetAvailable = typeof vipSet !== 'undefined';
@@ -5533,23 +6101,53 @@
             uniqueArtists,
             activeDays: uniqueDays,
             isVip,
-            bestStreak
+            bestStreak,
+            topArtistCount,
+            firstRequests
           };
         } catch (error) {
           console.error('Error al calcular estadísticas del usuario:', error);
           // Fallback a localStorage
           const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          const vipUsers = JSON.parse(localStorage.getItem('vipUsers') || '[]');
           
           const userSongs = solicitudes.filter(s => s.usuario === targetUser);
           const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
           
-          const uniqueDays = [...new Set(userSongs.map(s => {
-            if (s.time) {
-              return new Date(s.time).toISOString().split('T')[0];
+          // Calcular el máximo de pedidos por artista (para logros del mismo artista)
+          const artistCounts = userSongs.reduce((acc, s) => {
+            const k = (s.artista || '').toLowerCase();
+            if (!k) return acc;
+            acc[k] = (acc[k] || 0) + 1;
+            return acc;
+          }, {});
+          const topArtistCount = Object.values(artistCounts).reduce((max, n) => Math.max(max, n), 0);
+          
+          const uniqueDays = [...new Set(userSongs.map(getSongDay))].length;
+          
+          // “Primero en pedir” por día con condición de mínimo 2 solicitudes (fallback local)
+          const allWithTimeLS = solicitudes.filter(s => s.timestamp || s.ts || s.time);
+          const earliestByDayLS = new Map();
+          const countsByDayLS = new Map();
+          
+          allWithTimeLS.forEach(s => {
+            const dtRaw = s.timestamp || s.ts || s.time;
+            let dt;
+            try {
+              dt = s.ts && s.ts.toDate ? s.ts.toDate() : new Date(dtRaw);
+            } catch (_) {
+              dt = new Date(dtRaw);
             }
-            return new Date().toISOString().split('T')[0];
-          }))].length;
+            const day = s.day ? s.day : getSongDay(s);
+            countsByDayLS.set(day, (countsByDayLS.get(day) || 0) + 1);
+            const curr = earliestByDayLS.get(day);
+            if (!curr || dt < curr.dt) {
+              earliestByDayLS.set(day, { usuario: s.usuario, dt, day });
+            }
+          });
+          let firstRequests = 0;
+          earliestByDayLS.forEach(({ usuario, day }) => {
+            if (usuario === targetUser && (countsByDayLS.get(day) || 0) >= 2) firstRequests++;
+          });
           
           // Verificar estado VIP desde Firebase (sets globales)
           const vipSetAvailable = typeof vipSet !== 'undefined' && vipSet;
@@ -5572,7 +6170,9 @@
             uniqueArtists,
             activeDays: uniqueDays,
             isVip,
-            bestStreak
+            bestStreak,
+            topArtistCount,
+            firstRequests
           };
         }
       }
@@ -5697,10 +6297,13 @@
           return;
         }
         
-        console.log(`🎯 Renderizando ${ACHIEVEMENTS.length} logros`);
+        console.log(`🎯 Renderizando ${ACHIEVEMENTS.length} logros con progreso`);
         
         container.innerHTML = ACHIEVEMENTS.map(achievement => {
           const isUnlocked = data.achievements.includes(achievement.id);
+          const prog = typeof getAchievementProgress === 'function'
+            ? getAchievementProgress(achievement, data.stats || {})
+            : null;
           
           return `
             <div class="achievement-card ${isUnlocked ? 'unlocked' : 'locked'}">
@@ -5708,6 +6311,13 @@
               <div class="achievement-icon">${achievement.icon}</div>
               <div class="achievement-title">${achievement.title}</div>
               <div class="achievement-description">${achievement.description}</div>
+              ${prog ? `
+              <div class="achievement-progress">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: ${prog.percent}%;"></div>
+                </div>
+                <div class="progress-text">${prog.current}/${prog.target} ${prog.unit}</div>
+              </div>` : ''}
             </div>
           `;
         }).join('');
@@ -6486,16 +7096,16 @@
           
           // Ejecutar la recompensa según su tipo
           if (request.rewardId === 'become_fan') {
-            // Agregar usuario a Z0-VIP (fans)
+            // Agregar usuario a VIP (permanente)
             try {
-              await db.collection('z0VipUsers').doc(request.userId).set({
+              await db.collection('vipUsers').doc(request.userId).set({
                 name: request.userId,
                 addedAt: new Date().toISOString(),
                 addedBy: 'reward_system'
               });
-              console.log('✅ Usuario agregado a Z0-VIP:', request.userId);
+              console.log('✅ Usuario agregado a VIP:', request.userId);
             } catch (error) {
-              console.error('Error al agregar usuario a Z0-VIP:', error);
+              console.error('Error al agregar usuario a VIP:', error);
               showErrorNotification('Error al procesar la recompensa. Contacta al administrador.');
               return;
             }
@@ -6505,11 +7115,11 @@
           allRequests[requestIndex].status = 'approved';
           allRequests[requestIndex].processedAt = new Date().toISOString();
           
-          // Guardar cambios
+          // Guardar cambios y notificar
           localStorage.setItem('pendingRewardRequests', JSON.stringify(allRequests));
           
           const successMessage = request.rewardId === 'become_fan' 
-            ? 'Solicitud aprobada exitosamente. ¡El usuario ahora es Fan Z0!' 
+            ? 'Solicitud aprobada exitosamente. ¡El usuario ahora es VIP!' 
             : 'Solicitud aprobada exitosamente. Los puntos ya fueron descontados.';
           showSuccessNotification(successMessage);
           
