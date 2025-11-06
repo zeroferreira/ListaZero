@@ -3699,6 +3699,46 @@
           icon: '🏆',
           points: 2000,
           condition: (stats) => (stats.firstRequests || 0) >= 21
+        },
+        {
+          id: 'zerofm_listener_1',
+          title: 'Zero FM: Primer Pedido',
+          description: 'Pide una canción de Zero FM.',
+          icon: '🎧',
+          points: 100,
+          condition: (stats) => (stats.zeroFMSongs || 0) >= 1
+        },
+        {
+          id: 'zerofm_listener_3',
+          title: 'Zero FM: Nivel 3',
+          description: 'Pide 3 canciones de Zero FM.',
+          icon: '🎧',
+          points: 300,
+          condition: (stats) => (stats.zeroFMSongs || 0) >= 3
+        },
+        {
+          id: 'zerofm_listener_6',
+          title: 'Zero FM: Nivel 6',
+          description: 'Pide 6 canciones de Zero FM.',
+          icon: '🎧',
+          points: 600,
+          condition: (stats) => (stats.zeroFMSongs || 0) >= 6
+        },
+        {
+          id: 'zerofm_listener_9',
+          title: 'Zero FM: Nivel 9',
+          description: 'Pide 9 canciones de Zero FM.',
+          icon: '🎧',
+          points: 1200,
+          condition: (stats) => (stats.zeroFMSongs || 0) >= 9
+        },
+        {
+          id: 'zerofm_listener_12',
+          title: 'Zero FM: Nivel 12',
+          description: 'Pide 12 canciones de Zero FM.',
+          icon: '🎧',
+          points: 3693,
+          condition: (stats) => (stats.zeroFMSongs || 0) >= 12
         }
       ];
 
@@ -4140,6 +4180,26 @@
           const current = safe(stats.firstRequests || 0);
           const target = firstRequestTargets[id];
           return { current, target, unit: 'veces', percent: Math.min(100, Math.round((current / target) * 100)) };
+        }
+
+        // Progreso para logros Zero FM
+        if (id === 'zerofm_listener_1' ||
+            id === 'zerofm_listener_3' ||
+            id === 'zerofm_listener_6' ||
+            id === 'zerofm_listener_9' ||
+            id === 'zerofm_listener_12') {
+          const targetById = {
+            zerofm_listener_1: 1,
+            zerofm_listener_3: 3,
+            zerofm_listener_6: 6,
+            zerofm_listener_9: 9,
+            zerofm_listener_12: 12,
+          };
+          const target = targetById[id] || 1;
+          const current = safe(stats.zeroFMSongs || 0);
+          const unit = 'pedido(s) Zero FM';
+          const percent = Math.min(100, Math.floor((current / target) * 100));
+          return { current, target, unit, percent };
         }
 
         // Logros de estado (VIP/Z0/Donador) no muestran progreso
@@ -6039,6 +6099,12 @@
           return new Date().toISOString().split('T')[0];
         };
         
+        // Normalizador para detectar "Zero FM" o variantes (espacios/Mayúsculas)
+      const isZeroFM = (name) => {
+        const n = String(name || '').toLowerCase();
+        return n.includes('zerofm') || n.includes('zero fm');
+      };
+        
         try {
           // Obtener datos combinados de Firebase y localStorage
           const allSolicitudes = await getAllCombinedSolicitudes();
@@ -6061,6 +6127,9 @@
           // Calcular días únicos usando getSongDay
           const uniqueDays = [...new Set(userSongs.map(getSongDay))].length;
           console.log(`📅 ${targetUser}: ${uniqueDays} días únicos de actividad`);
+          
+          // Canciones de Zero FM
+          const zeroFMSongs = userSongs.filter(s => isZeroFM(s.artista)).length;
           
           // “Primero en pedir”: contar días donde el primer pedido del día es del usuario
           // SOLO si hubo al menos 2 solicitudes ese día
@@ -6103,7 +6172,8 @@
             isVip,
             bestStreak,
             topArtistCount,
-            firstRequests
+            firstRequests,
+            zeroFMSongs
           };
         } catch (error) {
           console.error('Error al calcular estadísticas del usuario:', error);
@@ -6123,6 +6193,12 @@
           const topArtistCount = Object.values(artistCounts).reduce((max, n) => Math.max(max, n), 0);
           
           const uniqueDays = [...new Set(userSongs.map(getSongDay))].length;
+          
+          // Canciones de Zero FM (fallback local)
+          const zeroFMSongs = (userSongs || []).filter(s => {
+            const artist = (s.artist || '').toLowerCase();
+            return artist.includes('zero fm') || artist.includes('zerofm');
+          }).length;
           
           // “Primero en pedir” por día con condición de mínimo 2 solicitudes (fallback local)
           const allWithTimeLS = solicitudes.filter(s => s.timestamp || s.ts || s.time);
@@ -6172,7 +6248,8 @@
             isVip,
             bestStreak,
             topArtistCount,
-            firstRequests
+            firstRequests,
+            zeroFMSongs
           };
         }
       }
