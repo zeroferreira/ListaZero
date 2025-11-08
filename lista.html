@@ -865,6 +865,9 @@
       let donadorSet = window.donadorSet;
       let unsubscribeSolicitudes = null;
       let currentDayItems = [];
+      // Orden manual (compartido): suscripción y estado actual
+      let unsubscribeManualOrder = null;
+      let currentManualOrder = [];
 
       function renderSolicitudes(items) {
         if (!solicitudesList) {
@@ -915,6 +918,10 @@
             <span class="col col-usuario usuario">${it.usuario}</span>
             <span class="col col-cancion">${it.cancion}</span>
             <span class="col col-artista">${it.artista}</span>
+            <span class="col col-cancion-artista">
+              <div class="cancion-line">${it.cancion}</div>
+              <div class="artista-line">${it.artista}</div>
+            </span>
             <button class="play-toggle-btn" title="Marcar como reproducida/no reproducida">
               <span class="play-icon">▶️</span>
             </button>
@@ -977,7 +984,9 @@
                 const sid = `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
                 return sid !== songId;
               });
-              renderSolicitudes(currentDayItems);
+              // Persistir y re-render con orden compartido
+              persistManualOrder(currentDayItems, day);
+              renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
             } catch (err) {
               console.error('Error eliminando canción:', err);
               alert('No se pudo eliminar la canción. Revisa permisos o inténtalo de nuevo.');
@@ -1013,10 +1022,11 @@
             const [moved] = currentDayItems.splice(fromIdx, 1);
             currentDayItems.splice(toIdx, 0, moved);
 
-            // Persistir orden manual por día
+            // Persistir orden manual por día (Firestore + localStorage)
             persistManualOrder(currentDayItems, currentDay);
 
-            renderSolicitudes(currentDayItems);
+            // Render con orden compartido
+            renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
           });
 
           solicitudesList.appendChild(li);
@@ -1048,29 +1058,25 @@
       }
 
       // Orden manual: aplicar y persistir
-      function applyManualOrder(items, day) {
+      function applyOrder(items, order) {
         try {
-          const key = `manualOrder:${day}`;
-          const order = JSON.parse(localStorage.getItem(key) || '[]');
           if (!Array.isArray(order) || !order.length) return items;
 
-          // Helper para crear el ID único de cada elemento
           const idOf = (item) =>
             `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
 
           const inOrderSet = new Set(order);
 
-          // 1) Construir lista de elementos en el orden guardado (si existen)
+          // Elementos presentes en 'order' respetando ese orden
           const ordered = [];
           order.forEach((sid) => {
             const found = items.find((it) => idOf(it) === sid);
             if (found) ordered.push(found);
           });
 
-          // 2) Mantener "nuevos" (no presentes en 'order') arriba en su orden natural (ts desc)
+          // Nuevos (no presentes en 'order') arriba en su orden natural (ts desc)
           const notInOrder = items.filter((it) => !inOrderSet.has(idOf(it)));
 
-          // Resultado: nuevos arriba, orden manual debajo
           return [...notInOrder, ...ordered];
         } catch {
           return items;
@@ -1080,7 +1086,20 @@
       function persistManualOrder(items, day) {
         const key = `manualOrder:${day}`;
         const order = items.map(item => `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, ''));
+        // Guardar inmediatamente en localStorage para disponibilidad local
         localStorage.setItem(key, JSON.stringify(order));
+        // Persistir también en Firestore para sincronizar entre dispositivos
+        try {
+          if (window.db) {
+            window.db.collection('manualOrders').doc(day).set({
+              order,
+              day,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+          }
+        } catch (err) {
+          console.warn('No se pudo persistir orden manual en Firestore, usando solo localStorage:', err);
+        }
       }
 
       // Control del lápiz y modo edición
@@ -1098,7 +1117,7 @@
           editToggleBtn.hidden = !isAdminOpen;
           editToggleBtn.setAttribute('aria-pressed', 'false');
           solicitudesList?.classList.remove('editing');
-          if (currentDayItems?.length) renderSolicitudes(currentDayItems);
+          if (currentDayItems?.length) renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
         }
 
         function toggleEditMode() {
@@ -1545,6 +1564,10 @@
           unsubscribeSolicitudes();
           unsubscribeSolicitudes = null;
         }
+        if (unsubscribeManualOrder) {
+          unsubscribeManualOrder();
+          unsubscribeManualOrder = null;
+        }
         const q = db.collection('solicitudes')
           .where('day', '==', dayValue)
           .orderBy('ts', 'desc');
@@ -1579,47 +1602,20 @@
               }));
           }
 
-          // Aplicar orden manual SOLO cuando el modo edición (lápiz) esté activo.
-          // Además, mantener ARRIBA las nuevas solicitudes (no presentes en el orden guardado)
-          // y DEBAJO las que sí están en el orden, preservando el orden natural de Firestore para las nuevas.
-          const isEditing = solicitudesList?.classList.contains('editing');
-          if (isEditing) {
-            const key = `manualOrder:${dayValue}`;
-            let savedOrder = [];
-            try {
-              const parsed = JSON.parse(localStorage.getItem(key) || '[]');
-              if (Array.isArray(parsed)) savedOrder = parsed;
-            } catch (_) {}
+          // Actualizar estado y render con orden compartido
+          currentDayItems = items;
+          renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
+        });
 
-            // Construir IDs para comparar contra el orden guardado
-            const withIds = items.map(item => ({
-              __sid: `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, ''),
-              ...item
-            }));
-
-            // Nuevas (no presentes en el orden guardado) conservan el orden natural (Firestore desc)
-            const unknownFirst = withIds
-              .filter(it => !savedOrder.includes(it.__sid))
-              .map(({ __sid, ...rest }) => rest);
-
-            // Las conocidas siguen el orden manual guardado
-            const knownOrdered = [];
-            savedOrder.forEach(sid => {
-              const found = withIds.find(it => it.__sid === sid);
-              if (found) {
-                const { __sid, ...rest } = found;
-                knownOrdered.push(rest);
-              }
-            });
-
-            currentDayItems = [...unknownFirst, ...knownOrdered];
+        // Suscripción al orden manual compartido por día
+        unsubscribeManualOrder = db.collection('manualOrders').doc(dayValue).onSnapshot((doc) => {
+          if (doc.exists) {
+            currentManualOrder = Array.isArray(doc.data().order) ? doc.data().order : [];
           } else {
-            currentDayItems = items;
+            currentManualOrder = [];
           }
-
-          renderSolicitudes(currentDayItems);
-        }, (err) => {
-          console.error('Error suscripción solicitudes:', err);
+          // Re-render con el nuevo orden
+          renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
         });
       }
 
@@ -1923,6 +1919,78 @@
           
         } catch (error) {
           console.error('Error actualizando UI de canciones reproducidas:', error);
+        }
+      }
+
+      // Suscripción a orden manual compartido por día (Firestore/localStorage)
+      function subscribeManualOrderForDay(day) {
+        try {
+          if (unsubscribeManualOrder) {
+            unsubscribeManualOrder();
+            unsubscribeManualOrder = null;
+          }
+
+          // Fallback inmediato a localStorage
+          try {
+            const localOrder = JSON.parse(localStorage.getItem(`manualOrder:${day}`) || '[]');
+            if (Array.isArray(localOrder)) {
+              currentManualOrder = localOrder;
+            }
+          } catch (_) {}
+
+          if (!window.db) {
+            reorderCurrentDayItemsWithManualOrder(day);
+            return;
+          }
+
+          unsubscribeManualOrder = window.db.collection('manualOrders').doc(day)
+            .onSnapshot((doc) => {
+              const data = doc.data();
+              currentManualOrder = Array.isArray(data?.order) ? data.order : [];
+              reorderCurrentDayItemsWithManualOrder(day);
+            }, (err) => {
+              console.error('Error suscripción orden manual:', err);
+            });
+        } catch (e) {
+          console.error('Error al suscribir orden manual:', e);
+        }
+      }
+
+      // Reordenar elementos actuales usando el orden manual compartido
+      function reorderCurrentDayItemsWithManualOrder(day) {
+        try {
+          const currentDay = document.getElementById('day-select')?.value;
+          if (currentDay !== day) return;
+
+          let savedOrder = Array.isArray(currentManualOrder) ? currentManualOrder : [];
+          if (!savedOrder.length) {
+            renderSolicitudes(currentDayItems);
+            return;
+          }
+
+          const withIds = currentDayItems.map(item => ({
+            __sid: `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, ''),
+            ...item
+          }));
+
+          const unknownFirst = withIds
+            .filter(it => !savedOrder.includes(it.__sid))
+            .map(({ __sid, ...rest }) => rest);
+
+          const knownOrdered = [];
+          savedOrder.forEach(sid => {
+            const found = withIds.find(it => it.__sid === sid);
+            if (found) {
+              const { __sid, ...rest } = found;
+              knownOrdered.push(rest);
+            }
+          });
+
+          currentDayItems = [...unknownFirst, ...knownOrdered];
+          renderSolicitudes(currentDayItems);
+        } catch (e) {
+          console.error('Error reordenando items con orden manual:', e);
+          renderSolicitudes(currentDayItems);
         }
       }
 
@@ -2276,6 +2344,7 @@
         if (daySelect.value) {
           subscribeSolicitudesForDay(daySelect.value);
           subscribePlayedSongs(daySelect.value);
+          subscribeManualOrderForDay(daySelect.value);
         }
       });
       vipOnly?.addEventListener('change', () => {
@@ -2294,6 +2363,7 @@
         if (daySelect.value) {
           subscribeSolicitudesForDay(daySelect.value);
           subscribePlayedSongs(daySelect.value);
+          subscribeManualOrderForDay(daySelect.value);
         }
       })();
     })();
