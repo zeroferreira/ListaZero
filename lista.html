@@ -143,8 +143,10 @@
               <li><button type="button" id="menu-changelog-open" class="menu-item" role="menuitem">🚀 Mejoras (v1.7)</button></li>
               <li><button type="button" id="menu-admin-open" class="menu-item" role="menuitem">⚙️ Modo Admin</button></li>
             </ul>
-          </div>
         </div>
+        </div>
+        
+        
       </div>
 
       <div class="day-filter-row" role="group" aria-label="Filtro de día">
@@ -179,6 +181,8 @@
               <option value="vip">👑 VIP</option>
               <option value="z0-vip">⭐ Z0-VIP</option>
               <option value="donador">💎 Donador</option>
+              <option value="z0-fan">🤍 z0-Fan</option>
+              <option value="z0-platino">🥈 z0-Platino</option>
             </select>
           </div>
 
@@ -215,10 +219,10 @@
                 <ul id="z0-vip-list" class="vip-list"></ul>
               </div>
             </div>
-          </div>
+      </div>
 
-          <!-- Gestión de Donador -->
-          <div id="donador-management" class="badge-management" hidden>
+      <!-- Gestión de Donador -->
+      <div id="donador-management" class="badge-management" hidden>
             <div class="admin-row">
               <label for="all-users-select-donador">Selecciona usuario registrado para Donador (1 día):</label>
               <select id="all-users-select-donador" class="user-select" aria-label="Usuarios registrados para Donador">
@@ -230,6 +234,38 @@
               <div class="admin-list-section">
                 <strong>Usuarios Donadores (temporales):</strong>
                 <ul id="donador-list" class="vip-list"></ul>
+              </div>
+            </div>
+          </div>
+
+          <div id="z0-fan-management" class="badge-management" hidden>
+            <div class="admin-row">
+              <label for="all-users-select-z0-fan">Selecciona usuario para z0-Fan:</label>
+              <select id="all-users-select-z0-fan" class="user-select" aria-label="Usuarios registrados para z0-Fan">
+                <option value="">Selecciona un usuario</option>
+              </select>
+              <div class="admin-btns">
+                <button type="button" id="z0-fan-add" class="btn">Agregar z0-Fan</button>
+              </div>
+              <div class="admin-list-section">
+                <strong>Usuarios z0-Fan:</strong>
+                <ul id="z0-fan-list" class="vip-list"></ul>
+              </div>
+            </div>
+          </div>
+
+          <div id="z0-platino-management" class="badge-management" hidden>
+            <div class="admin-row">
+              <label for="all-users-select-z0-platino">Selecciona usuario para z0-Platino:</label>
+              <select id="all-users-select-z0-platino" class="user-select" aria-label="Usuarios registrados para z0-Platino">
+                <option value="">Selecciona un usuario</option>
+              </select>
+              <div class="admin-btns">
+                <button type="button" id="z0-platino-add" class="btn">Agregar z0-Platino</button>
+              </div>
+              <div class="admin-list-section">
+                <strong>Usuarios z0-Platino:</strong>
+                <ul id="z0-platino-list" class="vip-list"></ul>
               </div>
             </div>
           </div>
@@ -299,6 +335,8 @@
           <button type="button" id="admin-exit" class="btn">Salir del modo Admin</button>
         </div>
       </div>
+
+      
 
       <!-- Modales -->
       <div id="admin-modal" class="modal-overlay" hidden>
@@ -553,6 +591,18 @@
                 👥 Cambiar Usuario
               </button>
             </div>
+          </div>
+
+          <div class="badge-display">
+            <label for="badge-select">🎖️ Insignia a mostrar:</label>
+            <select id="badge-select" class="user-select">
+              <option value="">Ninguna</option>
+              <option value="z0-fan">z0-Fan</option>
+              <option value="z0-vip">z0Vip</option>
+              <option value="z0-platino">z0-Platino</option>
+              <option value="vip">VIP</option>
+              <option value="donador">Donador</option>
+            </select>
           </div>
 
           <!-- Barra de Progreso -->
@@ -930,11 +980,21 @@
             li.className = 'item z0-vip';
           } else if (isVip) {
             li.className = 'item vip';
+          } else if (window.z0PlatinumSet && window.z0PlatinumSet.has(it.usuario)) {
+            li.className = 'item z0-platino';
+          } else if (window.z0FanSet && window.z0FanSet.has(it.usuario)) {
+            li.className = 'item z0-fan';
           } else if (isDonador) {
             li.className = 'item donador';
           } else {
             li.className = 'item';
           }
+
+        const selectedBadge = getSelectedBadgeFor(it.usuario);
+        if (selectedBadge) {
+          li.classList.remove('vip','z0-vip','donador','z0-fan','z0-platino');
+          li.classList.add(selectedBadge);
+        }
 
           // Verificar si la canción está marcada como reproducida
           const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
@@ -1457,7 +1517,7 @@
       };
 
       // Función para verificar que la funcionalidad esté funcionando
-      async function initializePlayedSongs() {
+      window.initializePlayedSongs = async function() {
         console.log('Inicializando funcionalidad de canciones reproducidas...');
         
         // La detección de dispositivo DJ es automática
@@ -1486,7 +1546,7 @@
       }
 
       // Función para forzar estilos en canciones reproducidas (fallback)
-      function forcePlayedSongStyles() {
+      window.forcePlayedSongStyles = function() {
         const playedItems = document.querySelectorAll('.item.played');
         console.log(`Forzando estilos en ${playedItems.length} canciones reproducidas`);
         
@@ -1612,7 +1672,6 @@
             const isVip = vipSet.has(data.usuario) || z0VipSet.has(data.usuario);
             if (vipOnly.checked && !isVip) return;
             items.push({
-              id: doc.id,
               usuario: data.usuario,
               cancion: data.cancion,
               artista: data.artista,
@@ -1635,9 +1694,10 @@
               }));
           }
 
-          // Actualizar estado y render con orden compartido
           currentDayItems = items;
-          renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
+          renderSolicitudes(items);
+        }, (err) => {
+          console.error('Error suscripción solicitudes:', err);
         });
 
         // Suscripción al orden manual compartido por día
@@ -1650,6 +1710,8 @@
           // Re-render con el nuevo orden
           renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
         });
+
+        
       }
 
       // Hacer accesible desde el IIFE de UI
@@ -1861,6 +1923,46 @@
         });
       }
 
+      function subscribeZ0FanUsers() {
+        const listEl = document.getElementById('z0-fan-list');
+        db.collection('z0FanUsers').onSnapshot((snap) => {
+          window.z0FanSet = new Set();
+          if (listEl) listEl.innerHTML = '';
+          snap.forEach((doc) => {
+            const { name } = doc.data();
+            if (name) {
+              window.z0FanSet.add(name);
+              if (listEl) {
+                const li = document.createElement('li');
+                li.innerHTML = `<span>${name}</span><button type="button" class="remove-btn" data-user="${name}" data-type="z0-fan" aria-label="Quitar z0-Fan">×</button>`;
+                listEl.appendChild(li);
+              }
+            }
+          });
+          if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+        }, (err) => { console.error('❌ Error suscripción z0-Fan:', err); });
+      }
+
+      function subscribeZ0PlatinoUsers() {
+        const listEl = document.getElementById('z0-platino-list');
+        db.collection('z0PlatinumUsers').onSnapshot((snap) => {
+          window.z0PlatinumSet = new Set();
+          if (listEl) listEl.innerHTML = '';
+          snap.forEach((doc) => {
+            const { name } = doc.data();
+            if (name) {
+              window.z0PlatinumSet.add(name);
+              if (listEl) {
+                const li = document.createElement('li');
+                li.innerHTML = `<span>${name}</span><button type="button" class="remove-btn" data-user="${name}" data-type="z0-platino" aria-label="Quitar z0-Platino">×</button>`;
+                listEl.appendChild(li);
+              }
+            }
+          });
+          if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+        }, (err) => { console.error('❌ Error suscripción z0-Platino:', err); });
+      }
+
       // Suscripción en tiempo real para canciones reproducidas (sincronización global)
       function subscribePlayedSongs(day) {
         if (!day || !window.db) return;
@@ -2067,11 +2169,19 @@
         const list = Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
         allUsersSelect.innerHTML = '<option value="">Selecciona un usuario</option>';
         const allUsersSelectZ0 = document.getElementById('all-users-select-z0');
+        const allUsersSelectZ0Fan = document.getElementById('all-users-select-z0-fan');
+        const allUsersSelectZ0Platino = document.getElementById('all-users-select-z0-platino');
         if (allUsersSelectZ0) {
           allUsersSelectZ0.innerHTML = '<option value="">Selecciona un usuario</option>';
         }
         if (allUsersSelectDonador) {
           allUsersSelectDonador.innerHTML = '<option value="">Selecciona un usuario</option>';
+        }
+        if (allUsersSelectZ0Fan) {
+          allUsersSelectZ0Fan.innerHTML = '<option value="">Selecciona un usuario</option>';
+        }
+        if (allUsersSelectZ0Platino) {
+          allUsersSelectZ0Platino.innerHTML = '<option value="">Selecciona un usuario</option>';
         }
         
         list.forEach(name => {
@@ -2093,6 +2203,18 @@
             optDonador.textContent = name;
             allUsersSelectDonador.appendChild(optDonador);
           }
+          if (allUsersSelectZ0Fan) {
+            const optZF = document.createElement('option');
+            optZF.value = name;
+            optZF.textContent = name;
+            allUsersSelectZ0Fan.appendChild(optZF);
+          }
+          if (allUsersSelectZ0Platino) {
+            const optZP = document.createElement('option');
+            optZP.value = name;
+            optZP.textContent = name;
+            allUsersSelectZ0Platino.appendChild(optZP);
+          }
         });
       }
       window.renderAllUsersSelect = renderAllUsersSelect;
@@ -2112,6 +2234,8 @@
       });
 
       const z0VipAddBtn = document.getElementById('z0-vip-add');
+      const z0FanAddBtn = document.getElementById('z0-fan-add');
+      const z0PlatinoAddBtn = document.getElementById('z0-platino-add');
       z0VipAddBtn?.addEventListener('click', async () => {
         const allUsersSelectZ0 = document.getElementById('all-users-select-z0');
         const name = allUsersSelectZ0?.value.trim();
@@ -2156,6 +2280,20 @@
         }
       });
 
+      z0FanAddBtn?.addEventListener('click', async () => {
+        const sel = document.getElementById('all-users-select-z0-fan');
+        const name = sel?.value.trim();
+        if (!name) { alert('Selecciona un usuario del listado.'); return; }
+        try { await db.collection('z0FanUsers').doc(name).set({ name }, { merge: true }); sel.value=''; } catch (err) { console.error('Error z0-Fan:', err); alert('No se pudo agregar z0-Fan.'); }
+      });
+
+      z0PlatinoAddBtn?.addEventListener('click', async () => {
+        const sel = document.getElementById('all-users-select-z0-platino');
+        const name = sel?.value.trim();
+        if (!name) { alert('Selecciona un usuario del listado.'); return; }
+        try { await db.collection('z0PlatinumUsers').doc(name).set({ name }, { merge: true }); sel.value=''; } catch (err) { console.error('Error z0-Platino:', err); alert('No se pudo agregar z0-Platino.'); }
+      });
+
       vipListEl?.addEventListener('click', (e) => {
         const btn = e.target.closest('.remove-btn');
         if (!btn) return;
@@ -2169,6 +2307,8 @@
       });
 
       const z0VipListEl = document.getElementById('z0-vip-list');
+      const z0FanListEl = document.getElementById('z0-fan-list');
+      const z0PlatinoListEl = document.getElementById('z0-platino-list');
       z0VipListEl?.addEventListener('click', (e) => {
         const btn = e.target.closest('.remove-btn');
         if (!btn) return;
@@ -2195,6 +2335,30 @@
         vipRemoveModal.hidden = false;
       });
 
+      z0FanListEl?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.remove-btn');
+        if (!btn) return;
+        const user = btn.getAttribute('data-user');
+        const type = btn.getAttribute('data-type');
+        if (!user) return;
+        pendingVipRemoveUser = user;
+        pendingVipRemoveType = type || 'z0-fan';
+        vipRemoveUserSpan.textContent = user;
+        vipRemoveModal.hidden = false;
+      });
+
+      z0PlatinoListEl?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.remove-btn');
+        if (!btn) return;
+        const user = btn.getAttribute('data-user');
+        const type = btn.getAttribute('data-type');
+        if (!user) return;
+        pendingVipRemoveUser = user;
+        pendingVipRemoveType = type || 'z0-platino';
+        vipRemoveUserSpan.textContent = user;
+        vipRemoveModal.hidden = false;
+      });
+
       vipRemoveCancelBtn?.addEventListener('click', () => {
         pendingVipRemoveUser = null;
         pendingVipRemoveType = 'vip';
@@ -2209,6 +2373,10 @@
             collection = 'z0VipUsers';
           } else if (pendingVipRemoveType === 'donador') {
             collection = 'donadorUsers';
+          } else if (pendingVipRemoveType === 'z0-fan') {
+            collection = 'z0FanUsers';
+          } else if (pendingVipRemoveType === 'z0-platino') {
+            collection = 'z0PlatinumUsers';
           }
           await db.collection(collection).doc(pendingVipRemoveUser).delete();
         } catch (err) {
@@ -2375,9 +2543,9 @@
 
       daySelect?.addEventListener('change', () => {
         if (daySelect.value) {
-          subscribeSolicitudesForDay(daySelect.value);
-          subscribePlayedSongs(daySelect.value);
-          subscribeManualOrderForDay(daySelect.value);
+          try { subscribeSolicitudesForDay(daySelect.value); } catch (e) { console.warn('Falló subscribeSolicitudesForDay:', e); }
+          try { subscribePlayedSongs(daySelect.value); } catch (e) { console.warn('Falló subscribePlayedSongs:', e); }
+          try { subscribeManualOrderForDay(daySelect.value); } catch (e) { console.warn('Falló subscribeManualOrderForDay:', e); }
         }
       });
       vipOnly?.addEventListener('change', () => {
@@ -2387,10 +2555,14 @@
       (async function init() {
         console.log('🚀 Iniciando aplicación...');
         await loadDays();
+        // Mostrar estado inicial aunque no haya datos todavía
+        try { renderSolicitudes([]); } catch (_) {}
         console.log('📅 Días cargados, iniciando suscripciones...');
         subscribeVipUsers();
         subscribeZ0VipUsers();
         subscribeDonadorUsers();
+        subscribeZ0FanUsers();
+        subscribeZ0PlatinoUsers();
         console.log('✅ Suscripciones iniciadas');
         await renderAllUsersSelect();
         if (daySelect.value) {
@@ -2409,31 +2581,37 @@
     
     // Funciones globales del menú
     function positionMenu() {
-      if (window.innerWidth <= 768 || !menuDropdown || !menuBtn) return;
-      const btnRect = menuBtn.getBoundingClientRect();
-      const padding = 8;
-      const menuWidth = menuDropdown.offsetWidth || 220;
-      const menuHeight = menuDropdown.offsetHeight || 300;
-      let left = btnRect.right - menuWidth;
-      left = Math.min(Math.max(left, 10), window.innerWidth - menuWidth - 10);
-      let top = btnRect.bottom + padding;
-      if (top + menuHeight > window.innerHeight) {
-        top = Math.max(btnRect.top - menuHeight - padding, 10);
+      if (!menuDropdown || !menuBtn) return;
+      if (window.innerWidth > 768) {
+        const btnRect = menuBtn.getBoundingClientRect();
+        const padding = 8;
+        const menuWidth = 220;
+        const leftPosition = btnRect.right - menuWidth;
+        let top = btnRect.bottom + padding;
+        const finalLeft = Math.max(leftPosition, 10);
+        const menuHeight = Math.min(menuDropdown.offsetHeight || 350, window.innerHeight - 16);
+        if (top + menuHeight > window.innerHeight) {
+          top = Math.max(10, btnRect.top - menuHeight - padding);
+        }
+        const maxTop = window.innerHeight - menuHeight - 10;
+        top = Math.max(10, Math.min(top, maxTop));
+        menuDropdown.style.top = top + 'px';
+        menuDropdown.style.left = finalLeft + 'px';
+        menuDropdown.style.right = 'auto';
       }
-      menuDropdown.style.top = top + 'px';
-      menuDropdown.style.left = left + 'px';
-      menuDropdown.style.right = 'auto';
     }
 
-    function openMenu() {
-      if (!menuDropdown || !menuBtn) return;
-      menuDropdown.hidden = false;
-      requestAnimationFrame(() => {
-        menuDropdown.classList.add('open');
-        menuBtn.setAttribute('aria-expanded', 'true');
-        positionMenu();
-      });
-    }
+      function openMenu() {
+        if (!menuDropdown || !menuBtn) return;
+        menuDropdown.hidden = false;
+        requestAnimationFrame(() => {
+          menuDropdown.classList.add('open');
+          menuBtn.setAttribute('aria-expanded', 'true');
+          if (window.innerWidth > 768) {
+            positionMenu();
+          }
+        });
+      }
     
     function closeMenu() {
       if (!menuDropdown) return;
@@ -2516,11 +2694,11 @@
 
       // Reposicionar menú en cambios de tamaño de ventana
       window.addEventListener('resize', () => {
-        if (!menuDropdown.hidden) positionMenu();
+        if (!menuDropdown.hidden && window.innerWidth > 768) positionMenu();
       });
 
       window.addEventListener('scroll', () => {
-        if (!menuDropdown.hidden) positionMenu();
+        if (!menuDropdown.hidden && window.innerWidth > 768) positionMenu();
       });
 
       adminModal.hidden = true;
@@ -2607,12 +2785,14 @@
 
       // Función para mostrar la gestión de una insignia específica
       function showBadgeManagement(badgeType) {
-        // Ocultar todas las gestiones de insignias
         if (vipManagement) vipManagement.hidden = true;
         if (z0VipManagement) z0VipManagement.hidden = true;
         if (donadorManagement) donadorManagement.hidden = true;
+        const z0FanManagement = document.getElementById('z0-fan-management');
+        const z0PlatinoManagement = document.getElementById('z0-platino-management');
+        if (z0FanManagement) z0FanManagement.hidden = true;
+        if (z0PlatinoManagement) z0PlatinoManagement.hidden = true;
 
-        // Mostrar la gestión seleccionada
         switch(badgeType) {
           case 'vip':
             if (vipManagement) vipManagement.hidden = false;
@@ -2622,6 +2802,12 @@
             break;
           case 'donador':
             if (donadorManagement) donadorManagement.hidden = false;
+            break;
+          case 'z0-fan':
+            if (z0FanManagement) z0FanManagement.hidden = false;
+            break;
+          case 'z0-platino':
+            if (z0PlatinoManagement) z0PlatinoManagement.hidden = false;
             break;
         }
       }
@@ -3839,7 +4025,7 @@
         return calculateUserStatsForUser(getCurrentUser());
       }
 
-      function getCurrentUser() {
+      window.getCurrentUser = function() {
         // Intentar obtener el usuario actual de diferentes fuentes
         const urlParams = new URLSearchParams(window.location.search);
         return urlParams.get('user') || localStorage.getItem('currentUser') || 'Usuario';
@@ -6875,6 +7061,7 @@
       document.getElementById('gamification-user-select')?.addEventListener('change', async (e) => {
         const userSelect = document.getElementById('gamification-user-select');
         const backBtn = document.getElementById('back-to-my-profile');
+        const badgeSelect = document.getElementById('badge-select');
         
         console.log(`🔄 Selector cambió a: ${e.target.value}`);
         
@@ -6899,6 +7086,9 @@
             backBtn.style.display = 'none';
           }
         }
+
+        const target = e.target.value || getCurrentUser();
+        populateBadgeSelectForUser(target);
       });
 
       document.getElementById('back-to-my-profile')?.addEventListener('click', async () => {
@@ -6922,6 +7112,76 @@
 
       // Inicializar al cargar la página
       initGamification().catch(console.error);
+
+      function getEarnedBadgesForUser(username) {
+        const res = [];
+        if (window.vipSet && window.vipSet.has(username)) res.push('vip');
+        if (window.z0VipSet && window.z0VipSet.has(username)) res.push('z0-vip');
+        if (window.donadorSet && window.donadorSet.has(username)) res.push('donador');
+        if (window.z0FanSet && window.z0FanSet.has(username)) res.push('z0-fan');
+        if (window.z0PlatinumSet && window.z0PlatinumSet.has(username)) res.push('z0-platino');
+        return res;
+      }
+
+      function populateBadgeSelectForUser(username) {
+        const select = document.getElementById('badge-select');
+        if (!select) return;
+        const earned = getEarnedBadgesForUser(username);
+        select.innerHTML = '';
+        if (earned.length < 3) {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'Obtén al menos 3 insignias para elegir';
+          select.appendChild(opt);
+          select.disabled = true;
+          return;
+        }
+        select.disabled = false;
+        const noneOpt = document.createElement('option');
+        noneOpt.value = '';
+        noneOpt.textContent = 'Ninguna';
+        select.appendChild(noneOpt);
+        const titles = { 'vip':'VIP','z0-vip':'z0Vip','donador':'Donador','z0-fan':'z0-Fan','z0-platino':'z0-Platino' };
+        earned.forEach(b => { const opt = document.createElement('option'); opt.value = b; opt.textContent = titles[b] || b; select.appendChild(opt); });
+        const current = getSelectedBadgeFor(username) || '';
+        select.value = earned.includes(current) ? current : '';
+      }
+
+      populateBadgeSelectForUser(getCurrentSelectedUser());
+
+      window.getSelectedBadgeFor = function(username) {
+        try {
+          const map = JSON.parse(localStorage.getItem('selectedBadges') || '{}');
+          return map[username] || '';
+        } catch (_) { return ''; }
+      }
+
+      window.setSelectedBadgeFor = function(username, badge) {
+        try {
+          const map = JSON.parse(localStorage.getItem('selectedBadges') || '{}');
+          const earned = getEarnedBadgesForUser(username);
+          if (badge && earned.includes(badge)) map[username] = badge; else delete map[username];
+          localStorage.setItem('selectedBadges', JSON.stringify(map));
+          applySelectedBadgeToItems(username);
+        } catch (_) {}
+      }
+
+      window.applySelectedBadgeToItems = function(username) {
+        const badge = getSelectedBadgeFor(username);
+        document.querySelectorAll('.items .item').forEach(li => {
+          const nameEl = li.querySelector('.usuario');
+          if (!nameEl) return;
+          if ((nameEl.textContent || '').trim() === username) {
+            li.classList.remove('vip','z0-vip','donador','z0-fan','z0-platino','fan','vip-silver');
+            if (badge) li.classList.add(badge);
+          }
+        });
+      }
+
+      document.getElementById('badge-select')?.addEventListener('change', (e) => {
+        const target = getCurrentSelectedUser();
+        setSelectedBadgeFor(target, e.target.value);
+      });
 
       // Función para actualizar datos de gamificación de un usuario
       function updateGamificationDataForUser(username, userData) {
@@ -7979,7 +8239,7 @@
       };
       
       // Función global para forzar estilos manualmente
-      window.forcePlayedSongStyles = forcePlayedSongStyles;
+      // Ya asignada en la definición
       
       console.log('✅ Script de gamificación cargado completamente');
       console.log('💡 Ejecuta window.testPlayedSongs() en la consola para probar la funcionalidad');
