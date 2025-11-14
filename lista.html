@@ -143,7 +143,7 @@
               <li><button type="button" id="menu-changelog-open" class="menu-item" role="menuitem">🚀 Mejoras (v1.7)</button></li>
               <li><button type="button" id="menu-admin-open" class="menu-item" role="menuitem">⚙️ Modo Admin</button></li>
             </ul>
-        </div>
+          </div>
         </div>
         
         
@@ -599,7 +599,7 @@
               <option value="">Ninguna</option>
               <option value="z0-fan">z0-Fan</option>
               <option value="z0-vip">z0Vip</option>
-              <option value="z0-platino">z0-Platino</option>
+              <option value="z0-platino">VIP Platino</option>
               <option value="vip">VIP</option>
               <option value="donador">Donador</option>
             </select>
@@ -2711,6 +2711,7 @@
         adminPassError.hidden = true;
         adminPassInput.focus();
       });
+
 
       function tryOpenAdmin() {
         const pass = adminPassInput.value;
@@ -7126,25 +7127,48 @@
       function populateBadgeSelectForUser(username) {
         const select = document.getElementById('badge-select');
         if (!select) return;
-        const earned = getEarnedBadgesForUser(username);
         select.innerHTML = '';
-        if (earned.length < 3) {
-          const opt = document.createElement('option');
-          opt.value = '';
-          opt.textContent = 'Obtén al menos 3 insignias para elegir';
-          select.appendChild(opt);
-          select.disabled = true;
-          return;
-        }
+        const options = ['','z0-fan','vip','z0-vip','z0-platino','donador'];
+        const titles = { '':'Ninguna','vip':'VIP','z0-vip':'z0Vip','donador':'Donador','z0-fan':'z0','z0-platino':'VIP Platino' };
+        options.forEach(b => { const opt = document.createElement('option'); opt.value = b; opt.textContent = titles[b]; select.appendChild(opt); });
+        const current = getCurrentMembership(username) || '';
+        select.value = options.includes(current) ? current : '';
         select.disabled = false;
-        const noneOpt = document.createElement('option');
-        noneOpt.value = '';
-        noneOpt.textContent = 'Ninguna';
-        select.appendChild(noneOpt);
-        const titles = { 'vip':'VIP','z0-vip':'z0Vip','donador':'Donador','z0-fan':'z0-Fan','z0-platino':'z0-Platino' };
-        earned.forEach(b => { const opt = document.createElement('option'); opt.value = b; opt.textContent = titles[b] || b; select.appendChild(opt); });
-        const current = getSelectedBadgeFor(username) || '';
-        select.value = earned.includes(current) ? current : '';
+      }
+
+      function getCurrentMembership(username) {
+        if (window.vipSet && window.vipSet.has(username)) return 'vip';
+        if (window.z0VipSet && window.z0VipSet.has(username)) return 'z0-vip';
+        if (window.z0PlatinumSet && window.z0PlatinumSet.has(username)) return 'z0-platino';
+        if (window.donadorSet && window.donadorSet.has(username)) return 'donador';
+        if (window.z0FanSet && window.z0FanSet.has(username)) return 'z0-fan';
+        return '';
+      }
+
+      async function setUserBadgeInFirestore(username, badge) {
+        const map = {
+          'vip': 'vipUsers',
+          'z0-vip': 'z0VipUsers',
+          'z0-fan': 'z0FanUsers',
+          'z0-platino': 'z0PlatinumUsers',
+          'donador': 'donadorUsers'
+        };
+        const collections = Object.values(map);
+        for (const col of collections) {
+          try { await db.collection(col).doc(username).delete(); } catch (_) {}
+        }
+        if (!badge) return;
+        const targetCol = map[badge];
+        if (!targetCol) return;
+        if (badge === 'donador') {
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          tomorrow.setHours(23, 59, 59, 999);
+          const expiresAt = tomorrow.toISOString();
+          await db.collection(targetCol).doc(username).set({ name: username, expiresAt, createdAt: new Date().toISOString() }, { merge: true });
+        } else {
+          await db.collection(targetCol).doc(username).set({ name: username }, { merge: true });
+        }
       }
 
       populateBadgeSelectForUser(getCurrentSelectedUser());
@@ -7178,9 +7202,11 @@
         });
       }
 
-      document.getElementById('badge-select')?.addEventListener('change', (e) => {
+      document.getElementById('badge-select')?.addEventListener('change', async (e) => {
         const target = getCurrentSelectedUser();
-        setSelectedBadgeFor(target, e.target.value);
+        const badge = e.target.value;
+        setSelectedBadgeFor(target, badge);
+        try { await setUserBadgeInFirestore(target, badge); } catch (err) { console.error('Error al actualizar insignia:', err); showErrorNotification('No se pudo actualizar la insignia.'); }
       });
 
       // Función para actualizar datos de gamificación de un usuario
