@@ -5637,19 +5637,42 @@
             console.error('Error obteniendo usuarios de localStorage:', error);
           }
           
+          // Incluir usuarios presentes en sets de insignias otorgadas
+          try {
+            const addFromSet = (s) => {
+              if (!s) return;
+              Array.from(s).forEach(name => { if (name && name.trim()) users.add(name.trim()); });
+            };
+            addFromSet(window.vipSet);
+            addFromSet(window.z0VipSet);
+            addFromSet(window.donadorSet);
+            addFromSet(window.z0FanSet);
+            addFromSet(window.z0PlatinumSet);
+          } catch (setErr) {
+            console.warn('No se pudieron agregar usuarios desde sets de insignias:', setErr);
+          }
+
           const usersList = Array.from(users).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
           console.log(`👥 Usuarios encontrados para selector:`, usersList);
-          
+
           const options = '<option value="">Selecciona un usuario</option>' +
             usersList.map(user => `<option value="${user}">${user}</option>`).join('');
-          
+
           userSelect.innerHTML = options;
           console.log(`✅ Selector poblado con ${usersList.length} usuarios`);
-          
+
           if (usersList.length === 0) {
             userSelect.innerHTML = '<option value="">No hay usuarios disponibles</option>';
             console.log(`⚠️ No se encontraron usuarios para el selector`);
           }
+
+          // Seleccionar el usuario actual si existe en la lista
+          const current = getCurrentSelectedUser();
+          if (current && usersList.includes(current)) {
+            userSelect.value = current;
+          }
+          // Refrescar selector de insignias para el usuario actual
+          populateBadgeSelectForUser(getCurrentSelectedUser());
         } catch (error) {
           console.error('Error al cargar usuarios:', error);
           userSelect.innerHTML = '<option value="">Error al cargar usuarios</option>';
