@@ -140,7 +140,7 @@
               <li><button type="button" id="menu-stats-open" class="menu-item" role="menuitem">📊 Estadísticas</button></li>
               <li><button type="button" id="menu-gamification-open" class="menu-item" role="menuitem">🏆 Mi Perfil</button></li>
               <li><button type="button" id="menu-rewards-open" class="menu-item" role="menuitem">🎁 Canje de Puntos</button></li>
-              <li><button type="button" id="menu-changelog-open" class="menu-item" role="menuitem">🚀 Mejoras (v1.7)</button></li>
+              <li><button type="button" id="menu-changelog-open" class="menu-item" role="menuitem">🚀 Mejoras (v1.9)</button></li>
               <li><button type="button" id="menu-admin-open" class="menu-item" role="menuitem">⚙️ Modo Admin</button></li>
             </ul>
           </div>
@@ -398,14 +398,12 @@
           <h2 id="changelog-modal-title">Mejoras por versión</h2>
           
           <div class="changelog-content">
-            <h3>v1.8 (actual)</h3>
+            <h3>v1.9 (actual)</h3>
           <ul>
-            <li>🏅 Barras de progreso en logros con metas claras.</li>
-            <li>🎯 Nuevos logros: canciones (200/500/1000), días activos (25/50/100), variedad (50/100), rachas (14/30/60), mismo artista (20/50), primero en pedir (1/3/6/9/12/15/18/21).</li>
-            <li>📊 Métricas añadidas: conteo máximo por artista y “primero en pedir”.</li>
-            <li>📅 Unificación del cálculo de día con util de fecha para evitar inconsistencias.</li>
-            <li>👑 Recompensa “Conviértete en VIP” actualizada: 21000 puntos y otorga VIP permanente.</li>
-            <li>📱 Ajustes responsive: barras y tarjetas compactas para móviles (incl. Nubia).</li>
+            <li>📋 Menú reparado en laptops: posicionamiento en desktop (>768px), ancho fijo 220px y reubicación arriba si no cabe.</li>
+            <li>🎖️ Insignias: z0-fan muestra “z0”, VIP negro estándar y VIP Platino muestra “VIP” en plata.</li>
+            <li>👤 Cambio de insignias desde “Mi Perfil” para cualquier usuario.</li>
+            <li>✨ Notificaciones estilizadas en perfil para feedback de acciones.</li>
           </ul>
 
             <h3>v1.7</h3>
@@ -990,11 +988,11 @@
             li.className = 'item';
           }
 
-        const selectedBadge = getSelectedBadgeFor(it.usuario);
-        if (selectedBadge) {
-          li.classList.remove('vip','z0-vip','donador','z0-fan','z0-platino');
-          li.classList.add(selectedBadge);
-        }
+          const selectedBadge = window.selectedBadgeMap ? window.selectedBadgeMap[it.usuario] : '';
+          if (selectedBadge) {
+            li.classList.remove('vip','z0-vip','donador','z0-fan','z0-platino');
+            li.classList.add(selectedBadge);
+          }
 
           // Verificar si la canción está marcada como reproducida
           const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
@@ -1828,6 +1826,7 @@
           }, 1000);
           
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+          applySelectedBadgeToAll();
         }, (err) => {
           console.error('❌ Error suscripción VIP:', err);
         });
@@ -1867,6 +1866,7 @@
           }, 1000);
           
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+          applySelectedBadgeToAll();
         }, (err) => {
           console.error('❌ Error suscripción Z0-VIP:', err);
         });
@@ -1918,6 +1918,7 @@
           }, 1000);
           
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+          applySelectedBadgeToAll();
         }, (err) => {
           console.error('❌ Error suscripción Donadores:', err);
         });
@@ -1940,6 +1941,7 @@
             }
           });
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+          applySelectedBadgeToAll();
         }, (err) => { console.error('❌ Error suscripción z0-Fan:', err); });
       }
 
@@ -1960,6 +1962,7 @@
             }
           });
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+          applySelectedBadgeToAll();
         }, (err) => { console.error('❌ Error suscripción z0-Platino:', err); });
       }
 
@@ -2563,6 +2566,7 @@
         subscribeDonadorUsers();
         subscribeZ0FanUsers();
         subscribeZ0PlatinoUsers();
+        subscribeSelectedBadges();
         console.log('✅ Suscripciones iniciadas');
         await renderAllUsersSelect();
         if (daySelect.value) {
@@ -7127,12 +7131,16 @@
       function populateBadgeSelectForUser(username) {
         const select = document.getElementById('badge-select');
         if (!select) return;
+        const earned = getEarnedBadgesForUser(username);
         select.innerHTML = '';
-        const options = ['','z0-fan','vip','z0-vip','z0-platino','donador'];
         const titles = { '':'Ninguna','vip':'VIP','z0-vip':'z0Vip','donador':'Donador','z0-fan':'z0','z0-platino':'VIP Platino' };
-        options.forEach(b => { const opt = document.createElement('option'); opt.value = b; opt.textContent = titles[b]; select.appendChild(opt); });
-        const current = getCurrentMembership(username) || '';
-        select.value = options.includes(current) ? current : '';
+        const noneOpt = document.createElement('option');
+        noneOpt.value = '';
+        noneOpt.textContent = titles[''];
+        select.appendChild(noneOpt);
+        earned.forEach(b => { const opt = document.createElement('option'); opt.value = b; opt.textContent = titles[b] || b; select.appendChild(opt); });
+        const currentSelected = (window.selectedBadgeMap && window.selectedBadgeMap[username]) || '';
+        select.value = earned.includes(currentSelected) ? currentSelected : '';
         select.disabled = false;
       }
 
@@ -7174,20 +7182,14 @@
       populateBadgeSelectForUser(getCurrentSelectedUser());
 
       window.getSelectedBadgeFor = function(username) {
-        try {
-          const map = JSON.parse(localStorage.getItem('selectedBadges') || '{}');
-          return map[username] || '';
-        } catch (_) { return ''; }
+        const map = window.selectedBadgeMap || {};
+        return map[username] || '';
       }
 
-      window.setSelectedBadgeFor = function(username, badge) {
-        try {
-          const map = JSON.parse(localStorage.getItem('selectedBadges') || '{}');
-          const earned = getEarnedBadgesForUser(username);
-          if (badge && earned.includes(badge)) map[username] = badge; else delete map[username];
-          localStorage.setItem('selectedBadges', JSON.stringify(map));
-          applySelectedBadgeToItems(username);
-        } catch (_) {}
+      async function setUserSelectedBadgeInFirestore(username, badge) {
+        const earned = getEarnedBadgesForUser(username);
+        if (badge && !earned.includes(badge)) return;
+        await db.collection('selectedBadges').doc(username).set({ name: username, badge: badge || '' }, { merge: true });
       }
 
       window.applySelectedBadgeToItems = function(username) {
@@ -7196,17 +7198,41 @@
           const nameEl = li.querySelector('.usuario');
           if (!nameEl) return;
           if ((nameEl.textContent || '').trim() === username) {
-            li.classList.remove('vip','z0-vip','donador','z0-fan','z0-platino','fan','vip-silver');
+            li.classList.remove('vip','z0-vip','donador','z0-fan','z0-platino');
             if (badge) li.classList.add(badge);
           }
         });
       }
 
+      function applySelectedBadgeToAll() {
+        const map = window.selectedBadgeMap || {};
+        Object.keys(map).forEach(username => applySelectedBadgeToItems(username));
+      }
+
+      function subscribeSelectedBadges() {
+        db.collection('selectedBadges').onSnapshot((snap) => {
+          const m = {};
+          snap.forEach(doc => {
+            const d = doc.data();
+            if (d && d.name) m[d.name] = d.badge || '';
+          });
+          window.selectedBadgeMap = m;
+          applySelectedBadgeToAll();
+        }, (err) => { console.error('Error suscripción selectedBadges:', err); });
+      }
+
       document.getElementById('badge-select')?.addEventListener('change', async (e) => {
         const target = getCurrentSelectedUser();
         const badge = e.target.value;
-        setSelectedBadgeFor(target, badge);
-        try { await setUserBadgeInFirestore(target, badge); } catch (err) { console.error('Error al actualizar insignia:', err); showErrorNotification('No se pudo actualizar la insignia.'); }
+        const earned = getEarnedBadgesForUser(target);
+        if (badge && !earned.includes(badge)) {
+          showErrorNotification('Solo puedes elegir insignias que ya tienes.');
+          e.target.value = (window.selectedBadgeMap && window.selectedBadgeMap[target]) || '';
+          return;
+        }
+        try {
+          await setUserSelectedBadgeInFirestore(target, badge);
+        } catch (err) { console.error('Error al actualizar insignia:', err); showErrorNotification('No se pudo actualizar la insignia.'); }
       });
 
       // Función para actualizar datos de gamificación de un usuario
