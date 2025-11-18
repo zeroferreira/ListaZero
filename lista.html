@@ -2574,6 +2574,16 @@
         subscribeDonadorUsers();
         subscribeZ0FanUsers();
         subscribeZ0PlatinoUsers();
+        try {
+          const rawSel = localStorage.getItem('selectedBadges');
+          if (rawSel) {
+            const m = JSON.parse(rawSel);
+            if (m && typeof m === 'object') {
+              window.selectedBadgeMap = m;
+              applySelectedBadgeToAll();
+            }
+          }
+        } catch (_) {}
         subscribeSelectedBadges();
         console.log('✅ Suscripciones iniciadas');
         await renderAllUsersSelect();
@@ -7214,13 +7224,14 @@
 
       window.getSelectedBadgeFor = function(username) {
         const map = window.selectedBadgeMap || {};
-        const key = String(username || '').trim();
+        const key = String(username || '').trim().toLowerCase();
         return map[key] || '';
       }
 
       async function setUserSelectedBadgeInFirestore(username, badge) {
-        const keyName = String(username || '').trim();
-        const earned = getEarnedBadgesForUser(keyName);
+        const rawName = String(username || '').trim();
+        const keyName = rawName.toLowerCase();
+        const earned = getEarnedBadgesForUser(rawName);
         if (badge && !earned.includes(badge)) return;
         await db.collection('selectedBadges').doc(keyName).set({ name: keyName, badge: badge || '' }, { merge: true });
       }
@@ -7248,11 +7259,12 @@
           snap.forEach(doc => {
             const d = doc.data();
             if (d && d.name) {
-              const key = String(d.name || '').trim();
-              m[key] = d.badge || '';
+              const key = String(d.name || '').trim().toLowerCase();
+              m[key] = (d.badge || '').trim();
             }
           });
           window.selectedBadgeMap = m;
+          try { localStorage.setItem('selectedBadges', JSON.stringify(m)); } catch (_) {}
           applySelectedBadgeToAll();
           refreshBadgeSelectUI();
         }, (err) => { console.error('Error suscripción selectedBadges:', err); });
@@ -7260,9 +7272,10 @@
 
       function refreshBadgeSelectUI() {
         const username = getCurrentSelectedUser();
+        const key = String(username || '').trim().toLowerCase();
         populateBadgeSelectForUser(username);
         const select = document.getElementById('badge-select');
-        const currentSelected = (window.selectedBadgeMap && window.selectedBadgeMap[username]) || '';
+        const currentSelected = (window.selectedBadgeMap && window.selectedBadgeMap[key]) || '';
         const earned = getEarnedBadgesForUser(username);
         if (select) select.value = earned.includes(currentSelected) ? currentSelected : '';
       }
@@ -7273,15 +7286,21 @@
         const earned = getEarnedBadgesForUser(target);
         if (badge && !earned.includes(badge)) {
           showErrorNotification('Solo puedes elegir insignias que ya tienes.');
-          e.target.value = (window.selectedBadgeMap && window.selectedBadgeMap[target]) || '';
+          {
+            const key = String(target || '').trim().toLowerCase();
+            e.target.value = (window.selectedBadgeMap && window.selectedBadgeMap[key]) || '';
+          }
           return;
         }
         window.selectedBadgeMap = window.selectedBadgeMap || {};
         if (badge) {
-          window.selectedBadgeMap[target] = badge;
+          const key = String(target || '').trim().toLowerCase();
+          window.selectedBadgeMap[key] = badge;
         } else {
-          delete window.selectedBadgeMap[target];
+          const key = String(target || '').trim().toLowerCase();
+          delete window.selectedBadgeMap[key];
         }
+        try { localStorage.setItem('selectedBadges', JSON.stringify(window.selectedBadgeMap)); } catch (_) {}
         applySelectedBadgeToItems(target);
         try {
           await setUserSelectedBadgeInFirestore(target, badge);
