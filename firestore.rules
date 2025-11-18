@@ -1,8 +1,19 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Función para verificar si un dispositivo está autorizado
+  
+    // Selección de insignia visible para todos
+    match /selectedBadges/{doc} {
+      allow read: if true;
+      allow create, update, delete: if true;
+      allow write: if resource == null ||
+        (
+          request.resource.data.keys().hasAny(['name','badge']) &&
+          request.resource.data.name is string &&
+          request.resource.data.get('badge', '') is string
+        );
+    }
+    // Función para verificar si un dispositivo está autorizadoq
     function isAuthorizedDevice() {
       // NOTA: En Firebase Rules no podemos acceder al fingerprint del dispositivo directamente
       // La validación específica del dispositivo autorizado se hace en el código del cliente
@@ -83,6 +94,30 @@ service cloud.firestore {
       allow create, update, delete: if true;
       
       // Validar estructura de usuario donador
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name']) &&
+         request.resource.data.name is string &&
+         request.resource.data.name.size() > 0);
+    }
+
+    // Usuarios z0-Fan (nuevo tipo de insignia)
+    match /z0FanUsers/{doc} {
+      allow read: if true;
+      allow create, update, delete: if true;
+      
+      // Validar estructura de usuario z0-Fan
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name']) &&
+         request.resource.data.name is string &&
+         request.resource.data.name.size() > 0);
+    }
+
+    // Usuarios z0-Platino (almacenados como z0PlatinumUsers)
+    match /z0PlatinumUsers/{doc} {
+      allow read: if true;
+      allow create, update, delete: if true;
+      
+      // Validar estructura de usuario z0-Platino
       allow write: if resource == null ||
         (request.resource.data.keys().hasAll(['name']) &&
          request.resource.data.name is string &&
@@ -299,6 +334,25 @@ service cloud.firestore {
       allow read: if true;
       allow create: if true;
       allow update, delete: if true;
+    }
+
+    // Habilitar orden manual compartido por día
+    match /manualOrders/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+
+    // Config global (djConfig con masterFingerprint)
+    match /systemConfig/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+
+    // Fallback: permitir lectura de cualquier documento para garantizar visibilidad
+    match /{document=**} {
+      allow read: if true;
     }
   }
 }

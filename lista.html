@@ -7214,13 +7214,15 @@
 
       window.getSelectedBadgeFor = function(username) {
         const map = window.selectedBadgeMap || {};
-        return map[username] || '';
+        const key = String(username || '').trim();
+        return map[key] || '';
       }
 
       async function setUserSelectedBadgeInFirestore(username, badge) {
-        const earned = getEarnedBadgesForUser(username);
+        const keyName = String(username || '').trim();
+        const earned = getEarnedBadgesForUser(keyName);
         if (badge && !earned.includes(badge)) return;
-        await db.collection('selectedBadges').doc(username).set({ name: username, badge: badge || '' }, { merge: true });
+        await db.collection('selectedBadges').doc(keyName).set({ name: keyName, badge: badge || '' }, { merge: true });
       }
 
       window.applySelectedBadgeToItems = function(username) {
@@ -7245,7 +7247,10 @@
           const m = {};
           snap.forEach(doc => {
             const d = doc.data();
-            if (d && d.name) m[d.name] = d.badge || '';
+            if (d && d.name) {
+              const key = String(d.name || '').trim();
+              m[key] = d.badge || '';
+            }
           });
           window.selectedBadgeMap = m;
           applySelectedBadgeToAll();
