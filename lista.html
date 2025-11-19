@@ -989,8 +989,9 @@
             li.className = 'item';
           }
 
-          const selectedBadge = window.selectedBadgeMap ? window.selectedBadgeMap[it.usuario] : '';
-          if (selectedBadge) {
+          const selectedBadge = getSelectedBadgeFor(it.usuario);
+          const earnedSel = getEarnedBadgesForUser(it.usuario);
+          if (selectedBadge && earnedSel.includes(selectedBadge)) {
             li.classList.remove('vip','z0-vip','donador','z0-fan','z0-platino');
             li.classList.add(selectedBadge);
           }
@@ -7180,8 +7181,10 @@
         noneOpt.textContent = titles[''];
         select.appendChild(noneOpt);
         earned.forEach(b => { const opt = document.createElement('option'); opt.value = b; opt.textContent = titles[b] || b; select.appendChild(opt); });
-        const currentSelected = (window.selectedBadgeMap && window.selectedBadgeMap[username]) || '';
-        select.value = earned.includes(currentSelected) ? currentSelected : '';
+        const key = String(username || '').trim().toLowerCase();
+        const currentSelected = (window.selectedBadgeMap && window.selectedBadgeMap[key]) || '';
+        const fallback = getCurrentMembership(username);
+        select.value = earned.includes(currentSelected) ? currentSelected : (earned.includes(fallback) ? fallback : '');
         select.disabled = false;
       }
 
@@ -7277,7 +7280,10 @@
         const select = document.getElementById('badge-select');
         const currentSelected = (window.selectedBadgeMap && window.selectedBadgeMap[key]) || '';
         const earned = getEarnedBadgesForUser(username);
-        if (select) select.value = earned.includes(currentSelected) ? currentSelected : '';
+        if (select) {
+          const fallback = getCurrentMembership(username);
+          select.value = earned.includes(currentSelected) ? currentSelected : (earned.includes(fallback) ? fallback : '');
+        }
       }
 
       document.getElementById('badge-select')?.addEventListener('change', async (e) => {
