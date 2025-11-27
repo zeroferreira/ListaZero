@@ -4843,36 +4843,111 @@
           const container = document.getElementById('favorite-genres-list');
           if (!container) return;
           const targetUser = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser();
-          const inferGenre = (artist, song) => {
+          async function normalizeExternalGenre(name, artist) {
+            const g = String(name || '').toLowerCase();
+            const a = String(artist || '').toLowerCase();
+            if (!g) return null;
+            if (g.includes('hip-hop') || g.includes('rap')) return 'Hip Hop';
+            if (g.includes('r&b') || g.includes('soul')) return 'R&B';
+            if (g.includes('electronic') || g.includes('dance')) return 'Electrónica';
+            if (g.includes('rock')) return 'Rock';
+            if (g.includes('indie')) return 'Indie';
+            if (g.includes('reggae')) return 'Reggae';
+            if (g.includes('latin')) {
+              const latinReggaeton = ['bad bunny','j balvin','daddy yankee','ozuna','anuel','karol g','maluma','nicky jam','sech','farruko','arcangel'];
+              const latinSalsa = ['marc anthony','la india','victor manuelle'];
+              const latinBachata = ['romeo santos','aventura','prince royce'];
+              const latinCumbia = ['los ángeles azules','angeles azules','grupo 5'];
+              const latinRegional = ['grupo firme','peso pluma','fuerza regida','carin león','natanael cano','marca mp','christian nodal'];
+              if (latinReggaeton.some(n => a.includes(n))) return 'Reggaeton';
+              if (latinSalsa.some(n => a.includes(n))) return 'Salsa';
+              if (latinBachata.some(n => a.includes(n))) return 'Bachata';
+              if (latinCumbia.some(n => a.includes(n))) return 'Cumbia';
+              if (latinRegional.some(n => a.includes(n))) return 'Regional';
+              return 'Latino';
+            }
+            if (g.includes('pop')) return 'Pop';
+            return null;
+          }
+          async function fetchItunesGenre(artist, song) {
+            try {
+              const term = encodeURIComponent(`${artist} ${song}`);
+              const url = `https://itunes.apple.com/search?term=${term}&entity=song&limit=3`;
+              const res = await fetch(url);
+              if (!res.ok) return [];
+              const data = await res.json();
+              const out = [];
+              for (const r of (data.results || [])) {
+                const matchArtist = String(r.artistName || '').toLowerCase();
+                const target = String(artist || '').toLowerCase();
+                if (matchArtist && target && !matchArtist.includes(target)) continue;
+                const norm = await normalizeExternalGenre(r.primaryGenreName, artist);
+                if (norm) out.push(norm);
+              }
+              return Array.from(new Set(out)).slice(0,2);
+            } catch (_) {
+              return [];
+            }
+          }
+          async function inferGenres(artist, song) {
+            const key = `${String(artist||'').toLowerCase()}|${String(song||'').toLowerCase()}`;
+            const cacheStr = localStorage.getItem('genreCache') || '{}';
+            const cache = JSON.parse(cacheStr);
+            if (cache[key]) return cache[key];
+            const web = await fetchItunesGenre(artist, song);
+            if (web && web.length) {
+              cache[key] = web;
+              localStorage.setItem('genreCache', JSON.stringify(cache));
+              return web;
+            }
             const a = String(artist || '').toLowerCase();
             const t = String(song || '').toLowerCase();
             const contains = (k) => a.includes(k) || t.includes(k);
-            if (contains('bachata') || ['romeo santos','aventura'].some(n => a.includes(n))) return 'Bachata';
-            if (contains('salsa') || ['marc anthony'].some(n => a.includes(n))) return 'Salsa';
-            if (contains('cumbia') || ['los ángeles azules','angeles azules'].some(n => a.includes(n))) return 'Cumbia';
-            if (contains('corridos') || contains('regional') || ['grupo firme','peso pluma','fuerza regida','carin león','natanael cano','marca mp'].some(n => a.includes(n))) return 'Regional';
-            if (contains('reggaeton') || ['bad bunny','j balvin','daddy yankee','ozuna','anuel','karol g','maluma','nicky jam'].some(n => a.includes(n))) return 'Reggaeton';
-            if (contains('hip hop') || ['drake','kendrick lamar','travis scott','eminem','nicki minaj'].some(n => a.includes(n)) || a.startsWith('lil ')) return 'Hip Hop';
-            if (contains('r&b') || ['the weeknd','bruno mars','sza','usher'].some(n => a.includes(n))) return 'R&B';
-            if (contains('electrónica') || contains('electro') || contains('edm') || ['calvin harris','avicii','tiesto','martin garrix','david guetta','daft punk','alesso','zedd'].some(n => a.includes(n))) return 'Electrónica';
-            if (contains('rock') || ['metallica','ac/dc','linkin park','foo fighters','guns n','queen'].some(n => a.includes(n))) return 'Rock';
-            if (contains('indie') || ['arctic monkeys','the killers','tame impala','lana del rey'].some(n => a.includes(n))) return 'Indie';
-            if (contains('jazz')) return 'Jazz';
-            if (contains('folk')) return 'Folk';
-            if (contains('funk')) return 'Funk';
-            if (contains('soul') || ['adele','sam smith','al green'].some(n => a.includes(n))) return 'Soul';
-            if (contains('pop') || ['taylor swift','ed sheeran','dua lipa','shakira','billie eilish','coldplay','harry styles','selena gomez'].some(n => a.includes(n))) return 'Pop';
-            return null;
-          };
+            const hits = [];
+            if (contains('bachata') || ['romeo santos','aventura','prince royce'].some(n => a.includes(n))) hits.push('Bachata');
+            if (contains('salsa') || ['marc anthony','la india','victor manuelle'].some(n => a.includes(n))) hits.push('Salsa');
+            if (contains('cumbia') || ['los ángeles azules','angeles azules','grupo 5'].some(n => a.includes(n))) hits.push('Cumbia');
+            if (contains('corridos') || contains('regional') || ['grupo firme','peso pluma','fuerza regida','carin león','natanael cano','marca mp','christian nodal'].some(n => a.includes(n))) hits.push('Regional');
+            if (contains('reggaeton') || ['bad bunny','j balvin','daddy yankee','ozuna','anuel','karol g','maluma','nicky jam','sech','farruko','arcangel'].some(n => a.includes(n))) hits.push('Reggaeton');
+            if (contains('trap') || ['myke towers','eladio carrion'].some(n => a.includes(n))) hits.push('Trap');
+            if (contains('hip hop') || ['drake','kendrick lamar','travis scott','eminem','nicki minaj'].some(n => a.includes(n)) || a.startsWith('lil ')) hits.push('Hip Hop');
+            if (contains('r&b') || ['the weeknd','bruno mars','sza','usher','chris brown'].some(n => a.includes(n))) hits.push('R&B');
+            if (contains('electrónica') || contains('electro') || contains('edm') || ['calvin harris','avicii','tiesto','martin garrix','david guetta','daft punk','alesso','zedd','armin van buuren','afrojack'].some(n => a.includes(n))) hits.push('Electrónica');
+            if (contains('house') || ['fred again','swedish house mafia'].some(n => a.includes(n))) hits.push('House');
+            if (contains('rock') || ['metallica','ac/dc','linkin park','foo fighters','guns n','queen','nirvana','red hot chili peppers'].some(n => a.includes(n))) hits.push('Rock');
+            if (contains('indie') || ['arctic monkeys','the killers','tame impala','lana del rey','mgmt'].some(n => a.includes(n))) hits.push('Indie');
+            if (contains('jazz')) hits.push('Jazz');
+            if (contains('folk')) hits.push('Folk');
+            if (contains('funk')) hits.push('Funk');
+            if (contains('soul') || ['adele','sam smith','al green'].some(n => a.includes(n))) hits.push('Soul');
+            if (contains('vallenato') || ['silvestre dangond','diomedes diaz'].some(n => a.includes(n))) hits.push('Vallenato');
+            if (contains('merengue') || ['juan luis guerra'].some(n => a.includes(n))) hits.push('Merengue');
+            if (contains('reggae') || ['bob marley'].some(n => a.includes(n))) hits.push('Reggae');
+            if (contains('k-pop') || ['bts','blackpink','stray kids','newjeans'].some(n => a.includes(n))) hits.push('K-Pop');
+            if (contains('afrobeats') || ['burna boy','wizkid','tems','rema'].some(n => a.includes(n))) hits.push('Afrobeats');
+            if (contains('pop') || ['taylor swift','ed sheeran','dua lipa','shakira','billie eilish','coldplay','harry styles','selena gomez','olivia rodrigo'].some(n => a.includes(n))) hits.push('Pop');
+            const local = Array.from(new Set(hits)).slice(0,2);
+            cache[key] = local;
+            localStorage.setItem('genreCache', JSON.stringify(cache));
+            return local;
+          }
           const all = await getAllCombinedSolicitudes();
           const userSongs = all.filter(s => s.usuario === targetUser);
           const counts = {};
           for (const s of userSongs) {
-            const g = inferGenre(s.artista, s.cancion);
-            if (!g) continue;
-            counts[g] = (counts[g] || 0) + 1;
+            const gs = inferGenres(s.artista, s.cancion);
+            for (const g of gs) counts[g] = (counts[g] || 0) + 1;
           }
-          const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([g]) => g);
+          let top = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([g]) => g);
+          if (top.length < 3 && userSongs.length >= 6) {
+            const seen = new Set(top);
+            const candidates = ['Pop','Electrónica','Indie','Rock','Reggaeton'];
+            for (const c of candidates) {
+              if (!seen.has(c)) top.push(c);
+              if (top.length >= 3) break;
+            }
+          }
+          top = top.slice(0,5);
           container.innerHTML = top.length
             ? top.map(genre => `<span class="genre-tag">${genre}</span>`).join('')
             : '<span class="genre-tag">Sin datos</span>';
