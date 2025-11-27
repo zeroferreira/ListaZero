@@ -4838,48 +4838,47 @@
         }
       }
 
-      function renderFavoriteGenres() {
+      async function renderFavoriteGenres() {
         try {
           const container = document.getElementById('favorite-genres-list');
-          if (!container) {
-            console.warn('Contenedor de géneros favoritos no encontrado');
-            return;
+          if (!container) return;
+          const targetUser = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser();
+          const inferGenre = (artist, song) => {
+            const a = String(artist || '').toLowerCase();
+            const t = String(song || '').toLowerCase();
+            const contains = (k) => a.includes(k) || t.includes(k);
+            if (contains('bachata') || ['romeo santos','aventura'].some(n => a.includes(n))) return 'Bachata';
+            if (contains('salsa') || ['marc anthony'].some(n => a.includes(n))) return 'Salsa';
+            if (contains('cumbia') || ['los ángeles azules','angeles azules'].some(n => a.includes(n))) return 'Cumbia';
+            if (contains('corridos') || contains('regional') || ['grupo firme','peso pluma','fuerza regida','carin león','natanael cano','marca mp'].some(n => a.includes(n))) return 'Regional';
+            if (contains('reggaeton') || ['bad bunny','j balvin','daddy yankee','ozuna','anuel','karol g','maluma','nicky jam'].some(n => a.includes(n))) return 'Reggaeton';
+            if (contains('hip hop') || ['drake','kendrick lamar','travis scott','eminem','nicki minaj'].some(n => a.includes(n)) || a.startsWith('lil ')) return 'Hip Hop';
+            if (contains('r&b') || ['the weeknd','bruno mars','sza','usher'].some(n => a.includes(n))) return 'R&B';
+            if (contains('electrónica') || contains('electro') || contains('edm') || ['calvin harris','avicii','tiesto','martin garrix','david guetta','daft punk','alesso','zedd'].some(n => a.includes(n))) return 'Electrónica';
+            if (contains('rock') || ['metallica','ac/dc','linkin park','foo fighters','guns n','queen'].some(n => a.includes(n))) return 'Rock';
+            if (contains('indie') || ['arctic monkeys','the killers','tame impala','lana del rey'].some(n => a.includes(n))) return 'Indie';
+            if (contains('jazz')) return 'Jazz';
+            if (contains('folk')) return 'Folk';
+            if (contains('funk')) return 'Funk';
+            if (contains('soul') || ['adele','sam smith','al green'].some(n => a.includes(n))) return 'Soul';
+            if (contains('pop') || ['taylor swift','ed sheeran','dua lipa','shakira','billie eilish','coldplay','harry styles','selena gomez'].some(n => a.includes(n))) return 'Pop';
+            return null;
+          };
+          const all = await getAllCombinedSolicitudes();
+          const userSongs = all.filter(s => s.usuario === targetUser);
+          const counts = {};
+          for (const s of userSongs) {
+            const g = inferGenre(s.artista, s.cancion);
+            if (!g) continue;
+            counts[g] = (counts[g] || 0) + 1;
           }
-          
-          const currentUser = getCurrentUser();
-          console.log(`🎵 Generando géneros favoritos para ${currentUser}`);
-          
-          // Géneros disponibles
-          const allGenres = ['Pop', 'Rock', 'Reggaeton', 'Hip Hop', 'R&B', 'Electrónica', 
-                            'Indie Pop', 'Jazz', 'Salsa', 'Bachata', 'Cumbia', 'Folk', 
-                            'Alternative', 'Funk', 'Soul'];
-          
-          // Generar géneros favoritos basados en el usuario
-          const userHash = hashCode(currentUser);
-          const rng = seedRandom(userHash);
-          
-          // Seleccionar 3-5 géneros favoritos
-          const numGenres = 3 + Math.floor(rng() * 3); // 3-5 géneros
-          const selectedGenres = [];
-          const availableGenres = [...allGenres];
-          
-          for (let i = 0; i < numGenres && availableGenres.length > 0; i++) {
-            const index = Math.floor(rng() * availableGenres.length);
-            selectedGenres.push(availableGenres.splice(index, 1)[0]);
-          }
-          
-          console.log(`🎶 Géneros generados para ${currentUser}:`, selectedGenres);
-          
-          container.innerHTML = selectedGenres.map(genre => 
-            `<span class="genre-tag">${genre}</span>`
-          ).join('');
-          
+          const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([g]) => g);
+          container.innerHTML = top.length
+            ? top.map(genre => `<span class="genre-tag">${genre}</span>`).join('')
+            : '<span class="genre-tag">Sin datos</span>';
         } catch (error) {
-          console.error('Error renderizando géneros favoritos:', error);
           const container = document.getElementById('favorite-genres-list');
-          if (container) {
-            container.innerHTML = '<span class="genre-tag">Error cargando géneros</span>';
-          }
+          if (container) container.innerHTML = '<span class="genre-tag">Error cargando géneros</span>';
         }
       }
 
@@ -7094,13 +7093,8 @@
         renderFavoriteGenresForUser();
       }
 
-      function renderFavoriteGenresForUser() {
-        const container = document.getElementById('favorite-genres-list');
-        const genres = ['Pop', 'Rock', 'Reggaeton', 'Electrónica', 'Indie'];
-        
-        container.innerHTML = genres.map(genre => 
-          `<span class="genre-tag">${genre}</span>`
-        ).join('');
+      async function renderFavoriteGenresForUser() {
+        await renderFavoriteGenres();
       }
 
       // Event listeners para el selector de usuario
