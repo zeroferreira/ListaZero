@@ -71,6 +71,162 @@
       }
     });
   </script>
+  <script>
+    (function(){
+      var style = document.createElement('style');
+      style.textContent = '.modern-widget{position:fixed;top:64px;right:12px;z-index:10001;background:rgba(20,20,20,0.75);backdrop-filter:saturate(180%) blur(8px);border:1px solid rgba(255,255,255,0.12);border-radius:14px;padding:10px 12px;display:flex;gap:8px;align-items:center;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,0.35)} .modern-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);font-size:13px} .modern-chip .label{opacity:.85} .modern-chip .value{font-weight:600} @media(max-width:768px){.modern-widget{left:12px;right:12px;top:72px;flex-wrap:wrap}}';
+      document.head.appendChild(style);
+      var container = document.createElement('div');
+      container.id = 'react-modern-widget';
+      container.className = 'modern-widget';
+      container.innerHTML = '<div class="modern-chip"><span class="label">🎵 Canción top</span><span class="value">Cargando…</span></div><div class="modern-chip"><span class="label">👤 Usuario top</span><span class="value">Cargando…</span></div><div class="modern-chip"><span class="label">🎤 Top 3 artistas</span><span class="value">Cargando…</span></div><div class="modern-chip"><span class="label">🧮 Total</span><span class="value">0</span></div>';
+      document.body.appendChild(container);
+    })();
+  </script>
+
+  <script>
+    (function(){
+      var target = document.getElementById('react-modern-widget');
+      if (!target || typeof React === 'undefined' || typeof ReactDOM === 'undefined') return;
+      var e = React.createElement;
+      function useDay(){
+        var ref = React.useRef(null);
+        var st = React.useState({ items: [], day: '' });
+        var state = st[0]; var setState = st[1];
+        React.useEffect(function(){
+          function getDay(){ var el = document.getElementById('day-select'); return el && el.value ? el.value : ''; }
+          function resub(){ if (ref.current) { ref.current(); ref.current = null; }
+            var d = getDay();
+            if (!window.db || !d) { setState({ items: [], day: d }); return; }
+            var q = window.db.collection('solicitudes').where('day','==',d).orderBy('ts','desc');
+            ref.current = q.onSnapshot(function(snap){ var items = []; snap.forEach(function(doc){ var x = doc.data()||{}; items.push({ usuario:x.usuario, cancion:x.cancion, artista:x.artista, day:d }); }); setState({ items: items, day: d }); });
+          }
+          resub();
+          var el = document.getElementById('day-select');
+          function onChange(){ resub(); }
+          el && el.addEventListener('change', onChange);
+          return function(){ el && el.removeEventListener('change', onChange); if (ref.current) { ref.current(); ref.current = null; } };
+        }, []);
+        return state;
+      }
+      function useGlobal(){
+        var ref = React.useRef(null);
+        var st = React.useState({ total: 0, topArtists3: [], topSong: '', topUser: '' });
+        var g = st[0]; var setG = st[1];
+        React.useEffect(function(){
+          if (ref.current) { ref.current(); ref.current = null; }
+          if (!window.db) return;
+          ref.current = window.db.collection('solicitudes').onSnapshot(function(snap){
+            var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var total = 0;
+            snap.forEach(function(doc){ var d = doc.data()||{}; var a=(String(d.artista||'').trim().toLowerCase()); var ao=(String(d.artista||'').trim()); var s=(String(d.cancion||'').trim().toLowerCase()); var u=(String(d.usuario||'').trim().toLowerCase()); if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; } if (s){ songCount[s]=(songCount[s]||0)+1;} if (u){ userCount[u]=(userCount[u]||0)+1;} total++; });
+            function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return k; }
+            var ta = Object.keys(artistCount).map(function(k){ return {k:k,c:artistCount[k],o:artistOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
+            setG({ total: total, topArtists3: ta, topSong: top(songCount), topUser: top(userCount) });
+          });
+          return function(){ if (ref.current) { ref.current(); ref.current = null; } };
+        }, []);
+        return g;
+      }
+      function ModernChip(props){ return e('div', { className: 'modern-chip' }, e('span', { className: 'label' }, props.label), e('span', { className: 'value' }, props.value)); }
+      function ModernWidget(){
+        var day = useDay();
+        var g = useGlobal();
+        function fmt(x){ return x && x.length ? x : 'N/D'; }
+        if (Array.isArray(day.items) && day.items.length){
+          var ac = {}; var sc = {}; var uc = {}; day.items.forEach(function(it){ var a=String(it.artista||'').trim().toLowerCase(); var s=String(it.cancion||'').trim().toLowerCase(); var u=String(it.usuario||'').trim().toLowerCase(); if(a) ac[a]=(ac[a]||0)+1; if(s) sc[s]=(sc[s]||0)+1; if(u) uc[u]=(uc[u]||0)+1; });
+          function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return {k:k,v:v}; }
+          var ts = top(sc); var tu = top(uc);
+          var a3 = Object.keys(ac).map(function(k){ return {k:k,c:ac[k]}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.k+' ('+it.c+')'; });
+          return e(React.Fragment, null,
+            e(ModernChip, { label: '🎵 Canción top', value: fmt(ts.k)+' ('+(ts.v||0)+')' }),
+            e(ModernChip, { label: '👤 Usuario top', value: fmt(tu.k) }),
+            e(ModernChip, { label: '🎤 Top 3 artistas', value: a3.length ? a3.join(', ') : 'N/D' }),
+            e(ModernChip, { label: '📅 Hoy', value: String(day.items.length||0) })
+          );
+        }
+        return e(React.Fragment, null,
+          e(ModernChip, { label: '🎵 Canción top', value: fmt(g.topSong) }),
+          e(ModernChip, { label: '👤 Usuario top', value: fmt(g.topUser) }),
+          e(ModernChip, { label: '🎤 Top 3 artistas', value: (g.topArtists3 && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D') }),
+          e(ModernChip, { label: '🧮 Total', value: String(g.total||0) })
+        );
+      }
+      var root = ReactDOM.createRoot(target);
+      root.render(e(ModernWidget));
+    })();
+  </script>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script>
+    (function(){
+      function tryMount(){
+        var container = document.querySelector('#stats-ticker .ticker-content');
+        if (!container || typeof React === 'undefined' || typeof ReactDOM === 'undefined') return;
+        if (container.getAttribute('data-react-root') === 'true') return;
+        container.setAttribute('data-react-root','true');
+        var e = React.createElement;
+        function useDay(){
+          var ref = React.useRef(null);
+          var st = React.useState({ items: [], day: '' });
+          var dayState = st[0]; var setDayState = st[1];
+          React.useEffect(function(){
+            function getDay(){ var el = document.getElementById('day-select'); return el && el.value ? el.value : ''; }
+            function resub(){ if (ref.current) { ref.current(); ref.current = null; }
+              var d = getDay();
+              if (!window.db || !d) { setDayState({ items: [], day: d }); return; }
+              var q = window.db.collection('solicitudes').where('day','==',d).orderBy('ts','desc');
+              ref.current = q.onSnapshot(function(snap){ var items = []; snap.forEach(function(doc){ var x = doc.data()||{}; items.push({ usuario:x.usuario, cancion:x.cancion, artista:x.artista, day:d }); }); setDayState({ items: items, day: d }); });
+            }
+            resub();
+            var el = document.getElementById('day-select');
+            function onChange(){ resub(); }
+            el && el.addEventListener('change', onChange);
+            return function(){ el && el.removeEventListener('change', onChange); if (ref.current) { ref.current(); ref.current = null; } };
+          }, []);
+          return dayState;
+        }
+        function useGlobal(){
+          var ref = React.useRef(null);
+          var st = React.useState({ total: 0, topArtists3: [], topSong: '', topUser: '' });
+          var g = st[0]; var setG = st[1];
+          React.useEffect(function(){
+            if (ref.current) { ref.current(); ref.current = null; }
+            if (!window.db) return;
+            ref.current = window.db.collection('solicitudes').onSnapshot(function(snap){
+              var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var total = 0;
+              snap.forEach(function(doc){ var d = doc.data()||{}; var a=(String(d.artista||'').trim().toLowerCase()); var ao=(String(d.artista||'').trim()); var s=(String(d.cancion||'').trim().toLowerCase()); var u=(String(d.usuario||'').trim().toLowerCase()); if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; } if (s){ songCount[s]=(songCount[s]||0)+1;} if (u){ userCount[u]=(userCount[u]||0)+1;} total++; });
+              function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return k; }
+              var ta = Object.keys(artistCount).map(function(k){ return {k:k,c:artistCount[k],o:artistOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
+              setG({ total: total, topArtists3: ta, topSong: top(songCount), topUser: top(userCount) });
+            });
+            return function(){ if (ref.current) { ref.current(); ref.current = null; } };
+          }, []);
+          return g;
+        }
+        function StatsTicker(){
+          var day = useDay();
+          var g = useGlobal();
+          function fmt(x){ return x && x.length ? x : 'N/D'; }
+          var text = '';
+          if (Array.isArray(day.items) && day.items.length){
+            var ac = {}; var sc = {}; var uc = {}; day.items.forEach(function(it){ var a=String(it.artista||'').trim().toLowerCase(); var s=String(it.cancion||'').trim().toLowerCase(); var u=String(it.usuario||'').trim().toLowerCase(); if(a) ac[a]=(ac[a]||0)+1; if(s) sc[s]=(sc[s]||0)+1; if(u) uc[u]=(uc[u]||0)+1; });
+            function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return {k:k,v:v}; }
+            var ts = top(sc); var tu = top(uc);
+            var a3 = Object.keys(ac).map(function(k){ return {k:k,c:ac[k]}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.k+' ('+it.c+')'; });
+            text = '📅 Hoy • 🎵 Más pedida: '+fmt(ts.k)+' ('+(ts.v||0)+') • 👤 Más activo: '+fmt(tu.k)+' • 🎤 Top 3 artistas: '+(a3.length?a3.join(', '):'N/D')+' • 📝 Solicitudes: '+day.items.length+'   ';
+          } else {
+            text = '🎵 Canción más pedida: '+fmt(g.topSong)+'  •  👤 Usuario más activo: '+fmt(g.topUser)+'  •  🎤 Top 3 artistas: '+(g.topArtists3 && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D')+'  •  📊 Total solicitudes: '+(g.total||0)+'   ';
+          }
+          return e('span', null, text);
+        }
+        var root = ReactDOM.createRoot(container);
+        root.render(e(StatsTicker));
+      }
+      if (!window.__reactTickerWait) window.__reactTickerWait = setInterval(tryMount, 500);
+      tryMount();
+    })();
+  </script>
   
   <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -1676,6 +1832,7 @@
               usuario: data.usuario,
               cancion: data.cancion,
               artista: data.artista,
+              genero: data.genero,
               hora: toHour(data.ts),
               day: dayValue
             });
@@ -1690,13 +1847,16 @@
                 usuario: it.usuario,
                 cancion: it.cancion,
                 artista: it.artista,
+                genero: it.genero,
                 hora: toHour(it.time),
                 day: dayValue
               }));
           }
 
           currentDayItems = items;
+          window.__dayItems = items;
           renderSolicitudes(items);
+          try { if (window.refreshStatsTicker) window.refreshStatsTicker(); } catch (_) {}
         }, (err) => {
           console.error('Error suscripción solicitudes:', err);
         });
@@ -1708,8 +1868,10 @@
           } else {
             currentManualOrder = [];
           }
-          // Re-render con el nuevo orden
-          renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
+          const ordered = applyOrder(currentDayItems, currentManualOrder);
+          window.__dayItems = ordered;
+          renderSolicitudes(ordered);
+          try { if (window.refreshStatsTicker) window.refreshStatsTicker(); } catch (_) {}
         });
 
         
@@ -2004,14 +2166,98 @@
               localStorage.setItem('playedSongs', JSON.stringify(localPlayedSongs));
               
               // Actualizar interfaz visual
-              updatePlayedSongsUI(day, firebaseSongs);
-              
-            } catch (error) {
-              console.error('Error procesando actualización de canciones reproducidas:', error);
-            }
-          }, (error) => {
-            console.error('Error en suscripción de canciones reproducidas:', error);
-          });
+          updatePlayedSongsUI(day, firebaseSongs);
+
+          } catch (error) {
+            console.error('Error procesando actualización de canciones reproducidas:', error);
+          }
+        }, (error) => {
+          console.error('Error en suscripción de canciones reproducidas:', error);
+        });
+      }
+
+      function computeDayStatsFromItems(items) {
+        const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {};
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i] || {};
+          const song = String(it.cancion || '').trim().toLowerCase();
+          const artist = String(it.artista || '').trim().toLowerCase();
+          const user = String(it.usuario || '').trim().toLowerCase();
+          const genre = String(it.genero || '').trim().toLowerCase();
+          if (song) songCount[song] = (songCount[song] || 0) + 1;
+          if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(it.artista || '').trim(); }
+          if (user) userCount[user] = (userCount[user] || 0) + 1;
+          if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
+        }
+        function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } } return k; }
+        const day = document.getElementById('day-select')?.value || '';
+        const played = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+        const playedCount = Array.isArray(played[day]) ? played[day].length : 0;
+        let vipRequests = 0; let z0VipRequests = 0;
+        for (let i = 0; i < items.length; i++) {
+          const u = items[i]?.usuario;
+          if (window.vipSet && window.vipSet.has(u)) vipRequests++;
+          if (window.z0VipSet && window.z0VipSet.has(u)) z0VipRequests++;
+        }
+        const ts = top(songCount);
+        const ta = top(artistCount);
+        const artistTop3 = Object.keys(artistCount)
+          .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
+          .sort((a, b) => b.c - a.c)
+          .slice(0, 3)
+          .map(it => `${it.o} (${it.c})`);
+        return {
+          topSong: ts,
+          topSongCount: ts ? (songCount[ts] || 0) : 0,
+          topArtist: ta,
+          topArtistCount: ta ? (artistCount[ta] || 0) : 0,
+          topArtists3: artistTop3,
+          topUser: top(userCount),
+          topGenre: top(genreCount),
+          total: items.length,
+          played: playedCount,
+          vip: vipRequests,
+          z0vip: z0VipRequests
+        };
+      }
+
+      function updateStatsTickerFromItems(items) {
+        const el = document.querySelector('#stats-ticker .ticker-content');
+        if (!el) return;
+        if (el.getAttribute('data-react-root') === 'true') return;
+        const s = computeDayStatsFromItems(items);
+        function fmt(x) { return x && x.length ? x : 'N/D'; }
+        const globalTotal = typeof window.__globalTotalSolicitudes === 'number' ? window.__globalTotalSolicitudes : 'N/D';
+        const top3Txt = Array.isArray(s.topArtists3) && s.topArtists3.length ? s.topArtists3.join(', ') : 'N/D';
+        const text = '📅 Hoy • 🎵 Más pedida: ' + fmt(s.topSong) + ' (' + (s.topSongCount || 0) + ') • 👤 Más activo: ' + fmt(s.topUser) + ' • 🎤 Top 3 artistas: ' + top3Txt + ' • 📝 Solicitudes: ' + (s.total || 0) + ' • ▶️ Reproducidas: ' + (s.played || 0) + ' • ⭐ VIP: ' + (s.vip || 0) + ' • 💎 Z0-VIP: ' + (s.z0vip || 0) + ' • 🧮 Total históricas: ' + globalTotal + '   ';
+        el.textContent = text;
+      }
+
+      function updateModernWidgetPure() {
+        const container = document.getElementById('react-modern-widget');
+        if (!container) return;
+        if (container.getAttribute('data-react-root') === 'true') return;
+        function fmt(x){ return x && x.length ? x : 'N/D'; }
+        const items = window.__dayItems || [];
+        if (Array.isArray(items) && items.length) {
+          const s = computeDayStatsFromItems(items);
+          const chips = [
+            { label: '🎵 Canción top', value: fmt(s.topSong)+' ('+(s.topSongCount||0)+')' },
+            { label: '👤 Usuario top', value: fmt(s.topUser) },
+            { label: '🎤 Top 3 artistas', value: (Array.isArray(s.topArtists3)&&s.topArtists3.length ? s.topArtists3.join(', ') : 'N/D') },
+            { label: '📅 Hoy', value: String(s.total||0) }
+          ];
+          container.innerHTML = chips.map(c => `<div class="modern-chip"><span class="label">${c.label}</span><span class="value">${c.value}</span></div>`).join('');
+          return;
+        }
+        const g = window.__globalStats || { total: 0, topArtists3: [], topSong: '', topUser: '' };
+        const chips = [
+          { label: '🎵 Canción top', value: fmt(g.topSong) },
+          { label: '👤 Usuario top', value: fmt(g.topUser) },
+          { label: '🎤 Top 3 artistas', value: (Array.isArray(g.topArtists3)&&g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D') },
+          { label: '🧮 Total', value: String(g.total||0) }
+        ];
+        container.innerHTML = chips.map(c => `<div class="modern-chip"><span class="label">${c.label}</span><span class="value">${c.value}</span></div>`).join('');
       }
 
       // Función para actualizar la interfaz visual de canciones reproducidas
@@ -2027,7 +2273,7 @@
           
           console.log('🎨 Actualizando UI para canciones reproducidas:', {
             day,
-            playedSongs: playedSongIds,
+            songs: playedSongIds,
             count: playedSongIds.length
           });
           
@@ -2585,6 +2831,7 @@
           }
         } catch (_) {}
         try { if (typeof subscribeSelectedBadges === 'function') subscribeSelectedBadges(); } catch (_) {}
+        try { ensureStatsTicker(); startStatsTicker(); } catch (_) {}
         console.log('✅ Suscripciones iniciadas');
         await renderAllUsersSelect();
         if (daySelect.value) {
@@ -2597,6 +2844,156 @@
   </script>
 
   <script>
+    function ensureStatsTicker() {
+      if (!document.getElementById('stats-ticker')) {
+        const styles = document.createElement('style');
+        styles.textContent = '.stats-ticker{position:fixed;top:0;left:0;width:100%;background:#111;color:#fff;z-index:10000;overflow:hidden;height:36px;display:flex;align-items:center;padding:0 12px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.35)} .stats-ticker .ticker-content{white-space:nowrap;display:inline-block;padding-left:100%;animation:ticker-scroll 30s linear infinite} @keyframes ticker-scroll{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}';
+        document.head.appendChild(styles);
+        const el = document.createElement('div');
+        el.id = 'stats-ticker';
+        el.className = 'stats-ticker';
+        const content = document.createElement('div');
+        content.className = 'ticker-content';
+        content.textContent = 'Cargando estadísticas…';
+        el.appendChild(content);
+        document.body.appendChild(el);
+      }
+    }
+
+    function computeGlobalStats() {
+      const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+      const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {};
+      for (let i = 0; i < solicitudes.length; i++) {
+        const s = solicitudes[i] || {};
+        const song = String(s.cancion || '').trim().toLowerCase();
+        const artist = String(s.artista || '').trim().toLowerCase();
+        const user = String(s.usuario || '').trim().toLowerCase();
+        const genre = String(s.genero || '').trim().toLowerCase();
+        if (song) songCount[song] = (songCount[song] || 0) + 1;
+        if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(s.artista || '').trim(); }
+        if (user) userCount[user] = (userCount[user] || 0) + 1;
+        if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
+      }
+      function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } } return k; }
+      const ta = top(artistCount);
+      const artistTop3 = Object.keys(artistCount)
+        .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
+        .sort((a, b) => b.c - a.c)
+        .slice(0, 3)
+        .map(it => `${it.o} (${it.c})`);
+      return {
+        topSong: top(songCount),
+        topArtist: ta,
+        topArtists3: artistTop3,
+        topUser: top(userCount),
+        topGenre: top(genreCount),
+        total: solicitudes.length
+      };
+    }
+
+    function updateStatsTicker() {
+      const el = document.querySelector('#stats-ticker .ticker-content');
+      if (!el) return;
+      if (el.getAttribute('data-react-root') === 'true') return;
+      const s = window.__globalStats || computeGlobalStats();
+      function fmt(x) { return x && x.length ? x : 'N/D'; }
+      const top3Txt = Array.isArray(s.topArtists3) && s.topArtists3.length ? s.topArtists3.join(', ') : 'N/D';
+      const text = '🎵 Canción más pedida: ' + fmt(s.topSong) + '  •  👤 Usuario más activo: ' + fmt(s.topUser) + '  •  🎤 Top 3 artistas: ' + top3Txt + '  •  📊 Total solicitudes: ' + (s.total || 0) + '   ';
+      el.textContent = text;
+    }
+
+    function refreshStatsTicker() {
+      const items = window.__dayItems;
+      if (Array.isArray(items) && items.length) {
+        try { updateStatsTickerFromItems(items); } catch (_) {}
+        try { updateModernWidgetPure(); } catch (_) {}
+        return;
+      }
+      updateStatsTicker();
+      try { updateModernWidgetPure(); } catch (_) {}
+    }
+
+    function subscribeStatsTicker() {
+      if (!window.db) { updateStatsTicker(); return; }
+      if (window.__statsTickerUnsub) { try { window.__statsTickerUnsub(); } catch (_) {} }
+      window.__statsTickerUnsub = db.collection('solicitudes').onSnapshot((snap) => {
+        const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {};
+        let total = 0;
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          const song = String(d.cancion || '').trim().toLowerCase();
+          const artist = String(d.artista || '').trim().toLowerCase();
+          const user = String(d.usuario || '').trim().toLowerCase();
+          const genre = String(d.genero || '').trim().toLowerCase();
+          if (song) songCount[song] = (songCount[song] || 0) + 1;
+          if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(d.artista || '').trim(); }
+          if (user) userCount[user] = (userCount[user] || 0) + 1;
+          if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
+          total++;
+        });
+        function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } } return k; }
+        const ta = top(artistCount);
+        const artistTop3 = Object.keys(artistCount)
+          .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
+          .sort((a, b) => b.c - a.c)
+          .slice(0, 3)
+          .map(it => `${it.o} (${it.c})`);
+        window.__globalStats = {
+          topSong: top(songCount),
+          topArtist: ta,
+          topArtists3: artistTop3,
+          topUser: top(userCount),
+          topGenre: top(genreCount),
+          total
+        };
+        window.__globalTotalSolicitudes = total;
+        refreshStatsTicker();
+      }, () => { updateStatsTicker(); });
+    }
+
+    function subscribeUserStatsGenres() {
+      if (!window.db) return;
+      if (window.__userStatsGenresUnsub) { try { window.__userStatsGenresUnsub(); } catch (_) {} }
+      window.__userStatsGenresUnsub = db.collection('userStats').onSnapshot((snap) => {
+        const count = {};
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          if (d && typeof d.genresCount === 'object') {
+            const m = d.genresCount || {};
+            Object.keys(m).forEach(g => { const key = String(g || '').trim().toLowerCase(); const val = Number(m[g] || 0); if (key) count[key] = (count[key] || 0) + val; });
+          }
+          if (Array.isArray(d.genres)) {
+            d.genres.forEach(g => { const key = String(g || '').trim().toLowerCase(); if (key) count[key] = (count[key] || 0) + 1; });
+          }
+          if (Array.isArray(d.topGenres)) {
+            d.topGenres.forEach(g => { const key = String(g || '').trim().toLowerCase(); if (key) count[key] = (count[key] || 0) + 1; });
+          }
+          if (typeof d.favoriteGenre === 'string' && d.favoriteGenre) {
+            const key = String(d.favoriteGenre || '').trim().toLowerCase(); if (key) count[key] = (count[key] || 0) + 1;
+          }
+          if (typeof d.topGenre === 'string' && d.topGenre) {
+            const key = String(d.topGenre || '').trim().toLowerCase(); if (key) count[key] = (count[key] || 0) + 1;
+          }
+          if (d.stats && typeof d.stats.topGenre === 'string') {
+            const key = String(d.stats.topGenre || '').trim().toLowerCase(); if (key) count[key] = (count[key] || 0) + 1;
+          }
+        });
+        let gTop = '';
+        let gVal = 0;
+        Object.keys(count).forEach(k => { const v = count[k]; if (v > gVal) { gVal = v; gTop = k; } });
+        window.__globalGenreTop = gTop;
+        window.__globalGenreCount = gVal;
+        refreshStatsTicker();
+      }, () => {});
+    }
+
+    function startStatsTicker() {
+      refreshStatsTicker();
+      if (window.__statsTickerInterval) clearInterval(window.__statsTickerInterval);
+      window.__statsTickerInterval = setInterval(refreshStatsTicker, 60000);
+      subscribeStatsTicker();
+    }
+    try { ensureStatsTicker(); startStatsTicker(); } catch (_) {}
     // Variables globales del menú
     const menuBtn = document.getElementById('menu-btn');
     const menuDropdown = document.getElementById('menu-dropdown');
