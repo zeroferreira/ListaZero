@@ -2177,7 +2177,7 @@
       }
 
       function computeDayStatsFromItems(items) {
-        const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {};
+        const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
         for (let i = 0; i < items.length; i++) {
           const it = items[i] || {};
           const song = String(it.cancion || '').trim().toLowerCase();
@@ -2186,7 +2186,7 @@
           const genre = String(it.genero || '').trim().toLowerCase();
           if (song) songCount[song] = (songCount[song] || 0) + 1;
           if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(it.artista || '').trim(); }
-          if (user) userCount[user] = (userCount[user] || 0) + 1;
+          if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(it.usuario || '').trim(); }
           if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
         }
         function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } } return k; }
@@ -2206,6 +2206,11 @@
           .sort((a, b) => b.c - a.c)
           .slice(0, 3)
           .map(it => `${it.o} (${it.c})`);
+        const usersTop3 = Object.keys(userCount)
+          .map(k => ({ k, c: userCount[k], o: userOriginal[k] || k }))
+          .sort((a, b) => b.c - a.c)
+          .slice(0, 3)
+          .map(it => `${it.o} (${it.c})`);
         return {
           topSong: ts,
           topSongCount: ts ? (songCount[ts] || 0) : 0,
@@ -2213,6 +2218,7 @@
           topArtistCount: ta ? (artistCount[ta] || 0) : 0,
           topArtists3: artistTop3,
           topUser: top(userCount),
+          topUsers3: usersTop3,
           topGenre: top(genreCount),
           total: items.length,
           played: playedCount,
@@ -2221,17 +2227,23 @@
         };
       }
 
-      function updateStatsTickerFromItems(items) {
-        const el = document.querySelector('#stats-ticker .ticker-content');
-        if (!el) return;
-        if (el.getAttribute('data-react-root') === 'true') return;
-        const s = computeDayStatsFromItems(items);
-        function fmt(x) { return x && x.length ? x : 'N/D'; }
-        const globalTotal = typeof window.__globalTotalSolicitudes === 'number' ? window.__globalTotalSolicitudes : 'N/D';
-        const top3Txt = Array.isArray(s.topArtists3) && s.topArtists3.length ? s.topArtists3.join(', ') : 'N/D';
-        const text = '📅 Hoy • 🎵 Más pedida: ' + fmt(s.topSong) + ' (' + (s.topSongCount || 0) + ') • 👤 Más activo: ' + fmt(s.topUser) + ' • 🎤 Top 3 artistas: ' + top3Txt + ' • 📝 Solicitudes: ' + (s.total || 0) + ' • ▶️ Reproducidas: ' + (s.played || 0) + ' • ⭐ VIP: ' + (s.vip || 0) + ' • 💎 Z0-VIP: ' + (s.z0vip || 0) + ' • 🧮 Total históricas: ' + globalTotal + '   ';
-        el.textContent = text;
+    function updateStatsTickerFromItems(items) {
+      const el = document.querySelector('#stats-ticker .ticker-content');
+      if (!el) return;
+      if (el.getAttribute('data-react-root') === 'true') return;
+      const s = computeDayStatsFromItems(items);
+      function fmt(x) { return x && x.length ? x : 'N/D'; }
+      const globalTotal = typeof window.__globalTotalSolicitudes === 'number' ? window.__globalTotalSolicitudes : 'N/D';
+      const top3Txt = Array.isArray(s.topArtists3) && s.topArtists3.length ? s.topArtists3.join(', ') : 'N/D';
+      const usersTop3Txt = Array.isArray(s.topUsers3) && s.topUsers3.length ? s.topUsers3.join(', ') : 'N/D';
+      let avgTxt = 'N/D';
+      if (typeof window.__globalTotalSolicitudes === 'number' && typeof window.__globalDistinctUsers === 'number' && window.__globalDistinctUsers > 0) {
+        avgTxt = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
       }
+      const topGenre = typeof window.__globalGenreTop === 'string' && window.__globalGenreTop ? window.__globalGenreTop : (fmt(window.__globalStats?.topGenre || ''));
+      const text = '📅 Hoy • 🎵 Más pedida: ' + fmt(s.topSong) + ' (' + (s.topSongCount || 0) + ') • 👥 Top 3 usuarios: ' + usersTop3Txt + ' • 🎤 Top 3 artistas: ' + top3Txt + ' • 📝 Solicitudes: ' + (s.total || 0) + ' • ▶️ Reproducidas: ' + (s.played || 0) + ' • ⭐ VIP: ' + (s.vip || 0) + ' • 💎 Z0-VIP: ' + (s.z0vip || 0) + ' • 🧮 Total históricas: ' + globalTotal + ' • 🧭 Género histórico: ' + fmt(topGenre) + ' • 📈 Promedio por usuario: ' + avgTxt + '   ';
+      el.textContent = text;
+    }
 
       function updateModernWidgetPure() {
         const container = document.getElementById('react-modern-widget');
@@ -2847,7 +2859,7 @@
     function ensureStatsTicker() {
       if (!document.getElementById('stats-ticker')) {
         const styles = document.createElement('style');
-        styles.textContent = '.stats-ticker{position:fixed;top:0;left:0;width:100%;background:#111;color:#fff;z-index:10000;overflow:hidden;height:36px;display:flex;align-items:center;padding:0 12px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.35)} .stats-ticker .ticker-content{white-space:nowrap;display:inline-block;padding-left:100%;animation:ticker-scroll 30s linear infinite} @keyframes ticker-scroll{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}';
+        styles.textContent = ' .stats-ticker{position:fixed;top:0;left:0;width:100%;z-index:10000;overflow:hidden;height:36px;display:flex;align-items:center;padding:0 12px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.35)} .stats-ticker .ticker-content{white-space:nowrap;display:inline-block;padding-left:100%;animation:ticker-scroll 30s linear infinite} @keyframes ticker-scroll{0%{transform:translateX(0)}100%{transform:translateX(-100%)}} body.dark-theme .stats-ticker{background:rgba(0,0,0,0.35);color:#fff;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border-bottom:1px solid rgba(255,255,255,0.08)} body:not(.dark-theme) .stats-ticker{background:rgba(255,255,255,0.6);color:#111;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border-bottom:1px solid rgba(0,0,0,0.08)} ';
         document.head.appendChild(styles);
         const el = document.createElement('div');
         el.id = 'stats-ticker';
@@ -2862,7 +2874,7 @@
 
     function computeGlobalStats() {
       const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-      const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {};
+      const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
       for (let i = 0; i < solicitudes.length; i++) {
         const s = solicitudes[i] || {};
         const song = String(s.cancion || '').trim().toLowerCase();
@@ -2871,7 +2883,7 @@
         const genre = String(s.genero || '').trim().toLowerCase();
         if (song) songCount[song] = (songCount[song] || 0) + 1;
         if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(s.artista || '').trim(); }
-        if (user) userCount[user] = (userCount[user] || 0) + 1;
+        if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(s.usuario || '').trim(); }
         if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
       }
       function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } } return k; }
@@ -2881,11 +2893,19 @@
         .sort((a, b) => b.c - a.c)
         .slice(0, 3)
         .map(it => `${it.o} (${it.c})`);
+      const usersTop3 = Object.keys(userCount)
+        .map(k => ({ k, c: userCount[k], o: userOriginal[k] || k }))
+        .sort((a, b) => b.c - a.c)
+        .slice(0, 3)
+        .map(it => `${it.o} (${it.c})`);
+      const ts = top(songCount);
       return {
-        topSong: top(songCount),
+        topSong: ts,
+        topSongCount: ts ? (songCount[ts] || 0) : 0,
         topArtist: ta,
         topArtists3: artistTop3,
         topUser: top(userCount),
+        topUsers3: usersTop3,
         topGenre: top(genreCount),
         total: solicitudes.length
       };
@@ -2898,7 +2918,17 @@
       const s = window.__globalStats || computeGlobalStats();
       function fmt(x) { return x && x.length ? x : 'N/D'; }
       const top3Txt = Array.isArray(s.topArtists3) && s.topArtists3.length ? s.topArtists3.join(', ') : 'N/D';
-      const text = '🎵 Canción más pedida: ' + fmt(s.topSong) + '  •  👤 Usuario más activo: ' + fmt(s.topUser) + '  •  🎤 Top 3 artistas: ' + top3Txt + '  •  📊 Total solicitudes: ' + (s.total || 0) + '   ';
+      const usersTop3Txt = Array.isArray(s.topUsers3) && s.topUsers3.length ? s.topUsers3.join(', ') : 'N/D';
+      let avgTxt = 'N/D';
+      if (typeof window.__globalTotalSolicitudes === 'number' && typeof window.__globalDistinctUsers === 'number' && window.__globalDistinctUsers > 0) {
+        avgTxt = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
+      } else {
+        const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+        const usersSet = new Set(solicitudes.map(x => String(x.usuario||'').trim()).filter(Boolean));
+        avgTxt = usersSet.size ? (solicitudes.length / usersSet.size).toFixed(1) : '0.0';
+      }
+      const topGenre = typeof window.__globalGenreTop === 'string' && window.__globalGenreTop ? window.__globalGenreTop : (fmt(s.topGenre));
+      const text = '🎵 Canción más pedida: ' + fmt(s.topSong) + (typeof s.topSongCount === 'number' ? ' (' + s.topSongCount + ')' : '') + '  •  👥 Top 3 usuarios: ' + usersTop3Txt + '  •  🎤 Top 3 artistas: ' + top3Txt + '  •  📊 Total solicitudes: ' + (s.total || 0) + '  •  🧭 Género histórico: ' + fmt(topGenre) + '  •  📈 Promedio por usuario: ' + avgTxt + '   ';
       el.textContent = text;
     }
 
@@ -2917,7 +2947,7 @@
       if (!window.db) { updateStatsTicker(); return; }
       if (window.__statsTickerUnsub) { try { window.__statsTickerUnsub(); } catch (_) {} }
       window.__statsTickerUnsub = db.collection('solicitudes').onSnapshot((snap) => {
-        const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {};
+        const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
         let total = 0;
         snap.forEach((doc) => {
           const d = doc.data() || {};
@@ -2927,7 +2957,7 @@
           const genre = String(d.genero || '').trim().toLowerCase();
           if (song) songCount[song] = (songCount[song] || 0) + 1;
           if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(d.artista || '').trim(); }
-          if (user) userCount[user] = (userCount[user] || 0) + 1;
+          if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(d.usuario || '').trim(); }
           if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
           total++;
         });
@@ -2938,14 +2968,24 @@
           .sort((a, b) => b.c - a.c)
           .slice(0, 3)
           .map(it => `${it.o} (${it.c})`);
+        const usersTop3 = Object.keys(userCount)
+          .map(k => ({ k, c: userCount[k], o: userOriginal[k] || k }))
+          .sort((a, b) => b.c - a.c)
+          .slice(0, 3)
+          .map(it => `${it.o} (${it.c})`);
+        const ts = top(songCount);
         window.__globalStats = {
-          topSong: top(songCount),
+          topSong: ts,
+          topSongCount: ts ? (songCount[ts] || 0) : 0,
           topArtist: ta,
           topArtists3: artistTop3,
           topUser: top(userCount),
+          topUsers3: usersTop3,
           topGenre: top(genreCount),
           total
         };
+        window.__globalDistinctUsers = Object.keys(userCount).length;
+        window.__globalUserCountMap = userCount;
         window.__globalTotalSolicitudes = total;
         refreshStatsTicker();
       }, () => { updateStatsTicker(); });
@@ -2992,6 +3032,7 @@
       if (window.__statsTickerInterval) clearInterval(window.__statsTickerInterval);
       window.__statsTickerInterval = setInterval(refreshStatsTicker, 60000);
       subscribeStatsTicker();
+      try { subscribeUserStatsGenres(); } catch (_) {}
     }
     try { ensureStatsTicker(); startStatsTicker(); } catch (_) {}
     // Variables globales del menú
@@ -5436,14 +5477,19 @@
     initializeCalendarNavigation();
     window.__calendarNavInit__ = true;
   }
-  await renderStreakCalendar();
-  gamificationModal.hidden = false;
+        await renderStreakCalendar();
+        gamificationModal.hidden = false;
       });
+      
+      document.addEventListener('DOMContentLoaded', () => {});
 
       // Event listener para el botón X de cerrar
       document.getElementById('gamification-close-x')?.addEventListener('click', () => {
         gamificationModal.hidden = true;
       });
+      
+      const daySelectEl = document.getElementById('day-select');
+      daySelectEl?.addEventListener('change', () => {});
 
       // Función para analizar automáticamente nuevos usuarios
       async function analyzeNewUsersAutomatically() {
@@ -7568,6 +7614,7 @@
       async function renderFavoriteGenresForUser() {
         await renderFavoriteGenres();
       }
+      
 
       // Event listeners para el selector de usuario
       document.getElementById('gamification-user-select')?.addEventListener('change', async (e) => {
