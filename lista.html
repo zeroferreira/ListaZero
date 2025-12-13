@@ -111,17 +111,30 @@
       }
       function useGlobal(){
         var ref = React.useRef(null);
-        var st = React.useState({ total: 0, topArtists3: [], topSong: '', topUser: '' });
+        var st = React.useState({ total: 0, topArtists3: [], topUsers3: [], topSong: '', topSongCount: 0 });
         var g = st[0]; var setG = st[1];
         React.useEffect(function(){
           if (ref.current) { ref.current(); ref.current = null; }
           if (!window.db) return;
           ref.current = window.db.collection('solicitudes').onSnapshot(function(snap){
-            var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var total = 0;
-            snap.forEach(function(doc){ var d = doc.data()||{}; var a=(String(d.artista||'').trim().toLowerCase()); var ao=(String(d.artista||'').trim()); var s=(String(d.cancion||'').trim().toLowerCase()); var u=(String(d.usuario||'').trim().toLowerCase()); if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; } if (s){ songCount[s]=(songCount[s]||0)+1;} if (u){ userCount[u]=(userCount[u]||0)+1;} total++; });
-            function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return k; }
+            var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var userOriginal = {}; var total = 0;
+            snap.forEach(function(doc){
+              var d = doc.data()||{};
+              var a=(String(d.artista||'').trim().toLowerCase());
+              var ao=(String(d.artista||'').trim());
+              var s=(String(d.cancion||'').trim().toLowerCase());
+              var u=(String(d.usuario||'').trim().toLowerCase());
+              var uo=(String(d.usuario||'').trim());
+              if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; }
+              if (s){ songCount[s]=(songCount[s]||0)+1;}
+              if (u){ userCount[u]=(userCount[u]||0)+1; if(!userOriginal[u]) userOriginal[u]=uo; }
+              total++;
+            });
+            function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return {k:k,v:v}; }
             var ta = Object.keys(artistCount).map(function(k){ return {k:k,c:artistCount[k],o:artistOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
-            setG({ total: total, topArtists3: ta, topSong: top(songCount), topUser: top(userCount) });
+            var tu3 = Object.keys(userCount).map(function(k){ return {k:k,c:userCount[k],o:userOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
+            var ts = top(songCount);
+            setG({ total: total, topArtists3: ta, topUsers3: tu3, topSong: ts.k, topSongCount: ts.v });
           });
           return function(){ if (ref.current) { ref.current(); ref.current = null; } };
         }, []);
@@ -208,17 +221,35 @@
           var day = useDay();
           var g = useGlobal();
           function fmt(x){ return x && x.length ? x : 'N/D'; }
-          var text = '';
-          if (Array.isArray(day.items) && day.items.length){
-            var ac = {}; var sc = {}; var uc = {}; day.items.forEach(function(it){ var a=String(it.artista||'').trim().toLowerCase(); var s=String(it.cancion||'').trim().toLowerCase(); var u=String(it.usuario||'').trim().toLowerCase(); if(a) ac[a]=(ac[a]||0)+1; if(s) sc[s]=(sc[s]||0)+1; if(u) uc[u]=(uc[u]||0)+1; });
-            function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return {k:k,v:v}; }
-            var ts = top(sc); var tu = top(uc);
-            var a3 = Object.keys(ac).map(function(k){ return {k:k,c:ac[k]}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.k+' ('+it.c+')'; });
-            text = '📅 Hoy • 🎵 Más pedida: '+fmt(ts.k)+' ('+(ts.v||0)+') • 👤 Más activo: '+fmt(tu.k)+' • 🎤 Top 3 artistas: '+(a3.length?a3.join(', '):'N/D')+' • 📝 Solicitudes: '+day.items.length+'   ';
-          } else {
-            text = '🎵 Canción más pedida: '+fmt(g.topSong)+'  •  👤 Usuario más activo: '+fmt(g.topUser)+'  •  🎤 Top 3 artistas: '+(g.topArtists3 && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D')+'  •  📊 Total solicitudes: '+(g.total||0)+'   ';
+          var ac = {}; var sc = {}; var uc = {}; var artistOriginal = {}; var userOriginal = {};
+          (Array.isArray(day.items) ? day.items : []).forEach(function(it){
+            var a=String(it.artista||'').trim().toLowerCase();
+            var s=String(it.cancion||'').trim().toLowerCase();
+            var u=String(it.usuario||'').trim().toLowerCase();
+            var ao=String(it.artista||'').trim();
+            var uo=String(it.usuario||'').trim();
+            if(a) ac[a]=(ac[a]||0)+1;
+            if(s) sc[s]=(sc[s]||0)+1;
+            if(u) uc[u]=(uc[u]||0)+1;
+            if(a && !artistOriginal[a]) artistOriginal[a]=ao;
+            if(u && !userOriginal[u]) userOriginal[u]=uo;
+          });
+          function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return {k:k,v:v}; }
+          var ts = top(sc);
+          var usersTop3Day = Object.keys(uc).map(function(k){ return {k:k,c:uc[k],o:userOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
+          var artistsTop3Day = Object.keys(ac).map(function(k){ return {k:k,c:ac[k],o:artistOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
+          var latest = Array.isArray(day.items) && day.items.length ? day.items[0] : null;
+          var latestTxt = latest ? (String(latest.cancion||'').trim() + (latest.artista ? ' — ' + String(latest.artista).trim() : '')) : 'N/D';
+          var globalUsersTop3 = Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D';
+          var globalArtistsTop3 = Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D';
+          var avgTxtGlobal = 'N/D';
+          if (typeof window.__globalTotalSolicitudes === 'number' && typeof window.__globalDistinctUsers === 'number' && window.__globalDistinctUsers > 0) {
+            avgTxtGlobal = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
           }
-          return e('span', null, text);
+          var globalText = '<strong>HISTORIA:</strong> • <strong>🎵 Canción más pedida:</strong> '+fmt(g.topSong)+(typeof g.topSongCount==='number'?' ('+g.topSongCount+')':'')+'  •  <strong>👥 Top 3 usuarios:</strong> '+globalUsersTop3+'  •  <strong>🎤 Top 3 artistas:</strong> '+globalArtistsTop3+'  •  <strong>📊 Total solicitudes:</strong> '+(g.total||0)+'  •  <strong>📈 Promedio por usuario:</strong> '+avgTxtGlobal;
+          var dayText = '📅 <strong>HOY</strong> • <strong>🎵 Última canción solicitada:</strong> '+fmt(latestTxt)+' • <strong>👥 Top 3 usuarios:</strong> '+(usersTop3Day.length?usersTop3Day.join(', '):'N/D')+' • <strong>🎤 Top 3 artistas:</strong> '+(artistsTop3Day.length?artistsTop3Day.join(', '):'N/D')+' • <strong>📝 Solicitudes:</strong> '+String(day.items.length||0);
+          var sep = '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
+          return e('span', { dangerouslySetInnerHTML: { __html: dayText + sep + globalText } });
         }
         var root = ReactDOM.createRoot(container);
         root.render(e(StatsTicker));
@@ -1791,6 +1822,7 @@
         });
         if (sorted.length) {
           daySelect.value = sorted[0];
+          try { daySelect.dispatchEvent(new Event('change')); } catch (_){}
         }
 
         if (!daySelect.value) {
@@ -1805,6 +1837,7 @@
               daySelect.appendChild(opt);
             });
             daySelect.value = localDays[0];
+            try { daySelect.dispatchEvent(new Event('change')); } catch (_){}
           }
         }
       }
@@ -1911,7 +1944,7 @@
                   cancion: data.cancion,
                   artista: data.artista,
                   hora: toHour(data.ts),
-                  day: dayValue
+                  day: data.day || dayValue
                 });
               }
             }
@@ -2233,16 +2266,26 @@
       if (el.getAttribute('data-react-root') === 'true') return;
       const s = computeDayStatsFromItems(items);
       function fmt(x) { return x && x.length ? x : 'N/D'; }
-      const globalTotal = typeof window.__globalTotalSolicitudes === 'number' ? window.__globalTotalSolicitudes : 'N/D';
       const top3Txt = Array.isArray(s.topArtists3) && s.topArtists3.length ? s.topArtists3.join(', ') : 'N/D';
       const usersTop3Txt = Array.isArray(s.topUsers3) && s.topUsers3.length ? s.topUsers3.join(', ') : 'N/D';
-      let avgTxt = 'N/D';
+      const latest = Array.isArray(items) && items.length ? items[0] : null;
+      const latestTxt = latest ? (String(latest.cancion || '').trim() + (latest.artista ? ' — ' + String(latest.artista).trim() : '')) : 'N/D';
+      const dayText = '📅 <strong>HOY</strong> • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) + ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3Txt + ' • <strong>🎤 Top 3 artistas:</strong> ' + top3Txt + ' • <strong>📝 Solicitudes:</strong> ' + (s.total || 0);
+      const g = window.__globalStats || computeGlobalStats();
+      function fmtG(x) { return x && x.length ? x : 'N/D'; }
+      const top3TxtGlobal = Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D';
+      const usersTop3TxtGlobal = Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D';
+      let avgTxtGlobal = 'N/D';
       if (typeof window.__globalTotalSolicitudes === 'number' && typeof window.__globalDistinctUsers === 'number' && window.__globalDistinctUsers > 0) {
-        avgTxt = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
+        avgTxtGlobal = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
+      } else {
+        const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+        const usersSet = new Set(solicitudes.map(x => String(x.usuario||'').trim()).filter(Boolean));
+        avgTxtGlobal = usersSet.size ? (solicitudes.length / usersSet.size).toFixed(1) : '0.0';
       }
-      const topGenre = typeof window.__globalGenreTop === 'string' && window.__globalGenreTop ? window.__globalGenreTop : (fmt(window.__globalStats?.topGenre || ''));
-      const text = '📅 Hoy • 🎵 Más pedida: ' + fmt(s.topSong) + ' (' + (s.topSongCount || 0) + ') • 👥 Top 3 usuarios: ' + usersTop3Txt + ' • 🎤 Top 3 artistas: ' + top3Txt + ' • 📝 Solicitudes: ' + (s.total || 0) + ' • ▶️ Reproducidas: ' + (s.played || 0) + ' • ⭐ VIP: ' + (s.vip || 0) + ' • 💎 Z0-VIP: ' + (s.z0vip || 0) + ' • 🧮 Total históricas: ' + globalTotal + ' • 🧭 Género histórico: ' + fmt(topGenre) + ' • 📈 Promedio por usuario: ' + avgTxt + '   ';
-      el.textContent = text;
+      const globalText = '<strong>HISTORIA:</strong> • <strong>🎵 Canción más pedida:</strong> ' + fmtG(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') + '  •  <strong>👥 Top 3 usuarios:</strong> ' + usersTop3TxtGlobal + '  •  <strong>🎤 Top 3 artistas:</strong> ' + top3TxtGlobal + '  •  <strong>📊 Total solicitudes:</strong> ' + (g.total || 0) + '  •  <strong>📈 Promedio por usuario:</strong> ' + avgTxtGlobal;
+      const sep = '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
+      el.innerHTML = dayText + sep + globalText;
     }
 
       function updateModernWidgetPure() {
@@ -2915,10 +2958,20 @@
       const el = document.querySelector('#stats-ticker .ticker-content');
       if (!el) return;
       if (el.getAttribute('data-react-root') === 'true') return;
-      const s = window.__globalStats || computeGlobalStats();
       function fmt(x) { return x && x.length ? x : 'N/D'; }
-      const top3Txt = Array.isArray(s.topArtists3) && s.topArtists3.length ? s.topArtists3.join(', ') : 'N/D';
-      const usersTop3Txt = Array.isArray(s.topUsers3) && s.topUsers3.length ? s.topUsers3.join(', ') : 'N/D';
+      const items = window.__dayItems || [];
+      let dayText = '';
+      try {
+        const ds = computeDayStatsFromItems(items);
+        const top3TxtDay = Array.isArray(ds.topArtists3) && ds.topArtists3.length ? ds.topArtists3.join(', ') : 'N/D';
+        const usersTop3TxtDay = Array.isArray(ds.topUsers3) && ds.topUsers3.length ? ds.topUsers3.join(', ') : 'N/D';
+        const latest = Array.isArray(items) && items.length ? items[0] : null;
+        const latestTxt = latest ? (String(latest.cancion || '').trim() + (latest.artista ? ' — ' + String(latest.artista).trim() : '')) : 'N/D';
+        dayText = '📅 <strong>HOY</strong> • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) + ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3TxtDay + ' • <strong>🎤 Top 3 artistas:</strong> ' + top3TxtDay + ' • <strong>📝 Solicitudes:</strong> ' + (ds.total || 0);
+      } catch (_) {}
+      const g = window.__globalStats || computeGlobalStats();
+      const top3Txt = Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D';
+      const usersTop3Txt = Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D';
       let avgTxt = 'N/D';
       if (typeof window.__globalTotalSolicitudes === 'number' && typeof window.__globalDistinctUsers === 'number' && window.__globalDistinctUsers > 0) {
         avgTxt = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
@@ -2927,9 +2980,9 @@
         const usersSet = new Set(solicitudes.map(x => String(x.usuario||'').trim()).filter(Boolean));
         avgTxt = usersSet.size ? (solicitudes.length / usersSet.size).toFixed(1) : '0.0';
       }
-      const topGenre = typeof window.__globalGenreTop === 'string' && window.__globalGenreTop ? window.__globalGenreTop : (fmt(s.topGenre));
-      const text = '🎵 Canción más pedida: ' + fmt(s.topSong) + (typeof s.topSongCount === 'number' ? ' (' + s.topSongCount + ')' : '') + '  •  👥 Top 3 usuarios: ' + usersTop3Txt + '  •  🎤 Top 3 artistas: ' + top3Txt + '  •  📊 Total solicitudes: ' + (s.total || 0) + '  •  🧭 Género histórico: ' + fmt(topGenre) + '  •  📈 Promedio por usuario: ' + avgTxt + '   ';
-      el.textContent = text;
+      const globalText = '<strong>HISTORIA:</strong> • <strong>🎵 Canción más pedida:</strong> ' + fmt(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') + '  •  <strong>👥 Top 3 usuarios:</strong> ' + usersTop3Txt + '  •  <strong>🎤 Top 3 artistas:</strong> ' + top3Txt + '  •  <strong>📊 Total solicitudes:</strong> ' + (g.total || 0) + '  •  <strong>📈 Promedio por usuario:</strong> ' + avgTxt;
+      const sep2 = '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
+      el.innerHTML = (dayText ? (dayText + sep2) : '') + globalText;
     }
 
     function refreshStatsTicker() {
@@ -3033,6 +3086,16 @@
       window.__statsTickerInterval = setInterval(refreshStatsTicker, 60000);
       subscribeStatsTicker();
       try { subscribeUserStatsGenres(); } catch (_) {}
+      try {
+        const daySel = document.getElementById('day-select')?.value;
+        if (!daySel) {
+          const d = new Date();
+          const todayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          if (typeof window.subscribeSolicitudesForDay === 'function') {
+            window.subscribeSolicitudesForDay(todayKey);
+          }
+        }
+      } catch (_) {}
     }
     try { ensureStatsTicker(); startStatsTicker(); } catch (_) {}
     // Variables globales del menú
@@ -3321,6 +3384,19 @@
         closeMenu();
         document.getElementById('search-input')?.focus();
       });
+      
+      daySelect?.addEventListener('change', () => {
+        const v = daySelect.value;
+        if (v) {
+          if (typeof window.subscribeSolicitudesForDay === 'function') {
+            window.subscribeSolicitudesForDay(v);
+          }
+        } else {
+          window.__dayItems = [];
+          try { refreshStatsTicker(); } catch (_) {}
+        }
+        hideSearchResults();
+      });
 
       function renderSearchResults(rows) {
         if (!searchResults) return;
@@ -3334,13 +3410,16 @@
           const formatDate = (dateStr) => {
             if (!dateStr) return '';
             const date = new Date(dateStr);
+            const pad = (n) => String(n).padStart(2, '0');
+            const toLocalDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
             const today = new Date();
             const yesterday = new Date(today);
             yesterday.setDate(yesterday.getDate() - 1);
-            
-            if (dateStr === today.toISOString().split('T')[0]) {
+            const todayStr = toLocalDay(today);
+            const yesterdayStr = toLocalDay(yesterday);
+            if (dateStr === todayStr) {
               return 'Hoy';
-            } else if (dateStr === yesterday.toISOString().split('T')[0]) {
+            } else if (dateStr === yesterdayStr) {
               return 'Ayer';
             } else {
               return date.toLocaleDateString('es-ES', { 
@@ -3444,6 +3523,7 @@
         const day = el?.dataset?.day;
         if (!day) return;
         daySelect.value = day;
+        try { daySelect.dispatchEvent(new Event('change')); } catch (_){}
         window.subscribeSolicitudesForDay?.(day);
         searchResults.hidden = true;
         searchResults.innerHTML = '';
