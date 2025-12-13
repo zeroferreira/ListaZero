@@ -71,18 +71,7 @@
       }
     });
   </script>
-  <script>
-    (function(){
-      var style = document.createElement('style');
-      style.textContent = '.modern-widget{position:fixed;top:64px;right:12px;z-index:10001;background:rgba(20,20,20,0.75);backdrop-filter:saturate(180%) blur(8px);border:1px solid rgba(255,255,255,0.12);border-radius:14px;padding:10px 12px;display:flex;gap:8px;align-items:center;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,0.35)} .modern-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);font-size:13px} .modern-chip .label{opacity:.85} .modern-chip .value{font-weight:600} @media(max-width:768px){.modern-widget{left:12px;right:12px;top:72px;flex-wrap:wrap}}';
-      document.head.appendChild(style);
-      var container = document.createElement('div');
-      container.id = 'react-modern-widget';
-      container.className = 'modern-widget';
-      container.innerHTML = '<div class="modern-chip"><span class="label">🎵 Canción top</span><span class="value">Cargando…</span></div><div class="modern-chip"><span class="label">👤 Usuario top</span><span class="value">Cargando…</span></div><div class="modern-chip"><span class="label">🎤 Top 3 artistas</span><span class="value">Cargando…</span></div><div class="modern-chip"><span class="label">🧮 Total</span><span class="value">0</span></div>';
-      document.body.appendChild(container);
-    })();
-  </script>
+  <!-- Barra moderna desactivada -->
 
   <script>
     (function(){
@@ -207,11 +196,24 @@
             if (ref.current) { ref.current(); ref.current = null; }
             if (!window.db) return;
             ref.current = window.db.collection('solicitudes').onSnapshot(function(snap){
-              var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var total = 0;
-              snap.forEach(function(doc){ var d = doc.data()||{}; var a=(String(d.artista||'').trim().toLowerCase()); var ao=(String(d.artista||'').trim()); var s=(String(d.cancion||'').trim().toLowerCase()); var u=(String(d.usuario||'').trim().toLowerCase()); if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; } if (s){ songCount[s]=(songCount[s]||0)+1;} if (u){ userCount[u]=(userCount[u]||0)+1;} total++; });
+              var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var userOriginal = {}; var total = 0;
+              snap.forEach(function(doc){
+                var d = doc.data()||{};
+                var a=(String(d.artista||'').trim().toLowerCase());
+                var ao=(String(d.artista||'').trim());
+                var s=(String(d.cancion||'').trim().toLowerCase());
+                var u=(String(d.usuario||'').trim().toLowerCase());
+                var uo=(String(d.usuario||'').trim());
+                if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; }
+                if (s){ songCount[s]=(songCount[s]||0)+1; }
+                if (u){ userCount[u]=(userCount[u]||0)+1; if(!userOriginal[u]) userOriginal[u]=uo; }
+                total++;
+              });
               function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return k; }
               var ta = Object.keys(artistCount).map(function(k){ return {k:k,c:artistCount[k],o:artistOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
-              setG({ total: total, topArtists3: ta, topSong: top(songCount), topUser: top(userCount) });
+              var tu = Object.keys(userCount).map(function(k){ return {k:k,c:userCount[k],o:userOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
+              var ts = top(songCount);
+              setG({ total: total, topArtists3: ta, topUsers3: tu, topSong: ts, topSongCount: ts ? (songCount[ts]||0) : 0, topUser: top(userCount) });
             });
             return function(){ if (ref.current) { ref.current(); ref.current = null; } };
           }, []);
@@ -1608,6 +1610,16 @@
           setTimeout(() => {
             forcePlayedSongStyles();
           }, 50);
+          
+          // Recalcular puntos y estadísticas del usuario afectado para que refleje solo reproducidas
+          try {
+            const username = (element.dataset.username || '').trim();
+            if (username) {
+              await analyzeAndGrantPointsForUser(username);
+            }
+          } catch (e) {
+            console.warn('No se pudo recalcular puntos tras marcar reproducida:', e);
+          }
           
         } catch (error) {
           console.error('Error en toggleSongPlayed:', error);
@@ -4214,7 +4226,7 @@
           description: 'Pide tu primera canción',
           icon: '🎵',
           points: 25,
-          condition: (stats) => stats.totalSongs >= 1
+          condition: (stats) => (stats.totalPlayedSongs || 0) >= 1
         },
         {
           id: 'music_lover',
@@ -4222,7 +4234,7 @@
           description: 'Pide 10 canciones',
           icon: '🎶',
           points: 50,
-          condition: (stats) => stats.totalSongs >= 10
+          condition: (stats) => (stats.totalPlayedSongs || 0) >= 10
         },
         {
           id: 'music_addict',
@@ -4230,7 +4242,7 @@
           description: 'Pide 50 canciones',
           icon: '🎸',
           points: 100,
-          condition: (stats) => stats.totalSongs >= 50
+          condition: (stats) => (stats.totalPlayedSongs || 0) >= 50
         },
         {
           id: 'music_master',
@@ -4238,7 +4250,7 @@
           description: 'Pide 100 canciones',
           icon: '🎹',
           points: 200,
-          condition: (stats) => stats.totalSongs >= 100
+          condition: (stats) => (stats.totalPlayedSongs || 0) >= 100
         },
         // Progresión por canciones nuevas
         {
@@ -4247,7 +4259,7 @@
           description: 'Pide 200 canciones',
           icon: '🎧',
           points: 250,
-          condition: (stats) => (stats.totalSongs || 0) >= 200
+          condition: (stats) => (stats.totalPlayedSongs || 0) >= 200
         },
         {
           id: 'music_elite_500',
@@ -4255,7 +4267,7 @@
           description: 'Pide 500 canciones',
           icon: '🏅',
           points: 800,
-          condition: (stats) => (stats.totalSongs || 0) >= 500
+          condition: (stats) => (stats.totalPlayedSongs || 0) >= 500
         },
         {
           id: 'music_legend_1000',
@@ -4263,7 +4275,7 @@
           description: 'Pide 1000 canciones',
           icon: '👑',
           points: 2000,
-          condition: (stats) => (stats.totalSongs || 0) >= 1000
+          condition: (stats) => (stats.totalPlayedSongs || 0) >= 1000
         },
         // Variedad de artistas existentes y nuevas
         {
@@ -4272,7 +4284,7 @@
           description: 'Pide canciones de 10 artistas diferentes',
           icon: '🌟',
           points: 75,
-          condition: (stats) => stats.uniqueArtists >= 10
+          condition: (stats) => (stats.uniqueArtistsPlayed || 0) >= 10
         },
         {
           id: 'explorer',
@@ -4280,7 +4292,7 @@
           description: 'Pide canciones de 25 artistas diferentes',
           icon: '🗺️',
           points: 150,
-          condition: (stats) => stats.uniqueArtists >= 25
+          condition: (stats) => (stats.uniqueArtistsPlayed || 0) >= 25
         },
         {
           id: 'varied_tastes_30',
@@ -4288,7 +4300,7 @@
           description: 'Pide canciones de 30 artistas diferentes',
           icon: '🌈',
           points: 300,
-          condition: (stats) => (stats.uniqueArtists || 0) >= 30
+          condition: (stats) => (stats.uniqueArtistsPlayed || 0) >= 30
         },
         {
           id: 'diverse_50',
@@ -4296,7 +4308,7 @@
           description: 'Pide canciones de 50 artistas diferentes',
           icon: '🧩',
           points: 500,
-          condition: (stats) => (stats.uniqueArtists || 0) >= 50
+          condition: (stats) => (stats.uniqueArtistsPlayed || 0) >= 50
         },
         {
           id: 'diverse_100',
@@ -4304,7 +4316,7 @@
           description: 'Pide canciones de 100 artistas diferentes',
           icon: '📚',
           points: 1500,
-          condition: (stats) => (stats.uniqueArtists || 0) >= 100
+          condition: (stats) => (stats.uniqueArtistsPlayed || 0) >= 100
         },
         // Rachas existentes y nuevas
         {
@@ -4420,7 +4432,7 @@
           description: 'Pide 5 canciones del mismo artista',
           icon: '📀',
           points: 100,
-          condition: (stats) => (stats.topArtistCount || 0) >= 5
+          condition: (stats) => (stats.topArtistCountPlayed || 0) >= 5
         },
         {
           id: 'same_artist_10',
@@ -4428,7 +4440,7 @@
           description: 'Pide 10 canciones del mismo artista',
           icon: '💿',
           points: 250,
-          condition: (stats) => (stats.topArtistCount || 0) >= 10
+          condition: (stats) => (stats.topArtistCountPlayed || 0) >= 10
         },
         {
           id: 'same_artist_20',
@@ -4436,7 +4448,7 @@
           description: 'Pide 20 canciones del mismo artista',
           icon: '💿',
           points: 600,
-          condition: (stats) => (stats.topArtistCount || 0) >= 20
+          condition: (stats) => (stats.topArtistCountPlayed || 0) >= 20
         },
         {
           id: 'same_artist_50',
@@ -4444,7 +4456,7 @@
           description: 'Pide 50 canciones del mismo artista',
           icon: '🏛️',
           points: 2000,
-          condition: (stats) => (stats.topArtistCount || 0) >= 50
+          condition: (stats) => (stats.topArtistCountPlayed || 0) >= 50
         },
         // Ser el primero en pedir
         {
@@ -4517,7 +4529,7 @@
           description: 'Pide una canción de Zero FM.',
           icon: '🎧',
           points: 100,
-          condition: (stats) => (stats.zeroFMSongs || 0) >= 1
+          condition: (stats) => (stats.zeroFMSongsPlayed || 0) >= 1
         },
         {
           id: 'zerofm_listener_3',
@@ -4525,7 +4537,7 @@
           description: 'Pide 3 canciones de Zero FM.',
           icon: '🎧',
           points: 300,
-          condition: (stats) => (stats.zeroFMSongs || 0) >= 3
+          condition: (stats) => (stats.zeroFMSongsPlayed || 0) >= 3
         },
         {
           id: 'zerofm_listener_6',
@@ -4533,7 +4545,7 @@
           description: 'Pide 6 canciones de Zero FM.',
           icon: '🎧',
           points: 600,
-          condition: (stats) => (stats.zeroFMSongs || 0) >= 6
+          condition: (stats) => (stats.zeroFMSongsPlayed || 0) >= 6
         },
         {
           id: 'zerofm_listener_9',
@@ -4541,7 +4553,7 @@
           description: 'Pide 9 canciones de Zero FM.',
           icon: '🎧',
           points: 1200,
-          condition: (stats) => (stats.zeroFMSongs || 0) >= 9
+          condition: (stats) => (stats.zeroFMSongsPlayed || 0) >= 9
         },
         {
           id: 'zerofm_listener_12',
@@ -4549,7 +4561,7 @@
           description: 'Pide 12 canciones de Zero FM.',
           icon: '🎧',
           points: 3693,
-          condition: (stats) => (stats.zeroFMSongs || 0) >= 12
+          condition: (stats) => (stats.zeroFMSongsPlayed || 0) >= 12
         }
       ];
 
@@ -5623,11 +5635,11 @@
             return;
           }
           
-          // Calcular puntos base por canciones
-          const basePoints = stats.totalSongs * POINTS_CONFIG.SONG_REQUEST;
+          // Calcular puntos base por canciones reproducidas
+          const basePoints = (stats.totalPlayedSongs || 0) * POINTS_CONFIG.SONG_REQUEST;
           
-          // Bonus VIP si aplica
-          const vipBonus = stats.isVip ? stats.totalSongs * POINTS_CONFIG.VIP_BONUS : 0;
+          // Bonus VIP si aplica, sobre canciones reproducidas
+          const vipBonus = stats.isVip ? (stats.totalPlayedSongs || 0) * POINTS_CONFIG.VIP_BONUS : 0;
           
           // Calcular puntos totales
           const totalPoints = basePoints + vipBonus;
@@ -5800,12 +5812,12 @@
             await diagnoseSolicitudesIssues(targetUser);
           }
           
-          // Calcular puntos base por canciones
-          const basePoints = stats.totalSongs * POINTS_CONFIG.SONG_REQUEST;
+          // Calcular puntos base por canciones reproducidas
+          const basePoints = (stats.totalPlayedSongs || 0) * POINTS_CONFIG.SONG_REQUEST;
           console.log(`💰 Puntos base para ${targetUser}: ${basePoints} (${stats.totalSongs} canciones × ${POINTS_CONFIG.SONG_REQUEST})`);
           
-          // Bonus VIP si aplica
-          const vipBonus = stats.isVip ? stats.totalSongs * POINTS_CONFIG.VIP_BONUS : 0;
+          // Bonus VIP si aplica, sobre canciones reproducidas
+          const vipBonus = stats.isVip ? (stats.totalPlayedSongs || 0) * POINTS_CONFIG.VIP_BONUS : 0;
           
           // Calcular puntos totales base (sin logros)
           const totalBasePoints = basePoints + vipBonus;
@@ -5984,17 +5996,17 @@
           data.stats.bestStreak = data.streaks.best || 0;
         }
         
-        // CORRECCIÓN CRÍTICA: Recalcular puntos totales correctos
-        const stats = calculateUserStatsForUser(username);
-        const songPoints = stats.totalSongs * 25; // 25 puntos por canción
-        const vipBonus = stats.isVip ? (stats.totalSongs * 15) : 0; // 15 puntos extra por canción si es VIP
+        // CORRECCIÓN CRÍTICA: Recalcular puntos totales correctos basado solo en reproducidas
+        const safeStats = data.stats || { totalPlayedSongs: 0, isVip: false };
+        const songPoints = (safeStats.totalPlayedSongs || 0) * 25; // 25 puntos por canción reproducida
+        const vipBonus = safeStats.isVip ? ((safeStats.totalPlayedSongs || 0) * 15) : 0; // 15 puntos extra por canción si es VIP
         const correctTotalPoints = songPoints + vipBonus + achievementPoints;
         
         // Solo corregir si hay una diferencia significativa
         if (Math.abs(data.points - correctTotalPoints) > 5) {
           console.log(`🔧 CORRIGIENDO PUNTOS para ${username}:`);
           console.log(`   - Puntos actuales: ${data.points}`);
-          console.log(`   - Puntos por canciones: ${songPoints} (${stats.totalSongs} canciones × 25)`);
+          console.log(`   - Puntos por canciones reproducidas: ${songPoints} (${safeStats.totalPlayedSongs || 0} × 25)`);
           console.log(`   - Bonus VIP: ${vipBonus}`);
           console.log(`   - Puntos por logros: ${achievementPoints}`);
           console.log(`   - Total correcto: ${correctTotalPoints}`);
@@ -7018,6 +7030,20 @@
         return n.includes('zerofm') || n.includes('zero fm');
       };
         
+        // Determinar si una solicitud está marcada como reproducida
+        const isEntryPlayed = (s) => {
+          try {
+            const day = getSongDay(s);
+            const hour = toHour(s.ts || s.timestamp || s.time);
+            const sid = `${s.usuario}-${s.cancion}-${s.artista}-${hour}`.replace(/[^a-zA-Z0-9-]/g, '');
+            const playedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+            const dayArr = Array.isArray(playedMap[day]) ? playedMap[day] : [];
+            return sid && dayArr.includes(sid);
+          } catch (_) {
+            return false;
+          }
+        };
+        
         try {
           // Obtener datos combinados de Firebase y localStorage
           const allSolicitudes = await getAllCombinedSolicitudes();
@@ -7026,6 +7052,9 @@
           console.log(`🎵 ${targetUser}: ${userSongs.length} canciones encontradas de ${allSolicitudes.length} totales`);
           
           const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
+          const playedSongs = userSongs.filter(isEntryPlayed);
+          const totalPlayedSongs = playedSongs.length;
+          const uniqueArtistsPlayed = [...new Set(playedSongs.map(s => s.artista))].length;
           console.log(`🎤 ${targetUser}: ${uniqueArtists} artistas únicos`);
           
           // Calcular el máximo de pedidos por artista (para logros del mismo artista)
@@ -7036,6 +7065,13 @@
             return acc;
           }, {});
           const topArtistCount = Object.values(artistCounts).reduce((max, n) => Math.max(max, n), 0);
+          const playedArtistCounts = playedSongs.reduce((acc, s) => {
+            const k = (s.artista || '').toLowerCase();
+            if (!k) return acc;
+            acc[k] = (acc[k] || 0) + 1;
+            return acc;
+          }, {});
+          const topArtistCountPlayed = Object.values(playedArtistCounts).reduce((max, n) => Math.max(max, n), 0);
           
           // Calcular días únicos usando getSongDay
           const uniqueDays = [...new Set(userSongs.map(getSongDay))].length;
@@ -7043,6 +7079,7 @@
           
           // Canciones de Zero FM
           const zeroFMSongs = userSongs.filter(s => isZeroFM(s.artista)).length;
+          const zeroFMSongsPlayed = playedSongs.filter(s => isZeroFM(s.artista)).length;
           
           // “Primero en pedir”: contar días donde el primer pedido del día es del usuario
           // SOLO si hubo al menos 2 solicitudes ese día
@@ -7080,13 +7117,17 @@
 
           return {
             totalSongs: userSongs.length,
+            totalPlayedSongs,
             uniqueArtists,
+            uniqueArtistsPlayed,
             activeDays: uniqueDays,
             isVip,
             bestStreak,
             topArtistCount,
+            topArtistCountPlayed,
             firstRequests,
-            zeroFMSongs
+            zeroFMSongs,
+            zeroFMSongsPlayed
           };
         } catch (error) {
           console.error('Error al calcular estadísticas del usuario:', error);
@@ -7095,6 +7136,9 @@
           
           const userSongs = solicitudes.filter(s => s.usuario === targetUser);
           const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
+          const playedSongs = userSongs.filter(isEntryPlayed);
+          const totalPlayedSongs = playedSongs.length;
+          const uniqueArtistsPlayed = [...new Set(playedSongs.map(s => s.artista))].length;
           
           // Calcular el máximo de pedidos por artista (para logros del mismo artista)
           const artistCounts = userSongs.reduce((acc, s) => {
@@ -7104,12 +7148,23 @@
             return acc;
           }, {});
           const topArtistCount = Object.values(artistCounts).reduce((max, n) => Math.max(max, n), 0);
+          const playedArtistCounts = playedSongs.reduce((acc, s) => {
+            const k = (s.artista || s.artist || '').toLowerCase();
+            if (!k) return acc;
+            acc[k] = (acc[k] || 0) + 1;
+            return acc;
+          }, {});
+          const topArtistCountPlayed = Object.values(playedArtistCounts).reduce((max, n) => Math.max(max, n), 0);
           
           const uniqueDays = [...new Set(userSongs.map(getSongDay))].length;
           
           // Canciones de Zero FM (fallback local)
           const zeroFMSongs = (userSongs || []).filter(s => {
             const artist = (s.artist || '').toLowerCase();
+            return artist.includes('zero fm') || artist.includes('zerofm');
+          }).length;
+          const zeroFMSongsPlayed = (playedSongs || []).filter(s => {
+            const artist = (s.artist || s.artista || '').toLowerCase();
             return artist.includes('zero fm') || artist.includes('zerofm');
           }).length;
           
@@ -7156,13 +7211,17 @@
 
           return {
             totalSongs: userSongs.length,
+            totalPlayedSongs,
             uniqueArtists,
+            uniqueArtistsPlayed,
             activeDays: uniqueDays,
             isVip,
             bestStreak,
             topArtistCount,
+            topArtistCountPlayed,
             firstRequests,
-            zeroFMSongs
+            zeroFMSongs,
+            zeroFMSongsPlayed
           };
         }
       }
@@ -8350,13 +8409,13 @@
         REWARDS.forEach(reward => {
           const canAfford = userData.points >= reward.cost;
           const rewardCard = document.createElement('div');
-          rewardCard.className = `reward-card ${!canAfford ? 'disabled' : ''}`;
+          rewardCard.className = `reward-card ${canAfford ? 'affordable' : 'expensive'}`;
           
           rewardCard.innerHTML = `
             <div class="reward-icon">${reward.icon}</div>
             <div class="reward-info">
-              <h4>${reward.name}</h4>
-              <p>${reward.description}</p>
+              <h4 class="reward-title">${reward.name}</h4>
+              <p class="reward-description">${reward.description}</p>
               <div class="reward-cost">${reward.cost} puntos</div>
             </div>
             <button class="reward-btn" ${!canAfford ? 'disabled' : ''} 
@@ -8366,6 +8425,14 @@
           `;
           
           rewardsContainer.appendChild(rewardCard);
+          rewardCard.addEventListener('click', function(){
+            rewardCard.classList.add('animate-border');
+            setTimeout(function(){ rewardCard.classList.remove('animate-border'); }, 1400);
+          });
+          rewardCard.addEventListener('touchstart', function(){
+            rewardCard.classList.add('animate-border');
+            setTimeout(function(){ rewardCard.classList.remove('animate-border'); }, 1400);
+          }, { passive: true });
         });
         
         // Renderizar solicitudes pendientes
