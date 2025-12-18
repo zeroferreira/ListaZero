@@ -890,44 +890,34 @@
   };
 
   function getGamificationData(usuario) {
-    const key = `gamificationData_${usuario.toLowerCase()}`;
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : {
+    const allStr = localStorage.getItem('gamificationData') || '{}';
+    const all = JSON.parse(allStr);
+    const u = (usuario || '').toLowerCase();
+    const d = all[u];
+    return d || {
       points: 0,
       level: 1,
       xp: 0,
       achievements: [],
-      streaks: {
-        current: 0,
-        best: 0,
-        lastActivity: null,
-        calendar: {}
-      },
-      stats: {
-        totalSongs: 0,
-        uniqueArtists: 0,
-        activeDays: 0,
-        isVip: false
-      }
+      streaks: { current: 0, best: 0, lastActivity: null, calendar: {} },
+      stats: { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false }
     };
   }
 
   function saveGamificationData(usuario, data) {
-    const key = `gamificationData_${usuario.toLowerCase()}`;
-    localStorage.setItem(key, JSON.stringify(data));
+    const u = (usuario || '').toLowerCase();
+    const allStr = localStorage.getItem('gamificationData') || '{}';
+    const all = JSON.parse(allStr);
+    all[u] = data;
+    localStorage.setItem('gamificationData', JSON.stringify(all));
   }
 
   function addPoints(usuario, points) {
     const data = getGamificationData(usuario);
     data.points += points;
     data.xp += points;
-    
-    // Verificar subida de nivel
     const newLevel = calculateLevel(data.xp);
-    if (newLevel > data.level) {
-      data.level = newLevel;
-    }
-    
+    if (newLevel > data.level) data.level = newLevel;
     saveGamificationData(usuario, data);
     return data;
   }
@@ -1000,6 +990,24 @@
     return data.streaks.current;
   }
 
+  (function migrateLegacyGamification(){
+    try {
+      const keys = Object.keys(localStorage);
+      const allStr = localStorage.getItem('gamificationData') || '{}';
+      const all = JSON.parse(allStr);
+      keys.forEach(k => {
+        if (k.startsWith('gamificationData_')) {
+          const user = k.replace('gamificationData_','').toLowerCase();
+          const d = JSON.parse(localStorage.getItem(k) || '{}');
+          if (d && Object.keys(d).length) {
+            all[user] = d;
+            localStorage.removeItem(k);
+          }
+        }
+      });
+      localStorage.setItem('gamificationData', JSON.stringify(all));
+    } catch (_){}
+  })();
   function calculateUserStats(usuario) {
     const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
     const vipUsers = JSON.parse(localStorage.getItem('vipUsers') || '[]');
