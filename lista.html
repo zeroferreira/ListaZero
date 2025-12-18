@@ -508,13 +508,26 @@
           <div class="admin-row">
             <h3>🔧 Mantenimiento del Sistema</h3>
             <div class="maintenance-actions">
+              <div class="field">
+                <label for="rebuild-user-input">Usuario</label>
+                <input id="rebuild-user-input" type="text" placeholder="Usuario o vacío" />
+              </div>
+              <div class="field">
+                <label for="rebuild-start-day">Inicio (YYYY-MM-DD)</label>
+                <input id="rebuild-start-day" type="text" placeholder="YYYY-MM-DD" />
+              </div>
+              <div class="field">
+                <label for="rebuild-end-day">Fin (YYYY-MM-DD)</label>
+                <input id="rebuild-end-day" type="text" placeholder="YYYY-MM-DD" />
+              </div>
               <button type="button" id="recalculate-users" class="btn btn-success">🔄 Recalcular todos los usuarios</button>
               <button type="button" id="diagnose-data-btn" class="btn btn-info">🔍 Diagnosticar datos de usuario</button>
-                <button type="button" id="test-user-switch-btn" class="btn btn-warning">🧪 Probar cambio de usuario</button>
-                <button type="button" id="debug-current-user-btn" class="btn btn-secondary">🔍 Debug usuario actual</button>
+              <button type="button" id="test-user-switch-btn" class="btn btn-warning">🧪 Probar cambio de usuario</button>
+              <button type="button" id="debug-current-user-btn" class="btn btn-secondary">🔍 Debug usuario actual</button>
               <button type="button" id="wipe-all" class="btn btn-danger">🗑️ Borrar todas las solicitudes</button>
               <button type="button" id="clear-cache" class="btn btn-warning">🧹 Limpiar caché</button>
               <button type="button" id="backup-data" class="btn btn-info">💾 Respaldar datos</button>
+              <button type="button" id="rebuild-played-btn" class="btn btn-secondary">🧩 Reconstruir reproducidas históricas</button>
             </div>
           </div>
         </div>
@@ -807,6 +820,7 @@
             <button type="button" class="gamification-tab active" data-tab="achievements">🏅 Logros</button>
             <button type="button" class="gamification-tab" data-tab="streaks">🔥 Rachas</button>
             <button type="button" class="gamification-tab" data-tab="stats">📈 Estadísticas</button>
+            <button type="button" class="gamification-tab" data-tab="breakdown">🔎 Transparencia</button>
           </div>
 
           <div class="gamification-content">
@@ -933,6 +947,46 @@
                   <div id="favorite-genres-list" class="genres-list">
                     <!-- Se generará dinámicamente -->
                   </div>
+                </div>
+              </div>
+            </div>
+            <div id="gamification-breakdown" class="gamification-panel">
+              <div class="personal-stats-container">
+                <div class="personal-stats-grid">
+                  <div class="stat-card">
+                    <div class="stat-icon">▶️</div>
+                    <div class="stat-number" id="breakdown-played-base">0</div>
+                    <div class="stat-label">Canciones reproducidas × 25</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">👑</div>
+                    <div class="stat-number" id="breakdown-vip-bonus">0</div>
+                    <div class="stat-label">Bono VIP × 40</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">📅</div>
+                    <div class="stat-number" id="breakdown-daily-bonus">0</div>
+                    <div class="stat-label">Bono diario × 5</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">🏅</div>
+                    <div class="stat-number" id="breakdown-achievements">0</div>
+                    <div class="stat-label">Logros</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">🔥</div>
+                    <div class="stat-number" id="breakdown-streak-residual">0</div>
+                    <div class="stat-label">Racha y otros</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-number" id="breakdown-total">0</div>
+                    <div class="stat-label">Total</div>
+                  </div>
+                </div>
+                <div class="favorite-genres">
+                  <h4>📋 Detalle</h4>
+                  <div id="breakdown-detail-list" class="genres-list"></div>
                 </div>
               </div>
             </div>
@@ -1101,6 +1155,33 @@
           });
         }
       });
+      (function subscribeAllUserPoints(){
+        try {
+          db.collection('userStats').onSnapshot((snap) => {
+            const allStr = localStorage.getItem('gamificationData') || '{}';
+            const all = JSON.parse(allStr);
+            snap.forEach((doc) => {
+              const u = (doc.id || '').toLowerCase();
+              const d = all[u] || {
+                points: 0,
+                level: 1,
+                xp: 0,
+                achievements: [],
+                streaks: { current: 0, best: 0, lastActivity: null, calendar: {} },
+                stats: { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false }
+              };
+              const data = doc.data() || {};
+              if (typeof data.totalPoints === 'number') d.points = data.totalPoints;
+              if (typeof data.currentStreak === 'number') d.streaks.current = data.currentStreak;
+              if (typeof data.bestStreak === 'number') d.streaks.best = data.bestStreak;
+              if (typeof data.lastActivity === 'string') d.streaks.lastActivity = data.lastActivity;
+              all[u] = d;
+            });
+            localStorage.setItem('gamificationData', JSON.stringify(all));
+            try { if (typeof window.refreshStatsTicker === 'function') window.refreshStatsTicker(); } catch (_){}
+          });
+        } catch (_){}
+      })();
 
       const solicitudesList = document.getElementById('solicitudes-list');
       const emptyEl = document.getElementById('empty');
@@ -1807,6 +1888,77 @@
         if (!ts) return '';
         const d = ts.toDate ? ts.toDate() : new Date(ts);
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+      function makeSongId(usuario, cancion, artista, ts) {
+        const hora = toHour(ts);
+        const raw = `${usuario}-${cancion}-${artista}-${hora}`;
+        return raw.replace(/[^a-zA-Z0-9-]/g, '');
+      }
+      async function recalculateAllUsers() {
+        const vipNow = window.vipSet || new Set();
+        const z0vipNow = window.z0VipSet || new Set();
+        const playedSnap = await db.collection('playedSongs').get();
+        const playedMap = new Map();
+        playedSnap.forEach(doc => {
+          const day = doc.id;
+          const arr = (doc.data() && doc.data().songs) || [];
+          playedMap.set(day, new Set(arr));
+        });
+        const daySnap = await db.collection('solicitudes').orderBy('day', 'desc').get();
+        const daysSet = new Set();
+        daySnap.forEach(doc => {
+          const d = doc.data().day;
+          if (d) daysSet.add(d);
+        });
+        const days = Array.from(daysSet).sort();
+        const perUser = new Map();
+        for (let di = 0; di < days.length; di++) {
+          const day = days[di];
+          const playedSet = playedMap.get(day) || new Set();
+          const q = await db.collection('solicitudes').where('day', '==', day).orderBy('ts', 'asc').get();
+          const distinctUsersDay = new Set();
+          const countedUsersDay = new Set();
+          q.forEach(doc => {
+            const data = doc.data() || {};
+            const usuario = String(data.usuario || '').trim();
+            const cancion = String(data.cancion || '').trim();
+            const artista = String(data.artista || '').trim();
+            const ts = data.ts || null;
+            if (!usuario) return;
+            distinctUsersDay.add(usuario);
+            const sid = makeSongId(usuario, cancion, artista, ts);
+            if (playedSet.has(sid)) {
+              const prev = perUser.get(usuario) || { played: 0, activeDays: 0 };
+              prev.played += 1;
+              perUser.set(usuario, prev);
+              countedUsersDay.add(usuario);
+            }
+          });
+          if (distinctUsersDay.size >= 2) {
+            countedUsersDay.forEach(u => {
+              const prev = perUser.get(u) || { played: 0, activeDays: 0 };
+              prev.activeDays += 1;
+              perUser.set(u, prev);
+            });
+          }
+        }
+        const batchUpdates = [];
+        perUser.forEach((val, user) => {
+          const isVip = vipNow.has(user) || z0vipNow.has(user);
+          const base = val.played * 25;
+          const vipBonus = isVip ? val.played * 40 : 0;
+          const dailyBonus = val.activeDays * 5;
+          const total = base + vipBonus + dailyBonus;
+          batchUpdates.push({ user, totalPoints: total });
+        });
+        for (let i = 0; i < batchUpdates.length; i++) {
+          const u = batchUpdates[i].user.toLowerCase();
+          await db.collection('userStats').doc(u).set({
+            totalPoints: batchUpdates[i].totalPoints,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        }
+        return batchUpdates;
       }
 
       // Utilidad para obtener el día (YYYY-MM-DD) desde una entrada con distintos tipos de timestamp
@@ -3111,8 +3263,8 @@
     }
     try { ensureStatsTicker(); startStatsTicker(); } catch (_) {}
     // Variables globales del menú
-    const menuBtn = document.getElementById('menu-btn');
-    const menuDropdown = document.getElementById('menu-dropdown');
+    let menuBtn = document.getElementById('menu-btn');
+    let menuDropdown = document.getElementById('menu-dropdown');
     
     // Funciones globales del menú
     function positionMenu() {
@@ -5573,16 +5725,103 @@
         gamificationModal.hidden = false;
       });
       
-      document.addEventListener('DOMContentLoaded', () => {});
+      // Función para cargar solicitudes basada en el día seleccionado
+      window.loadSolicitudes = function() {
+        const daySelect = document.getElementById('day-select');
+        const dayValue = daySelect ? daySelect.value : '';
+        if (dayValue && typeof subscribeSolicitudesForDay === 'function') {
+          console.log(`📅 Cargando solicitudes para el día: ${dayValue}`);
+          subscribeSolicitudesForDay(dayValue);
+        } else {
+          console.warn('loadSolicitudes: No hay día seleccionado o función de suscripción no disponible');
+          // Fallback: intentar cargar todo o lo que haya en localStorage
+          if (typeof getAllCombinedSolicitudes === 'function') {
+             getAllCombinedSolicitudes().then(items => {
+               if (typeof renderSolicitudes === 'function') renderSolicitudes(items);
+             });
+          }
+        }
+      };
+
+      document.addEventListener('DOMContentLoaded', async () => {
+        console.log('🚀 Inicializando aplicación...');
+
+        // Configurar menú hamburguesa
+        const menuBtn = document.getElementById('menu-btn');
+        const menuDropdown = document.getElementById('menu-dropdown');
+
+        if (menuBtn && menuDropdown) {
+          console.log('🍔 Configurando menú hamburguesa');
+          menuBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const isHidden = menuDropdown.hidden;
+            menuDropdown.hidden = !isHidden;
+            menuBtn.setAttribute('aria-expanded', !isHidden);
+          });
+
+          // Cerrar menú al hacer click fuera
+          document.addEventListener('click', (e) => {
+            if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target) && !menuDropdown.hidden) {
+              menuDropdown.hidden = true;
+              menuBtn.setAttribute('aria-expanded', 'false');
+            }
+          });
+          
+          // Prevenir cierre al hacer click dentro del menú (excepto botones)
+          menuDropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
+          });
+
+          // Cerrar menú al seleccionar una opción
+          const menuItems = menuDropdown.querySelectorAll('a, button');
+          menuItems.forEach(item => {
+            item.addEventListener('click', () => {
+              menuDropdown.hidden = true;
+              menuBtn.setAttribute('aria-expanded', 'false');
+            });
+          });
+        }
+        
+        // Configurar botones de admin si existen
+        const recalculateBtn = document.getElementById('recalculate-users');
+        if (recalculateBtn) {
+          recalculateBtn.addEventListener('click', async () => {
+            if (typeof window.corregirPuntosTodosLosUsuarios === 'function') {
+              await window.corregirPuntosTodosLosUsuarios();
+            }
+          });
+        }
+
+        // Configurar listener para cambio de día
+        const daySelectEl = document.getElementById('day-select');
+        if (daySelectEl) {
+          daySelectEl.addEventListener('change', () => {
+            if (typeof window.loadSolicitudes === 'function') {
+              window.loadSolicitudes();
+            }
+          });
+        }
+
+        // Cargar días disponibles
+        if (typeof loadDays === 'function') {
+          await loadDays();
+        }
+        
+        // Si loadDays no seleccionó nada (o no disparó el evento), intentar cargar manualmente
+        const daySelect = document.getElementById('day-select');
+        if (daySelect && daySelect.value) {
+           if (typeof window.loadSolicitudes === 'function') {
+             window.loadSolicitudes();
+           }
+        }
+      });
 
       // Event listener para el botón X de cerrar
       document.getElementById('gamification-close-x')?.addEventListener('click', () => {
         gamificationModal.hidden = true;
       });
       
-      const daySelectEl = document.getElementById('day-select');
-      daySelectEl?.addEventListener('change', () => {});
-
       // Función para analizar automáticamente nuevos usuarios
       async function analyzeNewUsersAutomatically() {
         try {
@@ -5615,86 +5854,7 @@
         }
       }
 
-      // Función para analizar y otorgar puntos automáticamente a un usuario
-      async function analyzeAndGrantPointsForUser(username, forceProcess = false) {
-        try {
-          // Calcular estadísticas del usuario
-          const stats = await calculateUserStatsForUser(username);
-          
-          // Si las estadísticas parecen incorrectas, ejecutar diagnóstico
-          if (stats.totalSongs === 0 && username !== 'test') {
-            console.log(`⚠️ Usuario ${username} tiene 0 canciones, ejecutando diagnóstico...`);
-            await diagnoseSolicitudesIssues(username);
-          }
-          
-          // Obtener datos actuales del usuario
-          let data = getGamificationDataForUser(username);
-          
-          // Solo procesar si no ha sido procesado automáticamente antes (a menos que se fuerce)
-          if (data.autoProcessed && !forceProcess) {
-            return;
-          }
-          
-          // Calcular puntos base por canciones reproducidas
-          const basePoints = (stats.totalPlayedSongs || 0) * POINTS_CONFIG.SONG_REQUEST;
-          
-          // Bonus VIP si aplica, sobre canciones reproducidas
-          const vipBonus = stats.isVip ? (stats.totalPlayedSongs || 0) * POINTS_CONFIG.VIP_BONUS : 0;
-          
-          // Calcular puntos totales
-          const totalPoints = basePoints + vipBonus;
-          
-          // Preservar logros existentes antes de actualizar datos base
-          const existingAchievements = [...(data.achievements || [])];
-          const existingAchievementPoints = existingAchievements.reduce((total, achievementId) => {
-            const achievement = ACHIEVEMENTS.find(a => a.id === achievementId);
-            return total + (achievement ? achievement.points : 0);
-          }, 0);
-          
-          console.log(`📋 Usuario ${username} tiene ${existingAchievements.length} logros existentes (${existingAchievementPoints} puntos)`);
-          
-          // Actualizar datos base (sin incluir puntos de logros aún)
-          data.points = totalPoints;
-          data.xp = totalPoints;
-          data.level = calculateLevel(totalPoints);
-          data.stats = stats;
-          data.autoProcessed = true;
-          
-          // Preservar rachas existentes si las hay
-          if (!data.streaks || !data.streaks.best) {
-            data.streaks = {
-              current: 0,
-              best: Math.min(stats.activeDays, 7), // Estimación conservadora
-              lastActivity: null,
-              calendar: {}
-            };
-          }
-          
-          // Calcular rachas reales basadas en actividad
-          await calculateStreaksForUser(username, data, allSolicitudes);
-          
-          // Verificar y otorgar logros
-          ACHIEVEMENTS.forEach(achievement => {
-            if (!data.achievements.includes(achievement.id) && achievement.condition(data.stats)) {
-              data.achievements.push(achievement.id);
-              data.points += achievement.points;
-              data.xp += achievement.points;
-            }
-          });
-          
-          // Recalcular nivel después de logros
-          data.level = calculateLevel(data.xp);
-          
-          // Guardar datos
-          saveGamificationDataForUser(data, username);
-          
-          console.log(`✅ Usuario ${username} procesado automáticamente: ${data.points} puntos, nivel ${data.level}`);
-          return data;
-        } catch (error) {
-          console.error(`Error procesando usuario ${username}:`, error);
-          return null;
-        }
-      }
+
 
       // Función para procesar nueva solicitud de canción
       function processNewSongRequest() {
@@ -5814,13 +5974,18 @@
           
           // Calcular puntos base por canciones reproducidas
           const basePoints = (stats.totalPlayedSongs || 0) * POINTS_CONFIG.SONG_REQUEST;
-          console.log(`💰 Puntos base para ${targetUser}: ${basePoints} (${stats.totalSongs} canciones × ${POINTS_CONFIG.SONG_REQUEST})`);
+          
+          // Bonus diario por conexión (basado en días activos)
+          const dailyBonusPoints = (stats.activeDays || 0) * POINTS_CONFIG.DAILY_BONUS;
+
+          console.log(`💰 Puntos base para ${targetUser}: ${basePoints} (${stats.totalPlayedSongs} canciones × ${POINTS_CONFIG.SONG_REQUEST})`);
+          console.log(`💰 Puntos por conexión diaria: ${dailyBonusPoints} (${stats.activeDays} días × ${POINTS_CONFIG.DAILY_BONUS})`);
           
           // Bonus VIP si aplica, sobre canciones reproducidas
           const vipBonus = stats.isVip ? (stats.totalPlayedSongs || 0) * POINTS_CONFIG.VIP_BONUS : 0;
           
           // Calcular puntos totales base (sin logros)
-          const totalBasePoints = basePoints + vipBonus;
+          const totalBasePoints = basePoints + dailyBonusPoints + vipBonus;
 
           // Preservar logros existentes antes de actualizar datos base
           const existingAchievements = [...(data.achievements || [])];
@@ -5956,6 +6121,13 @@
         if (!Array.isArray(data.achievements)) {
           data.achievements = [];
           console.log(`⚠️ Corrigiendo achievements para ${username}: convertido a array`);
+        } else {
+          // Deduplicar logros para evitar puntos inflados
+          const uniqueAchievements = [...new Set(data.achievements)];
+          if (uniqueAchievements.length !== data.achievements.length) {
+            console.log(`⚠️ Deduplicando achievements para ${username}: ${data.achievements.length} -> ${uniqueAchievements.length}`);
+            data.achievements = uniqueAchievements;
+          }
         }
         
         // Calcular puntos correctos de logros
@@ -6018,6 +6190,274 @@
         console.log(`✅ Validación completada para ${username}: ${data.achievements.length} logros, ${achievementPoints} puntos de logros, ${data.points} puntos totales`);
         return achievementPoints;
       }
+      function getLocalGamificationData(u) {
+        const allStr = localStorage.getItem('gamificationData') || '{}';
+        const all = JSON.parse(allStr);
+        const key = String(u || '').toLowerCase();
+        return all[key] || null;
+      }
+      async function computeUserBreakdown(u) {
+        const rawUser = String(u || '').trim();
+        const usuario = rawUser.replace(/^@/, '');
+        const norm = (s) => String(s||'').trim().replace(/^@/,'').toLowerCase();
+        const isVip = (window.vipSet && (window.vipSet.has(usuario) || window.vipSet.has(rawUser))) || (window.z0VipSet && (window.z0VipSet.has(usuario) || window.z0VipSet.has(rawUser)));
+        const daysSet = new Set();
+        const perDaySongs = new Map();
+        try {
+          const userSnap = await db.collection('solicitudes').where('usuario', '==', usuario).get();
+          userSnap.forEach(doc => {
+            const d = doc.data() || {};
+            const day = d.day;
+            if (!day) return;
+            daysSet.add(day);
+            const arr = perDaySongs.get(day) || [];
+            arr.push(d);
+            perDaySongs.set(day, arr);
+          });
+        } catch (_) {}
+        if (daysSet.size === 0) {
+          const playedDaysSnap = await db.collection('playedSongs').get();
+          playedDaysSnap.forEach(ps => {
+            const day = ps.id;
+            if (day) daysSet.add(day);
+          });
+        }
+        let playedCount = 0;
+        let activeDaysValid = 0;
+        const detail = [];
+        const days = Array.from(daysSet);
+        for (let i = 0; i < days.length; i++) {
+          const day = days[i];
+          const playedDoc = await db.collection('playedSongs').doc(day).get();
+          const pdata = playedDoc.exists ? (playedDoc.data() || {}) : {};
+          const playedArr = Array.isArray(pdata.songs) ? pdata.songs : (Array.isArray(pdata.list) ? pdata.list : (Array.isArray(pdata.songIds) ? pdata.songIds : []));
+          const playedSet = new Set(playedArr);
+          let userSongs = perDaySongs.get(day) || [];
+          if (!userSongs.length) {
+            const daySnap = await db.collection('solicitudes').where('day','==',day).get();
+            const arr = [];
+            daySnap.forEach(doc => {
+              const d = doc.data() || {};
+              if (norm(d.usuario) === norm(usuario)) arr.push(d);
+            });
+            userSongs = arr;
+          }
+          let userPlayedThatDay = 0;
+          if (userSongs.length) {
+            for (let j = 0; j < userSongs.length; j++) {
+              const s = userSongs[j];
+              const sid = makeSongId(s.usuario, s.cancion, s.artista, s.ts);
+              let matched = playedSet.has(sid);
+              if (!matched) {
+                const prefix = `${String(s.usuario||'').trim()}-${String(s.cancion||'').trim()}-${String(s.artista||'').trim()}-`.replace(/[^a-zA-Z0-9-]/g, '');
+                for (let k = 0; k < playedArr.length; k++) {
+                  const x = playedArr[k] || '';
+                  if (typeof x === 'string' && x.startsWith(prefix)) { matched = true; break; }
+                }
+              }
+              if (matched) {
+                userPlayedThatDay++;
+                playedCount++;
+              }
+            }
+          } else {
+            const clean = (s) => String(s||'').trim().replace(/[^a-zA-Z0-9-]/g, '');
+            const userPrefix = `${clean(usuario)}-`;
+            for (let k = 0; k < playedArr.length; k++) {
+              const x = playedArr[k] || '';
+              if (typeof x === 'string' && x.startsWith(userPrefix)) {
+                userPlayedThatDay++;
+                playedCount++;
+              }
+            }
+          }
+          const daySnap = await db.collection('solicitudes').where('day', '==', day).get();
+          const distinctUsersDay = new Set();
+          daySnap.forEach(dd => {
+            const d2 = dd.data() || {};
+            if (d2.usuario) distinctUsersDay.add(d2.usuario);
+          });
+          const validDay = distinctUsersDay.size >= 2 && userPlayedThatDay > 0;
+          if (validDay) activeDaysValid++;
+          if (userPlayedThatDay > 0) {
+            detail.push({ day, played: userPlayedThatDay, distinctUsers: distinctUsersDay.size });
+          }
+        }
+        const base = playedCount * 25;
+        const vipBonus = isVip ? playedCount * 40 : 0;
+        const dailyBonus = activeDaysValid * 5;
+        let achievements = 0;
+        try {
+          const uid = usuario.toLowerCase();
+          const achDoc = await db.collection('userAchievements').doc(uid).get();
+          if (achDoc.exists) {
+            const a = achDoc.data() || {};
+            const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
+            if (Array.isArray(ids) && ids.length) {
+              achievements = ids.reduce((sum, id) => {
+                const found = ACHIEVEMENTS && ACHIEVEMENTS.find ? ACHIEVEMENTS.find(x => x.id === id) : null;
+                return sum + (found && typeof found.points === 'number' ? found.points : 0);
+              }, 0);
+            }
+          }
+        } catch (_){}
+        let cloudTotal = 0;
+        try {
+          const doc = await db.collection('userStats').doc(usuario.toLowerCase()).get();
+          cloudTotal = doc.exists ? Number((doc.data() || {}).totalPoints || 0) : 0;
+        } catch (_){}
+        const sumCalc = base + vipBonus + dailyBonus + achievements;
+        const residual = cloudTotal - sumCalc;
+        try {
+          if (window.__ALLOW_BREAKDOWN_WRITE__ && !cloudTotal && sumCalc > 0) {
+            await db.collection('userStats').doc(usuario.toLowerCase()).set({
+              totalPoints: sumCalc,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            cloudTotal = sumCalc;
+          }
+        } catch (_){}
+        return { usuario, playedCount, activeDaysValid, isVip, base, vipBonus, dailyBonus, achievements, residual, total: cloudTotal, detail };
+      }
+      async function renderPointsBreakdownForUser(u) {
+        const bd = await computeUserBreakdown(u);
+        const setNum = (id, val) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = String(val);
+        };
+        setNum('breakdown-played-base', bd.base);
+        setNum('breakdown-vip-bonus', bd.vipBonus);
+        setNum('breakdown-daily-bonus', bd.dailyBonus);
+        setNum('breakdown-achievements', bd.achievements);
+        setNum('breakdown-streak-residual', bd.residual);
+        setNum('breakdown-total', bd.total);
+        const list = document.getElementById('breakdown-detail-list');
+        if (list) {
+          list.innerHTML = bd.detail.map(it => `<div class="genre-chip"><span>${it.day}</span><span>${it.played} reproducidas • ${it.distinctUsers} usuarios</span></div>`).join('');
+        }
+      }
+      function getCurrentProfileUser() {
+        const sel = document.getElementById('gamification-user-select');
+        const v = sel ? String(sel.value || '').trim().replace(/^@/, '') : '';
+        if (v) return v;
+        const cur = localStorage.getItem('currentUser') || '';
+        return (cur || '').replace(/^@/, '');
+      }
+      (function setupBreakdownTab(){
+        document.addEventListener('click', async function(e){
+          const btn = e.target && e.target.closest('.gamification-tab');
+          if (!btn) return;
+          const tab = btn.getAttribute('data-tab') || '';
+          const panels = document.querySelectorAll('.gamification-panel');
+          panels.forEach(p => p.classList.remove('active'));
+          const activePanel = document.getElementById('gamification-' + tab);
+          if (activePanel) activePanel.classList.add('active');
+          const tabs = document.querySelectorAll('.gamification-tab');
+          tabs.forEach(t => t.classList.remove('active'));
+          btn.classList.add('active');
+          if (tab === 'breakdown') {
+            const u = getCurrentProfileUser();
+            if (u) await renderPointsBreakdownForUser(u);
+          }
+        });
+        const sel = document.getElementById('gamification-user-select');
+        if (sel) {
+          sel.addEventListener('change', async function(){
+            const panel = document.getElementById('gamification-breakdown');
+            if (panel && panel.classList.contains('active')) {
+              const u = getCurrentProfileUser();
+              if (u) await renderPointsBreakdownForUser(u);
+            }
+          });
+        }
+      })();
+      async function rebuildPlayedSongsForUser(usuario, startDay = '', endDay = '') {
+        const norm = (s) => String(s||'').trim().replace(/^@/,'');
+        const user = norm(usuario);
+        const lo = startDay ? String(startDay).trim() : '';
+        const hi = endDay ? String(endDay).trim() : '';
+        const byDay = new Map();
+        const snap = await db.collection('solicitudes').where('usuario','==',user).get();
+        snap.forEach(doc => {
+          const d = doc.data()||{};
+          const day = String(d.day||'').trim();
+          if (!day) return;
+          if (lo && day < lo) return;
+          if (hi && day > hi) return;
+          const arr = byDay.get(day) || [];
+          const hora = toHour(d.ts) || '00:00';
+          const raw = `${d.usuario}-${d.cancion}-${d.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
+          arr.push(raw);
+          byDay.set(day, arr);
+        });
+        for (const [day, ids] of byDay.entries()) {
+          const uniq = Array.from(new Set(ids));
+          for (let i = 0; i < uniq.length; i += 50) {
+            const chunk = uniq.slice(i, i + 50);
+            await db.collection('playedSongs').doc(day).set({
+              songs: firebase.firestore.FieldValue.arrayUnion(...chunk),
+              day,
+              rebuiltAt: firebase.firestore.FieldValue.serverTimestamp(),
+              rebuiltBy: user
+            }, { merge: true });
+          }
+        }
+        return { user, days: byDay.size };
+      }
+      async function rebuildPlayedSongsAll(startDay = '', endDay = '') {
+        const lo = startDay ? String(startDay).trim() : '';
+        const hi = endDay ? String(endDay).trim() : '';
+        const byDay = new Map();
+        const snap = await db.collection('solicitudes').get();
+        snap.forEach(doc => {
+          const d = doc.data()||{};
+          const day = String(d.day||'').trim();
+          if (!day) return;
+          if (lo && day < lo) return;
+          if (hi && day > hi) return;
+          const arr = byDay.get(day) || [];
+          const hora = toHour(d.ts) || '00:00';
+          const raw = `${d.usuario}-${d.cancion}-${d.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
+          arr.push(raw);
+          byDay.set(day, arr);
+        });
+        for (const [day, ids] of byDay.entries()) {
+          const uniq = Array.from(new Set(ids));
+          for (let i = 0; i < uniq.length; i += 100) {
+            const chunk = uniq.slice(i, i + 100);
+            await db.collection('playedSongs').doc(day).set({
+              songs: firebase.firestore.FieldValue.arrayUnion(...chunk),
+              day,
+              rebuiltAt: firebase.firestore.FieldValue.serverTimestamp(),
+              rebuiltBy: 'admin'
+            }, { merge: true });
+          }
+        }
+        return { days: byDay.size };
+      }
+      (function attachRebuildButton(){
+        const btn = document.getElementById('rebuild-played-btn');
+        if (!btn) return;
+        btn.addEventListener('click', async () => {
+          try {
+            const uInput = document.getElementById('rebuild-user-input');
+            const startInput = document.getElementById('rebuild-start-day');
+            const endInput = document.getElementById('rebuild-end-day');
+            const mode = uInput ? String(uInput.value||'').trim() : '';
+            const dStart = startInput ? String(startInput.value||'').trim() : '';
+            const dEnd = endInput ? String(endInput.value||'').trim() : '';
+            if (mode) {
+              const res = await rebuildPlayedSongsForUser(mode, dStart, dEnd);
+              alert(`Reconstrucción completada para ${res.user}. Días afectados: ${res.days}`);
+            } else {
+              const res = await rebuildPlayedSongsAll(dStart, dEnd);
+              alert(`Reconstrucción completada. Días afectados: ${res.days}`);
+            }
+          } catch (e) {
+            alert('Error durante la reconstrucción. Revisa la consola.');
+          }
+        });
+      })();
       
       // Función para corregir puntos de todos los usuarios
       window.corregirPuntosTodosLosUsuarios = async function() {
@@ -6979,6 +7419,13 @@
 
       function saveGamificationDataForUser(data, usuario = null) {
         const targetUser = usuario || getCurrentSelectedUser();
+        
+        // Validación de usuario
+        if (!targetUser || targetUser === 'null' || targetUser === 'undefined' || targetUser.toLowerCase() === 'text/plain' || targetUser.toLowerCase() === 'plain') {
+          console.warn(`⚠️ Intento de guardar datos para usuario inválido: ${targetUser}`);
+          return;
+        }
+
         const allDataStr = localStorage.getItem('gamificationData');
         const allData = allDataStr ? JSON.parse(allDataStr) : {};
         
@@ -10230,4 +10677,46 @@
     })();
   </script>
 </body>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const menuBtn = document.getElementById('menu-btn');
+    const menuDropdown = document.getElementById('menu-dropdown');
+    if (!menuBtn || !menuDropdown) return;
+
+    function closeMenu() {
+      menuDropdown.hidden = true;
+      menuBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    menuBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const isHidden = menuDropdown.hidden;
+      menuDropdown.hidden = !isHidden;
+      menuBtn.setAttribute('aria-expanded', String(!isHidden));
+    });
+
+    document.addEventListener('click', function(e) {
+      if (menuDropdown.hidden) return;
+      const target = e.target;
+      if (target && !menuBtn.contains(target) && !menuDropdown.contains(target)) {
+        closeMenu();
+      }
+    }, true);
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeMenu();
+      }
+    });
+
+    menuDropdown.addEventListener('click', function(e) {
+      const item = e.target && e.target.closest('a, button');
+      if (item) {
+        closeMenu();
+      }
+      e.stopPropagation();
+    });
+  });
+</script>
 </html>

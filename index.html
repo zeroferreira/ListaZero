@@ -883,10 +883,10 @@
 
   // Configuración del sistema de puntos
   const POINTS_CONFIG = {
-    SONG_REQUEST: 10,
+    SONG_REQUEST: 25,
     DAILY_BONUS: 5,
     STREAK_MULTIPLIER: 2,
-    VIP_BONUS: 15
+    VIP_BONUS: 40
   };
 
   function getGamificationData(usuario) {
@@ -905,11 +905,25 @@
   }
 
   function saveGamificationData(usuario, data) {
+    if (!usuario || usuario === 'null' || usuario === 'undefined' || usuario.toLowerCase() === 'text/plain') {
+      console.warn(`⚠️ Intento de guardar datos para usuario inválido: ${usuario}`);
+      return;
+    }
     const u = (usuario || '').toLowerCase();
     const allStr = localStorage.getItem('gamificationData') || '{}';
     const all = JSON.parse(allStr);
     all[u] = data;
     localStorage.setItem('gamificationData', JSON.stringify(all));
+    try {
+      const db = firebase.firestore();
+      db.collection('userStats').doc(u).set({
+        totalPoints: Number(data.points || 0),
+        currentStreak: Number((data.streaks && data.streaks.current) || 0),
+        bestStreak: Number((data.streaks && data.streaks.best) || 0),
+        lastActivity: (data.streaks && data.streaks.lastActivity) || null,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (_) {}
   }
 
   function addPoints(usuario, points) {
@@ -1103,4 +1117,44 @@
   //   usuario, cancion, artista, day,
   //   ts: firebase.firestore.FieldValue.serverTimestamp(),
   // });
+  (function subscribeAllUserPoints(){
+    try {
+      const db = firebase.firestore();
+      db.collection('userStats').onSnapshot((snap) => {
+        const allStr = localStorage.getItem('gamificationData') || '{}';
+        const all = JSON.parse(allStr);
+        snap.forEach((doc) => {
+          const u = (doc.id || '').toLowerCase();
+          const d = all[u] || {
+            points: 0,
+            level: 1,
+            xp: 0,
+            achievements: [],
+            streaks: { current: 0, best: 0, lastActivity: null, calendar: {} },
+            stats: { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false }
+          };
+          const data = doc.data() || {};
+          if (typeof data.totalPoints === 'number') d.points = data.totalPoints;
+          if (typeof data.currentStreak === 'number') d.streaks.current = data.currentStreak;
+          if (typeof data.bestStreak === 'number') d.streaks.best = data.bestStreak;
+          if (typeof data.lastActivity === 'string') d.streaks.lastActivity = data.lastActivity;
+          all[u] = d;
+        });
+        localStorage.setItem('gamificationData', JSON.stringify(all));
+        try { if (typeof updatePointsIndicator === 'function') updatePointsIndicator(); } catch (_){}
+      });
+    } catch (_){}
+  })();
+  window.debugUserPoints = async function(usuario){
+    try {
+      const u = String(usuario||'').toLowerCase();
+      const db = firebase.firestore();
+      const doc = await db.collection('userStats').doc(u).get();
+      const cloud = doc.exists ? doc.data() : null;
+      const local = (JSON.parse(localStorage.getItem('gamificationData')||'{}')[u])||null;
+      return { usuario: u, cloud, local };
+    } catch (e) {
+      return { error: String(e&&e.message||e) };
+    }
+  };
 </script>
