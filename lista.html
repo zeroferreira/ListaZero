@@ -3356,37 +3356,7 @@
       const userDeleteConfirmBtn = document.getElementById('user-delete-confirm');
       let pendingUserDelete = null;
 
-      menuBtn?.addEventListener('click', () => {
-        if (!menuDropdown) return;
-        if (menuDropdown.hidden) {
-          openMenu();
-        } else {
-          closeMenu();
-        }
-      });
-
-      document.addEventListener('click', (e) => {
-        if (!menuDropdown || menuDropdown.hidden) return;
-        const clickInside = menuDropdown.contains(e.target) || menuBtn.contains(e.target);
-        if (!clickInside) {
-          closeMenu();
-        }
-      });
-
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !menuDropdown.hidden) {
-          closeMenu();
-        }
-      });
-
-      // Reposicionar menú en cambios de tamaño de ventana
-      window.addEventListener('resize', () => {
-        if (!menuDropdown.hidden && window.innerWidth > 768) positionMenu();
-      });
-
-      window.addEventListener('scroll', () => {
-        if (!menuDropdown.hidden && window.innerWidth > 768) positionMenu();
-      });
+      
 
       adminModal.hidden = true;
       adminPanel.hidden = true;
@@ -5746,45 +5716,9 @@
       document.addEventListener('DOMContentLoaded', async () => {
         console.log('🚀 Inicializando aplicación...');
 
-        // Configurar menú hamburguesa
-        const menuBtn = document.getElementById('menu-btn');
-        const menuDropdown = document.getElementById('menu-dropdown');
-
-        if (menuBtn && menuDropdown) {
-          console.log('🍔 Configurando menú hamburguesa');
-          menuBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const isHidden = menuDropdown.hidden;
-            menuDropdown.hidden = !isHidden;
-            menuBtn.setAttribute('aria-expanded', !isHidden);
-          });
-
-          // Cerrar menú al hacer click fuera
-          document.addEventListener('click', (e) => {
-            if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target) && !menuDropdown.hidden) {
-              menuDropdown.hidden = true;
-              menuBtn.setAttribute('aria-expanded', 'false');
-            }
-          });
-          
-          // Prevenir cierre al hacer click dentro del menú (excepto botones)
-          menuDropdown.addEventListener('click', (e) => {
-            e.stopPropagation();
-          });
-
-          // Cerrar menú al seleccionar una opción
-          const menuItems = menuDropdown.querySelectorAll('a, button');
-          menuItems.forEach(item => {
-            item.addEventListener('click', () => {
-              menuDropdown.hidden = true;
-              menuBtn.setAttribute('aria-expanded', 'false');
-            });
-          });
-        }
-        
-        // Configurar botones de admin si existen
+        const daySelectEl = document.getElementById('day-select');
         const recalculateBtn = document.getElementById('recalculate-users');
+        
         if (recalculateBtn) {
           recalculateBtn.addEventListener('click', async () => {
             if (typeof window.corregirPuntosTodosLosUsuarios === 'function') {
@@ -5793,8 +5727,6 @@
           });
         }
 
-        // Configurar listener para cambio de día
-        const daySelectEl = document.getElementById('day-select');
         if (daySelectEl) {
           daySelectEl.addEventListener('change', () => {
             if (typeof window.loadSolicitudes === 'function') {
@@ -10678,45 +10610,62 @@
   </script>
 </body>
 <script>
+(function(){
+  if (window.__menuInitialized) return;
+  window.__menuInitialized = true;
+  function pos(btn, dd){
+    dd.style.position = '';
+    dd.style.left = '';
+    dd.style.right = '';
+    dd.style.top = '';
+  }
   document.addEventListener('DOMContentLoaded', function() {
-    const menuBtn = document.getElementById('menu-btn');
-    const menuDropdown = document.getElementById('menu-dropdown');
-    if (!menuBtn || !menuDropdown) return;
-
-    function closeMenu() {
-      menuDropdown.hidden = true;
-      menuBtn.setAttribute('aria-expanded', 'false');
+    const btn = document.getElementById('menu-btn');
+    const dd = document.getElementById('menu-dropdown');
+    if (!btn || !dd) return;
+    function open(){
+      dd.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      requestAnimationFrame(() => {
+        dd.classList.add('open');
+        pos(btn, dd);
+      });
     }
-
-    menuBtn.addEventListener('click', function(e) {
+    function close(){
+      dd.classList.remove('open');
+      btn.setAttribute('aria-expanded', 'false');
+      const onEnd = (e) => {
+        if (e.target !== dd) return;
+        dd.hidden = true;
+        dd.removeEventListener('transitionend', onEnd);
+      };
+      dd.addEventListener('transitionend', onEnd);
+    }
+    btn.addEventListener('click', function(e){
       e.preventDefault();
       e.stopPropagation();
-      const isHidden = menuDropdown.hidden;
-      menuDropdown.hidden = !isHidden;
-      menuBtn.setAttribute('aria-expanded', String(!isHidden));
+      if (dd.hidden) open(); else close();
     });
-
-    document.addEventListener('click', function(e) {
-      if (menuDropdown.hidden) return;
-      const target = e.target;
-      if (target && !menuBtn.contains(target) && !menuDropdown.contains(target)) {
-        closeMenu();
-      }
-    }, true);
-
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') {
-        closeMenu();
-      }
+    document.addEventListener('click', function(e){
+      if (dd.hidden) return;
+      const t = e.target;
+      if (!btn.contains(t) && !dd.contains(t)) close();
     });
-
-    menuDropdown.addEventListener('click', function(e) {
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && !dd.hidden) close();
+    });
+    window.addEventListener('resize', function(){
+      if (!dd.hidden) pos(btn, dd);
+    });
+    window.addEventListener('scroll', function(){
+      if (!dd.hidden) pos(btn, dd);
+    });
+    dd.addEventListener('click', function(e){
       const item = e.target && e.target.closest('a, button');
-      if (item) {
-        closeMenu();
-      }
+      if (item) close();
       e.stopPropagation();
     });
   });
+})();
 </script>
 </html>
