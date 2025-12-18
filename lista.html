@@ -56,6 +56,35 @@
       .calendar-select { font-size: 13px; }
       .calendar-nav-btn { font-size: 16px; }
     }
+    /* Puntos modal cards */
+    #points-breakdown .points-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 10px;
+    }
+    #points-breakdown .points-card {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f8f9fa;
+      border: 2px solid #e9ecef;
+    }
+    #points-breakdown .points-title {
+      font-weight: 600;
+      color: #333;
+    }
+    #points-breakdown .points-desc {
+      color: #555;
+      line-height: 1.4;
+    }
+    #points-breakdown .points-formula {
+      margin-top: 12px;
+      color: #333;
+    }
   </style>
   
   <!-- Script de sincronización de temas -->
@@ -278,6 +307,11 @@
     })();
   </script>
   <style>
+    /* Puntos modal tabs */
+    .points-panel { display: none; }
+    .points-panel.active { display: block; }
+    .points-tab { border: none; background: var(--btn-bg,#eee); padding: 8px 10px; border-radius: 8px; margin-right: 6px; cursor: pointer; }
+    .points-tab.active { background: #2563eb; color: #fff; }
     /* Nubia mobile badge placement override (enhanced for stacked layout) */
     @media (max-width: 480px) {
       .nubia-device .usuario {
@@ -328,7 +362,7 @@
               <li><button type="button" id="menu-search-open" class="menu-item" role="menuitem">🔍 Buscar canción</button></li>
               <li><button type="button" id="menu-stats-open" class="menu-item" role="menuitem">📊 Estadísticas</button></li>
               <li><button type="button" id="menu-gamification-open" class="menu-item" role="menuitem">🏆 Mi Perfil</button></li>
-              <li><button type="button" id="menu-rewards-open" class="menu-item" role="menuitem">🎁 Canje de Puntos</button></li>
+              <li><button type="button" id="menu-rewards-open" class="menu-item" role="menuitem">🎁 Puntos</button></li>
               <li><button type="button" id="menu-changelog-open" class="menu-item" role="menuitem">🚀 Mejoras (v1.9)</button></li>
               <li><button type="button" id="menu-admin-open" class="menu-item" role="menuitem">⚙️ Modo Admin</button></li>
             </ul>
@@ -926,6 +960,11 @@
                     <div class="stat-label">Canciones pedidas</div>
                   </div>
                   <div class="stat-card">
+                    <div class="stat-icon">▶️</div>
+                    <div class="stat-number" id="personal-total-played">0</div>
+                    <div class="stat-label">Canciones reproducidas</div>
+                  </div>
+                  <div class="stat-card">
                     <div class="stat-icon">🎤</div>
                     <div class="stat-number" id="personal-unique-artists">0</div>
                     <div class="stat-label">Artistas únicos</div>
@@ -997,11 +1036,11 @@
         </div>
       </div>
 
-      <!-- Modal de Canje de Puntos -->
+      <!-- Modal de Puntos -->
       <div id="rewards-modal" class="modal-overlay" hidden>
         <div class="modal rewards-modal" role="dialog" aria-modal="true" aria-labelledby="rewards-modal-title">
           <button type="button" id="rewards-close-x" class="modal-close-btn" aria-label="Cerrar">×</button>
-          <h2 id="rewards-modal-title">🎁 Canje de Puntos</h2>
+          <h2 id="rewards-modal-title">🎁 Puntos</h2>
           
           <!-- Selector de Usuario -->
           <div class="user-selector">
@@ -1024,19 +1063,25 @@
             </div>
           </div>
 
-          <!-- Recompensas Disponibles -->
-          <div class="rewards-section">
-            <h3>🎁 Recompensas Disponibles</h3>
-            <div id="rewards-list" class="rewards-grid">
-              <!-- Las recompensas se generan dinámicamente aquí -->
-            </div>
+          <div class="gamification-tabs">
+            <button type="button" class="points-tab active" data-tab="redeem">🎁 Canje de Puntos</button>
+            <button type="button" class="points-tab" data-tab="breakdown">📋 Desglose de Puntos</button>
           </div>
-
-          <!-- Solicitudes Pendientes -->
-          <div class="pending-rewards-section">
-            <h3>📋 Solicitudes Pendientes de Aprobación</h3>
-            <div id="pending-requests" class="pending-rewards-list">
-              <p class="no-pending">No tienes solicitudes pendientes</p>
+          <div class="gamification-content">
+            <div id="points-redeem" class="points-panel active">
+              <div class="rewards-section">
+                <h3>🎁 Recompensas Disponibles</h3>
+                <div id="rewards-list" class="rewards-grid"></div>
+              </div>
+              <div class="pending-rewards-section">
+                <h3>📋 Solicitudes Pendientes de Aprobación</h3>
+                <div id="pending-requests" class="pending-rewards-list">
+                  <p class="no-pending">No tienes solicitudes pendientes</p>
+                </div>
+              </div>
+            </div>
+            <div id="points-breakdown" class="points-panel">
+              <div id="points-breakdown-content" class="favorite-genres"></div>
             </div>
           </div>
         </div>
@@ -1410,15 +1455,21 @@
           if (typeof populateUserSelector === 'function') {
             populateUserSelector().catch(error => {
               console.error('Error en populateUserSelector, usando fallback:', error);
-              populateUserSelectorFromLocalStorage();
+              if (typeof window.populateUserSelectorFromLocalStorage === 'function') {
+                window.populateUserSelectorFromLocalStorage();
+              }
             });
           } else {
-            populateUserSelectorFromLocalStorage();
+            if (typeof window.populateUserSelectorFromLocalStorage === 'function') {
+              window.populateUserSelectorFromLocalStorage();
+            }
           }
         }, 100);
 
         // Analizar automáticamente nuevos usuarios
-        analyzeNewUsersAutomatically().catch(console.error);
+        if (typeof window.analyzeNewUsersAutomatically === 'function') {
+          window.analyzeNewUsersAutomatically().catch(console.error);
+        }
       }
 
       // Orden manual: aplicar y persistir
@@ -1692,6 +1743,16 @@
             forcePlayedSongStyles();
           }, 50);
           
+          // Actualizar estadísticas en tiempo real si el panel está visible
+          try {
+            const statsPanel = document.getElementById('gamification-stats');
+            if (statsPanel && statsPanel.classList.contains('active')) {
+              const u = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser();
+              const data = getGamificationDataForUser(u) || {};
+              await renderPersonalStatsForUser(data, u);
+            }
+          } catch (_){}
+          
           // Recalcular puntos y estadísticas del usuario afectado para que refleje solo reproducidas
           try {
             const username = (element.dataset.username || '').trim();
@@ -1889,6 +1950,38 @@
         const d = ts.toDate ? ts.toDate() : new Date(ts);
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       }
+      function toHourKey(ts) {
+        try {
+          if (!ts) return '00:00';
+          const d = ts?.toDate ? ts.toDate() : new Date(ts);
+          const pad = (n) => String(n).padStart(2, '0');
+          const hh = pad(d.getHours());
+          const mm = pad(d.getMinutes());
+          return `${hh}:${mm}`;
+        } catch (_) {
+          return '00:00';
+        }
+      }
+      window.toHourKey = toHourKey;
+      function resolveHourKey(ts) {
+        try {
+          if (typeof window.toHourKey === 'function') return window.toHourKey(ts);
+          if (ts && ts?.toDate) {
+            const d = ts.toDate();
+            const hh = String(d.getHours()).padStart(2,'0');
+            const mm = String(d.getMinutes()).padStart(2,'0');
+            return `${hh}:${mm}`;
+          }
+          const d = ts ? new Date(ts) : null;
+          if (d && !isNaN(d.getTime())) {
+            const hh = String(d.getHours()).padStart(2,'0');
+            const mm = String(d.getMinutes()).padStart(2,'0');
+            return `${hh}:${mm}`;
+          }
+          return '00:00';
+        } catch (_) { return '00:00'; }
+      }
+      window.resolveHourKey = resolveHourKey;
       function makeSongId(usuario, cancion, artista, ts) {
         const hora = toHour(ts);
         const raw = `${usuario}-${cancion}-${artista}-${hora}`;
@@ -3048,6 +3141,10 @@
               try { if (typeof applySelectedBadgeToAll === 'function') applySelectedBadgeToAll(); } catch (_) {}
             }
           }
+        } catch (_) {}
+        try {
+          const localPlayedMapDays = Object.keys(JSON.parse(localStorage.getItem('playedSongs') || '{}') || {});
+          localPlayedMapDays.forEach(d => { if (d) daysSet.add(d); });
         } catch (_) {}
         try { if (typeof subscribeSelectedBadges === 'function') subscribeSelectedBadges(); } catch (_) {}
         try { ensureStatsTicker(); startStatsTicker(); } catch (_) {}
@@ -4244,6 +4341,52 @@
       const rewardsUserSelect = document.getElementById('rewards-user-select');
       const rewardsUserInfo = document.getElementById('rewards-user-info');
       const rewardsUserPoints = document.getElementById('rewards-user-points');
+      document.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest('.points-tab');
+        if (!btn) return;
+        const tab = btn.getAttribute('data-tab') || 'redeem';
+        const panels = document.querySelectorAll('.points-panel');
+        panels.forEach(p => p.classList.remove('active'));
+        document.getElementById('points-' + tab)?.classList.add('active');
+        const tabs = document.querySelectorAll('.points-tab');
+        tabs.forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        if (tab === 'breakdown') {
+          renderPointsBreakdownExplanation();
+        }
+      });
+      function renderPointsBreakdownExplanation() {
+        const el = document.getElementById('points-breakdown-content');
+        if (!el) return;
+        const mult = (POINTS_CONFIG && typeof POINTS_CONFIG.STREAK_MULTIPLIER === 'number') ? POINTS_CONFIG.STREAK_MULTIPLIER : 2;
+        el.innerHTML = [
+          '<h3>📋 Cómo ganas puntos</h3>',
+          '<p>Tu total se calcula sumando cada componente. Aquí tienes el detalle:</p>',
+          '<div class="points-grid">',
+            '<div class="points-card">',
+              '<div class="points-title">🎵 Canciones reproducidas × 25</div>',
+              '<div class="points-desc">+25 por cada canción marcada como reproducida. Ejemplo: 100 canciones = 2500 puntos.</div>',
+            '</div>',
+            '<div class="points-card">',
+              '<div class="points-title">👑 Bono VIP × 40</div>',
+              '<div class="points-desc">+40 adicionales por canción si eres VIP. Ejemplo: 100 canciones = 4000 puntos extra.</div>',
+            '</div>',
+            '<div class="points-card">',
+              '<div class="points-title">📅 Bono diario × 5</div>',
+              '<div class="points-desc">+5 por cada día con actividad válida (al menos 1 canción y ≥2 usuarios ese día).</div>',
+            '</div>',
+            '<div class="points-card">',
+              '<div class="points-title">🏅 Logros</div>',
+              '<div class="points-desc">Al desbloquear insignias sumas sus puntos. Ejemplo: Insignia “Maestro” +400.</div>',
+            '</div>',
+            '<div class="points-card">',
+              '<div class="points-title">🔥 Rachas</div>',
+              '<div class="points-desc">Por secuencias de días consecutivos. Fórmula escalonada con multiplicador ×' + mult + ' y máximo 10 pasos.</div>',
+            '</div>',
+          '</div>',
+          '<p class="points-formula">Tu total = (Canciones × 25) + (VIP × 40) + (Días × 5) + Logros + Rachas.</p>'
+        ].join('');
+      }
 
       // ===== SISTEMA DE MODAL DE CONFIRMACIÓN =====
       const confirmationModal = document.getElementById('confirmation-modal');
@@ -5427,62 +5570,19 @@
         }
       }
 
-      function renderPersonalStats(data) {
+      async function renderPersonalStats(data) {
         try {
-          const currentUser = getCurrentUser();
-          console.log(`📊 Generando estadísticas personales para ${currentUser}`);
-          
-          // Generar estadísticas individuales basadas en el usuario
-          const userActivity = generateUserActivity(currentUser, 30);
-          
-          // Calcular estadísticas del usuario
-          const totalSongs = Object.values(userActivity).reduce((sum, count) => sum + count, 0);
-          const activeDays = Object.values(userActivity).filter(count => count > 0).length;
-          
-          // Generar número de artistas únicos basado en el usuario
-          const userHash = hashCode(currentUser);
-          const uniqueArtists = 15 + (Math.abs(userHash) % 25); // 15-40 artistas únicos
-          
-          // Calcular ranking basado en total de canciones
-          const allUsers = ['Ana García', 'Carlos López', 'María Rodríguez', 'Juan Pérez', 'Laura Martín', 
-                           'Diego Silva', 'Carmen Ruiz', 'Pablo Torres', 'Sofia Morales', 'Andrés Castro',
-                           'Valentina Cruz', 'Mateo Vargas', 'Isabella Santos', 'Santiago Herrera', 'Usuario'];
-          
-          const userStats = allUsers.map(user => {
-            const activity = generateUserActivity(user, 30);
-            const total = Object.values(activity).reduce((sum, count) => sum + count, 0);
-            return { user, total };
-          }).sort((a, b) => b.total - a.total);
-          
-          const userRank = userStats.findIndex(stat => stat.user === currentUser) + 1;
-          
-          // Actualizar elementos del DOM
-          const totalSongsEl = document.getElementById('personal-total-songs');
-          const uniqueArtistsEl = document.getElementById('personal-unique-artists');
-          const activeDaysEl = document.getElementById('personal-active-days');
-          const personalRankEl = document.getElementById('personal-rank');
-          
-          if (totalSongsEl) totalSongsEl.textContent = totalSongs;
-          if (uniqueArtistsEl) uniqueArtistsEl.textContent = uniqueArtists;
-          if (activeDaysEl) activeDaysEl.textContent = activeDays;
-          if (personalRankEl) personalRankEl.textContent = `#${userRank}`;
-          
-          console.log(`✅ Estadísticas generadas: ${totalSongs} canciones, ${activeDays} días activos, ${uniqueArtists} artistas, ranking #${userRank}`);
-          
-          // Renderizar géneros favoritos
-          renderFavoriteGenres();
-          
+          const user = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser();
+          await renderPersonalStatsForUser(data, user);
         } catch (error) {
           console.error('Error renderizando estadísticas personales:', error);
-          
-          // Valores por defecto en caso de error
           const elements = [
             'personal-total-songs',
+            'personal-total-played',
             'personal-unique-artists', 
             'personal-active-days',
             'personal-rank'
           ];
-          
           elements.forEach(id => {
             const el = document.getElementById(id);
             if (el) el.textContent = id === 'personal-rank' ? '-' : '0';
@@ -5584,7 +5684,8 @@
             return local;
           }
           const all = await getAllCombinedSolicitudes();
-          const userSongs = all.filter(s => s.usuario === targetUser);
+          const norm = (x) => String(x||'').trim().replace(/^@/,'').toLowerCase();
+          const userSongs = all.filter(s => norm(s.usuario) === norm(targetUser));
           const counts = {};
           for (const s of userSongs) {
             const gs = await inferGenres(s.artista, s.cancion);
@@ -5735,6 +5836,14 @@
           });
         }
 
+        // Initial load for transparency section
+        setTimeout(async () => {
+          const currentUser = getCurrentProfileUser();
+          if (currentUser) {
+            await renderPointsBreakdownForUser(currentUser);
+          }
+        }, 1000); // Small delay to ensure everything is loaded
+
         // Cargar días disponibles
         if (typeof loadDays === 'function') {
           await loadDays();
@@ -5785,6 +5894,7 @@
           console.error('Error en análisis automático de nuevos usuarios:', error);
         }
       }
+      window.analyzeNewUsersAutomatically = analyzeNewUsersAutomatically;
 
 
 
@@ -6128,18 +6238,39 @@
         const key = String(u || '').toLowerCase();
         return all[key] || null;
       }
+      if (typeof window.toHourKey !== 'function') {
+        window.toHourKey = function(ts) {
+          try {
+            if (!ts) return '00:00';
+            const d = ts?.toDate ? ts.toDate() : new Date(ts);
+            const hh = String(d.getHours()).padStart(2,'0');
+            const mm = String(d.getMinutes()).padStart(2,'0');
+            return `${hh}:${mm}`;
+          } catch (_) { return '00:00'; }
+        };
+      }
       async function computeUserBreakdown(u) {
         const rawUser = String(u || '').trim();
         const usuario = rawUser.replace(/^@/, '');
-        const norm = (s) => String(s||'').trim().replace(/^@/,'').toLowerCase();
+        const norm = (s) => String(s || '').trim().replace(/^@/, '').toLowerCase();
         const isVip = (window.vipSet && (window.vipSet.has(usuario) || window.vipSet.has(rawUser))) || (window.z0VipSet && (window.z0VipSet.has(usuario) || window.z0VipSet.has(rawUser)));
+        const getHourKey = (x) => {
+          try {
+            if (typeof window.toHourKey === 'function') return window.toHourKey(x);
+            if (typeof toHourKey === 'function') return toHourKey(x);
+            if (typeof toHour === 'function') return toHour(x);
+            return '00:00';
+          } catch (_) {
+            return '00:00';
+          }
+        };
         const daysSet = new Set();
         const perDaySongs = new Map();
         try {
           const userSnap = await db.collection('solicitudes').where('usuario', '==', usuario).get();
           userSnap.forEach(doc => {
             const d = doc.data() || {};
-            const day = d.day;
+            const day = String(d.day || '').trim();
             if (!day) return;
             daysSet.add(day);
             const arr = perDaySongs.get(day) || [];
@@ -6147,26 +6278,46 @@
             perDaySongs.set(day, arr);
           });
         } catch (_) {}
-        if (daysSet.size === 0) {
+        // Incluir días desde localStorage cuando solo exista 'fecha'
+        try {
+          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          localSolicitudes.forEach(d => {
+            if (norm(d.usuario) !== norm(usuario)) return;
+            const sday = String(d.day || (d.fecha||'').split('T')[0] || '').trim();
+            if (sday) {
+              daysSet.add(sday);
+              const arr = perDaySongs.get(sday) || [];
+              arr.push(d);
+              perDaySongs.set(sday, arr);
+            }
+          });
+        } catch (_){}
+        try {
           const playedDaysSnap = await db.collection('playedSongs').get();
           playedDaysSnap.forEach(ps => {
             const day = ps.id;
             if (day) daysSet.add(day);
           });
-        }
+        } catch (_) {}
         let playedCount = 0;
         let activeDaysValid = 0;
+        const playedArtistsSet = new Set();
         const detail = [];
         const days = Array.from(daysSet);
+        const totalPlayedSet = new Set();
         for (let i = 0; i < days.length; i++) {
           const day = days[i];
           const playedDoc = await db.collection('playedSongs').doc(day).get();
           const pdata = playedDoc.exists ? (playedDoc.data() || {}) : {};
-          const playedArr = Array.isArray(pdata.songs) ? pdata.songs : (Array.isArray(pdata.list) ? pdata.list : (Array.isArray(pdata.songIds) ? pdata.songIds : []));
-          const playedSet = new Set(playedArr);
+          const playedArrCloud = Array.isArray(pdata.songs) ? pdata.songs : (Array.isArray(pdata.list) ? pdata.list : (Array.isArray(pdata.songIds) ? pdata.songIds : []));
+          const localPlayedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+          const playedArrLocal = Array.isArray(localPlayedMap[day]) ? localPlayedMap[day] : [];
+          const playedArr = playedArrCloud.concat(playedArrLocal);
+          const sanitizeId = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+          const playedSetLower = new Set(playedArr.map(x => sanitizeId(x)));
           let userSongs = perDaySongs.get(day) || [];
           if (!userSongs.length) {
-            const daySnap = await db.collection('solicitudes').where('day','==',day).get();
+            const daySnap = await db.collection('solicitudes').where('day', '==', day).get();
             const arr = [];
             daySnap.forEach(doc => {
               const d = doc.data() || {};
@@ -6174,32 +6325,66 @@
             });
             userSongs = arr;
           }
+          // Fallback adicional: usar solicitudes de localStorage filtrando por fecha
+          if (!userSongs.length) {
+            try {
+              const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+              const arr = localSolicitudes.filter(s => {
+                const uok = norm(s.usuario) === norm(usuario);
+                const sday = String(s.day || (s.fecha||'').split('T')[0] || '').trim();
+                return uok && sday === day;
+              });
+              if (arr.length) userSongs = arr;
+            } catch (_){}
+          }
           let userPlayedThatDay = 0;
           if (userSongs.length) {
             for (let j = 0; j < userSongs.length; j++) {
               const s = userSongs[j];
-              const sid = makeSongId(s.usuario, s.cancion, s.artista, s.ts);
-              let matched = playedSet.has(sid);
+              const userName = String(s.usuario || '').trim();
+              const songName = String(s.cancion || '').trim();
+              const artistName = String(s.artista || '').trim();
+              const hourCandidates = [
+                (window.resolveHourKey ? window.resolveHourKey(s.ts) : '00:00'),
+                (window.resolveHourKey ? window.resolveHourKey(s.time) : '00:00'),
+                String(s.hora || '').trim()
+              ].filter(Boolean);
+              let matched = false;
+              let matchedId = '';
+              for (const h of hourCandidates.length ? hourCandidates : ['00:00']) {
+                const sid = sanitizeId(`${userName}-${songName}-${artistName}-${h}`);
+                if (playedSetLower.has(sid)) { matched = true; matchedId = sid; break; }
+              }
               if (!matched) {
-                const prefix = `${String(s.usuario||'').trim()}-${String(s.cancion||'').trim()}-${String(s.artista||'').trim()}-`.replace(/[^a-zA-Z0-9-]/g, '');
+                const prefix = `${norm(userName)}-${String(songName||'').trim().toLowerCase()}-${String(artistName||'').trim().toLowerCase()}-`.replace(/[^a-z0-9-]/g, '');
                 for (let k = 0; k < playedArr.length; k++) {
-                  const x = playedArr[k] || '';
-                  if (typeof x === 'string' && x.startsWith(prefix)) { matched = true; break; }
+                  const x = sanitizeId(playedArr[k] || '');
+                  if (x.startsWith(prefix)) { matched = true; matchedId = x; break; }
                 }
               }
               if (matched) {
+                const wasNew = !totalPlayedSet.has(matchedId);
+                if (wasNew) {
+                  totalPlayedSet.add(matchedId);
+                  playedCount++;
+                }
                 userPlayedThatDay++;
-                playedCount++;
+                if (artistName) playedArtistsSet.add(artistName);
               }
             }
           } else {
-            const clean = (s) => String(s||'').trim().replace(/[^a-zA-Z0-9-]/g, '');
+            const clean = (s) => String(s || '').trim().replace(/[^a-zA-Z0-9-]/g, '');
             const userPrefix = `${clean(usuario)}-`;
             for (let k = 0; k < playedArr.length; k++) {
               const x = playedArr[k] || '';
               if (typeof x === 'string' && x.startsWith(userPrefix)) {
+                const sid = sanitizeId(x);
+                const wasNew = !totalPlayedSet.has(sid);
+                if (wasNew) {
+                  totalPlayedSet.add(sid);
+                  playedCount++;
+                }
                 userPlayedThatDay++;
-                playedCount++;
               }
             }
           }
@@ -6215,65 +6400,365 @@
             detail.push({ day, played: userPlayedThatDay, distinctUsers: distinctUsersDay.size });
           }
         }
-        const base = playedCount * 25;
-        const vipBonus = isVip ? playedCount * 40 : 0;
-        const dailyBonus = activeDaysValid * 5;
-        let achievements = 0;
+        // Calcular rachas a partir de detail (secuencias consecutivas de días con actividad)
+        let bestStreakComputed = 0;
+        let streakPointsSum = 0;
         try {
-          const uid = usuario.toLowerCase();
-          const achDoc = await db.collection('userAchievements').doc(uid).get();
-          if (achDoc.exists) {
-            const a = achDoc.data() || {};
-            const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
-            if (Array.isArray(ids) && ids.length) {
-              achievements = ids.reduce((sum, id) => {
+          const parseDay = (d) => {
+            const [y,m,dd] = String(d||'').split('-').map(Number);
+            return new Date(y, (m||1)-1, dd||1);
+          };
+          const activeDays = detail.map(x => x.day).filter(Boolean).sort();
+          // Agrupar en secuencias consecutivas
+          let i = 0;
+          while (i < activeDays.length) {
+            let seqLen = 1;
+            let prev = parseDay(activeDays[i]);
+            let j = i + 1;
+            while (j < activeDays.length) {
+              const cur = parseDay(activeDays[j]);
+              const diff = (cur - prev) / (1000*60*60*24);
+              if (Math.round(diff) === 1) {
+                seqLen++;
+                prev = cur;
+                j++;
+              } else {
+                break;
+              }
+            }
+            // Mejor racha
+            if (seqLen > bestStreakComputed) bestStreakComputed = seqLen;
+            // Puntos acumulados por esta racha: sum_{i=1..min(seqLen-1,10)} i * STREAK_MULTIPLIER
+            const steps = Math.min(Math.max(seqLen - 1, 0), 10);
+            const tri = (steps * (steps + 1)) / 2;
+            const mult = (POINTS_CONFIG && typeof POINTS_CONFIG.STREAK_MULTIPLIER === 'number') ? POINTS_CONFIG.STREAK_MULTIPLIER : 2;
+            streakPointsSum += tri * mult;
+            i = j;
+          }
+        } catch (_) {}
+        const base = playedCount * 25;
+        let vipBonus = isVip ? playedCount * 40 : 0;
+        let dailyBonus = activeDaysValid * 5;
+        const uniqueArtistsPlayed = Array.from(playedArtistsSet).filter(Boolean).length;
+        let achievements = 0;
+        let streakBonus = 0;
+        try {
+          const uid = norm(usuario);
+          const idSet = new Set();
+          // Preferir datos locales para consistencia con la cabecera
+          try {
+            const localData = getLocalGamificationData(usuario) || {};
+            const st = localData.stats || {};
+            if (typeof st.activeDays === 'number') activeDaysValid = st.activeDays;
+            if (typeof st.isVip === 'boolean') {
+              // Recalcular VIP con el flag local
+              if (st.isVip) {
+                isVip = true;
+              }
+            }
+            // Recalcular partidas con valores locales
+            vipBonus = isVip ? playedCount * 40 : 0;
+            dailyBonus = activeDaysValid * 5;
+            // Ruta rápida deshabilitada para asegurar consistencia con nube
+            if (false) {
+              let fastBestStreak = 0;
+              try {
+                const bs = st.bestStreak;
+                if (typeof bs === 'number') fastBestStreak = bs;
+              } catch (_){}
+              try {
+                if (!fastBestStreak) {
+                  const localStreaks = (localData.streaks || {});
+                  if (typeof localStreaks.best === 'number') fastBestStreak = localStreaks.best;
+                }
+              } catch (_){}
+              // Bono de racha aproximado por mejor racha
+              try {
+                const steps = Math.min(Math.max((fastBestStreak || 0) - 1, 0), 10);
+                const tri = (steps * (steps + 1)) / 2;
+                const mult = (POINTS_CONFIG && typeof POINTS_CONFIG.STREAK_MULTIPLIER === 'number') ? POINTS_CONFIG.STREAK_MULTIPLIER : 2;
+                streakBonus = tri * mult;
+              } catch (_){}
+              // Calcular logros únicamente desbloqueados (union)
+              try {
+                const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
+                (localAch || []).forEach(id => idSet.add(String(id)));
+              } catch (_){}
+              try {
+                const statsDoc = await db.collection('userStats').doc(uid).get();
+                if (statsDoc.exists) {
+                  const sdata = statsDoc.data() || {};
+                  const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
+                  (statAch || []).forEach(id => idSet.add(String(id)));
+                }
+              } catch (_){}
+              try {
+                const achDoc = await db.collection('userAchievements').doc(uid).get();
+                if (achDoc.exists) {
+                  const a = achDoc.data() || {};
+                  const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
+                  (ids || []).forEach(id => idSet.add(String(id)));
+                }
+              } catch (_){}
+              achievements = Array.from(idSet).reduce((sum, id) => {
                 const found = ACHIEVEMENTS && ACHIEVEMENTS.find ? ACHIEVEMENTS.find(x => x.id === id) : null;
                 return sum + (found && typeof found.points === 'number' ? found.points : 0);
               }, 0);
+              const fastBase = playedCount * 25;
+              const fastVip = isVip ? playedCount * 40 : 0;
+              const fastDaily = activeDaysValid * 5;
+              const fastSum = fastBase + fastVip + fastDaily + achievements + streakBonus;
+              let displayTotal = fastSum;
+              return {
+                usuario,
+                playedCount,
+                activeDaysValid,
+                isVip,
+                base: fastBase,
+                vipBonus: fastVip,
+                dailyBonus: fastDaily,
+                achievements,
+                streakBonus,
+                residual: 0,
+                total: displayTotal,
+                detail: [],
+                achievementsList: []
+              };
             }
-          }
-        } catch (_){}
+          } catch (_){}
+          try {
+            const achDoc = await db.collection('userAchievements').doc(uid).get();
+            if (achDoc.exists) {
+              const a = achDoc.data() || {};
+              const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
+              (ids || []).forEach(id => idSet.add(String(id)));
+            }
+          } catch (_){}
+          try {
+            const statsDoc = await db.collection('userStats').doc(uid).get();
+            if (statsDoc.exists) {
+              const sdata = statsDoc.data() || {};
+              const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
+              (statAch || []).forEach(id => idSet.add(String(id)));
+            }
+          } catch (_){}
+          try {
+            const localData = getLocalGamificationData(usuario) || {};
+            const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
+            (localAch || []).forEach(id => idSet.add(String(id)));
+          } catch (_){}
+          achievements = Array.from(idSet).reduce((sum, id) => {
+            const found = ACHIEVEMENTS && ACHIEVEMENTS.find ? ACHIEVEMENTS.find(x => x.id === id) : null;
+            return sum + (found && typeof found.points === 'number' ? found.points : 0);
+          }, 0);
+          // Ensure achievements is never negative
+          achievements = Math.max(0, achievements);
+        } catch (_) {}
         let cloudTotal = 0;
+        let bestStreakVal = 0;
         try {
-          const doc = await db.collection('userStats').doc(usuario.toLowerCase()).get();
-          cloudTotal = doc.exists ? Number((doc.data() || {}).totalPoints || 0) : 0;
-        } catch (_){}
-        const sumCalc = base + vipBonus + dailyBonus + achievements;
-        const residual = cloudTotal - sumCalc;
+          const statsDocSnap = await db.collection('userStats').doc(norm(usuario)).get();
+          const statsDoc = statsDocSnap.exists ? (statsDocSnap.data() || {}) : {};
+          cloudTotal = statsDocSnap.exists ? Number((statsDoc.totalPoints || 0)) : 0;
+          if (typeof statsDoc.bestStreak === 'number') bestStreakVal = statsDoc.bestStreak;
+        } catch (_) {}
+        // Fallback a localData para bestStreak si no se encontró en nube
+        try {
+          if (!bestStreakVal) {
+            const localData = getLocalGamificationData(usuario) || {};
+            const streaks = localData.streaks || {};
+            if (typeof streaks.best === 'number') bestStreakVal = streaks.best;
+          }
+        } catch (_) {}
+        // Calcular bono acumulado por racha usando secuencias detectadas; si no hay, aproximar por bestStreakVal
+        try {
+          if (streakPointsSum > 0) {
+            streakBonus = streakPointsSum;
+          } else {
+            const steps = Math.min(Math.max((bestStreakVal || 0) - 1, 0), 10);
+            const tri = (steps * (steps + 1)) / 2;
+            const mult = (POINTS_CONFIG && typeof POINTS_CONFIG.STREAK_MULTIPLIER === 'number') ? POINTS_CONFIG.STREAK_MULTIPLIER : 2;
+            streakBonus = Math.max(0, tri * mult); // Ensure non-negative
+          }
+        } catch (_) { streakBonus = 0; }
+        const sumCalc = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus;
+        const residual = Math.max(0, cloudTotal - sumCalc); // Prevent negative residuals
         try {
           if (window.__ALLOW_BREAKDOWN_WRITE__ && !cloudTotal && sumCalc > 0) {
-            await db.collection('userStats').doc(usuario.toLowerCase()).set({
+            await db.collection('userStats').doc(norm(usuario)).set({
               totalPoints: sumCalc,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
             cloudTotal = sumCalc;
           }
+        } catch (_) {}
+        // Construir lista de insignias para UI
+        let achievementsList = [];
+        try {
+          const achCatalog = Array.isArray(ACHIEVEMENTS) ? ACHIEVEMENTS : [];
+          // Usar los IDs encontrados arriba
+          const uid = norm(usuario);
+          const idSet = new Set();
+          try {
+            const achDoc = await db.collection('userAchievements').doc(uid).get();
+            if (achDoc.exists) {
+              const a = achDoc.data() || {};
+              const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
+              (ids || []).forEach(id => idSet.add(String(id)));
+            }
+          } catch (_){}
+          try {
+            const statsDoc2 = await db.collection('userStats').doc(uid).get();
+            if (statsDoc2.exists) {
+              const sdata2 = statsDoc2.data() || {};
+              const statAch = Array.isArray(sdata2.achievements) ? sdata2.achievements : [];
+              (statAch || []).forEach(id => idSet.add(String(id)));
+            }
+          } catch (_){}
+          try {
+            const localData = getLocalGamificationData(usuario) || {};
+            const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
+            (localAch || []).forEach(id => idSet.add(String(id)));
+          } catch (_){}
+          achievementsList = Array.from(idSet).map(id => {
+            const found = achCatalog.find(x => x && x.id === id);
+            return { id, title: (found && found.title) || id, points: (found && typeof found.points === 'number') ? found.points : 0 };
+          });
         } catch (_){}
-        return { usuario, playedCount, activeDaysValid, isVip, base, vipBonus, dailyBonus, achievements, residual, total: cloudTotal, detail };
+        // Total igual al desglose calculado desde nube
+        let displayTotal = sumCalc;
+        // Ensure total is never negative
+        displayTotal = Math.max(0, displayTotal);
+        return { usuario, playedCount, activeDaysValid, isVip, base: (playedCount * 25), vipBonus: (isVip ? (playedCount * 40) : 0), dailyBonus: (activeDaysValid * 5), achievements, streakBonus, residual, total: displayTotal, detail, achievementsList };
       }
-      async function renderPointsBreakdownForUser(u) {
-        const bd = await computeUserBreakdown(u);
+      async function renderPointsBreakdownForUser(u, force=false) {
+        // Cache simple para mejorar tiempos de carga
+        window.__breakdownCache = window.__breakdownCache || {};
+        const key = String(u||'').toLowerCase();
+        const now = Date.now();
+        const cached = window.__breakdownCache[key];
+        let bd;
+        // Render rápido con datos locales para percepción de inmediatez
+        try {
+          const localData = getLocalGamificationData(u) || {};
+          const st = localData.stats || {};
+          const quickBase = (st.totalPlayedSongs || 0) * 25;
+          const quickVip = (st.isVip ? (st.totalPlayedSongs || 0) * 40 : 0);
+          const quickDaily = (st.activeDays || 0) * 5;
+          const quickTotal = typeof localData.points === 'number' ? localData.points : (quickBase + quickVip + quickDaily);
+          const setNum = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = String(val); };
+          setNum('breakdown-played-base', quickBase);
+          setNum('breakdown-vip-bonus', quickVip);
+          setNum('breakdown-daily-bonus', quickDaily);
+          setNum('breakdown-achievements', 0); // Show 0 initially
+          setNum('breakdown-streak-residual', 0); // Show 0 initially
+          setNum('breakdown-total', quickTotal);
+          
+          // Quick render for detail list
+          const list = document.getElementById('breakdown-detail-list');
+          if (list) {
+            const lines = [];
+            lines.push(`<div class="genre-chip"><span>🎵 Canciones </span><span>${st.totalPlayedSongs || 0} × 25 = ${quickBase}</span></div>`);
+            if (st.isVip) {
+              lines.push(`<div class="genre-chip"><span>👑 VIP </span><span>${st.totalPlayedSongs || 0} × 40 = ${quickVip}</span></div>`);
+            }
+            lines.push(`<div class="genre-chip"><span>📅 Diario </span><span>${st.activeDays || 0} × 5 = ${quickDaily}</span></div>`);
+            lines.push(`<div class="genre-chip"><span>💰 Total </span><span>${quickTotal}</span></div>`);
+            list.innerHTML = lines.join('');
+          }
+        } catch (_){}
+        if (!force && cached && (now - cached.updatedAt) < 5000) { // Reduced from 30000 to 5000 for faster updates
+          bd = cached.data;
+        } else {
+          bd = await computeUserBreakdown(u);
+          window.__breakdownCache[key] = { updatedAt: now, data: bd };
+        }
+        const activePanel = document.getElementById('gamification-breakdown');
+        const currentUserAtPaint = getCurrentProfileUser();
+        if (!activePanel || !activePanel.classList.contains('active') || String(currentUserAtPaint||'').toLowerCase() !== key) {
+          return;
+        }
         const setNum = (id, val) => {
           const el = document.getElementById(id);
           if (el) el.textContent = String(val);
         };
-        setNum('breakdown-played-base', bd.base);
-        setNum('breakdown-vip-bonus', bd.vipBonus);
-        setNum('breakdown-daily-bonus', bd.dailyBonus);
-        setNum('breakdown-achievements', bd.achievements);
-        setNum('breakdown-streak-residual', bd.residual);
-        setNum('breakdown-total', bd.total);
+        const prev = window.__breakdownCache[key] && window.__breakdownCache[key].data ? window.__breakdownCache[key].data : null;
+        const safeBase = (bd.base === 0 && prev && prev.base > 0) ? prev.base : bd.base;
+        const safeVip = (bd.vipBonus === 0 && prev && prev.vipBonus > 0) ? prev.vipBonus : bd.vipBonus;
+        const safeDaily = (bd.dailyBonus === 0 && prev && prev.dailyBonus > 0) ? prev.dailyBonus : bd.dailyBonus;
+        const safeAch = (bd.achievements === 0 && prev && prev.achievements > 0) ? prev.achievements : bd.achievements;
+        const safeStreak = (bd.streakBonus === 0 && prev && prev.streakBonus > 0) ? prev.streakBonus : bd.streakBonus;
+        const safeTotal = (bd.total === 0 && prev && prev.total > 0) ? prev.total : bd.total;
+        setNum('breakdown-played-base', safeBase);
+        setNum('breakdown-vip-bonus', safeVip);
+        setNum('breakdown-daily-bonus', safeDaily);
+        setNum('breakdown-achievements', safeAch);
+        setNum('breakdown-streak-residual', safeStreak);
+        setNum('breakdown-total', safeTotal);
+        const headerPoints = document.getElementById('user-points');
+        if (headerPoints) headerPoints.textContent = String(safeTotal);
+        const rewardsPoints = document.getElementById('rewards-user-points');
+        if (rewardsPoints) rewardsPoints.textContent = String(safeTotal);
         const list = document.getElementById('breakdown-detail-list');
         if (list) {
-          list.innerHTML = bd.detail.map(it => `<div class="genre-chip"><span>${it.day}</span><span>${it.played} reproducidas • ${it.distinctUsers} usuarios</span></div>`).join('');
+          const lines = [];
+          
+          // Canciones
+          lines.push(`<div class="genre-chip"><span>🎵 Canciones </span><span>${bd.playedCount} × 25 = ${bd.base}</span></div>`);
+          
+          // VIP (solo si es VIP)
+          if (bd.isVip) {
+            lines.push(`<div class="genre-chip"><span>👑 VIP </span><span>${bd.playedCount} × 40 = ${bd.vipBonus}</span></div>`);
+          }
+          
+          // Diario
+          lines.push(`<div class="genre-chip"><span>📅 Diario </span><span>${bd.activeDaysValid} × 5 = ${bd.dailyBonus}</span></div>`);
+          
+          // Rachas (solo si hay puntos)
+          if (bd.streakBonus > 0) {
+            lines.push(`<div class="genre-chip"><span>🔥 Rachas </span><span>${bd.streakBonus}</span></div>`);
+          }
+          
+          // Logros (solo si hay puntos)
+          if (bd.achievements > 0) {
+            lines.push(`<div class="genre-chip"><span>🏅 Logros </span><span>${bd.achievements}</span></div>`);
+          }
+          
+          // Total
+          lines.push(`<div class="genre-chip"><span>💰 Total </span><span>${bd.total}</span></div>`);
+          
+          list.innerHTML = lines.join('');
         }
+        // Reintento ligero si base quedó en 0 pero existe total positivo
+        try {
+          if ((bd.base === 0 || bd.playedCount === 0) && bd.total > 0 && !force) {
+            const again = await computeUserBreakdown(u);
+            if (again && (again.base > bd.base || again.playedCount > bd.playedCount)) {
+              window.__breakdownCache[key] = { updatedAt: Date.now(), data: again };
+              return renderPointsBreakdownForUser(u, true);
+            }
+          }
+        } catch (_){}
       }
+      window.__ALLOW_BREAKDOWN_WRITE__ = true;
       function getCurrentProfileUser() {
         const sel = document.getElementById('gamification-user-select');
         const v = sel ? String(sel.value || '').trim().replace(/^@/, '') : '';
         if (v) return v;
         const cur = localStorage.getItem('currentUser') || '';
-        return (cur || '').replace(/^@/, '');
+        const fallback = (cur || '').replace(/^@/, '');
+        if (fallback) return fallback;
+        try {
+          if (typeof getCurrentSelectedUser === 'function') {
+            const s = String(getCurrentSelectedUser() || '').trim().replace(/^@/, '');
+            if (s) return s;
+          }
+          if (typeof getCurrentUser === 'function') {
+            const u = String(getCurrentUser() || '').trim().replace(/^@/, '');
+            if (u) return u;
+          }
+        } catch (_){}
+        return '';
       }
       (function setupBreakdownTab(){
         document.addEventListener('click', async function(e){
@@ -6289,7 +6774,22 @@
           btn.classList.add('active');
           if (tab === 'breakdown') {
             const u = getCurrentProfileUser();
-            if (u) await renderPointsBreakdownForUser(u);
+            if (u) {
+              await renderPointsBreakdownForUser(u, true);
+            }
+          }
+          if (tab === 'stats') {
+            const u = getCurrentProfileUser();
+            if (u) {
+              try {
+                const localData = getLocalGamificationData(u) || {};
+                await renderPersonalStatsForUser(localData, u);
+                startCloudRealtimeForUser(u);
+              } catch (_){
+                const ids = ['personal-total-songs','personal-total-played','personal-unique-artists','personal-active-days','personal-rank'];
+                ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = id==='personal-rank' ? '-' : '0'; });
+              }
+            }
           }
         });
         const sel = document.getElementById('gamification-user-select');
@@ -6298,96 +6798,281 @@
             const panel = document.getElementById('gamification-breakdown');
             if (panel && panel.classList.contains('active')) {
               const u = getCurrentProfileUser();
-              if (u) await renderPointsBreakdownForUser(u);
+              if (u) await renderPointsBreakdownForUser(u, true);
+            }
+            const statsPanel = document.getElementById('gamification-stats');
+            if (statsPanel && statsPanel.classList.contains('active')) {
+              const u = getCurrentProfileUser();
+              if (u) {
+                try {
+                  const localData = getLocalGamificationData(u) || {};
+                  await renderPersonalStatsForUser(localData, u);
+                  startCloudRealtimeForUser(u);
+                } catch (_){}
+              }
             }
           });
         }
       })();
+      function countLocalPlayedForUser(usuario) {
+        const norm = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
+        const localPlayedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+        const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+        const prefix = sanitize(`${norm}-`);
+        const ids = new Set();
+        const days = Object.keys(localPlayedMap);
+        for (let i=0;i<days.length;i++) {
+          const arr = Array.isArray(localPlayedMap[days[i]]) ? localPlayedMap[days[i]] : [];
+          for (let j=0;j<arr.length;j++) {
+            const id = sanitize(arr[j]);
+            if (id.startsWith(prefix)) ids.add(id);
+          }
+        }
+        return ids.size;
+      }
+      function computeLocalSolicitudesStats(usuario) {
+        const norm = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
+        const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+        const mine = solicitudes.filter(s => String(s.usuario||'').trim().replace(/^@/,'').toLowerCase() === norm);
+        const totalSongs = mine.length;
+        const uniqueArtists = new Set(mine.map(s => s.artista).filter(Boolean)).size;
+        const days = new Set(mine.map(s => String(s.day || (s.fecha||'').split('T')[0] || '').trim()).filter(Boolean));
+        const activeDays = days.size;
+        return { totalSongs, uniqueArtists, activeDays };
+      }
+      window.__playedCountPinned = window.__playedCountPinned || {};
+      function getPinnedPlayedCount(usuario) {
+        const key = String(usuario||'').trim().toLowerCase();
+        return typeof window.__playedCountPinned[key] === 'number' ? window.__playedCountPinned[key] : null;
+      }
+      function setPinnedPlayedCount(usuario, count) {
+        const key = String(usuario||'').trim().toLowerCase();
+        window.__playedCountPinned[key] = Number(count||0);
+      }
+      window.__statPins = window.__statPins || {};
+      function stableSetStat(id, val, usuario) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const key = String(usuario||'').trim().toLowerCase();
+        const now = Date.now();
+        const pin = window.__statPins[key] || { until: 0 };
+        if (!pin.until || now > pin.until) {
+          window.__statPins[key] = { until: now + 10000 };
+        }
+        const currentNum = Number(el.textContent || 0);
+        const nextNum = Number(val || 0);
+        if (now <= window.__statPins[key].until) {
+          if (isNaN(currentNum)) {
+            el.textContent = String(nextNum);
+          } else {
+            el.textContent = String(Math.max(currentNum, nextNum));
+          }
+        } else {
+          el.textContent = String(nextNum);
+        }
+      }
+      function stableSetRank(id, userRank, usuario) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const key = String(usuario||'').trim().toLowerCase();
+        const now = Date.now();
+        const pin = window.__statPins[key] || { until: 0 };
+        if (!pin.until || now > pin.until) {
+          window.__statPins[key] = { until: now + 10000 };
+        }
+        const cur = el.textContent || '-';
+        const next = userRank > 0 ? `#${userRank}` : cur;
+        el.textContent = next;
+      }
+      window.__userSubs = window.__userSubs || {};
+      function unsubscribeUserRealtime() {
+        const subs = window.__userSubs;
+        try { subs.solicitudes && subs.solicitudes(); } catch (_){}
+        try { subs.played && subs.played(); } catch (_){}
+        try { subs.allSolicitudes && subs.allSolicitudes(); } catch (_){}
+        window.__userSubs = {};
+      }
+      function startCloudRealtimeForUser(usuario) {
+        unsubscribeUserRealtime();
+        const u = String(usuario||'').trim().replace(/^@/,'');
+        const norm = u.toLowerCase();
+        const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+        window.__userReqPrefixes = window.__userReqPrefixes || {};
+        window.__userReqPrefixes[norm] = new Set();
+        try {
+          window.__userSubs.solicitudes = db.collection('solicitudes').where('usuario','==',u).onSnapshot(snap => {
+            let totalSongs = 0;
+            const artists = new Set();
+            const days = new Set();
+            const prefixes = new Set();
+            snap.forEach(doc => {
+              const d = doc.data()||{};
+              totalSongs++;
+              if (d.artista) artists.add(String(d.artista));
+              const day = String(d.day || (d.fecha||'').split('T')[0] || '').trim();
+              if (day) days.add(day);
+              const pref = `${norm}-${String(d.cancion||'').trim().toLowerCase().replace(/[^a-z0-9-]/g,'')}-${String(d.artista||'').trim().toLowerCase().replace(/[^a-z0-9-]/g,'')}-`;
+              prefixes.add(pref);
+            });
+            window.__userReqPrefixes[norm] = prefixes;
+            stableSetStat('personal-total-songs', totalSongs, u);
+            stableSetStat('personal-unique-artists', artists.size, u);
+            stableSetStat('personal-active-days', days.size, u);
+          });
+        } catch (_){}
+        try {
+          window.__userSubs.played = db.collection('playedSongs').onSnapshot(snap => {
+            const prefix = sanitize(`${u}-`);
+            const ids = new Set();
+            const req = window.__userReqPrefixes[norm] || new Set();
+            snap.forEach(doc => {
+              const d = doc.data()||{};
+              const arr = Array.isArray(d.songs) ? d.songs : [];
+              arr.forEach(x => {
+                const id = sanitize(x);
+                // Contar solo si corresponde a una solicitud del usuario
+                if (id.startsWith(prefix)) {
+                  // match contra cualquiera de los prefijos de solicitudes del usuario
+                  for (const pf of req) {
+                    if (id.startsWith(pf)) { ids.add(id); break; }
+                  }
+                }
+              });
+            });
+            stableSetStat('personal-total-played', ids.size, u);
+          });
+        } catch (_){}
+        try {
+          window.__userSubs.allSolicitudes = db.collection('solicitudes').onSnapshot(snap => {
+            const counts = {};
+            snap.forEach(doc => {
+              const d = doc.data()||{};
+              const key = String(d.usuario||'').trim().replace(/^@/,'').toLowerCase();
+              counts[key] = (counts[key]||0)+1;
+            });
+            const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+            const rank = sorted.findIndex(([name])=>name===norm)+1;
+            stableSetRank('personal-rank', rank, u);
+          });
+        } catch (_){}
+      }
       async function rebuildPlayedSongsForUser(usuario, startDay = '', endDay = '') {
-        const norm = (s) => String(s||'').trim().replace(/^@/,'');
-        const user = norm(usuario);
-        const lo = startDay ? String(startDay).trim() : '';
-        const hi = endDay ? String(endDay).trim() : '';
-        const byDay = new Map();
-        const snap = await db.collection('solicitudes').where('usuario','==',user).get();
-        snap.forEach(doc => {
-          const d = doc.data()||{};
-          const day = String(d.day||'').trim();
-          if (!day) return;
-          if (lo && day < lo) return;
-          if (hi && day > hi) return;
-          const arr = byDay.get(day) || [];
-          const hora = toHour(d.ts) || '00:00';
-          const raw = `${d.usuario}-${d.cancion}-${d.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
-          arr.push(raw);
-          byDay.set(day, arr);
-        });
-        for (const [day, ids] of byDay.entries()) {
-          const uniq = Array.from(new Set(ids));
-          for (let i = 0; i < uniq.length; i += 50) {
-            const chunk = uniq.slice(i, i + 50);
-            await db.collection('playedSongs').doc(day).set({
-              songs: firebase.firestore.FieldValue.arrayUnion(...chunk),
+        try {
+          const norm = (s) => String(s||'').trim().replace(/^@/,'');
+          const user = norm(usuario);
+          const lo = startDay ? String(startDay).trim() : '';
+          const hi = endDay ? String(endDay).trim() : '';
+          const byDay = new Map();
+          const snap = await db.collection('solicitudes').where('usuario','==',user).get();
+          snap.forEach(doc => {
+            const d = doc.data()||{};
+            const day = String(d.day||'').trim();
+            if (!day) return;
+            if (lo && day < lo) return;
+            if (hi && day > hi) return;
+            const arr = byDay.get(day) || [];
+            const hora = (window.resolveHourKey ? window.resolveHourKey(d.ts) : '00:00') || (window.resolveHourKey ? window.resolveHourKey(d.time) : '00:00') || String(d.hora||'').trim() || '00:00';
+            const raw = `${d.usuario}-${d.cancion}-${d.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
+            arr.push(raw);
+            byDay.set(day, arr);
+          });
+          for (const [day, ids] of byDay.entries()) {
+            const uniq = Array.from(new Set(ids));
+            const ref = db.collection('playedSongs').doc(day);
+            const doc = await ref.get();
+            const prev = doc.exists ? ((doc.data() || {}).songs || []) : [];
+            const nextSet = new Set(prev.concat(uniq));
+            await ref.set({
+              songs: Array.from(nextSet),
               day,
               rebuiltAt: firebase.firestore.FieldValue.serverTimestamp(),
               rebuiltBy: user
             }, { merge: true });
           }
+          return { user, days: byDay.size };
+        } catch (err) {
+          console.error('Error en rebuildPlayedSongsForUser:', err);
+          return { user: String(usuario||'').trim(), days: 0, error: String(err) };
         }
-        return { user, days: byDay.size };
       }
       async function rebuildPlayedSongsAll(startDay = '', endDay = '') {
-        const lo = startDay ? String(startDay).trim() : '';
-        const hi = endDay ? String(endDay).trim() : '';
-        const byDay = new Map();
-        const snap = await db.collection('solicitudes').get();
-        snap.forEach(doc => {
-          const d = doc.data()||{};
-          const day = String(d.day||'').trim();
-          if (!day) return;
-          if (lo && day < lo) return;
-          if (hi && day > hi) return;
-          const arr = byDay.get(day) || [];
-          const hora = toHour(d.ts) || '00:00';
-          const raw = `${d.usuario}-${d.cancion}-${d.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
-          arr.push(raw);
-          byDay.set(day, arr);
-        });
-        for (const [day, ids] of byDay.entries()) {
-          const uniq = Array.from(new Set(ids));
-          for (let i = 0; i < uniq.length; i += 100) {
-            const chunk = uniq.slice(i, i + 100);
-            await db.collection('playedSongs').doc(day).set({
-              songs: firebase.firestore.FieldValue.arrayUnion(...chunk),
+        try {
+          const lo = startDay ? String(startDay).trim() : '';
+          const hi = endDay ? String(endDay).trim() : '';
+          const byDay = new Map();
+          const snap = await db.collection('solicitudes').get();
+          snap.forEach(doc => {
+            const d = doc.data()||{};
+            const day = String(d.day||'').trim();
+            if (!day) return;
+            if (lo && day < lo) return;
+            if (hi && day > hi) return;
+            const arr = byDay.get(day) || [];
+            const hora = (window.resolveHourKey ? window.resolveHourKey(d.ts) : '00:00') || (window.resolveHourKey ? window.resolveHourKey(d.time) : '00:00') || String(d.hora||'').trim() || '00:00';
+            const raw = `${d.usuario}-${d.cancion}-${d.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
+            arr.push(raw);
+            byDay.set(day, arr);
+          });
+          for (const [day, ids] of byDay.entries()) {
+            const uniq = Array.from(new Set(ids));
+            const ref = db.collection('playedSongs').doc(day);
+            const doc = await ref.get();
+            const prev = doc.exists ? ((doc.data() || {}).songs || []) : [];
+            const nextSet = new Set(prev.concat(uniq));
+            await ref.set({
+              songs: Array.from(nextSet),
               day,
               rebuiltAt: firebase.firestore.FieldValue.serverTimestamp(),
               rebuiltBy: 'admin'
             }, { merge: true });
           }
+          return { days: byDay.size };
+        } catch (err) {
+          console.error('Error en rebuildPlayedSongsAll:', err);
+          return { days: 0, error: String(err) };
         }
-        return { days: byDay.size };
       }
       (function attachRebuildButton(){
         const btn = document.getElementById('rebuild-played-btn');
         if (!btn) return;
-        btn.addEventListener('click', async () => {
-          try {
-            const uInput = document.getElementById('rebuild-user-input');
-            const startInput = document.getElementById('rebuild-start-day');
-            const endInput = document.getElementById('rebuild-end-day');
-            const mode = uInput ? String(uInput.value||'').trim() : '';
-            const dStart = startInput ? String(startInput.value||'').trim() : '';
-            const dEnd = endInput ? String(endInput.value||'').trim() : '';
-            if (mode) {
-              const res = await rebuildPlayedSongsForUser(mode, dStart, dEnd);
-              alert(`Reconstrucción completada para ${res.user}. Días afectados: ${res.days}`);
-            } else {
-              const res = await rebuildPlayedSongsAll(dStart, dEnd);
-              alert(`Reconstrucción completada. Días afectados: ${res.days}`);
-            }
-          } catch (e) {
-            alert('Error durante la reconstrucción. Revisa la consola.');
+        function showToast(message, type='info') {
+          let container = document.getElementById('toast-container');
+          if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            document.body.appendChild(container);
           }
+          const toast = document.createElement('div');
+          toast.className = `toast toast-${type}`;
+          toast.textContent = String(message||'');
+          container.appendChild(toast);
+          requestAnimationFrame(() => toast.classList.add('show'));
+          setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 200);
+          }, 3500);
+        }
+        btn.addEventListener('click', async () => {
+          const uInput = document.getElementById('rebuild-user-input');
+          const startInput = document.getElementById('rebuild-start-day');
+          const endInput = document.getElementById('rebuild-end-day');
+          const mode = uInput ? String(uInput.value||'').trim() : '';
+          const dStart = startInput ? String(startInput.value||'').trim() : '';
+          const dEnd = endInput ? String(endInput.value||'').trim() : '';
+          let res;
+          btn.disabled = true;
+          showToast('Reconstruyendo registros…', 'info');
+          if (mode) {
+            res = await rebuildPlayedSongsForUser(mode, dStart, dEnd);
+          } else {
+            res = await rebuildPlayedSongsAll(dStart, dEnd);
+          }
+          if (res && !res.error) {
+            showToast(`Reconstrucción completada. Días afectados: ${res.days}`, 'success');
+          } else {
+            showToast(`Reconstrucción parcial. Días afectados: ${res.days||0}`, 'warning');
+          }
+          btn.disabled = false;
         });
       })();
       
@@ -6709,6 +7394,7 @@
           userSelect.innerHTML = '<option value="">Error al cargar usuarios</option>';
         }
       }
+      window.populateUserSelectorFromLocalStorage = populateUserSelectorFromLocalStorage;
 
       // Función auxiliar para obtener todos los datos combinados
       async function getAllCombinedSolicitudes() {
@@ -7322,6 +8008,7 @@
       // Modificar funciones existentes para usar el usuario seleccionado
       function getGamificationDataForUser(usuario = null) {
         const targetUser = usuario || getCurrentSelectedUser();
+        const normUser = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
         const data = localStorage.getItem('gamificationData');
         const allData = data ? JSON.parse(data) : {};
         
@@ -8082,45 +8769,111 @@
         }
       }
 
-      async function renderPersonalStatsForUser(data) {
-        const stats = data.stats;
-        const targetUser = getCurrentSelectedUser();
+      async function renderPersonalStatsForUser(data, usuario) {
+        const stats = (data && data.stats) || {};
+        const targetUser = usuario || getCurrentSelectedUser();
+        const normUser = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
         
         console.log(`📊 Renderizando estadísticas para ${targetUser}:`, stats);
         
         const totalSongsEl = document.getElementById('personal-total-songs');
+        const totalPlayedEl = document.getElementById('personal-total-played');
         const uniqueArtistsEl = document.getElementById('personal-unique-artists');
         const activeDaysEl = document.getElementById('personal-active-days');
         
-        if (totalSongsEl) totalSongsEl.textContent = stats.totalSongs || 0;
+        try {
+          const quick = computeLocalSolicitudesStats(targetUser);
+          stableSetStat('personal-total-songs', quick.totalSongs, targetUser);
+          stableSetStat('personal-unique-artists', quick.uniqueArtists, targetUser);
+          stableSetStat('personal-active-days', quick.activeDays, targetUser);
+        } catch (_){}
+        try {
+          const qp = countLocalPlayedForUser(targetUser);
+          stableSetStat('personal-total-played', qp, targetUser);
+        } catch (_){}
+        // Fallback: calcular estadísticas si faltan en data.stats
+        try {
+          let totalSongs = Number(stats.totalSongs || 0);
+          let uniqueArtists = Number(stats.uniqueArtists || 0);
+          let activeDays = Number(stats.activeDays || 0);
+          if (!totalSongs || !uniqueArtists || !activeDays) {
+            const allSolicitudes = await getAllCombinedSolicitudes();
+            const userSolicitudes = allSolicitudes.filter(s => s && String(s.usuario || '').trim().replace(/^@/, '').toLowerCase() === normUser);
+            totalSongs = totalSongs || userSolicitudes.length;
+            uniqueArtists = uniqueArtists || new Set(userSolicitudes.map(s => s.artista).filter(Boolean)).size;
+            const days = userSolicitudes.map(s => String(s.day || s.fecha?.split('T')[0] || '').trim()).filter(Boolean);
+            activeDays = activeDays || new Set(days).size;
+          }
+          stableSetStat('personal-total-songs', totalSongs, targetUser);
+          stableSetStat('personal-unique-artists', uniqueArtists, targetUser);
+          stableSetStat('personal-active-days', activeDays, targetUser);
+        } catch (_){
+          stableSetStat('personal-total-songs', stats.totalSongs || 0, targetUser);
+          stableSetStat('personal-unique-artists', stats.uniqueArtists || 0, targetUser);
+          stableSetStat('personal-active-days', stats.activeDays || 0, targetUser);
+        }
+        try {
+          const bd = await computeUserBreakdown(targetUser);
+          let played = bd && typeof bd.playedCount === 'number' ? bd.playedCount : 0;
+          if (!played) {
+            const allSolicitudes = await getAllCombinedSolicitudes();
+            const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+            const sanitize = (x) => String(x||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+            let quick = 0;
+            const userSolicitudes = allSolicitudes.filter(s => s && String(s.usuario || '').trim().replace(/^@/, '').toLowerCase() === normUser);
+            const grouped = {};
+            userSolicitudes.forEach(s => {
+              const day = String(s.day || s.fecha?.split('T')[0] || '').trim();
+              if (!day) return;
+              (grouped[day] = grouped[day] || []).push(s);
+            });
+            for (const day of Object.keys(grouped)) {
+              const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+              const set = new Set(arr.map(sanitize));
+              const songs = grouped[day] || [];
+              for (let i=0;i<songs.length;i++) {
+                const s = songs[i] || {};
+                const sid = sanitize(`${s.usuario}-${s.cancion}-${s.artista}-${s.hora||'00:00'}`);
+                if (set.has(sid)) {
+                  quick++;
+                } else {
+                  const prefix = sanitize(`${s.usuario}-${s.cancion}-${s.artista}-`);
+                  if (arr.some(x => sanitize(x).startsWith(prefix))) quick++;
+                }
+              }
+            }
+            played = quick;
+          }
+          if (totalPlayedEl) {
+            const cur = Number(totalPlayedEl.textContent || 0);
+            totalPlayedEl.textContent = played > cur ? played : cur;
+          }
+        } catch (_){
+          if (totalPlayedEl) totalPlayedEl.textContent = 0;
+        }
         if (uniqueArtistsEl) uniqueArtistsEl.textContent = stats.uniqueArtists || 0;
         if (activeDaysEl) activeDaysEl.textContent = stats.activeDays || 0;
         
         try {
-          // Calcular posición global usando datos combinados
           const allSolicitudes = await getAllCombinedSolicitudes();
           const userCounts = {};
           allSolicitudes.forEach(s => {
-            userCounts[s.usuario] = (userCounts[s.usuario] || 0) + 1;
+            const key = String(s.usuario || '').trim().replace(/^@/, '').toLowerCase();
+            userCounts[key] = (userCounts[key] || 0) + 1;
           });
-          
           const sortedUsers = Object.entries(userCounts).sort((a, b) => b[1] - a[1]);
-          const userRank = sortedUsers.findIndex(([user]) => user === targetUser) + 1;
-          
+          const userRank = sortedUsers.findIndex(([user]) => user === normUser) + 1;
           const personalRankEl = document.getElementById('personal-rank');
           if (personalRankEl) personalRankEl.textContent = userRank > 0 ? `#${userRank}` : '-';
         } catch (error) {
-          console.error('Error calculando ranking:', error);
-          // Fallback a localStorage
           const allUsers = JSON.parse(localStorage.getItem('solicitudes') || '[]');
           const userCounts = {};
           allUsers.forEach(s => {
-            userCounts[s.usuario] = (userCounts[s.usuario] || 0) + 1;
+            const key = String(s.usuario || '').trim().replace(/^@/, '').toLowerCase();
+            userCounts[key] = (userCounts[key] || 0) + 1;
           });
-          
           const sortedUsers = Object.entries(userCounts).sort((a, b) => b[1] - a[1]);
-          const userRank = sortedUsers.findIndex(([user]) => user === targetUser) + 1;
-          
+          const userRank = sortedUsers.findIndex(([user]) => user === normUser) + 1;
           const personalRankEl = document.getElementById('personal-rank');
           if (personalRankEl) personalRankEl.textContent = userRank > 0 ? `#${userRank}` : '-';
         }
@@ -8779,7 +9532,14 @@
         
         // Actualizar información del usuario
         rewardsUserInfo.textContent = targetUser;
-        rewardsUserPoints.textContent = userData.points;
+        try {
+          const doc = await db.collection('userStats').doc(targetUser.toLowerCase()).get();
+          const cloudPoints = doc.exists ? Number((doc.data() || {}).totalPoints || 0) : 0;
+          const displayPoints = Math.max(Number(userData.points || 0), cloudPoints);
+          rewardsUserPoints.textContent = displayPoints;
+        } catch (_) {
+          rewardsUserPoints.textContent = userData.points;
+        }
         
         // Renderizar las tarjetas de recompensas
         const rewardsContainer = document.getElementById('rewards-list');
