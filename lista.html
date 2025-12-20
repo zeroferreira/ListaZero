@@ -85,6 +85,27 @@
       margin-top: 12px;
       color: #333;
     }
+    /* Transparencia: scroll y responsivo en móviles */
+    #gamification-breakdown .personal-stats-container {
+      max-height: 70vh;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      padding-right: 8px;
+      box-sizing: border-box;
+      width: 100%;
+    }
+    @media (max-width: 420px) {
+      #gamification-breakdown .personal-stats-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      #gamification-breakdown .stat-card {
+        align-items: center;
+        text-align: center;
+        padding: 12px;
+      }
+    }
   </style>
   
   <!-- Script de sincronización de temas -->
@@ -219,8 +240,10 @@
         }
         function useGlobal(){
           var ref = React.useRef(null);
-          var st = React.useState({ total: 0, topArtists3: [], topSong: '', topUser: '' });
+          var refPoints = React.useRef(null);
+          var st = React.useState({ total: 0, topArtists3: [], topSong: '', topUser: '', topPoints3: [] });
           var g = st[0]; var setG = st[1];
+          
           React.useEffect(function(){
             if (ref.current) { ref.current(); ref.current = null; }
             if (!window.db) return;
@@ -242,10 +265,32 @@
               var ta = Object.keys(artistCount).map(function(k){ return {k:k,c:artistCount[k],o:artistOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
               var tu = Object.keys(userCount).map(function(k){ return {k:k,c:userCount[k],o:userOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
               var ts = top(songCount);
-              setG({ total: total, topArtists3: ta, topUsers3: tu, topSong: ts, topSongCount: ts ? (songCount[ts]||0) : 0, topUser: top(userCount) });
+              setG(function(prev){ return Object.assign({}, prev, { total: total, topArtists3: ta, topUsers3: tu, topSong: ts, topSongCount: ts ? (songCount[ts]||0) : 0, topUser: top(userCount) }); });
             });
             return function(){ if (ref.current) { ref.current(); ref.current = null; } };
           }, []);
+
+          React.useEffect(function(){
+             if (refPoints.current) { refPoints.current(); refPoints.current = null; }
+             if (!window.db) return;
+             refPoints.current = window.db.collection('playedSongs').doc('userTotals').onSnapshot(function(doc){
+                var data = doc.data() || {};
+                var totals = data.totals || {};
+                var arr = [];
+                for (var u in totals) {
+                   if (totals.hasOwnProperty(u)) arr.push({u: u, c: Number(totals[u]||0)});
+                }
+                arr.sort(function(a,b){ return b.c - a.c; });
+                var top3 = arr.slice(0,3).map(function(it){ 
+                   // Capitalizar nombre
+                   var name = it.u.charAt(0).toUpperCase() + it.u.slice(1);
+                   return name + ' (' + (it.c * 25) + ')'; 
+                });
+                setG(function(prev){ return Object.assign({}, prev, { topPoints3: top3 }); });
+             });
+             return function(){ if (refPoints.current) { refPoints.current(); refPoints.current = null; } };
+          }, []);
+
           return g;
         }
         function StatsTicker(){
@@ -273,11 +318,12 @@
           var latestTxt = latest ? (String(latest.cancion||'').trim() + (latest.artista ? ' — ' + String(latest.artista).trim() : '')) : 'N/D';
           var globalUsersTop3 = Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D';
           var globalArtistsTop3 = Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D';
+          var globalPointsTop3 = Array.isArray(g.topPoints3) && g.topPoints3.length ? g.topPoints3.join(', ') : 'N/D';
           var avgTxtGlobal = 'N/D';
           if (typeof window.__globalTotalSolicitudes === 'number' && typeof window.__globalDistinctUsers === 'number' && window.__globalDistinctUsers > 0) {
             avgTxtGlobal = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
           }
-          var globalText = '<strong>HISTORIA:</strong> • <strong>🎵 Canción más pedida:</strong> '+fmt(g.topSong)+(typeof g.topSongCount==='number'?' ('+g.topSongCount+')':'')+'  •  <strong>👥 Top 3 usuarios:</strong> '+globalUsersTop3+'  •  <strong>🎤 Top 3 artistas:</strong> '+globalArtistsTop3+'  •  <strong>📊 Total solicitudes:</strong> '+(g.total||0)+'  •  <strong>📈 Promedio por usuario:</strong> '+avgTxtGlobal;
+          var globalText = '<strong>HISTORIA:</strong> • <strong>🏆 Top 3 Puntuación:</strong> '+globalPointsTop3+' • <strong>🎵 Canción más pedida:</strong> '+fmt(g.topSong)+(typeof g.topSongCount==='number'?' ('+g.topSongCount+')':'')+'  •  <strong>👥 Top 3 usuarios:</strong> '+globalUsersTop3+'  •  <strong>🎤 Top 3 artistas:</strong> '+globalArtistsTop3+'  •  <strong>📊 Total solicitudes:</strong> '+(g.total||0);
           var dayText = '📅 <strong>HOY</strong> • <strong>🎵 Última canción solicitada:</strong> '+fmt(latestTxt)+' • <strong>👥 Top 3 usuarios:</strong> '+(usersTop3Day.length?usersTop3Day.join(', '):'N/D')+' • <strong>🎤 Top 3 artistas:</strong> '+(artistsTop3Day.length?artistsTop3Day.join(', '):'N/D')+' • <strong>📝 Solicitudes:</strong> '+String(day.items.length||0);
           var sep = '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
           return e('span', { dangerouslySetInnerHTML: { __html: dayText + sep + globalText } });
@@ -363,7 +409,7 @@
               <li><button type="button" id="menu-stats-open" class="menu-item" role="menuitem">📊 Estadísticas</button></li>
               <li><button type="button" id="menu-gamification-open" class="menu-item" role="menuitem">🏆 Mi Perfil</button></li>
               <li><button type="button" id="menu-rewards-open" class="menu-item" role="menuitem">🎁 Puntos</button></li>
-              <li><button type="button" id="menu-changelog-open" class="menu-item" role="menuitem">🚀 Mejoras (v1.9)</button></li>
+              <li><button type="button" id="menu-changelog-open" class="menu-item" role="menuitem">🚀 Mejoras (v2.0)</button></li>
               <li><button type="button" id="menu-admin-open" class="menu-item" role="menuitem">⚙️ Modo Admin</button></li>
             </ul>
           </div>
@@ -541,28 +587,35 @@
         <div id="maintenance-section" class="admin-section" hidden>
           <div class="admin-row">
             <h3>🔧 Mantenimiento del Sistema</h3>
+            
             <div class="maintenance-actions">
-              <div class="field">
-                <label for="rebuild-user-input">Usuario</label>
-                <input id="rebuild-user-input" type="text" placeholder="Usuario o vacío" />
-              </div>
-              <div class="field">
-                <label for="rebuild-start-day">Inicio (YYYY-MM-DD)</label>
-                <input id="rebuild-start-day" type="text" placeholder="YYYY-MM-DD" />
-              </div>
-              <div class="field">
-                <label for="rebuild-end-day">Fin (YYYY-MM-DD)</label>
-                <input id="rebuild-end-day" type="text" placeholder="YYYY-MM-DD" />
-              </div>
-              <button type="button" id="recalculate-users" class="btn btn-success">🔄 Recalcular todos los usuarios</button>
-              <button type="button" id="diagnose-data-btn" class="btn btn-info">🔍 Diagnosticar datos de usuario</button>
-              <button type="button" id="test-user-switch-btn" class="btn btn-warning">🧪 Probar cambio de usuario</button>
-              <button type="button" id="debug-current-user-btn" class="btn btn-secondary">🔍 Debug usuario actual</button>
-              <button type="button" id="wipe-all" class="btn btn-danger">🗑️ Borrar todas las solicitudes</button>
-              <button type="button" id="clear-cache" class="btn btn-warning">🧹 Limpiar caché</button>
-              <button type="button" id="backup-data" class="btn btn-info">💾 Respaldar datos</button>
-              <button type="button" id="rebuild-played-btn" class="btn btn-secondary">🧩 Reconstruir reproducidas históricas</button>
+               <!-- Botones esenciales de mantenimiento -->
+               <button type="button" id="recalculate-users" class="btn btn-success">🔄 Recalcular Puntos (Fix)</button>
+               <button type="button" id="rebuild-played-btn" class="btn btn-secondary">🔄 Recontar Reproducidas</button>
+               <button type="button" id="wipe-all" class="btn btn-danger">🗑️ Borrar día seleccionado</button>
             </div>
+
+            <hr style="margin: 20px 0; border: 0; border-top: 1px solid #ddd;">
+            
+            <h3>💰 Compensación Manual de Puntos</h3>
+            <div class="maintenance-actions" style="background: rgba(0,0,0,0.03); padding: 15px; border-radius: 8px;">
+               <div class="field">
+                 <label>Usuario a compensar:</label>
+                 <select id="comp-user-select" class="admin-select">
+                   <option value="">Seleccionar usuario...</option>
+                 </select>
+               </div>
+               <div class="field">
+                 <label>Puntos a otorgar (puede ser negativo):</label>
+                 <input type="number" id="comp-points-input" placeholder="Ej: 500" class="admin-input">
+               </div>
+               <div class="field">
+                 <label>Motivo (opcional):</label>
+                 <input type="text" id="comp-reason-input" placeholder="Ej: Error de sistema, Bono especial" class="admin-input">
+               </div>
+               <button type="button" id="grant-comp-points-btn" class="btn btn-primary">🎁 Otorgar Puntos</button>
+            </div>
+
           </div>
         </div>
 
@@ -575,6 +628,35 @@
       
 
       <!-- Modales -->
+      <!-- Log de Actualizaciones (Para el usuario) -->
+      <div id="updates-log-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="updates-log-title">
+          <h2 id="updates-log-title">🚀 Novedades y Mejoras</h2>
+          <div class="updates-content">
+            <div class="update-item">
+               <h4>📊 Estadísticas 100% Precisas</h4>
+               <p>Hemos rediseñado el sistema de conteo para asegurar que tus números en "Mi Perfil" y "Transparencia" sean idénticos y exactos.</p>
+               <ul>
+                 <li>"Canciones Pedidas" ahora cuenta todo tu historial completo.</li>
+                 <li>"Canciones Reproducidas" se actualiza al instante al marcar/desmarcar.</li>
+                 <li>Los números son consistentes entre todas las vistas.</li>
+               </ul>
+            </div>
+            <div class="update-item">
+               <h4>📅 Calendario de Rachas Mejorado</h4>
+               <p>El calendario ahora pinta correctamente todos los días que tuviste actividad, sin saltarse fechas por cambios de hora.</p>
+            </div>
+            <div class="update-item">
+               <h4>⚡ Actualización Instantánea</h4>
+               <p>Ahora verás los cambios en tus puntos y estadísticas inmediatamente, sin tener que recargar la página.</p>
+            </div>
+          </div>
+          <div class="actions modal-actions">
+            <button type="button" id="close-updates-log" class="btn btn-primary">Entendido</button>
+          </div>
+        </div>
+      </div>
+
       <div id="admin-modal" class="modal-overlay" hidden>
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
           <h2 id="admin-modal-title">Modo Admin</h2>
@@ -634,6 +716,15 @@
           <h2 id="changelog-modal-title">Mejoras por versión</h2>
           
           <div class="changelog-content">
+            <h3>v2.0 (ACTUAL) 🚀</h3>
+            <ul>
+              <li>📊 <strong>Estadísticas Precisas:</strong> Corrección total en el cálculo de puntos y lecturas de canciones pedidas/reproducidas.</li>
+              <li>📈 <strong>Barra de Estadísticas en Vivo:</strong> Nuevo ticker superior con datos en tiempo real de Top usuarios, canciones y artistas.</li>
+              <li>✨ <strong>Mejora Visual:</strong> Interfaz refinada y más limpia para una mejor experiencia.</li>
+              <li>🔍 <strong>Transparencia Total:</strong> Nueva sección de desglose detallado de puntos para que sepas exactamente de dónde viene cada punto.</li>
+              <li>💰 <strong>Compensación:</strong> Se detectaron errores previos en el cálculo de puntos. Los usuarios activos recibirán una bonificación automática por las molestias.</li>
+            </ul>
+
             <h3>v1.9 (actual)</h3>
           <ul>
             <li>📋 Menú reparado en laptops: posicionamiento en desktop (>768px), ancho fijo 220px y reubicación arriba si no cabe.</li>
@@ -1192,6 +1283,218 @@
       }
       const db = firebase.firestore();
       window.db = db;
+      window.START_POINTS_DAY = window.START_POINTS_DAY || '';
+      function normalizeDay(str){
+        const raw = String(str||'').trim();
+        if (!raw) return '';
+        // YYYY-MM-DD or YYYY/MM/DD
+        if (/^\d{4}[-\/]\d{2}[-\/]\d{2}$/.test(raw)) return raw.replace(/\//g,'-');
+        // DD-MM-YYYY or DD.MM.YYYY or DD/MM/YYYY
+        const m = raw.match(/^(\d{2})[\-\/.](\d{2})[\-\/.](\d{4})$/);
+        if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+        return raw;
+      }
+      window.isOnOrAfterStart = function(day){
+        const d = normalizeDay(day);
+        const s = normalizeDay(window.START_POINTS_DAY||'2025-10-27'); // Default fallback
+        return d && s ? (d >= s) : true;
+      }
+      async function determineStartDay(){
+        // HARDCODED START DATE per user requirement: 27 Oct 2025
+        window.START_POINTS_DAY = '2025-10-27';
+        return window.START_POINTS_DAY;
+      }
+
+      async function computeQuickUserPlayedSet(usuario) {
+        const rawUser = String(usuario||'').trim();
+        const user = rawUser.replace(/^@/, '');
+        const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+        const prefix = sanitize(`${user}-`);
+        const out = new Set();
+        
+        // Prioritize local storage for days we have locally
+        const localPlayedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+        const localDays = new Set(Object.keys(localPlayedMap));
+
+        try {
+          const snap = await db.collection('playedSongs').get();
+          snap.forEach(doc => {
+            const dayId = normalizeDay(doc.id||'');
+            if (dayId && typeof window.isOnOrAfterStart === 'function' && !window.isOnOrAfterStart(dayId)) return;
+            
+            // If we have local data for this day, skip Firestore (Local is authoritative for this device)
+            if (localDays.has(dayId)) return;
+
+            const d = doc.data()||{};
+            const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : (Array.isArray(d.songIds) ? d.songIds : []));
+            for (let i=0;i<arr.length;i++) {
+              const id = sanitize(arr[i]);
+              if (id.startsWith(prefix)) {
+                out.add(id);
+              }
+            }
+          });
+        } catch (_) {}
+        
+        // Add local data
+        localDays.forEach(day => {
+            if (typeof window.isOnOrAfterStart === 'function' && !window.isOnOrAfterStart(day)) return;
+            const arr = Array.isArray(localPlayedMap[day]) ? localPlayedMap[day] : [];
+            arr.forEach(x => {
+                const id = sanitize(x);
+                if (id.startsWith(prefix)) out.add(id);
+            });
+        });
+
+        return out;
+      }
+
+      function buildLocalUserPlayedSet(usuario) {
+        const norm = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
+        const localPlayedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+        const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+        const prefix = sanitize(`${norm}-`);
+        const ids = new Set();
+        const days = Object.keys(localPlayedMap||{});
+        for (let i=0;i<days.length;i++) {
+          const arr = Array.isArray(localPlayedMap[days[i]]) ? localPlayedMap[days[i]] : [];
+          for (let j=0;j<arr.length;j++) {
+            const id = sanitize(arr[j]);
+            if (id.startsWith(prefix)) ids.add(id);
+          }
+        }
+        return ids;
+      }
+
+      async function getConsistentPlayedCountForUser(usuario) {
+        try {
+          const userKey = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
+        
+
+          // 2) Conjuntos de IDs (Local + Firestore)
+          const setPlayed = await computeQuickUserPlayedSet(usuario);
+          
+          try {
+            const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',userKey).get();
+            const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+            const latest = {};
+            qs.forEach(doc => {
+              const d = doc.data()||{};
+              const day = String(d.day||'');
+              const sid = sanitize(String(d.songId||''));
+              if (!sid) return;
+              const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+              const k = `${sid}|${day}`;
+              const cur = latest[k];
+              if (!cur || ts >= cur.ts) latest[k] = { action:String(d.action||'').toLowerCase(), sid };
+            });
+            Object.keys(latest).forEach(k => { 
+              const it = latest[k]; 
+              if (it && it.action==='mark') setPlayed.add(it.sid); 
+              else if (it && it.action==='unmark') setPlayed.delete(it.sid);
+            });
+          } catch(_){ }
+          
+          return setPlayed.size;
+        } catch(_){ return 0; }
+      }
+      async function auditPlayedSourcesForUser(usuario) {
+        const userKey = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
+        const out = { user: userKey, totalsDoc: 0, events: 0, playedByDay: 0, localStorage: 0, union: 0 };
+        try { out.totalsDoc = await getQuickPlayedTotalFromHistory(usuario) || 0; } catch(_){ }
+        try {
+          const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',userKey).get();
+          const latest = {}; qs.forEach(doc => { const d = doc.data()||{}; const day = String(d.day||''); const sid = String(d.songId||'').toLowerCase().replace(/[^a-z0-9-]/g,''); const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0; const k = `${sid}|${day}`; const cur = latest[k]; if (!cur || ts >= cur.ts) latest[k] = { action:String(d.action||'').toLowerCase(), sid }; });
+          const set = new Set(); Object.keys(latest).forEach(k => { const it = latest[k]; if (it && it.action==='mark') set.add(it.sid); });
+          out.events = set.size;
+          const union = new Set([...set]);
+          const snap = await db.collection('playedSongs').get();
+          snap.forEach(doc => { const arr = ((doc.data()||{}).songs)||[]; (arr||[]).forEach(x => { const id = String(x||'').toLowerCase().replace(/[^a-z0-9-]/g,''); if (id.startsWith(`${userKey}-`)) { union.add(id); } }); });
+          out.playedByDay = union.size - set.size;
+          try { const setLocal = buildLocalUserPlayedSet(usuario); out.localStorage = setLocal.size; setLocal.forEach(id=>union.add(id)); } catch(_){ }
+          out.union = union.size;
+        } catch(_){ }
+        return out;
+      }
+
+      async function updateUserPlayedCounter(usuario, day, delta) {
+        try {
+          const u = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
+          const d = normalizeDay(day||'');
+          if (!u || !d) return;
+          const ref = db.collection('playedSongs').doc('userTotals');
+          await ref.set({ totals: {}, counts: {}, lastUpdated: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+          const payload = { lastUpdated: firebase.firestore.FieldValue.serverTimestamp() };
+          payload[`totals.${u}`] = firebase.firestore.FieldValue.increment(delta);
+          payload[`counts.${d}.${u}`] = firebase.firestore.FieldValue.increment(delta);
+          await ref.set(payload, { merge: true });
+        } catch(_){}
+      }
+      async function getQuickPlayedTotalFromHistory(usuario) {
+        try {
+          const u = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
+          if (!u) return 0;
+          const doc = await db.collection('playedSongs').doc('userTotals').get();
+          if (!doc.exists) return 0;
+          const data = doc.data()||{};
+          const totals = data.totals || {};
+          return Number(totals[u]||0) || 0;
+        } catch(_){ return 0; }
+      }
+      // ======= Aggregador incremental por usuario (evita recorrer día por día) =======
+      window.__userPlayedAgg = window.__userPlayedAgg || { ids:{}, totals:{} };
+      function loadUserPlayedAgg(){
+        try {
+          const idsRaw = localStorage.getItem('user_played_ids') || '{}';
+          const totalsRaw = localStorage.getItem('user_played_totals') || '{}';
+          const idsObj = JSON.parse(idsRaw);
+          const totalsObj = JSON.parse(totalsRaw);
+          const ids = {};
+          Object.keys(idsObj).forEach(k => { ids[k] = new Set(Array.isArray(idsObj[k]) ? idsObj[k] : []); });
+          window.__userPlayedAgg = { ids, totals: totalsObj };
+        } catch(_){ window.__userPlayedAgg = { ids:{}, totals:{} }; }
+      }
+      function saveUserPlayedAgg(){
+        try {
+          const idsObj = {};
+          Object.keys(window.__userPlayedAgg.ids||{}).forEach(k => { idsObj[k] = Array.from(window.__userPlayedAgg.ids[k]||new Set()); });
+          localStorage.setItem('user_played_ids', JSON.stringify(idsObj));
+          localStorage.setItem('user_played_totals', JSON.stringify(window.__userPlayedAgg.totals||{}));
+        } catch(_){ }
+      }
+      function updateAggForDocForUser(u, reqPrefixes, day, arr){
+        const user = String(u||'').trim().replace(/^@/,'');
+        const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+        const prefix = sanitize(`${user}-`);
+        const idsMap = window.__userPlayedAgg.ids || (window.__userPlayedAgg.ids = {});
+        const totalsMap = window.__userPlayedAgg.totals || (window.__userPlayedAgg.totals = {});
+        const key = user.toLowerCase();
+        const set = idsMap[key] || (idsMap[key] = new Set());
+        if (day && !isOnOrAfterStart(day)) return;
+        for (let i=0;i<arr.length;i++){
+          const id = sanitize(arr[i]);
+          if (!id.startsWith(prefix)) continue;
+          if (reqPrefixes && reqPrefixes.size){
+            let ok = false;
+            for (const pf of reqPrefixes){ if (id.startsWith(pf)) { ok = true; break; } }
+            if (!ok) continue;
+          }
+          if (!set.has(id)) {
+            set.add(id);
+            totalsMap[key] = (totalsMap[key]||0) + 1;
+          }
+        }
+      }
+      function getImmediatePlayedCountFromAgg(usuario){
+        try {
+          const key = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
+          const totals = window.__userPlayedAgg.totals || {};
+          const ids = window.__userPlayedAgg.ids || {};
+          if (typeof totals[key] === 'number') return totals[key];
+          const set = ids[key];
+          return (set && set.size) ? set.size : 0;
+        } catch(_){ return 0; }
+      }
 
       firebase.auth().onAuthStateChanged((user) => {
         if (!user) {
@@ -1199,6 +1502,12 @@
             console.error('Error al iniciar sesión anónima:', err);
           });
         }
+        determineStartDay().then(() => {
+          try {
+            const u = (typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser());
+            if (u) startCloudRealtimeForUser(u);
+          } catch(_){ }
+        }).catch(()=>{});
       });
       (function subscribeAllUserPoints(){
         try {
@@ -1221,12 +1530,33 @@
               if (typeof data.bestStreak === 'number') d.streaks.best = data.bestStreak;
               if (typeof data.lastActivity === 'string') d.streaks.lastActivity = data.lastActivity;
               all[u] = d;
-            });
-            localStorage.setItem('gamificationData', JSON.stringify(all));
-            try { if (typeof window.refreshStatsTicker === 'function') window.refreshStatsTicker(); } catch (_){}
           });
-        } catch (_){}
+          localStorage.setItem('gamificationData', JSON.stringify(all));
+          try { if (typeof window.refreshStatsTicker === 'function') window.refreshStatsTicker(); } catch (_)
+          {}
+        });
+      } catch (_){ }
       })();
+
+      // Verificación integral de toggle y estadísticas
+      window.runToggleVerification = async function(targetUser){
+        const usuario = String(targetUser||getCurrentUser()||'').trim().toLowerCase();
+        const day = document.getElementById('day-select')?.value || '';
+        const items = Array.from(document.querySelectorAll('#solicitudes-list .item'));
+        const li = items.find(x => String(x.dataset.username||'').toLowerCase() === usuario) || items[0];
+        if (!li) return { ok:false, reason:'no_items' };
+        const songId = li.dataset.songId;
+        const beforeLocal = countLocalPlayedForUser(usuario);
+        const beforeCloud = await getQuickPlayedTotalFromHistory(usuario);
+        await toggleSongPlayed(li, songId, day);
+        await new Promise(r => setTimeout(r, 300));
+        const afterLocal = countLocalPlayedForUser(usuario);
+        const afterCloud = await getQuickPlayedTotalFromHistory(usuario);
+        const deltaLocal = afterLocal - beforeLocal;
+        const deltaCloud = afterCloud - beforeCloud;
+        console.log('AUTOTEST TOGGLE:', { usuario, day, songId, beforeLocal, afterLocal, deltaLocal, beforeCloud, afterCloud, deltaCloud });
+        return { ok:true, usuario, day, beforeLocal, afterLocal, deltaLocal, beforeCloud, afterCloud, deltaCloud };
+      }
 
       const solicitudesList = document.getElementById('solicitudes-list');
       const emptyEl = document.getElementById('empty');
@@ -1279,15 +1609,17 @@
         const isEditing = solicitudesList.classList.contains('editing');
 
         items.forEach((it, index) => {
-          const isVip = vipSet.has(it.usuario);
-          const isZ0Vip = z0VipSet.has(it.usuario);
-          const isDonador = donadorSet.has(it.usuario);
+          const unameLc = String(it.usuario||'').trim().toLowerCase();
+          const isVip = vipSet.has(unameLc);
+          const isZ0Vip = z0VipSet.has(unameLc);
+          const isDonador = donadorSet.has(unameLc);
           const li = document.createElement('li');
 
           // Crear ID único para la canción
           const songId = `${it.usuario}-${it.cancion}-${it.artista}-${it.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
           li.dataset.songId = songId;
           li.dataset.username = (it.usuario || '').trim().toLowerCase();
+          li.dataset.day = String(it.day || (it.fecha||'').split('T')[0] || '').trim();
           if (it.id) li.dataset.docId = it.id;
 
           if (isZ0Vip) {
@@ -1384,6 +1716,38 @@
               if (localPlayed[day]) {
                 localPlayed[day] = localPlayed[day].filter(id => id !== songId);
                 localStorage.setItem('playedSongs', JSON.stringify(localPlayed));
+              }
+
+              // NEW: Limpiar estado reproducida de Firebase (asegurar consistencia)
+              if (window.db) {
+                try {
+                   const playedRef = window.db.collection('playedSongs').doc(day);
+                   const playedDoc = await playedRef.get();
+                   if (playedDoc.exists) {
+                     const pData = playedDoc.data() || {};
+                     const pSongs = Array.isArray(pData.songs) ? pData.songs : (Array.isArray(pData.list) ? pData.list : []);
+                     if (pSongs.includes(songId)) {
+                       // Estaba marcada en la nube, borrarla y descontar
+                       await playedRef.update({
+                         songs: firebase.firestore.FieldValue.arrayRemove(songId),
+                         lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                       });
+                       const uName = (it.usuario || '').trim();
+                       await updateUserPlayedCounter(uName, day, -1);
+                       await registerToggleEvent({
+                         action: 'unmark',
+                         usuario: uName,
+                         cancion: it.cancion,
+                         artista: it.artista,
+                         day: day,
+                         hora: it.hora,
+                         songId: songId
+                       });
+                     }
+                   }
+                } catch(cloudErr) {
+                   console.warn('Error limpiando canción reproducida de Firebase al borrar:', cloudErr);
+                }
               }
 
               // Quitar del arreglo y re-render
@@ -1673,8 +2037,9 @@
             return;
           }
           
-          // Obtener el día actual del selector o usar el pasado como parámetro
-          const currentDay = passedDay || document.getElementById('day-select')?.value || '';
+          // Obtener el día actual del selector, parámetro o dataset del elemento
+          const dayFromItem = String(element?.dataset?.day || '').trim();
+          const currentDay = passedDay || document.getElementById('day-select')?.value || dayFromItem || '';
           
           if (!currentDay) {
             console.warn('No se pudo obtener el día actual');
@@ -1719,20 +2084,56 @@
             if (window.db) {
               const playedSongsRef = window.db.collection('playedSongs').doc(currentDay);
               
-              if (isPlayed) {
-                // Remover canción de la lista en Firebase
-                await playedSongsRef.update({
-                  songs: firebase.firestore.FieldValue.arrayRemove(songId),
-                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                });
-              } else {
-                // Agregar canción a la lista en Firebase
-                await playedSongsRef.set({
-                  songs: firebase.firestore.FieldValue.arrayUnion(songId),
-                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
-                  day: currentDay
-                }, { merge: true });
-              }
+              // Asegurar existencia del documento
+              await playedSongsRef.set({ day: currentDay }, { merge: true });
+              
+              // Aplicar operación de agregado/eliminado con merge para evitar fallos si no existe
+              await playedSongsRef.set({
+                songs: isPlayed ? firebase.firestore.FieldValue.arrayRemove(songId)
+                                : firebase.firestore.FieldValue.arrayUnion(songId),
+                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+              }, { merge: true });
+
+          // Actualizar contador por usuario en historial (para conteo inmediato desde Firebase)
+          const userForCounter = (element.dataset.username || '').trim();
+          await updateUserPlayedCounter(userForCounter, currentDay, isPlayed ? -1 : 1);
+
+              // Registrar evento de toggle en la web
+              const usuarioText = (element.querySelector('.col.col-usuario, .usuario')?.textContent || userForCounter || '').trim();
+              const cancionText = (element.querySelector('.col.col-cancion')?.textContent || '').trim();
+              const artistaText = (element.querySelector('.col.col-artista')?.textContent || '').trim();
+              const horaText = (element.querySelector('.col.col-time')?.textContent || '').trim();
+              await registerToggleEvent({
+                action: isPlayed ? 'unmark' : 'mark',
+                usuario: usuarioText,
+                cancion: cancionText,
+                artista: artistaText,
+                day: currentDay,
+                hora: horaText,
+                songId: songId
+              });
+
+              // Fallback robusto: disparar un recuento consistente para este usuario
+              try {
+                window.__recountTimers = window.__recountTimers || {};
+                const key = String(userForCounter||'').toLowerCase();
+                clearTimeout(window.__recountTimers[key]);
+                window.__recountTimers[key] = setTimeout(async () => {
+                  try { await recountToggleTotalsForUser(userForCounter); } catch (_){ }
+                }, 400);
+              } catch(_){ }
+
+              // Actualización optimista inmediata del set de toggles en memoria
+              try {
+                const normUser = String(userForCounter||'').trim().replace(/^@/,'').toLowerCase();
+                const sid = String(songId||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+                window.__userToggleSet = window.__userToggleSet || {};
+                const set = window.__userToggleSet[normUser] || (window.__userToggleSet[normUser] = new Set());
+                if (isPlayed) { set.delete(sid); } else { set.add(sid); }
+                window.__toggleReady = window.__toggleReady || {}; window.__toggleReady[normUser] = true;
+                setPlayedStat(set.size);
+              } catch(_){ }
+              
             }
           } catch (firebaseError) {
             console.warn('Error sincronizando con Firebase, usando solo localStorage:', firebaseError);
@@ -1742,14 +2143,45 @@
           setTimeout(() => {
             forcePlayedSongStyles();
           }, 50);
+
+          // Actualizar contadores en tiempo real para el usuario del perfil visible
+          try {
+            const username = String((element.dataset.username || '').trim().toLowerCase());
+            const currentProfile = String((typeof getCurrentProfileUser === 'function' ? getCurrentProfileUser() : getCurrentUser()) || '').trim().toLowerCase();
+            if (username && currentProfile === username) {
+              const key = String(username||'').toLowerCase();
+              const set = window.__userToggleSet && window.__userToggleSet[key];
+              const playedCnt = (set && set.size) ? set.size : 0;
+              const basePts = playedCnt * 25;
+              setPlayedStat(playedCnt);
+              const baseEl = document.getElementById('breakdown-played-base');
+              if (baseEl) baseEl.textContent = String(basePts);
+              const modal = document.getElementById('gamification-modal');
+              if (modal && !modal.hidden) {
+                try {
+                  const localData = getLocalGamificationData(username) || {};
+                  await renderPersonalStatsForUser(localData, username);
+                } catch(_){ }
+                try {
+                  const bdPanel = document.getElementById('gamification-breakdown');
+                  if (bdPanel && bdPanel.classList.contains('active')) {
+                    await renderPointsBreakdownForUser(username, true);
+                  }
+                } catch(_){ }
+              }
+            }
+          } catch(_){}
           
-          // Actualizar estadísticas en tiempo real si el panel está visible
+          // Actualizar estadísticas en tiempo real si el panel está visible y corresponde al usuario de la canción
           try {
             const statsPanel = document.getElementById('gamification-stats');
-            if (statsPanel && statsPanel.classList.contains('active')) {
-              const u = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser();
-              const data = getGamificationDataForUser(u) || {};
-              await renderPersonalStatsForUser(data, u);
+            const username = String((element.dataset.username || '').trim().toLowerCase());
+            const currentProfile = String((typeof getCurrentProfileUser === 'function' ? getCurrentProfileUser() : getCurrentUser()) || '').trim().toLowerCase();
+            if (statsPanel && statsPanel.classList.contains('active') && username && currentProfile === username) {
+              const key = String(username||'').toLowerCase();
+              const set = window.__userToggleSet && window.__userToggleSet[key];
+              const cnt = (set && set.size) ? set.size : 0;
+              setPlayedStat(cnt);
             }
           } catch (_){}
           
@@ -1758,6 +2190,13 @@
             const username = (element.dataset.username || '').trim();
             if (username) {
               await analyzeAndGrantPointsForUser(username);
+              try { await updateUserHeaderUI(username); } catch(_) {}
+              // Si estamos en la pestaña de Transparencia viendo a este usuario, actualizar
+              const panel = document.getElementById('gamification-breakdown');
+              const curProfile = getCurrentProfileUser();
+              if (panel && panel.classList.contains('active') && String(curProfile||'').toLowerCase() === String(username||'').toLowerCase()) {
+                 await renderPointsBreakdownForUser(username, true);
+              }
             }
           } catch (e) {
             console.warn('No se pudo recalcular puntos tras marcar reproducida:', e);
@@ -1766,6 +2205,144 @@
         } catch (error) {
           console.error('Error en toggleSongPlayed:', error);
         }
+      }
+
+      async function registerToggleEvent(payload) {
+        try {
+          const base = typeof generateDeviceFingerprint === 'function' ? generateDeviceFingerprint() : '';
+          const norm = String((payload.usuario||'').trim().replace(/^@/,'')).toLowerCase();
+          const idNorm = String((payload.songId||'')).toLowerCase().replace(/[^a-z0-9-]/g,'');
+          const data = {
+            type: 'togglePlayed',
+            action: String(payload.action||'').toLowerCase(),
+            usuario: norm,
+            usuarioRaw: String(payload.usuario||''),
+            cancion: String(payload.cancion||''),
+            artista: String(payload.artista||''),
+            day: String(payload.day||''),
+            hora: String(payload.hora||''),
+            songId: idNorm,
+            deviceId: base,
+            ts: firebase.firestore.FieldValue.serverTimestamp()
+          };
+          const docId = `toggle-${norm}-${idNorm}-${String(payload.day||'')}`.toLowerCase().replace(/[^a-z0-9-]/g,'');
+          await db.collection('systemEvents').doc(docId).set(data, { merge: true });
+        } catch (_){ }
+      }
+
+      
+
+      async function backfillToggleEventsForUser(usuario) {
+        try {
+          const key = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
+          const flag = `backfill_toggle_${key}`;
+          if (localStorage.getItem(flag) === 'done') return;
+          const snap = await db.collection('playedSongs').get();
+          snap.forEach(async (doc) => {
+            const dayId = String(doc.id||'');
+            const d = doc.data()||{};
+            const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : (Array.isArray(d.songIds) ? d.songIds : []));
+            for (let i=0;i<arr.length;i++){
+              const id = String(arr[i]||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+              if (id.startsWith(`${key}-`)) {
+                await registerToggleEvent({
+                  action: 'mark',
+                  usuario: key,
+                  cancion: '',
+                  artista: '',
+                  day: dayId,
+                  hora: '',
+                  songId: id
+                });
+                try {
+                  window.__userToggleSet = window.__userToggleSet || {};
+                  const set = window.__userToggleSet[key] || (window.__userToggleSet[key] = new Set());
+                  set.add(id);
+                } catch(_){}
+              }
+            }
+          });
+          // Segunda pasada: backfill desde localStorage (solo por usuario)
+          try {
+            const localMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+            const days = Object.keys(localMap||{});
+            for (let di=0; di<days.length; di++) {
+              const dayId = String(days[di]||'').trim();
+              if (!dayId) continue;
+              const arr = Array.isArray(localMap[dayId]) ? localMap[dayId] : [];
+              for (let i=0;i<arr.length;i++) {
+                const id = String(arr[i]||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+                if (!id.startsWith(`${key}-`)) continue;
+                await registerToggleEvent({
+                  action: 'mark',
+                  usuario: key,
+                  cancion: '',
+                  artista: '',
+                  day: dayId,
+                  hora: '',
+                  songId: id
+                });
+                try {
+                  window.__userToggleSet = window.__userToggleSet || {};
+                  const set = window.__userToggleSet[key] || (window.__userToggleSet[key] = new Set());
+                  set.add(id);
+                } catch(_){}
+              }
+            }
+          } catch(_){}
+          localStorage.setItem(flag, 'done');
+          try { await cleanToggleEventsForUser(key); } catch(_){ }
+          window.__toggleReady = window.__toggleReady || {};
+          window.__toggleReady[key] = true;
+        } catch(_){ }
+      }
+
+      async function cleanToggleEventsForUser(usuario) {
+        try {
+          const key = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
+          const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',key).get();
+          const latest = {};
+          const docs = [];
+          qs.forEach(doc => {
+            const d = doc.data()||{};
+            const day = String(d.day||'');
+            const sid = String(d.songId||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+            const canonical = `toggle-${key}-${sid}-${day}`.toLowerCase().replace(/[^a-z0-9-]/g,'');
+            const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+            const k = `${sid}|${day}`;
+            docs.push({ id: doc.id, canonical, ts, action: String(d.action||'').toLowerCase(), sid, day });
+            const cur = latest[k];
+            if (doc.id === canonical) {
+              latest[k] = { id: doc.id, canonical, ts, action: String(d.action||'').toLowerCase(), sid, day };
+            } else if (!cur || ts >= cur.ts) {
+              latest[k] = { id: doc.id, canonical, ts, action: String(d.action||'').toLowerCase(), sid, day };
+            }
+          });
+          for (let i=0;i<docs.length;i++){
+            const item = docs[i];
+            const k = `${item.sid}|${item.day}`;
+            const keep = latest[k];
+            if (!keep) continue;
+            if (item.id !== keep.id) await db.collection('systemEvents').doc(item.id).delete();
+          }
+          const keys = Object.keys(latest);
+          for (let i=0;i<keys.length;i++){
+            const it = latest[keys[i]];
+            if (it.id !== it.canonical) {
+              const data = { type:'togglePlayed', usuario:key, songId:it.sid, day:it.day, action:it.action, ts: firebase.firestore.FieldValue.serverTimestamp() };
+              await db.collection('systemEvents').doc(it.canonical).set(data, { merge:true });
+              await db.collection('systemEvents').doc(it.id).delete();
+              it.id = it.canonical;
+            }
+          }
+          window.__userToggleSet = window.__userToggleSet || {};
+          const newSet = new Set();
+          keys.forEach(k => { const it = latest[k]; if (it.action === 'mark' && it.sid) newSet.add(it.sid); });
+          window.__userToggleSet[key] = newSet;
+          try { setPlayedStat(newSet.size); } catch(_){}
+          window.__toggleReady = window.__toggleReady || {};
+          window.__toggleReady[key] = true;
+        } catch(_){ }
       }
 
       // Función para mostrar el estado del dispositivo (silenciosa)
@@ -2017,9 +2594,10 @@
             const cancion = String(data.cancion || '').trim();
             const artista = String(data.artista || '').trim();
             const ts = data.ts || null;
+            const horaStr = String(data.hora || '').trim();
             if (!usuario) return;
             distinctUsersDay.add(usuario);
-            const sid = makeSongId(usuario, cancion, artista, ts);
+            const sid = makeSongId(usuario, cancion, artista, ts, horaStr);
             if (playedSet.has(sid)) {
               const prev = perUser.get(usuario) || { played: 0, activeDays: 0 };
               prev.played += 1;
@@ -2138,7 +2716,8 @@
                 cancion: it.cancion,
                 artista: it.artista,
                 genero: it.genero,
-                hora: toHour(it.time),
+                hora: it.hora || toHour(it.time),
+                time: it.time,
                 day: dayValue
               }));
           }
@@ -2262,7 +2841,7 @@
           snap.forEach((doc) => {
             const { name } = doc.data();
             if (name) {
-              vipSet.add(name);
+              vipSet.add(String(name).trim().toLowerCase());
               const li = document.createElement('li');
               li.innerHTML = `
                 <span>${name}</span>
@@ -2301,7 +2880,7 @@
           snap.forEach((doc) => {
             const { name } = doc.data();
             if (name) {
-              z0VipSet.add(name);
+              z0VipSet.add(String(name).trim().toLowerCase());
               if (z0VipListEl) {
                 const li = document.createElement('li');
                 li.innerHTML = `
@@ -2354,7 +2933,7 @@
                 return;
               }
               
-              donadorSet.add(name);
+              donadorSet.add(String(name).trim().toLowerCase());
               if (donadorListEl) {
                 const li = document.createElement('li');
                 li.innerHTML = `
@@ -3036,79 +3615,13 @@
           }
         }
       });
-
-      // Event listener para diagnóstico de datos
-      diagnoseDataBtn?.addEventListener('click', async () => {
-        const userInput = prompt('Ingresa el nombre del usuario a diagnosticar (deja vacío para el usuario actual):');
-        const targetUser = userInput?.trim() || getCurrentUser();
-        
-        try {
-          diagnoseDataBtn.disabled = true;
-          diagnoseDataBtn.textContent = '🔍 Diagnosticando...';
-          
-          const results = await diagnoseSolicitudesIssues(targetUser);
-          
-          alert(`Diagnóstico completado para ${targetUser}:\n\n` +
-                `Firestore: ${results.firestoreCount} solicitudes\n` +
-                `localStorage directo: ${results.localStorageCount} solicitudes\n` +
-                `localStorage por día: ${results.byDayCount} solicitudes\n` +
-                `Función combinada: ${results.combinedCount} solicitudes\n\n` +
-                `Revisa la consola para más detalles.`);
-        } catch (error) {
-          console.error('Error en diagnóstico:', error);
-          alert('Error al ejecutar diagnóstico. Revisa la consola.');
-        } finally {
-          diagnoseDataBtn.disabled = false;
-          diagnoseDataBtn.textContent = '🔍 Diagnosticar datos de usuario';
-        }
-      });
-
-      // Event listener para prueba de cambio de usuario
-      document.getElementById('test-user-switch-btn')?.addEventListener('click', async () => {
-        const testUser = prompt('Ingresa el nombre del usuario para probar:');
-        if (testUser?.trim()) {
-          console.log(`🧪 INICIANDO PRUEBA DE CAMBIO DE USUARIO: ${testUser}`);
-          
-          try {
-            // Forzar procesamiento del usuario
-            await analyzeAndGrantPointsForUser(testUser.trim(), true);
-            
-            // Cambiar al usuario
-            await switchToUser(testUser.trim());
-            
-            // Abrir modal si no está abierto
-            const modal = document.getElementById('gamification-modal');
-            if (modal && modal.hidden) {
-              modal.hidden = false;
-            }
-            
-            console.log(`✅ PRUEBA COMPLETADA para usuario: ${testUser}`);
-          } catch (error) {
-            console.error('❌ Error en prueba:', error);
-            alert('Error en la prueba. Revisa la consola.');
-          }
-        }
-      });
-
-      // Event listener para debug del usuario actual
-      document.getElementById('debug-current-user-btn')?.addEventListener('click', () => {
-        console.log('🔍 === DEBUG ESTADO ACTUAL ===');
-        console.log(`getCurrentUser(): ${getCurrentUser()}`);
-        console.log(`getCurrentSelectedUser(): ${getCurrentSelectedUser()}`);
-        console.log(`currentSelectedUser variable: ${currentSelectedUser}`);
-        
-        const selector = document.getElementById('gamification-user-select');
-        console.log(`Valor del selector: ${selector?.value}`);
-        console.log(`Opciones del selector:`, Array.from(selector?.options || []).map(o => o.value));
-        
-        const data = getGamificationDataForUser();
-        console.log(`Datos del usuario actual:`, data);
-        
-        const allData = localStorage.getItem('gamificationData');
-        console.log(`Todos los datos en localStorage:`, JSON.parse(allData || '{}'));
-        
-        console.log('🔍 === FIN DEBUG ===');
-      });
+      
+      /* 
+         BLOQUE ELIMINADO: Listeners de herramientas de diagnóstico y prueba eliminados por limpieza.
+         - diagnoseDataBtn listener removed
+         - test-user-switch-btn listener removed
+         - debug-current-user-btn listener removed
+      */
 
       daySelect?.addEventListener('change', () => {
         if (daySelect.value) {
@@ -3147,7 +3660,7 @@
           localPlayedMapDays.forEach(d => { if (d) daysSet.add(d); });
         } catch (_) {}
         try { if (typeof subscribeSelectedBadges === 'function') subscribeSelectedBadges(); } catch (_) {}
-        try { ensureStatsTicker(); startStatsTicker(); } catch (_) {}
+        try { if (shouldShowStatsTicker()) { ensureStatsTicker(); startStatsTicker(); } } catch (_) {}
         console.log('✅ Suscripciones iniciadas');
         await renderAllUsersSelect();
         if (daySelect.value) {
@@ -3160,6 +3673,13 @@
   </script>
 
   <script>
+    function shouldShowStatsTicker() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('showTicker') === '1') return true;
+        return localStorage.getItem('showStatsTicker') === '1';
+      } catch (_) { return false; }
+    }
     function ensureStatsTicker() {
       if (!document.getElementById('stats-ticker')) {
         const styles = document.createElement('style');
@@ -3534,6 +4054,10 @@
             break;
           case 'maintenance':
             if (maintenanceSection) maintenanceSection.hidden = false;
+            // Poblar selector de compensación si existe la función
+            if (typeof window.populateAdminCompensationSelector === 'function') {
+               window.populateAdminCompensationSelector();
+            }
             break;
         }
       }
@@ -3614,6 +4138,64 @@
       menuSearchOpen?.addEventListener('click', () => {
         closeMenu();
         document.getElementById('search-input')?.focus();
+      });
+
+      // === COMPENSACIÓN MANUAL DE PUNTOS (Listener) ===
+      document.getElementById('grant-comp-points-btn')?.addEventListener('click', async () => {
+         const select = document.getElementById('comp-user-select');
+         const user = (select ? select.value : '').trim();
+         const points = Number(document.getElementById('comp-points-input')?.value || 0);
+         const reason = (document.getElementById('comp-reason-input')?.value || '').trim() || 'Manual adjustment';
+         
+         if (!user) { alert('Por favor selecciona un usuario'); return; }
+         if (points === 0) { alert('Por favor ingresa una cantidad de puntos distinta de 0'); return; }
+         
+         const confirmed = await showConfirmation({
+            icon: '🎁',
+            title: 'Otorgar Puntos Manualmente',
+            message: `¿Estás seguro de otorgar ${points} puntos a ${user}?\nMotivo: ${reason}`,
+            confirmText: 'Sí, Otorgar',
+            cancelText: 'Cancelar'
+         });
+         
+         if (confirmed) {
+             const btn = document.getElementById('grant-comp-points-btn');
+             if(btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
+             try {
+                const norm = String(user).toLowerCase().replace(/^@/,'');
+                const docRef = db.collection('userStats').doc(norm);
+                
+                // Usar transacción para asegurar consistencia
+                await db.runTransaction(async (t) => {
+                   const doc = await t.get(docRef);
+                   const current = doc.exists ? (doc.data().totalPoints || 0) : 0;
+                   const newTotal = Math.max(0, current + points);
+                   
+                   t.set(docRef, {
+                      totalPoints: newTotal,
+                      lastManualAdjustment: {
+                         amount: points,
+                         reason: reason,
+                         at: firebase.firestore.FieldValue.serverTimestamp(),
+                         by: 'Admin'
+                      },
+                      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                   }, { merge: true });
+                });
+                
+                showSuccessNotification(`✅ Se otorgaron ${points} puntos a ${user}.`);
+                // Limpiar inputs
+                if(select) select.value = '';
+                document.getElementById('comp-points-input').value = '';
+                document.getElementById('comp-reason-input').value = '';
+                
+             } catch(e) {
+                console.error(e);
+                showErrorNotification('Error al otorgar puntos: ' + e.message);
+             } finally {
+                if(btn) { btn.disabled = false; btn.textContent = '🎁 Otorgar Puntos'; }
+             }
+         }
       });
       
       daySelect?.addEventListener('change', () => {
@@ -4024,7 +4606,8 @@
                 cancion: data.cancion,
                 artista: data.artista,
                 day: data.day,
-                ts: data.ts ? data.ts.toMillis() : Date.now()
+                ts: data.ts ? data.ts.toMillis() : Date.now(),
+                hora: data.hora || ''
               });
             }
           });
@@ -4050,7 +4633,8 @@
                 usuario: s.usuario,
                 cancion: s.cancion,
                 artista: s.artista,
-                ts: s.time
+                ts: s.time,
+                hora: s.hora || ''
               });
             }
           });
@@ -4341,6 +4925,36 @@
       const rewardsUserSelect = document.getElementById('rewards-user-select');
       const rewardsUserInfo = document.getElementById('rewards-user-info');
       const rewardsUserPoints = document.getElementById('rewards-user-points');
+      async function updateRewardsPoints(u){
+        try {
+          const bd = await computeUserBreakdown(u);
+          if (rewardsUserPoints) rewardsUserPoints.textContent = String(bd.total || 0);
+          if (rewardsUserInfo) rewardsUserInfo.textContent = u || 'Selecciona un usuario';
+        } catch (_) {
+          if (rewardsUserPoints) rewardsUserPoints.textContent = '0';
+        }
+      }
+      rewardsOpenBtn?.addEventListener('click', async () => {
+        const u = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser();
+        await updateRewardsPoints(u);
+        rewardsModal.hidden = false;
+        renderPointsBreakdownExplanation();
+      });
+      rewardsUserSelect?.addEventListener('change', async () => {
+        const u = rewardsUserSelect.value || (typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser());
+        await updateRewardsPoints(u);
+      });
+      rewardsOpenBtn?.addEventListener('click', async () => {
+        try {
+          const u = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser();
+          const data = getGamificationDataForUser(u) || {};
+          await renderPersonalStatsForUser(data, u);
+          rewardsModal.hidden = false;
+          renderPointsBreakdownExplanation();
+        } catch (_){
+          rewardsModal.hidden = false;
+        }
+      });
       document.addEventListener('click', (e) => {
         const btn = e.target && e.target.closest('.points-tab');
         if (!btn) return;
@@ -5558,7 +6172,7 @@
           console.log(`📊 Generando actividad individual para ${username} (últimos ${days} días)`);
           
           // Usar la función generateUserActivity para generar datos individuales consistentes
-          const userActivity = generateUserActivity(username, days);
+          const userActivity = await generateUserActivity(username, days);
           
           console.log(`✅ Actividad generada para ${username}:`, userActivity);
           console.log(`📅 Días con actividad: ${Object.keys(userActivity).filter(day => userActivity[day] > 0).length}`);
@@ -5578,7 +6192,6 @@
           console.error('Error renderizando estadísticas personales:', error);
           const elements = [
             'personal-total-songs',
-            'personal-total-played',
             'personal-unique-artists', 
             'personal-active-days',
             'personal-rank'
@@ -5793,7 +6406,7 @@
     window.__calendarNavInit__ = true;
   }
         await renderStreakCalendar();
-        gamificationModal.hidden = false;
+        if (gamificationModal) gamificationModal.hidden = false;
       });
       
       // Función para cargar solicitudes basada en el día seleccionado
@@ -5856,11 +6469,29 @@
              window.loadSolicitudes();
            }
         }
+
+        // Auto-test: ejecutar verificación automática si se incluye ?autotest=1
+        try {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('autotest') === '1') {
+            setTimeout(async () => {
+              try {
+                const u = (typeof getCurrentSelectedUser === 'function') ? getCurrentSelectedUser() : getCurrentUser();
+                if (typeof window.runToggleVerification === 'function') {
+                  const res = await window.runToggleVerification(u);
+                  console.log('AUTOTEST RESULT:', res);
+                }
+              } catch (e) {
+                console.log('AUTOTEST ERROR:', e);
+              }
+            }, 1500);
+          }
+        } catch (_) {}
       });
 
       // Event listener para el botón X de cerrar
       document.getElementById('gamification-close-x')?.addEventListener('click', () => {
-        gamificationModal.hidden = true;
+        if (gamificationModal) gamificationModal.hidden = true;
       });
       
       // Función para analizar automáticamente nuevos usuarios
@@ -5967,6 +6598,23 @@
       `;
       document.head.appendChild(notificationStyles);
 
+      async function updateUserHeaderUI(username, providedData = null) {
+        const data = providedData || getGamificationDataForUser(username);
+        if (!data) return;
+
+        const currentLevel = getLevelInfo(data.level);
+        
+        const userNameEl = document.getElementById('user-name');
+        const userLevelNameEl = document.getElementById('user-level-name');
+        const userLevelNumberEl = document.getElementById('user-level-number');
+        const userPointsEl = document.getElementById('user-points');
+        
+        if (userNameEl) userNameEl.textContent = username;
+        if (userLevelNameEl) userLevelNameEl.textContent = currentLevel.name;
+        if (userLevelNumberEl) userLevelNumberEl.textContent = `Nivel ${data.level}`;
+        if (userPointsEl) userPointsEl.textContent = data.points;
+      }
+
       // Inicializar sistema de gamificación
       async function initGamification() {
         try {
@@ -5974,6 +6622,27 @@
           
           // Usar la función de actualización forzada que es más robusta
           await forceUpdateAllUsers();
+
+          // SETUP REALTIME LISTENERS FOR CURRENT USER
+          if (window.db) {
+             const currentUser = getCurrentUser();
+             console.log(`📡 Configurando listeners en tiempo real para ${currentUser}`);
+             
+             // Escuchar cambios en playedSongs (global) para recalcular stats
+             db.collection('playedSongs').onSnapshot(async (snapshot) => {
+                if (snapshot.empty) return;
+                
+                console.log('📡 Cambio detectado en playedSongs - Recalculando stats del usuario actual...');
+                
+                // Recalcular stats del usuario actual
+                await analyzeAndGrantPointsForUser(currentUser);
+                
+                // Actualizar UI del header
+                try {
+                   await updateUserHeaderUI(currentUser);
+                } catch(e) { console.warn('Error actualizando header:', e); }
+             });
+          }
           
         } catch (error) {
           console.error('Error en inicialización automática:', error);
@@ -6101,6 +6770,16 @@
           // Guardar datos
           saveGamificationDataForUser(data, targetUser);
           console.log(`💾 Datos guardados para ${targetUser}`);
+
+          // Persistir en Firestore para ranking global
+          if (window.db) {
+            db.collection('userStats').doc(targetUser.toLowerCase()).set({
+              totalPoints: data.points,
+              level: data.level,
+              achievements: data.achievements,
+              lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true }).catch(err => console.error('Error guardando stats en Firestore:', err));
+          }
           
           console.log(`✅ Usuario ${targetUser}: ${data.points} puntos, nivel ${data.level}, ${data.achievements.length} logros`);
           
@@ -6249,11 +6928,86 @@
           } catch (_) { return '00:00'; }
         };
       }
+      // NUEVA función unificada para contar canciones toggleadas (Reproducidas)
+      // Esta función se declara aquí para estar disponible tanto para computeUserBreakdown como para renderPersonalStatsForUser
+      async function countTotalToggledSongsForUser(usuario) {
+         try {
+           const norm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
+           if (!norm) return 0;
+           
+           // 0. SHORT-CIRCUIT: Si ya tenemos el set en memoria (mantenido por el listener y updates optimistas), usarlo.
+           // Esto es crucial para que el "unmark" se refleje instantáneamente antes de que llegue a Firestore.
+           if (window.__toggleReady && window.__toggleReady[norm] && window.__userToggleSet && window.__userToggleSet[norm]) {
+             console.log(`🚀 Usando set en memoria para ${norm}: ${window.__userToggleSet[norm].size}`);
+             return window.__userToggleSet[norm].size;
+           }
+
+           const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+           const prefix = sanitize(`${norm}-`);
+           const ids = new Set();
+           
+           // 1. LocalStorage
+           try {
+             const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+             Object.keys(localPlayed).forEach(day => {
+               if (!isOnOrAfterStart(day)) return;
+               const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+               arr.forEach(x => {
+                 const id = sanitize(x);
+                 if (id.startsWith(prefix)) ids.add(id);
+               });
+             });
+           } catch(e){}
+
+           // 2. Firestore playedSongs
+           try {
+             const snap = await db.collection('playedSongs').get();
+             snap.forEach(doc => {
+               const day = doc.id;
+               if (!isOnOrAfterStart(day)) return;
+               const d = doc.data()||{};
+               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
+               arr.forEach(x => {
+                 const id = sanitize(x);
+                 if (id.startsWith(prefix)) ids.add(id);
+               });
+             });
+           } catch(e){}
+           
+           // 3. System Events (unmark/mark logic)
+           try {
+             const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
+             const latest = {};
+             qs.forEach(doc => {
+                const d = doc.data()||{};
+                const sid = sanitize(d.songId);
+                if (!sid) return;
+                const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+                const k = sid;
+                if (!latest[k] || ts > latest[k].ts) {
+                  latest[k] = { action: d.action, ts };
+                }
+             });
+             Object.keys(latest).forEach(sid => {
+                if (latest[sid].action === 'mark') ids.add(sid);
+                else if (latest[sid].action === 'unmark') ids.delete(sid);
+             });
+           } catch(e){}
+
+           console.log(`🔢 Conteo final (calculado) para ${norm}: ${ids.size}`);
+           return ids.size;
+         } catch(e) { console.error(e); return 0; }
+      }
+
+      const TOP1_BONUS_START_DATE = '2025-12-19';
+
       async function computeUserBreakdown(u) {
         const rawUser = String(u || '').trim();
         const usuario = rawUser.replace(/^@/, '');
         const norm = (s) => String(s || '').trim().replace(/^@/, '').toLowerCase();
-        const isVip = (window.vipSet && (window.vipSet.has(usuario) || window.vipSet.has(rawUser))) || (window.z0VipSet && (window.z0VipSet.has(usuario) || window.z0VipSet.has(rawUser)));
+        const unameLc = String(usuario||'').trim().toLowerCase();
+        const rawLc = String(rawUser||'').trim().toLowerCase();
+        const isVip = (window.vipSet && (window.vipSet.has(unameLc) || window.vipSet.has(rawLc))) || (window.z0VipSet && (window.z0VipSet.has(unameLc) || window.z0VipSet.has(rawLc)));
         const getHourKey = (x) => {
           try {
             if (typeof window.toHourKey === 'function') return window.toHourKey(x);
@@ -6264,130 +7018,113 @@
             return '00:00';
           }
         };
+
+        // --- CALCULO DE "TOP 1 DIARIO" ---
+        let top1Count = 0;
+        try {
+           const allReqs = await getAllCombinedSolicitudes();
+           // Agrupar por día
+           const byDay = {};
+           allReqs.forEach(s => {
+             let d = String(s.day || (s.fecha||'').split('T')[0] || '').trim();
+             if (!d) return;
+             // Solo considerar desde la fecha de inicio del evento
+             if (d < TOP1_BONUS_START_DATE) return;
+             
+             // No contar el día de HOY si no ha terminado (opcional, pero el usuario dijo "cuantas veces ha quedado")
+             // Asumiremos que cuenta días completados o actuales si ya va ganando.
+             // Pero para evitar volatilidad, lo ideal es días pasados. 
+             // Sin embargo, si es "hoy", el usuario quiere ver si va ganando.
+             // Vamos a contar todos los días desde START_DATE hasta hoy (inclusive).
+             
+             if (!byDay[d]) byDay[d] = {};
+             const uKey = String(s.usuario||'').trim().replace(/^@/,'').toLowerCase();
+             byDay[d][uKey] = (byDay[d][uKey] || 0) + 1;
+           });
+           
+           // Determinar ganador de cada día
+           Object.keys(byDay).forEach(day => {
+              const counts = byDay[day];
+              let max = -1;
+              let winner = null;
+              // Encontrar el maximo
+              Object.keys(counts).forEach(user => {
+                 if (counts[user] > max) {
+                   max = counts[user];
+                   winner = user;
+                 } else if (counts[user] === max) {
+                   // Empate: ¿ambos ganan? O nadie? O el primero?
+                   // Asumiremos empate = ambos ganan (o el sistema elige uno, pero mejor ambos).
+                   // Para simplificar, si hay empate con el usuario actual, cuenta.
+                   if (user === unameLc) winner = user; 
+                 }
+              });
+              
+              if (winner === unameLc && max > 0) {
+                 top1Count++;
+              }
+           });
+           
+        } catch(e) { console.error('Error calculating Top 1 Bonus:', e); }
+        // ---------------------------------
         const daysSet = new Set();
         const perDaySongs = new Map();
         try {
           const userSnap = await db.collection('solicitudes').where('usuario', '==', usuario).get();
+          // Construir set de IDs validos de solicitudes para filtrar las reproducidas
           userSnap.forEach(doc => {
             const d = doc.data() || {};
-            const day = String(d.day || '').trim();
+            const day = normalizeDay(d.day || '');
             if (!day) return;
-            daysSet.add(day);
+            if (isOnOrAfterStart(day)) daysSet.add(day);
             const arr = perDaySongs.get(day) || [];
             arr.push(d);
             perDaySongs.set(day, arr);
           });
         } catch (_) {}
-        // Incluir días desde localStorage cuando solo exista 'fecha'
-        try {
-          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          localSolicitudes.forEach(d => {
-            if (norm(d.usuario) !== norm(usuario)) return;
-            const sday = String(d.day || (d.fecha||'').split('T')[0] || '').trim();
-            if (sday) {
-              daysSet.add(sday);
-              const arr = perDaySongs.get(sday) || [];
-              arr.push(d);
-              perDaySongs.set(sday, arr);
-            }
-          });
-        } catch (_){}
         try {
           const playedDaysSnap = await db.collection('playedSongs').get();
           playedDaysSnap.forEach(ps => {
-            const day = ps.id;
-            if (day) daysSet.add(day);
+            const day = normalizeDay(ps.id);
+            if (day && isOnOrAfterStart(day)) daysSet.add(day);
           });
         } catch (_) {}
+        
         let playedCount = 0;
+        // NUEVA LÓGICA: Usar countTotalToggledSongsForUser
+        try {
+           playedCount = await countTotalToggledSongsForUser(usuario);
+        } catch(e) { console.error('Error counting toggled:', e); }
+        
         let activeDaysValid = 0;
         const playedArtistsSet = new Set();
         const detail = [];
         const days = Array.from(daysSet);
         const totalPlayedSet = new Set();
+        // (El resto de la lógica de totalPlayedSet es redundante ahora, pero la mantengo limpia para evitar romper rachas)
+        
+        // Iterar días SOLO para calcular días activos y rachas, NO para recontar canciones
         for (let i = 0; i < days.length; i++) {
           const day = days[i];
+          if (!isOnOrAfterStart(day)) continue;
+          
+          // Obtener canciones reproducidas del día para validar actividad
           const playedDoc = await db.collection('playedSongs').doc(day).get();
           const pdata = playedDoc.exists ? (playedDoc.data() || {}) : {};
-          const playedArrCloud = Array.isArray(pdata.songs) ? pdata.songs : (Array.isArray(pdata.list) ? pdata.list : (Array.isArray(pdata.songIds) ? pdata.songIds : []));
-          const localPlayedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-          const playedArrLocal = Array.isArray(localPlayedMap[day]) ? localPlayedMap[day] : [];
-          const playedArr = playedArrCloud.concat(playedArrLocal);
-          const sanitizeId = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
-          const playedSetLower = new Set(playedArr.map(x => sanitizeId(x)));
-          let userSongs = perDaySongs.get(day) || [];
-          if (!userSongs.length) {
-            const daySnap = await db.collection('solicitudes').where('day', '==', day).get();
-            const arr = [];
-            daySnap.forEach(doc => {
-              const d = doc.data() || {};
-              if (norm(d.usuario) === norm(usuario)) arr.push(d);
-            });
-            userSongs = arr;
-          }
-          // Fallback adicional: usar solicitudes de localStorage filtrando por fecha
-          if (!userSongs.length) {
-            try {
-              const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-              const arr = localSolicitudes.filter(s => {
-                const uok = norm(s.usuario) === norm(usuario);
-                const sday = String(s.day || (s.fecha||'').split('T')[0] || '').trim();
-                return uok && sday === day;
-              });
-              if (arr.length) userSongs = arr;
-            } catch (_){}
-          }
+          const playedArr = Array.isArray(pdata.songs) ? pdata.songs : (Array.isArray(pdata.list) ? pdata.list : (Array.isArray(pdata.songIds) ? pdata.songIds : []));
+          
+          // Contar canciones del usuario en este día específico para validar "Día Activo"
+          const cleanLc = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+          const userPrefix = `${cleanLc(usuario)}-`;
           let userPlayedThatDay = 0;
-          if (userSongs.length) {
-            for (let j = 0; j < userSongs.length; j++) {
-              const s = userSongs[j];
-              const userName = String(s.usuario || '').trim();
-              const songName = String(s.cancion || '').trim();
-              const artistName = String(s.artista || '').trim();
-              const hourCandidates = [
-                (window.resolveHourKey ? window.resolveHourKey(s.ts) : '00:00'),
-                (window.resolveHourKey ? window.resolveHourKey(s.time) : '00:00'),
-                String(s.hora || '').trim()
-              ].filter(Boolean);
-              let matched = false;
-              let matchedId = '';
-              for (const h of hourCandidates.length ? hourCandidates : ['00:00']) {
-                const sid = sanitizeId(`${userName}-${songName}-${artistName}-${h}`);
-                if (playedSetLower.has(sid)) { matched = true; matchedId = sid; break; }
-              }
-              if (!matched) {
-                const prefix = `${norm(userName)}-${String(songName||'').trim().toLowerCase()}-${String(artistName||'').trim().toLowerCase()}-`.replace(/[^a-z0-9-]/g, '');
-                for (let k = 0; k < playedArr.length; k++) {
-                  const x = sanitizeId(playedArr[k] || '');
-                  if (x.startsWith(prefix)) { matched = true; matchedId = x; break; }
-                }
-              }
-              if (matched) {
-                const wasNew = !totalPlayedSet.has(matchedId);
-                if (wasNew) {
-                  totalPlayedSet.add(matchedId);
-                  playedCount++;
-                }
-                userPlayedThatDay++;
-                if (artistName) playedArtistsSet.add(artistName);
-              }
-            }
-          } else {
-            const clean = (s) => String(s || '').trim().replace(/[^a-zA-Z0-9-]/g, '');
-            const userPrefix = `${clean(usuario)}-`;
-            for (let k = 0; k < playedArr.length; k++) {
-              const x = playedArr[k] || '';
-              if (typeof x === 'string' && x.startsWith(userPrefix)) {
-                const sid = sanitizeId(x);
-                const wasNew = !totalPlayedSet.has(sid);
-                if (wasNew) {
-                  totalPlayedSet.add(sid);
-                  playedCount++;
-                }
-                userPlayedThatDay++;
-              }
+          
+          for (let k = 0; k < playedArr.length; k++) {
+            const x = playedArr[k] || '';
+            if (typeof x === 'string' && cleanLc(x).startsWith(userPrefix)) {
+              userPlayedThatDay++;
             }
           }
+          
           const daySnap = await db.collection('solicitudes').where('day', '==', day).get();
           const distinctUsersDay = new Set();
           daySnap.forEach(dd => {
@@ -6556,11 +7293,13 @@
         } catch (_) {}
         let cloudTotal = 0;
         let bestStreakVal = 0;
+        let lastManualAdjustment = null;
         try {
           const statsDocSnap = await db.collection('userStats').doc(norm(usuario)).get();
           const statsDoc = statsDocSnap.exists ? (statsDocSnap.data() || {}) : {};
           cloudTotal = statsDocSnap.exists ? Number((statsDoc.totalPoints || 0)) : 0;
           if (typeof statsDoc.bestStreak === 'number') bestStreakVal = statsDoc.bestStreak;
+          if (statsDoc.lastManualAdjustment) lastManualAdjustment = statsDoc.lastManualAdjustment;
         } catch (_) {}
         // Fallback a localData para bestStreak si no se encontró en nube
         try {
@@ -6581,7 +7320,14 @@
             streakBonus = Math.max(0, tri * mult); // Ensure non-negative
           }
         } catch (_) { streakBonus = 0; }
-        const sumCalc = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus;
+        const top1Bonus = top1Count * 150;
+        // Calcular manual bonus
+        let manualBonus = 0;
+        if (lastManualAdjustment && typeof lastManualAdjustment.amount === 'number') {
+           manualBonus = lastManualAdjustment.amount;
+        }
+        
+        const sumCalc = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus;
         const residual = Math.max(0, cloudTotal - sumCalc); // Prevent negative residuals
         try {
           if (window.__ALLOW_BREAKDOWN_WRITE__ && !cloudTotal && sumCalc > 0) {
@@ -6629,7 +7375,7 @@
         let displayTotal = sumCalc;
         // Ensure total is never negative
         displayTotal = Math.max(0, displayTotal);
-        return { usuario, playedCount, activeDaysValid, isVip, base: (playedCount * 25), vipBonus: (isVip ? (playedCount * 40) : 0), dailyBonus: (activeDaysValid * 5), achievements, streakBonus, residual, total: displayTotal, detail, achievementsList };
+        return { usuario, playedCount, activeDaysValid, isVip, base: (playedCount * 25), vipBonus: (isVip ? (playedCount * 40) : 0), dailyBonus: (activeDaysValid * 5), achievements, streakBonus, top1Bonus, manualBonus, residual, total: displayTotal, detail, achievementsList };
       }
       async function renderPointsBreakdownForUser(u, force=false) {
         // Cache simple para mejorar tiempos de carga
@@ -6638,34 +7384,16 @@
         const now = Date.now();
         const cached = window.__breakdownCache[key];
         let bd;
-        // Render rápido con datos locales para percepción de inmediatez
+        // Render rápido con conteo consistente (unión de fuentes)
         try {
-          const localData = getLocalGamificationData(u) || {};
-          const st = localData.stats || {};
-          const quickBase = (st.totalPlayedSongs || 0) * 25;
-          const quickVip = (st.isVip ? (st.totalPlayedSongs || 0) * 40 : 0);
-          const quickDaily = (st.activeDays || 0) * 5;
-          const quickTotal = typeof localData.points === 'number' ? localData.points : (quickBase + quickVip + quickDaily);
+          const quickTotalPlayed = await getConsistentPlayedCountForUser(u);
+          const quickBase = Number(quickTotalPlayed||0) * 25;
           const setNum = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = String(val); };
           setNum('breakdown-played-base', quickBase);
-          setNum('breakdown-vip-bonus', quickVip);
-          setNum('breakdown-daily-bonus', quickDaily);
-          setNum('breakdown-achievements', 0); // Show 0 initially
-          setNum('breakdown-streak-residual', 0); // Show 0 initially
-          setNum('breakdown-total', quickTotal);
-          
-          // Quick render for detail list
-          const list = document.getElementById('breakdown-detail-list');
-          if (list) {
-            const lines = [];
-            lines.push(`<div class="genre-chip"><span>🎵 Canciones </span><span>${st.totalPlayedSongs || 0} × 25 = ${quickBase}</span></div>`);
-            if (st.isVip) {
-              lines.push(`<div class="genre-chip"><span>👑 VIP </span><span>${st.totalPlayedSongs || 0} × 40 = ${quickVip}</span></div>`);
-            }
-            lines.push(`<div class="genre-chip"><span>📅 Diario </span><span>${st.activeDays || 0} × 5 = ${quickDaily}</span></div>`);
-            lines.push(`<div class="genre-chip"><span>💰 Total </span><span>${quickTotal}</span></div>`);
-            list.innerHTML = lines.join('');
-          }
+          setNum('breakdown-vip-bonus', 0);
+          setNum('breakdown-daily-bonus', 0);
+          setNum('breakdown-achievements', 0);
+          setNum('breakdown-streak-residual', 0);
         } catch (_){}
         if (!force && cached && (now - cached.updatedAt) < 5000) { // Reduced from 30000 to 5000 for faster updates
           bd = cached.data;
@@ -6682,23 +7410,29 @@
           const el = document.getElementById(id);
           if (el) el.textContent = String(val);
         };
-        const prev = window.__breakdownCache[key] && window.__breakdownCache[key].data ? window.__breakdownCache[key].data : null;
-        const safeBase = (bd.base === 0 && prev && prev.base > 0) ? prev.base : bd.base;
-        const safeVip = (bd.vipBonus === 0 && prev && prev.vipBonus > 0) ? prev.vipBonus : bd.vipBonus;
-        const safeDaily = (bd.dailyBonus === 0 && prev && prev.dailyBonus > 0) ? prev.dailyBonus : bd.dailyBonus;
-        const safeAch = (bd.achievements === 0 && prev && prev.achievements > 0) ? prev.achievements : bd.achievements;
-        const safeStreak = (bd.streakBonus === 0 && prev && prev.streakBonus > 0) ? prev.streakBonus : bd.streakBonus;
-        const safeTotal = (bd.total === 0 && prev && prev.total > 0) ? prev.total : bd.total;
-        setNum('breakdown-played-base', safeBase);
-        setNum('breakdown-vip-bonus', safeVip);
-        setNum('breakdown-daily-bonus', safeDaily);
-        setNum('breakdown-achievements', safeAch);
-        setNum('breakdown-streak-residual', safeStreak);
-        setNum('breakdown-total', safeTotal);
+          // --- NUEVA LÓGICA DE TRANSPARENCIA (usando countTotalToggledSongsForUser) ---
+          try {
+             // Reemplazar lógica antigua con la nueva función unificada
+             const totalToggled = await countTotalToggledSongsForUser(u);
+             bd.playedCount = totalToggled;
+             bd.base = totalToggled * 25;
+             
+             // Recalcular total con el nuevo base
+             bd.total = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0);
+             
+          } catch(e) { console.error('Error actualizando transparencia con toggled:', e); }
+
+          setNum('breakdown-played-base', Number(bd.base||0));
+        setNum('breakdown-vip-bonus', Number(bd.vipBonus||0));
+        setNum('breakdown-daily-bonus', Number(bd.dailyBonus||0));
+        setNum('breakdown-achievements', Number(bd.achievements||0));
+        setNum('breakdown-streak-residual', Number(bd.streakBonus||0));
+        setNum('breakdown-total', Number(bd.total||0));
+        bd.playedCount = Number(bd.playedCount || Math.floor(Number(bd.base||0)/25));
         const headerPoints = document.getElementById('user-points');
-        if (headerPoints) headerPoints.textContent = String(safeTotal);
+        if (headerPoints) headerPoints.textContent = String(Number(bd.total||0));
         const rewardsPoints = document.getElementById('rewards-user-points');
-        if (rewardsPoints) rewardsPoints.textContent = String(safeTotal);
+        if (rewardsPoints) rewardsPoints.textContent = String(Number(bd.total||0));
         const list = document.getElementById('breakdown-detail-list');
         if (list) {
           const lines = [];
@@ -6714,6 +7448,11 @@
           // Diario
           lines.push(`<div class="genre-chip"><span>📅 Diario </span><span>${bd.activeDaysValid} × 5 = ${bd.dailyBonus}</span></div>`);
           
+          // Top 1 Diario (Nuevo)
+          if (bd.top1Bonus > 0) {
+             lines.push(`<div class="genre-chip"><span>🏆 Top 1 Diario </span><span>${bd.top1Count} × 150 = ${bd.top1Bonus}</span></div>`);
+          }
+          
           // Rachas (solo si hay puntos)
           if (bd.streakBonus > 0) {
             lines.push(`<div class="genre-chip"><span>🔥 Rachas </span><span>${bd.streakBonus}</span></div>`);
@@ -6722,6 +7461,11 @@
           // Logros (solo si hay puntos)
           if (bd.achievements > 0) {
             lines.push(`<div class="genre-chip"><span>🏅 Logros </span><span>${bd.achievements}</span></div>`);
+          }
+
+          // Compensación (si existe)
+          if (bd.manualBonus && bd.manualBonus !== 0) {
+            lines.push(`<div class="genre-chip"><span>🎁 Compensación </span><span>${bd.manualBonus}</span></div>`);
           }
           
           // Total
@@ -6775,6 +7519,11 @@
           if (tab === 'breakdown') {
             const u = getCurrentProfileUser();
             if (u) {
+              // Limpiar valores visuales para evitar ver datos viejos
+              ['breakdown-played-base','breakdown-vip-bonus','breakdown-daily-bonus','breakdown-achievements','breakdown-streak-residual','breakdown-total'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = '-';
+              });
               await renderPointsBreakdownForUser(u, true);
             }
           }
@@ -6786,7 +7535,7 @@
                 await renderPersonalStatsForUser(localData, u);
                 startCloudRealtimeForUser(u);
               } catch (_){
-                const ids = ['personal-total-songs','personal-total-played','personal-unique-artists','personal-active-days','personal-rank'];
+                const ids = ['personal-total-songs','personal-unique-artists','personal-active-days','personal-rank'];
                 ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = id==='personal-rank' ? '-' : '0'; });
               }
             }
@@ -6822,6 +7571,7 @@
         const ids = new Set();
         const days = Object.keys(localPlayedMap);
         for (let i=0;i<days.length;i++) {
+          if (!isOnOrAfterStart(days[i])) continue;
           const arr = Array.isArray(localPlayedMap[days[i]]) ? localPlayedMap[days[i]] : [];
           for (let j=0;j<arr.length;j++) {
             const id = sanitize(arr[j]);
@@ -6833,56 +7583,39 @@
       function computeLocalSolicitudesStats(usuario) {
         const norm = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
         const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-        const mine = solicitudes.filter(s => String(s.usuario||'').trim().replace(/^@/,'').toLowerCase() === norm);
+        const mine = solicitudes.filter(s => {
+          const okUser = String(s.usuario||'').trim().replace(/^@/,'').toLowerCase() === norm;
+          const d = String(s.day || (s.fecha||'').split('T')[0] || '').trim();
+          return okUser && (!d || isOnOrAfterStart(d));
+        });
         const totalSongs = mine.length;
         const uniqueArtists = new Set(mine.map(s => s.artista).filter(Boolean)).size;
-        const days = new Set(mine.map(s => String(s.day || (s.fecha||'').split('T')[0] || '').trim()).filter(Boolean));
+        const days = new Set(mine.map(s => String(s.day || (s.fecha||'').split('T')[0] || '').trim()).filter(d => d && isOnOrAfterStart(d)));
         const activeDays = days.size;
         return { totalSongs, uniqueArtists, activeDays };
       }
-      window.__playedCountPinned = window.__playedCountPinned || {};
-      function getPinnedPlayedCount(usuario) {
-        const key = String(usuario||'').trim().toLowerCase();
-        return typeof window.__playedCountPinned[key] === 'number' ? window.__playedCountPinned[key] : null;
-      }
-      function setPinnedPlayedCount(usuario, count) {
-        const key = String(usuario||'').trim().toLowerCase();
-        window.__playedCountPinned[key] = Number(count||0);
-      }
-      window.__statPins = window.__statPins || {};
       function stableSetStat(id, val, usuario) {
         const el = document.getElementById(id);
         if (!el) return;
-        const key = String(usuario||'').trim().toLowerCase();
-        const now = Date.now();
-        const pin = window.__statPins[key] || { until: 0 };
-        if (!pin.until || now > pin.until) {
-          window.__statPins[key] = { until: now + 10000 };
-        }
-        const currentNum = Number(el.textContent || 0);
         const nextNum = Number(val || 0);
-        if (now <= window.__statPins[key].until) {
-          if (isNaN(currentNum)) {
-            el.textContent = String(nextNum);
-          } else {
-            el.textContent = String(Math.max(currentNum, nextNum));
-          }
-        } else {
-          el.textContent = String(nextNum);
-        }
+        el.textContent = String(nextNum);
+      }
+      function setPlayedStat(val) {
+        const el = document.getElementById('personal-total-played');
+        if (!el) return;
+        const cur = Number(el.textContent || 0);
+        const next = Number(val || 0);
+        try {
+          const u = typeof getCurrentProfileUser === 'function' ? String(getCurrentProfileUser()||'').toLowerCase() : '';
+          const ready = window.__toggleReady && window.__toggleReady[u];
+          if (!ready && next === 0 && cur > 0) return;
+        } catch(_){ }
+        el.textContent = String(next);
       }
       function stableSetRank(id, userRank, usuario) {
         const el = document.getElementById(id);
         if (!el) return;
-        const key = String(usuario||'').trim().toLowerCase();
-        const now = Date.now();
-        const pin = window.__statPins[key] || { until: 0 };
-        if (!pin.until || now > pin.until) {
-          window.__statPins[key] = { until: now + 10000 };
-        }
-        const cur = el.textContent || '-';
-        const next = userRank > 0 ? `#${userRank}` : cur;
-        el.textContent = next;
+        el.textContent = userRank > 0 ? `#${userRank}` : '-';
       }
       window.__userSubs = window.__userSubs || {};
       function unsubscribeUserRealtime() {
@@ -6899,47 +7632,116 @@
         const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
         window.__userReqPrefixes = window.__userReqPrefixes || {};
         window.__userReqPrefixes[norm] = new Set();
+        
+        let localRequests = new Set();
+        let localPlayedSnapshot = null;
+        window.__userToggleSet = window.__userToggleSet || {};
+        window.__userToggleSet[norm] = window.__userToggleSet[norm] || new Set();
+
+        const recalcPlayed = () => {
+          if (!localPlayedSnapshot) return;
+          const prefix = sanitize(`${u}-`);
+          const ids = new Set();
+          
+          // Solo procesar si tenemos requests cargados para validar
+          const hasRequests = localRequests && localRequests.size > 0;
+          
+          // 1. Incorporar datos de Firestore (Snapshot)
+          localPlayedSnapshot.forEach(doc => {
+            const dayId = String(doc.id||'');
+            if (!isOnOrAfterStart(dayId)) return;
+            const d = doc.data()||{};
+            const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : (Array.isArray(d.songIds) ? d.songIds : []));
+            arr.forEach(x => {
+              const id = sanitize(x);
+              if (id.startsWith(prefix)) { 
+                 ids.add(id); 
+              }
+            });
+          });
+
+          // 2. Incorporar datos de LocalStorage (Prioridad local)
+          try {
+            const localPlayedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+            Object.keys(localPlayedMap).forEach(day => {
+               if (!isOnOrAfterStart(day)) return;
+               const arr = Array.isArray(localPlayedMap[day]) ? localPlayedMap[day] : [];
+               arr.forEach(x => {
+                   const id = sanitize(x);
+                   if (id.startsWith(prefix)) {
+                      ids.add(id);
+                   }
+               });
+            });
+          } catch(_){}
+
+          // Actualizar el Set global y la UI
+          window.__userToggleSet[norm] = ids;
+          window.__toggleReady = window.__toggleReady || {};
+          window.__toggleReady[norm] = true;
+          
+          setPlayedStat(ids.size);
+
+          // NEW: Actualizar también la sección de Transparencia (Breakdown) si está visible
+          const bdPanel = document.getElementById('gamification-breakdown');
+          if (bdPanel && bdPanel.classList.contains('active')) {
+             // Verificar que estamos viendo el perfil de este usuario
+             const curProfile = getCurrentProfileUser();
+             if (curProfile && String(curProfile).toLowerCase() === norm) {
+                renderPointsBreakdownForUser(u, true).catch(()=>{});
+             }
+          }
+        };
+
         try {
           window.__userSubs.solicitudes = db.collection('solicitudes').where('usuario','==',u).onSnapshot(snap => {
             let totalSongs = 0;
             const artists = new Set();
             const days = new Set();
-            const prefixes = new Set();
+            const reqIds = new Set();
             snap.forEach(doc => {
               const d = doc.data()||{};
+              const day = String(d.day || (d.fecha||'').split('T')[0] || '').trim();
+              if (day && !isOnOrAfterStart(day)) return;
               totalSongs++;
               if (d.artista) artists.add(String(d.artista));
-              const day = String(d.day || (d.fecha||'').split('T')[0] || '').trim();
               if (day) days.add(day);
-              const pref = `${norm}-${String(d.cancion||'').trim().toLowerCase().replace(/[^a-z0-9-]/g,'')}-${String(d.artista||'').trim().toLowerCase().replace(/[^a-z0-9-]/g,'')}-`;
-              prefixes.add(pref);
+              
+              // Construir ID esperado
+              const hora = (window.resolveHourKey ? window.resolveHourKey(d.ts) : '00:00') || (window.resolveHourKey ? window.resolveHourKey(d.time) : '00:00') || String(d.hora||'').trim() || '00:00';
+              const rid = `${d.usuario}-${d.cancion}-${d.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
+              
+              // NEW: También agregar versión sin hora para fallback, por si acaso el formato de hora cambió
+              const ridNoHour = `${d.usuario}-${d.cancion}-${d.artista}`.replace(/[^a-zA-Z0-9-]/g,'');
+              
+              const sid = sanitize(rid);
+              reqIds.add(sid);
+              reqIds.add(sanitize(ridNoHour)); // Agregar al set de validación
             });
-            window.__userReqPrefixes[norm] = prefixes;
+            
+            localRequests = reqIds;
+            window.__userReqPrefixes[norm] = reqIds; // Backup
             stableSetStat('personal-total-songs', totalSongs, u);
             stableSetStat('personal-unique-artists', artists.size, u);
             stableSetStat('personal-active-days', days.size, u);
+            
+            // Recalcular played con la nueva lista de solicitudes
+            if (localPlayedSnapshot) recalcPlayed();
           });
         } catch (_){}
         try {
           window.__userSubs.played = db.collection('playedSongs').onSnapshot(snap => {
-            const prefix = sanitize(`${u}-`);
-            const ids = new Set();
-            const req = window.__userReqPrefixes[norm] || new Set();
-            snap.forEach(doc => {
-              const d = doc.data()||{};
-              const arr = Array.isArray(d.songs) ? d.songs : [];
-              arr.forEach(x => {
-                const id = sanitize(x);
-                // Contar solo si corresponde a una solicitud del usuario
-                if (id.startsWith(prefix)) {
-                  // match contra cualquiera de los prefijos de solicitudes del usuario
-                  for (const pf of req) {
-                    if (id.startsWith(pf)) { ids.add(id); break; }
-                  }
-                }
-              });
-            });
-            stableSetStat('personal-total-played', ids.size, u);
+            localPlayedSnapshot = snap;
+            // Si ya tenemos requests, filtramos. Si no, esperamos a que lleguen (el snapshot de solicitudes llega casi junto)
+            if (localRequests.size > 0 || (window.__userReqPrefixes[norm] && window.__userReqPrefixes[norm].size > 0)) {
+               if (localRequests.size === 0 && window.__userReqPrefixes[norm]) localRequests = window.__userReqPrefixes[norm];
+               recalcPlayed();
+            } else {
+               // Primera carga: intentar recalcular sin filtro estricto si está vacío, o esperar?
+               // Si localRequests está vacío, recalcPlayed devuelve todo.
+               // Mejor esperar un poco o confiar en el estado inicial
+               recalcPlayed(); 
+            }
           });
         } catch (_){}
         try {
@@ -6947,6 +7749,8 @@
             const counts = {};
             snap.forEach(doc => {
               const d = doc.data()||{};
+              const day = String(d.day || (d.fecha||'').split('T')[0] || '').trim();
+              if (day && !isOnOrAfterStart(day)) return;
               const key = String(d.usuario||'').trim().replace(/^@/,'').toLowerCase();
               counts[key] = (counts[key]||0)+1;
             });
@@ -6955,81 +7759,137 @@
             stableSetRank('personal-rank', rank, u);
           });
         } catch (_){}
-      }
-      async function rebuildPlayedSongsForUser(usuario, startDay = '', endDay = '') {
         try {
-          const norm = (s) => String(s||'').trim().replace(/^@/,'');
-          const user = norm(usuario);
+          window.__userSubs.toggleEvents = db.collection('systemEvents')
+            .where('type','==','togglePlayed')
+            .where('usuario','==',String(u||'').trim().replace(/^@/,'').toLowerCase())
+            .onSnapshot(snap => {
+              const latest = {};
+              snap.forEach(doc => {
+                const d = doc.data()||{};
+                const sid = sanitize(String(d.songId||''));
+                if (!sid) return;
+                const day = String(d.day || '');
+                const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+                const action = String(d.action||'').toLowerCase();
+                const key = `${sid}|${day}`;
+                const cur = latest[key];
+                if (!cur || ts >= cur.ts) latest[key] = { action, ts, sid, day };
+              });
+              const set = new Set();
+              Object.keys(latest).forEach(k => {
+                const it = latest[k];
+                if (it && it.action === 'mark') set.add(it.sid);
+              });
+              window.__userToggleSet = window.__userToggleSet || {};
+              window.__userToggleSet[norm] = set;
+              window.__toggleReady = window.__toggleReady || {};
+              window.__toggleReady[norm] = true;
+              try { setPlayedStat(set.size); } catch(_){ }
+              recalcPlayed();
+            });
+        } catch(_){ }
+        try { backfillToggleEventsForUser(u); } catch(_){ }
+      }
+      async function recountToggleTotalsForUser(usuario, startDay = '', endDay = '') {
+        try {
+          const user = String(usuario||'').trim().replace(/^@/,'').toLowerCase();
           const lo = startDay ? String(startDay).trim() : '';
           const hi = endDay ? String(endDay).trim() : '';
-          const byDay = new Map();
-          const snap = await db.collection('solicitudes').where('usuario','==',user).get();
-          snap.forEach(doc => {
+          const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',user).get();
+          const latest = {};
+          qs.forEach(doc => {
             const d = doc.data()||{};
-            const day = String(d.day||'').trim();
-            if (!day) return;
-            if (lo && day < lo) return;
-            if (hi && day > hi) return;
-            const arr = byDay.get(day) || [];
-            const hora = (window.resolveHourKey ? window.resolveHourKey(d.ts) : '00:00') || (window.resolveHourKey ? window.resolveHourKey(d.time) : '00:00') || String(d.hora||'').trim() || '00:00';
-            const raw = `${d.usuario}-${d.cancion}-${d.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
-            arr.push(raw);
-            byDay.set(day, arr);
+            const day = String(d.day||'');
+            if (lo && day && day < lo) return;
+            if (hi && day && day > hi) return;
+            const sid = String(d.songId||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+            if (!sid) return;
+            const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+            const key = `${sid}|${day}`;
+            const cur = latest[key];
+            if (!cur || ts >= cur.ts) latest[key] = { action: String(d.action||'').toLowerCase(), ts, sid, day };
           });
-          for (const [day, ids] of byDay.entries()) {
-            const uniq = Array.from(new Set(ids));
-            const ref = db.collection('playedSongs').doc(day);
-            const doc = await ref.get();
-            const prev = doc.exists ? ((doc.data() || {}).songs || []) : [];
-            const nextSet = new Set(prev.concat(uniq));
-            await ref.set({
-              songs: Array.from(nextSet),
-              day,
-              rebuiltAt: firebase.firestore.FieldValue.serverTimestamp(),
-              rebuiltBy: user
-            }, { merge: true });
-          }
-          return { user, days: byDay.size };
+          const set = new Set();
+          Object.keys(latest).forEach(k => { const it = latest[k]; if (it.action === 'mark') set.add(it.sid); });
+          // Union con playedSongs por día para capturar IDs ya marcadas históricamente
+          try {
+            const snap = await db.collection('playedSongs').get();
+            snap.forEach(doc => {
+              const dayId = String(doc.id||'');
+              if (lo && dayId && dayId < lo) return;
+              if (hi && dayId && dayId > hi) return;
+              const d = doc.data()||{};
+              const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : (Array.isArray(d.songIds) ? d.songIds : []));
+              (arr||[]).forEach(x => {
+                const id = String(x||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+                if (id.startsWith(`${user}-`)) set.add(id);
+              });
+            });
+          } catch(_){ }
+          const total = set.size;
+          const ref = db.collection('playedSongs').doc('userTotals');
+          await ref.set({ lastUpdated: firebase.firestore.FieldValue.serverTimestamp(), totals: {} }, { merge: true });
+          const payload = {}; payload[`totals.${user}`] = total; await ref.set(payload, { merge: true });
+          window.__userToggleSet = window.__userToggleSet || {}; window.__userToggleSet[user] = set;
+          window.__toggleReady = window.__toggleReady || {}; window.__toggleReady[user] = true;
+          try { setPlayedStat(total); } catch(_){ }
+          return { user, total };
         } catch (err) {
-          console.error('Error en rebuildPlayedSongsForUser:', err);
-          return { user: String(usuario||'').trim(), days: 0, error: String(err) };
+          console.error('Error en recountToggleTotalsForUser:', err);
+          return { user: String(usuario||'').trim(), total: 0, error: String(err) };
         }
       }
-      async function rebuildPlayedSongsAll(startDay = '', endDay = '') {
+      async function recountToggleTotalsAll(startDay = '', endDay = '') {
         try {
           const lo = startDay ? String(startDay).trim() : '';
           const hi = endDay ? String(endDay).trim() : '';
-          const byDay = new Map();
-          const snap = await db.collection('solicitudes').get();
-          snap.forEach(doc => {
+          const qs = await db.collection('systemEvents').where('type','==','togglePlayed').get();
+          const latest = {};
+          qs.forEach(doc => {
             const d = doc.data()||{};
-            const day = String(d.day||'').trim();
-            if (!day) return;
-            if (lo && day < lo) return;
-            if (hi && day > hi) return;
-            const arr = byDay.get(day) || [];
-            const hora = (window.resolveHourKey ? window.resolveHourKey(d.ts) : '00:00') || (window.resolveHourKey ? window.resolveHourKey(d.time) : '00:00') || String(d.hora||'').trim() || '00:00';
-            const raw = `${d.usuario}-${d.cancion}-${d.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
-            arr.push(raw);
-            byDay.set(day, arr);
+            const user = String(d.usuario||'').toLowerCase();
+            const day = String(d.day||'');
+            if (lo && day && day < lo) return;
+            if (hi && day && day > hi) return;
+            const sid = String(d.songId||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+            if (!sid || !user) return;
+            const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+            const key = `${user}|${sid}|${day}`;
+            const cur = latest[key];
+            if (!cur || ts >= cur.ts) latest[key] = { user, action: String(d.action||'').toLowerCase(), ts, sid, day };
           });
-          for (const [day, ids] of byDay.entries()) {
-            const uniq = Array.from(new Set(ids));
-            const ref = db.collection('playedSongs').doc(day);
-            const doc = await ref.get();
-            const prev = doc.exists ? ((doc.data() || {}).songs || []) : [];
-            const nextSet = new Set(prev.concat(uniq));
-            await ref.set({
-              songs: Array.from(nextSet),
-              day,
-              rebuiltAt: firebase.firestore.FieldValue.serverTimestamp(),
-              rebuiltBy: 'admin'
-            }, { merge: true });
-          }
-          return { days: byDay.size };
+          const totals = {}; const sets = {};
+          Object.keys(latest).forEach(k => {
+            const it = latest[k]; if (!it || it.action !== 'mark') return;
+            const u = it.user; sets[u] = sets[u] || new Set(); sets[u].add(it.sid);
+          });
+          // Union con playedSongs por día para cada usuario
+          try {
+            const snap = await db.collection('playedSongs').get();
+            snap.forEach(doc => {
+              const dayId = String(doc.id||'');
+              if (lo && dayId && dayId < lo) return;
+              if (hi && dayId && dayId > hi) return;
+              const d = doc.data()||{};
+              const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : (Array.isArray(d.songIds) ? d.songIds : []));
+              (arr||[]).forEach(x => {
+                const id = String(x||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+                const u = id.split('-')[0] || '';
+                if (!u) return;
+                sets[u] = sets[u] || new Set();
+                sets[u].add(id);
+              });
+            });
+          } catch(_){ }
+          Object.keys(sets).forEach(u => { totals[u] = sets[u].size; });
+          const ref = db.collection('playedSongs').doc('userTotals');
+          await ref.set({ lastUpdated: firebase.firestore.FieldValue.serverTimestamp(), totals }, { merge: true });
+          window.__userToggleSet = window.__userToggleSet || {}; Object.keys(sets).forEach(u => { window.__userToggleSet[u] = sets[u]; });
+          return { users: Object.keys(totals).length };
         } catch (err) {
-          console.error('Error en rebuildPlayedSongsAll:', err);
-          return { days: 0, error: String(err) };
+          console.error('Error en recountToggleTotalsAll:', err);
+          return { users: 0, error: String(err) };
         }
       }
       (function attachRebuildButton(){
@@ -7061,16 +7921,18 @@
           const dEnd = endInput ? String(endInput.value||'').trim() : '';
           let res;
           btn.disabled = true;
-          showToast('Reconstruyendo registros…', 'info');
+          showToast('Recontando canciones toggleadas…', 'info');
           if (mode) {
-            res = await rebuildPlayedSongsForUser(mode, dStart, dEnd);
+            res = await recountToggleTotalsForUser(mode, dStart, dEnd);
           } else {
-            res = await rebuildPlayedSongsAll(dStart, dEnd);
+            res = await recountToggleTotalsAll(dStart, dEnd);
           }
           if (res && !res.error) {
-            showToast(`Reconstrucción completada. Días afectados: ${res.days}`, 'success');
+            const msg = res.total ? `Recuento para ${mode}: ${res.total}` : `Recuento global: ${res.users} usuarios`;
+            showToast(msg, 'success');
           } else {
-            showToast(`Reconstrucción parcial. Días afectados: ${res.days||0}`, 'warning');
+            const msg = res && res.error ? res.error : 'Recuento parcial';
+            showToast(msg, 'warning');
           }
           btn.disabled = false;
         });
@@ -7332,10 +8194,17 @@
           }
 
           const usersList = Array.from(users).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+          const lastProfileUser = String(localStorage.getItem('lastProfileUser')||'').trim();
+          const ordered = lastProfileUser && usersList.includes(lastProfileUser)
+            ? [lastProfileUser, ...usersList.filter(u => u !== lastProfileUser)]
+            : usersList;
           console.log(`👥 Usuarios encontrados para selector:`, usersList);
 
-          const options = '<option value="">Selecciona un usuario</option>' +
-            usersList.map(user => `<option value="${user}">${user}</option>`).join('');
+          const hasLast = !!(lastProfileUser && ordered.length && ordered[0] === lastProfileUser);
+          const sep = '<option value="" disabled>------</option>';
+          const firstOpt = hasLast ? `<option value="${ordered[0]}">${ordered[0]}</option>${sep}` : '';
+          const restOpts = ordered.slice(hasLast ? 1 : 0).map(user => `<option value="${user}">${user}</option>`).join('');
+          const options = '<option value="">Selecciona un usuario</option>' + firstOpt + restOpts;
 
           userSelect.innerHTML = options;
           console.log(`✅ Selector poblado con ${usersList.length} usuarios`);
@@ -7381,8 +8250,15 @@
           });
           
           const usersList = Array.from(users).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-          const options = '<option value="">Selecciona un usuario</option>' +
-            usersList.map(user => `<option value="${user}">${user}</option>`).join('');
+          const lastProfileUser = String(localStorage.getItem('lastProfileUser')||'').trim();
+          const ordered = lastProfileUser && usersList.includes(lastProfileUser)
+            ? [lastProfileUser, ...usersList.filter(u => u !== lastProfileUser)]
+            : usersList;
+          const hasLast = !!(lastProfileUser && ordered.length && ordered[0] === lastProfileUser);
+          const sep = '<option value="" disabled>------</option>';
+          const firstOpt = hasLast ? `<option value="${ordered[0]}">${ordered[0]}</option>${sep}` : '';
+          const restOpts = ordered.slice(hasLast ? 1 : 0).map(user => `<option value="${user}">${user}</option>`).join('');
+          const options = '<option value="">Selecciona un usuario</option>' + firstOpt + restOpts;
           
           userSelect.innerHTML = options;
           
@@ -7395,6 +8271,50 @@
         }
       }
       window.populateUserSelectorFromLocalStorage = populateUserSelectorFromLocalStorage;
+
+      // --- NUEVA FUNCIÓN: Poblar selector de compensación (Admin) ---
+      async function populateAdminCompensationSelector() {
+        const compSelect = document.getElementById('comp-user-select');
+        if (!compSelect) return;
+        
+        try {
+           compSelect.innerHTML = '<option value="">Cargando usuarios...</option>';
+           const users = new Set();
+           
+           // 1. Firebase Users
+           try {
+             const snap = await db.collection('users').get();
+             snap.forEach(d => { const n = d.data().name; if(n) users.add(n.trim()); });
+           } catch(e){}
+           
+           // 2. Solicitudes recientes
+           try {
+             const snap = await db.collection('solicitudes').orderBy('day','desc').limit(500).get();
+             snap.forEach(d => { const u = d.data().usuario; if(u) users.add(u.trim()); });
+           } catch(e){}
+           
+           // 3. LocalStorage
+           try {
+              const local = JSON.parse(localStorage.getItem('solicitudes')||'[]');
+              local.forEach(s => { if(s.usuario) users.add(s.usuario.trim()); });
+           } catch(e){}
+           
+           const sorted = Array.from(users).sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+           
+           let opts = '<option value="">Seleccionar usuario...</option>';
+           sorted.forEach(u => {
+              opts += `<option value="${u}">${u}</option>`;
+           });
+           compSelect.innerHTML = opts;
+           
+        } catch(e) {
+           console.error('Error poblando selector admin:', e);
+           compSelect.innerHTML = '<option value="">Error al cargar</option>';
+        }
+      }
+      // Exponer globalmente
+      window.populateAdminCompensationSelector = populateAdminCompensationSelector;
+
 
       // Función auxiliar para obtener todos los datos combinados
       async function getAllCombinedSolicitudes() {
@@ -7411,7 +8331,8 @@
                 cancion: data.cancion,
                 artista: data.artista,
                 day: data.day,
-                ts: data.ts ? data.ts.toMillis() : Date.now()
+                ts: data.ts ? data.ts.toMillis() : Date.now(),
+                hora: data.hora || ''
               });
             }
           });
@@ -7430,32 +8351,38 @@
           
           // Agregar solicitudes de Firestore
           firestoreSolicitudes.forEach(s => {
-            const key = `${s.usuario}-${s.cancion}-${s.artista}-${s.ts}`;
+            const hora = s.hora || (window.toHourKey ? window.toHourKey(s.ts) : '') || '';
+            const key = `${s.usuario}-${s.cancion}-${s.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
             allSolicitudesMap.set(key, s);
           });
           
           // Agregar solicitudes de localStorage que no estén en Firestore
           localSolicitudes.forEach(s => {
-            const key = `${s.usuario}-${s.cancion}-${s.artista}-${s.time}`;
+            const hora = s.hora || (window.toHourKey ? window.toHourKey(s.time) : '') || '';
+            const key = `${s.usuario}-${s.cancion}-${s.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
             if (!allSolicitudesMap.has(key)) {
               allSolicitudesMap.set(key, {
                 usuario: s.usuario,
                 cancion: s.cancion,
                 artista: s.artista,
-                ts: s.time
+                ts: s.time,
+                hora: s.hora || ''
               });
             }
           });
           
           // Agregar solicitudes de byDay que no estén incluidas
           Object.values(byDay).flat().forEach(s => {
-            const key = `${s.usuario}-${s.cancion}-${s.artista}-${s.time}`;
+            const hora = s.hora || (window.toHourKey ? window.toHourKey(s.time) : '') || '';
+            const key = `${s.usuario}-${s.cancion}-${s.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
             if (!allSolicitudesMap.has(key)) {
               allSolicitudesMap.set(key, {
                 usuario: s.usuario,
                 cancion: s.cancion,
                 artista: s.artista,
-                ts: s.time
+                ts: s.time,
+                hora: s.hora || '',
+                day: s.day || (s.fecha||'').split('T')[0] // Asegurar que tenga día
               });
             }
           });
@@ -7516,10 +8443,24 @@
         
         // Verificar datos existentes
         console.log(`📊 Verificando datos para usuario: ${username}`);
+        // Limpiar caches y pines para evitar valores del usuario previo
+        try { window.__breakdownCache = {}; } catch (_) {}
         
-        // Renderizar modal directamente con datos existentes
+        // Renderizar modal y refrescar paneles activos para el usuario seleccionado
         console.log(`🎨 Llamando renderGamificationModal para ${username}`);
         await renderGamificationModal();
+        const u = currentSelectedUser;
+        try {
+          const statsPanel = document.getElementById('gamification-stats');
+          if (statsPanel && statsPanel.classList.contains('active')) {
+            const localData = getLocalGamificationData(u) || getGamificationDataForUser(u);
+            await renderPersonalStatsForUser(localData, u);
+          }
+          const breakdownPanel = document.getElementById('gamification-breakdown');
+          if (breakdownPanel && breakdownPanel.classList.contains('active')) {
+            await renderPointsBreakdownForUser(u, true);
+          }
+        } catch (_){ }
         console.log(`✅ FIN - Modal actualizado para usuario: ${currentSelectedUser}`);
       }
 
@@ -8100,7 +9041,8 @@
         const isEntryPlayed = (s) => {
           try {
             const day = getSongDay(s);
-            const hour = toHour(s.ts || s.timestamp || s.time);
+            // Usar la hora almacenada si existe, sino calcularla de forma segura (HH:MM)
+            const hour = s.hora || (window.toHourKey ? window.toHourKey(s.ts || s.timestamp || s.time) : toHour(s.ts || s.timestamp || s.time));
             const sid = `${s.usuario}-${s.cancion}-${s.artista}-${hour}`.replace(/[^a-zA-Z0-9-]/g, '');
             const playedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
             const dayArr = Array.isArray(playedMap[day]) ? playedMap[day] : [];
@@ -8336,22 +9278,17 @@
         const progressPercent = ((data.xp - currentLevel.xpRequired) / (nextLevel.xpRequired - currentLevel.xpRequired)) * 100;
         
         // Actualizar información del usuario
-        const userNameEl = document.getElementById('user-name');
-        const userLevelNameEl = document.getElementById('user-level-name');
-        const userLevelNumberEl = document.getElementById('user-level-number');
-        const userPointsEl = document.getElementById('user-points');
-        
-        console.log(`🔄 Actualizando elementos del perfil:`);
-        console.log(`👤 Nombre: ${targetUser} -> elemento encontrado: ${!!userNameEl}`);
-        console.log(`🏆 Nivel: ${data.level} (${currentLevel.name}) -> elementos encontrados: ${!!userLevelNameEl}, ${!!userLevelNumberEl}`);
-        console.log(`💰 Puntos: ${data.points} -> elemento encontrado: ${!!userPointsEl}`);
-        
-        if (userNameEl) userNameEl.textContent = targetUser;
-        if (userLevelNameEl) userLevelNameEl.textContent = currentLevel.name;
-        if (userLevelNumberEl) userLevelNumberEl.textContent = `Nivel ${data.level}`;
-        if (userPointsEl) userPointsEl.textContent = data.points;
+        updateUserHeaderUI(targetUser, data);
         
         console.log(`✅ Información actualizada: ${targetUser}, Nivel ${data.level}, ${data.points} puntos`);
+        
+        // Refrescar paneles con el usuario seleccionado
+        try {
+          await renderPointsBreakdownForUser(targetUser, true);
+        } catch (_){ }
+        try {
+          await renderPersonalStatsForUser(data, targetUser);
+        } catch (_){ }
         
         // Actualizar barra de progreso
         const progressFillEl = document.getElementById('progress-fill');
@@ -8377,10 +9314,6 @@
         } catch (error) {
           console.error('Error renderizando rachas:', error);
         }
-        
-        // Renderizar estadísticas personales
-        await renderPersonalStatsForUser(data);
-        
         // Actualizar selector de usuario
         populateUserSelector().then(() => {
           const userSelect = document.getElementById('gamification-user-select');
@@ -8693,27 +9626,47 @@
       async function computeActivityForMonth(username, month, year) {
         const activity = {};
         try {
-          const all = await getAllCombinedSolicitudes();
-          all.forEach(s => {
-            if (s.usuario !== username) return;
+           const normUser = String(username||'').trim().replace(/^@/,'').toLowerCase();
+           const all = await getAllCombinedSolicitudes();
+           
+           // También considerar las reproducidas para pintar días activos
+           // A veces un usuario no pide, pero si le reproducen canciones antiguas, ¿cuenta?
+           // Generalmente "actividad" es pedir canciones. Pero si la regla es "canciones reproducidas cuentan", deberíamos incluirlas.
+           // Por ahora, nos basamos en SOLICITUDES que es lo que define "actividad" principal en este contexto (pedir).
+           // Si el usuario quiere que "reproducidas" también pinten el calendario, habría que cruzar datos.
+           // Asumiremos que actividad = solicitudes hechas ese día.
+           
+           all.forEach(s => {
+            const u = String(s.usuario||'').trim().replace(/^@/,'').toLowerCase();
+            if (u !== normUser) return;
+            
             let d = null;
             if (s.ts) {
               d = new Date(s.ts);
             } else if (s.day) {
+              // Ajuste de zona horaria para strings de fecha (YYYY-MM-DD)
+              // Al hacer new Date("YYYY-MM-DD") es UTC. Queremos evitar desfases de día.
               const parts = String(s.day).split('-');
               if (parts.length === 3) {
-                d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10));
+                // Crear fecha local a las 12:00 para evitar bordes
+                d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10), 12, 0, 0);
               } else {
                 d = new Date(s.day);
               }
             }
+            
             if (!d || isNaN(d.getTime())) return;
+            
             if (d.getMonth() === month && d.getFullYear() === year) {
-              const key = d.toISOString().split('T')[0];
+              // Construir key local YYYY-MM-DD
+              const y = d.getFullYear();
+              const m = String(d.getMonth() + 1).padStart(2, '0');
+              const da = String(d.getDate()).padStart(2, '0');
+              const key = `${y}-${m}-${da}`;
               activity[key] = (activity[key] || 0) + 1;
             }
           });
-        } catch (e) {}
+        } catch (e) { console.error(e); }
         return activity;
       }
 
@@ -8769,6 +9722,92 @@
         }
       }
 
+      // NUEVA función simplificada para contar canciones toggleadas (Reproducidas)
+      async function countTotalToggledSongsForUser(usuario) {
+         try {
+           const norm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
+           const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+           const prefix = sanitize(`${norm}-`);
+           const ids = new Set();
+           
+           // 1. LocalStorage
+           try {
+             const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+             Object.keys(localPlayed).forEach(day => {
+               if (!isOnOrAfterStart(day)) return;
+               const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+               arr.forEach(x => {
+                 const id = sanitize(x);
+                 if (id.startsWith(prefix)) ids.add(id);
+               });
+             });
+           } catch(e){}
+
+           // 2. Firestore playedSongs
+           try {
+             const snap = await db.collection('playedSongs').get();
+             snap.forEach(doc => {
+               const day = doc.id;
+               if (!isOnOrAfterStart(day)) return;
+               const d = doc.data()||{};
+               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
+               arr.forEach(x => {
+                 const id = sanitize(x);
+                 if (id.startsWith(prefix)) ids.add(id);
+               });
+             });
+           } catch(e){}
+           
+           // 3. System Events (unmark/mark logic)
+           try {
+             const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
+             const latest = {};
+             qs.forEach(doc => {
+                const d = doc.data()||{};
+                const sid = sanitize(d.songId);
+                if (!sid) return;
+                const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+                const k = sid; // Solo ID importa, no el día
+                if (!latest[k] || ts > latest[k].ts) {
+                  latest[k] = { action: d.action, ts };
+                }
+             });
+             Object.keys(latest).forEach(sid => {
+                if (latest[sid].action === 'mark') ids.add(sid);
+                else if (latest[sid].action === 'unmark') ids.delete(sid);
+             });
+           } catch(e){}
+
+           return ids.size;
+         } catch(e) { return 0; }
+      }
+
+      // NUEVA función para contar solicitudes históricas de un usuario (TOTALES)
+      async function countTotalRequestedSongsForUser(usuario) {
+         try {
+           const norm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
+           if (!norm) return 0;
+           
+           // 1. Obtener de Firestore (donde está el histórico completo)
+           const snap = await db.collection('solicitudes').where('usuario', '==', norm).get();
+           
+           // Si Firestore falla o está vacío, intentamos localStorage pero priorizamos Firestore
+           // Nota: where('usuario') es case-sensitive en Firestore, por lo que puede fallar si el casing no coincide.
+           // Mejor estrategia: traer todo y filtrar en cliente o confiar en un índice correcto.
+           // Dado el volumen, filtrar en cliente de getAllCombinedSolicitudes es más seguro para coincidir casing.
+           
+           const all = await getAllCombinedSolicitudes();
+           const filtered = all.filter(s => {
+              const u = String(s.usuario||'').trim().replace(/^@/,'').toLowerCase();
+              const d = String(s.day || (s.fecha||'').split('T')[0] || '').trim();
+              if (d && window.isOnOrAfterStart && !window.isOnOrAfterStart(d)) return false;
+              return u === norm;
+           });
+           
+           return filtered.length;
+         } catch(e) { console.error(e); return 0; }
+      }
+
       async function renderPersonalStatsForUser(data, usuario) {
         const stats = (data && data.stats) || {};
         const targetUser = usuario || getCurrentSelectedUser();
@@ -8781,83 +9820,55 @@
         const uniqueArtistsEl = document.getElementById('personal-unique-artists');
         const activeDaysEl = document.getElementById('personal-active-days');
         
+        // --- NUEVA LÓGICA: Calcular canciones reproducidas (toggleadas) de cero ---
         try {
-          const quick = computeLocalSolicitudesStats(targetUser);
-          stableSetStat('personal-total-songs', quick.totalSongs, targetUser);
-          stableSetStat('personal-unique-artists', quick.uniqueArtists, targetUser);
-          stableSetStat('personal-active-days', quick.activeDays, targetUser);
-        } catch (_){}
-        try {
-          const qp = countLocalPlayedForUser(targetUser);
-          stableSetStat('personal-total-played', qp, targetUser);
-        } catch (_){}
-        // Fallback: calcular estadísticas si faltan en data.stats
-        try {
-          let totalSongs = Number(stats.totalSongs || 0);
-          let uniqueArtists = Number(stats.uniqueArtists || 0);
-          let activeDays = Number(stats.activeDays || 0);
-          if (!totalSongs || !uniqueArtists || !activeDays) {
-            const allSolicitudes = await getAllCombinedSolicitudes();
-            const userSolicitudes = allSolicitudes.filter(s => s && String(s.usuario || '').trim().replace(/^@/, '').toLowerCase() === normUser);
-            totalSongs = totalSongs || userSolicitudes.length;
-            uniqueArtists = uniqueArtists || new Set(userSolicitudes.map(s => s.artista).filter(Boolean)).size;
-            const days = userSolicitudes.map(s => String(s.day || s.fecha?.split('T')[0] || '').trim()).filter(Boolean);
-            activeDays = activeDays || new Set(days).size;
-          }
-          stableSetStat('personal-total-songs', totalSongs, targetUser);
-          stableSetStat('personal-unique-artists', uniqueArtists, targetUser);
-          stableSetStat('personal-active-days', activeDays, targetUser);
-        } catch (_){
-          stableSetStat('personal-total-songs', stats.totalSongs || 0, targetUser);
-          stableSetStat('personal-unique-artists', stats.uniqueArtists || 0, targetUser);
-          stableSetStat('personal-active-days', stats.activeDays || 0, targetUser);
+          const totalToggled = await countTotalToggledSongsForUser(targetUser);
+          if (totalPlayedEl) totalPlayedEl.textContent = String(totalToggled);
+          
+          // Actualizar globalmente para consistencia
+          setPlayedStat(totalToggled); 
+        } catch(e) {
+          // if (totalPlayedEl) totalPlayedEl.textContent = '0';
         }
+
+        /* 
+           BLOQUE ANTERIOR ELIMINADO: 
+           Antes aquí había una llamada a computeLocalSolicitudesStats que causaba el parpadeo 129 -> 130.
+           Al quitarla y depender solo de countTotalRequestedSongsForUser (abajo), aseguramos consistencia.
+        */
+
+        // --- NUEVA LÓGICA: Calcular canciones pedidas (Requested) de cero ---
         try {
-          const bd = await computeUserBreakdown(targetUser);
-          let played = bd && typeof bd.playedCount === 'number' ? bd.playedCount : 0;
-          if (!played) {
-            const allSolicitudes = await getAllCombinedSolicitudes();
-            const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-            const sanitize = (x) => String(x||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
-            let quick = 0;
-            const userSolicitudes = allSolicitudes.filter(s => s && String(s.usuario || '').trim().replace(/^@/, '').toLowerCase() === normUser);
-            const grouped = {};
-            userSolicitudes.forEach(s => {
-              const day = String(s.day || s.fecha?.split('T')[0] || '').trim();
-              if (!day) return;
-              (grouped[day] = grouped[day] || []).push(s);
-            });
-            for (const day of Object.keys(grouped)) {
-              const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
-              const set = new Set(arr.map(sanitize));
-              const songs = grouped[day] || [];
-              for (let i=0;i<songs.length;i++) {
-                const s = songs[i] || {};
-                const sid = sanitize(`${s.usuario}-${s.cancion}-${s.artista}-${s.hora||'00:00'}`);
-                if (set.has(sid)) {
-                  quick++;
-                } else {
-                  const prefix = sanitize(`${s.usuario}-${s.cancion}-${s.artista}-`);
-                  if (arr.some(x => sanitize(x).startsWith(prefix))) quick++;
-                }
-              }
-            }
-            played = quick;
-          }
-          if (totalPlayedEl) {
-            const cur = Number(totalPlayedEl.textContent || 0);
-            totalPlayedEl.textContent = played > cur ? played : cur;
-          }
-        } catch (_){
-          if (totalPlayedEl) totalPlayedEl.textContent = 0;
-        }
-        if (uniqueArtistsEl) uniqueArtistsEl.textContent = stats.uniqueArtists || 0;
-        if (activeDaysEl) activeDaysEl.textContent = stats.activeDays || 0;
+           // Primero intentar una actualización rápida si tenemos datos locales, pero SIN escribir si es 0 y sabemos que hay más
+           // Para evitar el parpadeo 129 -> 130, vamos directo a la fuente completa combinada.
+           // Pero getAllCombinedSolicitudes puede ser lenta.
+           // La inconsistencia reportada es "129 y después 130".
+           // Esto significa que primero pintó 129 (local) y luego 130 (total).
+           // Para arreglarlo, vamos a NO pintar el parcial si podemos evitarlo, o confiar solo en el total.
+           
+           const totalRequested = await countTotalRequestedSongsForUser(targetUser);
+           stableSetStat('personal-total-songs', totalRequested, targetUser);
+           
+           // También recalcular artistas únicos y días activos con la lista completa
+           const all = await getAllCombinedSolicitudes();
+           const userSolicitudes = all.filter(s => String(s.usuario||'').trim().replace(/^@/,'').toLowerCase() === normUser);
+           
+           const uniqueArtists = new Set(userSolicitudes.map(s => s.artista).filter(Boolean)).size;
+           const activeDays = new Set(userSolicitudes.map(s => String(s.day || (s.fecha||'').split('T')[0] || '').trim()).filter(d => d)).size;
+           
+           stableSetStat('personal-unique-artists', uniqueArtists, targetUser);
+           stableSetStat('personal-active-days', activeDays, targetUser);
+           
+        } catch(e) { console.error('Error counting requested:', e); }
+        
+        // ... Resto de la lógica para otros stats (rank) ...
         
         try {
           const allSolicitudes = await getAllCombinedSolicitudes();
           const userCounts = {};
           allSolicitudes.forEach(s => {
+            const day = String(s.day || (s.fecha||'').split('T')[0] || '').trim();
+            if (day && window.isOnOrAfterStart && !window.isOnOrAfterStart(day)) return; // Restaurado filtro de fecha
             const key = String(s.usuario || '').trim().replace(/^@/, '').toLowerCase();
             userCounts[key] = (userCounts[key] || 0) + 1;
           });
@@ -8866,16 +9877,7 @@
           const personalRankEl = document.getElementById('personal-rank');
           if (personalRankEl) personalRankEl.textContent = userRank > 0 ? `#${userRank}` : '-';
         } catch (error) {
-          const allUsers = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          const userCounts = {};
-          allUsers.forEach(s => {
-            const key = String(s.usuario || '').trim().replace(/^@/, '').toLowerCase();
-            userCounts[key] = (userCounts[key] || 0) + 1;
-          });
-          const sortedUsers = Object.entries(userCounts).sort((a, b) => b[1] - a[1]);
-          const userRank = sortedUsers.findIndex(([user]) => user === normUser) + 1;
-          const personalRankEl = document.getElementById('personal-rank');
-          if (personalRankEl) personalRankEl.textContent = userRank > 0 ? `#${userRank}` : '-';
+           // Fallback rank
         }
         
         // Renderizar géneros favoritos (simulado)
@@ -8918,6 +9920,7 @@
         }
 
         const target = e.target.value || getCurrentUser();
+        try { localStorage.setItem('lastProfileUser', String(target||'')); } catch(_){}
         populateBadgeSelectForUser(target);
       });
 
@@ -9769,7 +10772,7 @@
           console.log('✅ Actualización completa de usuarios terminada');
           
           // Actualizar el modal si está abierto
-          if (!gamificationModal.hidden) {
+          if (gamificationModal && !gamificationModal.hidden) {
             await renderGamificationModal();
             await populateUserSelector();
           }
@@ -10714,53 +11717,70 @@
         }
       }
 
-      // FUNCIÓN PARA GENERAR ACTIVIDAD INDIVIDUAL POR USUARIO
-      function generateUserActivity(userName, days = 30, startDate = null) {
-        // Crear semilla basada en el nombre del usuario
-        let seed = 0;
-        for (let i = 0; i < userName.length; i++) {
-          seed += userName.charCodeAt(i);
-        }
-        
-        // Función de random con semilla
-        function seededRandom() {
-          seed = (seed * 9301 + 49297) % 233280;
-          return seed / 233280;
-        }
-        
-        const activity = {};
-        const baseDate = startDate ? new Date(startDate) : new Date();
-        
-        for (let i = 0; i < days; i++) {
-          const date = startDate
-            ? new Date(baseDate.getTime() + (i * 86400000)) // hacia adelante desde startDate
-            : new Date(baseDate.getTime() - (i * 86400000)); // hacia atrás desde hoy
-          const dateStr = date.toISOString().split('T')[0];
-          const dayOfWeek = date.getDay();
-          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-          const random = seededRandom();
+      // FUNCIÓN PARA GENERAR ACTIVIDAD INDIVIDUAL POR USUARIO (REAL)
+      async function generateUserActivity(userName, days = 30, startDate = null) {
+        try {
+          // Normalizar nombre de usuario
+          const targetUser = (userName || '').trim();
+          console.log(`📊 Generando actividad REAL para ${targetUser} (últimos ${days} días)`);
           
-          let songs = 0;
-          // Patrón realista con alta actividad
-          if (random < 0.05) {
-            songs = 0; // 5% sin actividad
-          } else if (random < 0.25) {
-            songs = 1; // 20% con 1 canción
-          } else if (random < 0.5) {
-            songs = 2; // 25% con 2 canciones
-          } else if (random < 0.75) {
-            songs = isWeekend ? 4 : 3; // 25% con 3-4 canciones
-          } else if (random < 0.9) {
-            songs = isWeekend ? 5 : 4; // 15% con 4-5 canciones
-          } else {
-            songs = isWeekend ? 6 : 5; // 10% con 5-6 canciones
+          // Obtener todas las solicitudes (esto ya combina Firebase y LocalStorage)
+          // Aseguramos que la función existe
+          const allSolicitudes = typeof getAllCombinedSolicitudes === 'function' 
+            ? await getAllCombinedSolicitudes() 
+            : JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          
+          // Filtrar por usuario
+          const userSongs = allSolicitudes.filter(s => {
+            const u = s.usuario || '';
+            return u.toLowerCase().trim() === targetUser.toLowerCase();
+          });
+
+          const activity = {};
+          const baseDate = startDate ? new Date(startDate) : new Date();
+          
+          // Inicializar días con 0
+          for (let i = 0; i < days; i++) {
+            const date = startDate
+              ? new Date(baseDate.getTime() + (i * 86400000)) // hacia adelante desde startDate
+              : new Date(baseDate.getTime() - (i * 86400000)); // hacia atrás desde hoy
+            const dateStr = date.toISOString().split('T')[0];
+            activity[dateStr] = 0;
           }
-          
-          activity[dateStr] = songs;
+
+          // Llenar con datos reales
+          userSongs.forEach(s => {
+            let dateStr;
+            // Intentar obtener la fecha de varias formas
+            if (s.day && typeof s.day === 'string' && s.day.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              dateStr = s.day;
+            } else if (s.ts) {
+              const dt = s.ts.toDate ? s.ts.toDate() : new Date(s.ts);
+              if (!isNaN(dt.getTime())) dateStr = dt.toISOString().split('T')[0];
+            } else if (s.timestamp) {
+              const dt = s.timestamp.toDate ? s.timestamp.toDate() : new Date(s.timestamp);
+               if (!isNaN(dt.getTime())) dateStr = dt.toISOString().split('T')[0];
+            } else if (s.time) {
+               const dt = s.time.toDate ? s.time.toDate() : new Date(s.time);
+               if (!isNaN(dt.getTime())) dateStr = dt.toISOString().split('T')[0];
+            }
+
+            // Solo contar si la fecha está en el rango solicitado (activity tiene esa key)
+            if (dateStr && activity.hasOwnProperty(dateStr)) {
+              activity[dateStr]++;
+            } else if (dateStr) {
+               // Si la fecha es válida pero no está en el rango inicializado (por ejemplo si usamos startDate)
+               // Podríamos agregarla si quisiéramos ser flexibles, pero para rachas estrictas mejor ceñirse al rango
+            }
+          });
+
+          console.log(`✅ Actividad real generada para ${targetUser}: ${Object.values(activity).filter(x => x > 0).length} días activos de ${days}`);
+          return activity;
+
+        } catch (error) {
+          console.error('Error generando actividad real:', error);
+          return {}; 
         }
-        
-        console.log(`🎭 Datos simulados generados para ${userName}: ${Object.values(activity).filter(x => x > 0).length} días activos de ${days}`);
-        return activity;
       }
 
       // SOLUCIÓN SIMPLE Y DIRECTA - CON DATOS REALES DE FIREBASE
@@ -11425,6 +12445,7 @@
       if (item) close();
       e.stopPropagation();
     });
+  
   });
 })();
 </script>
