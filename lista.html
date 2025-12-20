@@ -659,6 +659,17 @@
         </div>
       </div>
 
+      <!-- Modal de Mensajes Genéricos (Error/Éxito) -->
+      <div id="message-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="message-modal-title">
+          <h2 id="message-modal-title">Mensaje</h2>
+          <p id="message-modal-content">Contenido del mensaje</p>
+          <div class="actions modal-actions">
+            <button type="button" id="message-modal-ok" class="btn btn-primary">Aceptar</button>
+          </div>
+        </div>
+      </div>
+
       <div id="admin-modal" class="modal-overlay" hidden>
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
           <h2 id="admin-modal-title">Modo Admin</h2>
@@ -4167,6 +4178,28 @@
         document.getElementById('search-input')?.focus();
       });
 
+      // === UTILIDAD PARA MOSTRAR MODAL DE MENSAJE ===
+      window.showMessageModal = function(options) {
+        const modal = document.getElementById('message-modal');
+        const titleEl = document.getElementById('message-modal-title');
+        const contentEl = document.getElementById('message-modal-content');
+        const okBtn = document.getElementById('message-modal-ok');
+        
+        if (!modal) { alert(options.message); return; }
+        
+        titleEl.textContent = options.title || 'Mensaje';
+        contentEl.textContent = options.message || '';
+        
+        // Manejar el cierre
+        const close = () => {
+          modal.hidden = true;
+          okBtn.removeEventListener('click', close);
+        };
+        okBtn.addEventListener('click', close);
+        
+        modal.hidden = false;
+      };
+
       // === COMPENSACIÓN MANUAL DE PUNTOS (Listener) ===
       document.getElementById('grant-comp-points-btn')?.addEventListener('click', async () => {
          const select = document.getElementById('comp-user-select');
@@ -4193,48 +4226,25 @@
                 const norm = String(user).toLowerCase().replace(/^@/,'');
                 const docRef = db.collection('userStats').doc(norm);
                 
-                // Usar transacción para asegurar consistencia
-                await db.runTransaction(async (t) => {
-                   // Usar set con merge: true directamente sin leer primero para evitar lecturas innecesarias si no existe
-                   // O si queremos sumar, necesitamos leer.
-                   // La transacción puede fallar si hay mucha concurrencia, pero para admin manual está bien.
-                   const doc = await t.get(docRef);
-                   
-                   // Si el documento no existe, crearlo con valores base
-                   if (!doc.exists) {
-                      t.set(docRef, {
-                        totalPoints: points, // Inicializar con los puntos dados
-                        totalSongs: 0,
-                        currentStreak: 0,
-                        bestStreak: 0,
-                        lastManualAdjustment: {
-                           amount: points,
-                           reason: reason,
-                           at: firebase.firestore.FieldValue.serverTimestamp(),
-                           by: 'Admin'
-                        },
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                      });
-                   } else {
-                      const data = doc.data() || {};
-                      const current = Number(data.totalPoints) || 0;
-                      const newTotal = current + points;
-                      
-                      t.set(docRef, {
-                         totalPoints: newTotal,
-                         lastManualAdjustment: {
-                            amount: points,
-                            reason: reason,
-                            at: firebase.firestore.FieldValue.serverTimestamp(),
-                            by: 'Admin'
-                         },
-                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                      }, { merge: true });
-                   }
+                // Usar FieldValue.increment para operación atómica eficiente
+                // Esto evita leer el documento antes de escribir y reduce costos/cuota
+                await docRef.set({
+                   totalPoints: firebase.firestore.FieldValue.increment(points),
+                   lastManualAdjustment: {
+                      amount: points,
+                      reason: reason,
+                      at: firebase.firestore.FieldValue.serverTimestamp(),
+                      by: 'Admin'
+                   },
+                   updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                
+                // Mostrar modal de éxito personalizado
+                showMessageModal({
+                   title: '✅ Puntos Otorgados',
+                   message: `Se han otorgado ${points} puntos al usuario "${user}" exitosamente.\n\nEl cambio se reflejará inmediatamente.`
                 });
                 
-                // Mostrar alerta de confirmación explícita además de la notificación
-                alert(`✅ ¡Éxito!\n\nSe han otorgado ${points} puntos al usuario "${user}".\n\nEl cambio se reflejará inmediatamente.`);
                 showSuccessNotification(`✅ Se otorgaron ${points} puntos a ${user}.`);
                 
                 // Limpiar inputs
@@ -4244,8 +4254,11 @@
                 
              } catch(e) {
                 console.error(e);
-                // Mostrar el error exacto de Firebase
-                alert('Error al otorgar puntos:\n' + e.message + '\n\nCódigo: ' + (e.code || 'N/A'));
+                // Mostrar modal de error personalizado
+                showMessageModal({
+                   title: '❌ Error al otorgar puntos',
+                   message: `No se pudieron otorgar los puntos.\n\nDetalle: ${e.message}\nCódigo: ${e.code || 'N/A'}`
+                });
              } finally {
                 if(btn) { btn.disabled = false; btn.textContent = '🎁 Otorgar Puntos'; }
              }
