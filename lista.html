@@ -3752,7 +3752,12 @@
       } catch (_) {}
       const g = window.__globalStats || computeGlobalStats();
       const top3Txt = Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D';
-      const usersTop3Txt = Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D';
+      
+      // Usar Top Puntos (Gamificación) si está disponible, si no fallback a Top Solicitudes
+      const pointsTop3 = window.__globalTopPointsUsers;
+      const usersTop3Txt = Array.isArray(pointsTop3) && pointsTop3.length ? pointsTop3.join(', ') : (Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D');
+      const usersLabel = (Array.isArray(pointsTop3) && pointsTop3.length) ? '🏆 Top 3 Puntuación' : '👥 Top 3 usuarios';
+      
       let avgTxt = 'N/D';
       if (typeof window.__globalTotalSolicitudes === 'number' && typeof window.__globalDistinctUsers === 'number' && window.__globalDistinctUsers > 0) {
         avgTxt = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
@@ -3761,7 +3766,7 @@
         const usersSet = new Set(solicitudes.map(x => String(x.usuario||'').trim()).filter(Boolean));
         avgTxt = usersSet.size ? (solicitudes.length / usersSet.size).toFixed(1) : '0.0';
       }
-      const globalText = '<strong>HISTORIA:</strong> • <strong>🎵 Canción más pedida:</strong> ' + fmt(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') + '  •  <strong>👥 Top 3 usuarios:</strong> ' + usersTop3Txt + '  •  <strong>🎤 Top 3 artistas:</strong> ' + top3Txt + '  •  <strong>📊 Total solicitudes:</strong> ' + (g.total || 0) + '  •  <strong>📈 Promedio por usuario:</strong> ' + avgTxt;
+      const globalText = '<strong>HISTORIA:</strong> • <strong>🎵 Canción más pedida:</strong> ' + fmt(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') + '  •  <strong>' + usersLabel + ':</strong> ' + usersTop3Txt + '  •  <strong>🎤 Top 3 artistas:</strong> ' + top3Txt + '  •  <strong>📊 Total solicitudes:</strong> ' + (g.total || 0) + '  •  <strong>📈 Promedio por usuario:</strong> ' + avgTxt;
       const sep2 = '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
       el.innerHTML = (dayText ? (dayText + sep2) : '') + globalText;
     }
@@ -3830,8 +3835,12 @@
       if (window.__userStatsGenresUnsub) { try { window.__userStatsGenresUnsub(); } catch (_) {} }
       window.__userStatsGenresUnsub = db.collection('userStats').onSnapshot((snap) => {
         const count = {};
+        const usersPoints = [];
+        
         snap.forEach((doc) => {
           const d = doc.data() || {};
+          
+          // Lógica de géneros existente
           if (d && typeof d.genresCount === 'object') {
             const m = d.genresCount || {};
             Object.keys(m).forEach(g => { const key = String(g || '').trim().toLowerCase(); const val = Number(m[g] || 0); if (key) count[key] = (count[key] || 0) + val; });
@@ -3851,12 +3860,28 @@
           if (d.stats && typeof d.stats.topGenre === 'string') {
             const key = String(d.stats.topGenre || '').trim().toLowerCase(); if (key) count[key] = (count[key] || 0) + 1;
           }
+          
+          // Nueva lógica para Top Puntos
+          const pts = Number(d.totalPoints || 0);
+          if (pts > 0) {
+             // Intentar obtener nombre formateado si existe en el doc, si no usar ID
+             const name = d.displayName || doc.id;
+             usersPoints.push({ user: name, points: pts });
+          }
         });
+        
+        // Calcular Top Género
         let gTop = '';
         let gVal = 0;
         Object.keys(count).forEach(k => { const v = count[k]; if (v > gVal) { gVal = v; gTop = k; } });
         window.__globalGenreTop = gTop;
         window.__globalGenreCount = gVal;
+        
+        // Calcular Top 3 Puntos
+        usersPoints.sort((a,b) => b.points - a.points);
+        const top3 = usersPoints.slice(0, 3).map(u => `${u.user} (${u.points})`);
+        window.__globalTopPointsUsers = top3;
+        
         refreshStatsTicker();
       }, () => {});
     }
