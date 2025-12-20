@@ -10365,7 +10365,14 @@
       // Función para cargar y renderizar solicitudes de recompensas
       async function loadRewardRequests() {
         try {
-          const allRequests = JSON.parse(localStorage.getItem('pendingRewardRequests') || '[]');
+          // const allRequests = JSON.parse(localStorage.getItem('pendingRewardRequests') || '[]');
+          // Cargar desde Firestore
+          const snapshot = await db.collection('rewardRequests').get();
+          const allRequests = [];
+          snapshot.forEach(doc => {
+             allRequests.push({ id: doc.id, ...doc.data() });
+          });
+          
           const statusFilter = adminStatusFilter?.value || 'all';
           const userFilter = adminUserFilter?.value || 'all';
           
@@ -10391,7 +10398,9 @@
           
         } catch (error) {
           console.error('Error al cargar solicitudes:', error);
-          adminRequestsList.innerHTML = '<p class="loading-message">Error al cargar solicitudes</p>';
+          if(adminRequestsList) {
+             adminRequestsList.innerHTML = '<p class="loading-message">Error al cargar solicitudes: ' + error.message + '</p>';
+          }
         }
       }
       
@@ -10465,7 +10474,11 @@
       // Función para poblar filtro de usuarios
       async function populateAdminUserFilter() {
         try {
-          const allRequests = JSON.parse(localStorage.getItem('pendingRewardRequests') || '[]');
+          // const allRequests = JSON.parse(localStorage.getItem('pendingRewardRequests') || '[]');
+          const snapshot = await db.collection('rewardRequests').get();
+          const allRequests = [];
+          snapshot.forEach(doc => allRequests.push(doc.data()));
+          
           const users = [...new Set(allRequests.map(req => req.userId))].sort();
           
           if (adminUserFilter) {
@@ -10490,21 +10503,23 @@
           
           if (!confirmed) return;
           
-          const allRequests = JSON.parse(localStorage.getItem('pendingRewardRequests') || '[]');
-          const requestIndex = allRequests.findIndex(req => req.id === requestId);
+          const requestRef = db.collection('rewardRequests').doc(requestId);
+          const doc = await requestRef.get();
           
-          if (requestIndex === -1) {
-            showErrorNotification('Solicitud no encontrada');
+          if (!doc.exists) {
+            showErrorNotification('Solicitud no encontrada en base de datos');
             return;
           }
           
-          const request = allRequests[requestIndex];
+          const request = doc.data();
           
           // Ejecutar la recompensa según su tipo
           if (request.rewardId === 'become_fan') {
             // Agregar usuario a VIP (permanente)
             try {
-              await db.collection('vipUsers').doc(request.userId).set({
+              const normUser = String(request.userId).toLowerCase().replace(/^@/,'');
+              // Buscar el documento del usuario en users o crear referencia directa
+              await db.collection('vipUsers').doc(normUser).set({
                 name: request.userId,
                 addedAt: new Date().toISOString(),
                 addedBy: 'reward_system'
@@ -10517,12 +10532,11 @@
             }
           }
           
-          // Actualizar estado de la solicitud
-          allRequests[requestIndex].status = 'approved';
-          allRequests[requestIndex].processedAt = new Date().toISOString();
-          
-          // Guardar cambios y notificar
-          localStorage.setItem('pendingRewardRequests', JSON.stringify(allRequests));
+          // Actualizar estado de la solicitud en Firestore
+          await requestRef.update({
+             status: 'approved',
+             processedAt: new Date().toISOString()
+          });
           
           const successMessage = request.rewardId === 'become_fan' 
             ? 'Solicitud aprobada exitosamente. ¡El usuario ahora es VIP!' 
@@ -10534,7 +10548,7 @@
           
         } catch (error) {
           console.error('Error al aprobar solicitud:', error);
-          showErrorNotification('Error al aprobar la solicitud');
+          showErrorNotification('Error al aprobar la solicitud: ' + error.message);
         }
       }
       
@@ -10558,27 +10572,34 @@
             return;
           }
           
-          const allRequests = JSON.parse(localStorage.getItem('pendingRewardRequests') || '[]');
-          const requestIndex = allRequests.findIndex(req => req.id === requestId);
+          const requestRef = db.collection('rewardRequests').doc(requestId);
+          const doc = await requestRef.get();
           
-          if (requestIndex === -1) {
-            showErrorNotification('Solicitud no encontrada');
+          if (!doc.exists) {
+            showErrorNotification('Solicitud no encontrada en base de datos');
             return;
           }
           
-          const request = allRequests[requestIndex];
+          const request = doc.data();
           
-          // Devolver puntos al usuario
-          const userData = getGamificationDataForUser(request.userId);
-          userData.points += request.cost;
-          updateGamificationDataForUser(request.userId, userData);
+          // Usar batch para actualizar solicitud y devolver puntos atómicamente
+          const batch = db.batch();
+          const normUser = String(request.userId).toLowerCase().replace(/^@/,'');
+          const userStatsRef = db.collection('userStats').doc(normUser);
           
-          // Actualizar estado de la solicitud
-          allRequests[requestIndex].status = 'rejected';
-          allRequests[requestIndex].processedAt = new Date().toISOString();
+          // Devolver puntos al usuario en Firestore
+          batch.set(userStatsRef, {
+             totalPoints: firebase.firestore.FieldValue.increment(request.cost),
+             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
           
-          // Guardar cambios
-          localStorage.setItem('pendingRewardRequests', JSON.stringify(allRequests));
+          // Actualizar estado de la solicitud en Firestore
+          batch.update(requestRef, {
+             status: 'rejected',
+             processedAt: new Date().toISOString()
+          });
+          
+          await batch.commit();
           
           showSuccessNotification(`Solicitud rechazada. Se devolvieron ${request.cost} puntos a ${request.userId}.`);
           
@@ -10587,7 +10608,7 @@
           
         } catch (error) {
           console.error('Error al rechazar solicitud:', error);
-          showErrorNotification('Error al rechazar la solicitud');
+          showErrorNotification('Error al rechazar la solicitud: ' + error.message);
         }
       }
 
@@ -10651,27 +10672,45 @@
       // Función para solicitar una recompensa (global)
       window.requestReward = async function(rewardId, username, cost) {
         console.log('🎁 Solicitando recompensa:', rewardId, 'para usuario:', username, 'costo:', cost);
+        const btn = document.querySelector(`.reward-card button[onclick*="${rewardId}"]`);
+        if(btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
+
         try {
           console.log('📊 Obteniendo datos del usuario...');
-          const userData = getGamificationDataForUser(username);
-          console.log('👤 Datos del usuario:', userData);
+          // Obtener puntos actuales de Firestore para asegurar consistencia
+          const normUser = String(username).toLowerCase().replace(/^@/,'');
+          const userDocRef = db.collection('userStats').doc(normUser);
+          const userDoc = await userDocRef.get();
           
-          if (userData.points < cost) {
+          let currentPoints = 0;
+          if (userDoc.exists) {
+             currentPoints = Number(userDoc.data().totalPoints || 0);
+          } else {
+             // Fallback a local si no existe en DB (aunque debería)
+             const localData = getGamificationDataForUser(username);
+             currentPoints = localData.points || 0;
+          }
+
+          console.log('👤 Puntos actuales (DB):', currentPoints);
+          
+          if (currentPoints < cost) {
             showErrorNotification('No tienes suficientes puntos para esta recompensa.');
+            if(btn) { btn.disabled = false; btn.textContent = 'Canjear'; }
             return;
           }
           
           console.log('🔍 Buscando recompensa en configuración...');
           const reward = REWARDS.find(r => r.id === rewardId);
-          console.log('🎁 Recompensa encontrada:', reward);
           if (!reward) {
             showErrorNotification('Recompensa no encontrada.');
+             if(btn) { btn.disabled = false; btn.textContent = 'Canjear'; }
             return;
           }
           
-          // Crear solicitud de recompensa
+          // Crear solicitud de recompensa en Firestore
+          const requestId = Date.now().toString();
           const rewardRequest = {
-            id: Date.now().toString(),
+            id: requestId,
             userId: username,
             rewardId: rewardId,
             rewardName: reward.name,
@@ -10681,52 +10720,82 @@
             description: reward.description
           };
           
-          // Guardar en localStorage (en una aplicación real sería en Firebase)
-          console.log('💾 Guardando solicitud en localStorage...');
-          const pendingRequests = JSON.parse(localStorage.getItem('pendingRewardRequests') || '[]');
-          pendingRequests.push(rewardRequest);
-          localStorage.setItem('pendingRewardRequests', JSON.stringify(pendingRequests));
-          console.log('✅ Solicitud guardada');
+          console.log('💾 Guardando solicitud en Firestore...');
           
-          // Descontar puntos temporalmente (se restaurarán si se rechaza)
-          console.log('💰 Descontando puntos...');
-          userData.points -= cost;
+          // Usar batch para descontar puntos y crear solicitud atómicamente
+          const batch = db.batch();
+          const requestRef = db.collection('rewardRequests').doc(requestId);
+          
+          batch.set(requestRef, rewardRequest);
+          batch.set(userDocRef, { 
+             totalPoints: firebase.firestore.FieldValue.increment(-cost),
+             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          
+          await batch.commit();
+          
+          console.log('✅ Solicitud guardada y puntos descontados');
+          
+          // Actualizar localmente también para reflejo inmediato en UI
+          const userData = getGamificationDataForUser(username);
+          userData.points = Math.max(0, currentPoints - cost); // Estimado
           updateGamificationDataForUser(username, userData);
-          console.log('✅ Puntos actualizados');
           
-          showSuccessNotification(`Solicitud de "${reward.name}" enviada para aprobación del administrador.`);
+          showMessageModal({
+             title: '✅ Solicitud Enviada',
+             message: `Has solicitado "${reward.name}".\n\nSe han descontado ${cost} puntos. El administrador revisará tu solicitud pronto.`
+          });
           
           // Actualizar el modal
           console.log('🔄 Actualizando modal...');
           await renderRewardsModal();
-          console.log('✅ Modal actualizado');
           
         } catch (error) {
           console.error('Error al solicitar recompensa:', error);
-          showErrorNotification('Error al procesar la solicitud. Inténtalo de nuevo.');
+          showMessageModal({
+             title: '❌ Error',
+             message: 'Error al procesar la solicitud: ' + error.message
+          });
+        } finally {
+           // Restaurar botón (aunque el modal se actualiza)
+           if(btn) { btn.disabled = false; btn.textContent = 'Canjear'; }
         }
       }
       
       // Función para renderizar solicitudes pendientes
       async function renderPendingRequests(username) {
         const pendingContainer = document.getElementById('pending-requests');
-        const pendingRequests = JSON.parse(localStorage.getItem('pendingRewardRequests') || '[]')
-          .filter(req => req.userId === username && req.status === 'pending');
+        if(!pendingContainer) return;
         
-        if (pendingRequests.length === 0) {
-          pendingContainer.innerHTML = '<p>No tienes solicitudes pendientes.</p>';
-          return;
+        try {
+           // Cargar desde Firestore
+           const snapshot = await db.collection('rewardRequests')
+             .where('userId', '==', username)
+             .where('status', '==', 'pending')
+             .get();
+             
+           const pendingRequests = [];
+           snapshot.forEach(doc => pendingRequests.push(doc.data()));
+           
+           if (pendingRequests.length === 0) {
+             pendingContainer.innerHTML = '<p>No tienes solicitudes pendientes.</p>';
+             return;
+           }
+           
+           pendingContainer.innerHTML = pendingRequests.map(req => `
+             <div class="pending-request">
+               <div class="pending-info">
+                 <strong>${req.rewardName}</strong>
+                 <span class="pending-cost">${req.cost} puntos</span>
+               </div>
+               <div class="pending-status">Pendiente de aprobación</div>
+             </div>
+           `).join('');
+           
+        } catch(e) {
+           console.error("Error cargando solicitudes pendientes:", e);
+           pendingContainer.innerHTML = '<p>Error al cargar solicitudes.</p>';
         }
-        
-        pendingContainer.innerHTML = pendingRequests.map(req => `
-          <div class="pending-request">
-            <div class="pending-info">
-              <strong>${req.rewardName}</strong>
-              <span class="pending-cost">${req.cost} puntos</span>
-            </div>
-            <div class="pending-status">Pendiente de aprobación</div>
-          </div>
-        `).join('');
       }
       
       // Event listeners para modal de recompensas
