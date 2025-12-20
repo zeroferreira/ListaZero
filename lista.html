@@ -4173,7 +4173,8 @@
          const reason = (document.getElementById('comp-reason-input')?.value || '').trim() || 'Manual adjustment';
          
          if (!user) { alert('Por favor selecciona un usuario'); return; }
-         if (points === 0) { alert('Por favor ingresa una cantidad de puntos distinta de 0'); return; }
+         // Permitir cualquier valor, incluso 0 si el admin quiere registrar una nota
+         // if (points === 0) { alert('Por favor ingresa una cantidad de puntos distinta de 0'); return; }
          
          const confirmed = await showConfirmation({
             icon: '🎁',
@@ -4194,7 +4195,10 @@
                 await db.runTransaction(async (t) => {
                    const doc = await t.get(docRef);
                    const current = doc.exists ? (doc.data().totalPoints || 0) : 0;
-                   const newTotal = Math.max(0, current + points);
+                   // Permitir negativos y no restringir el mínimo a 0 si el admin lo desea, 
+                   // aunque para gamificación lo ideal es >= 0.
+                   // El usuario pidió "quitar cualquier restricción", así que dejamos que sea lo que sea.
+                   const newTotal = current + points; 
                    
                    t.set(docRef, {
                       totalPoints: newTotal,
@@ -4208,7 +4212,7 @@
                    }, { merge: true });
                 });
                 
-                showSuccessNotification(`✅ Se otorgaron ${points} puntos a ${user}.`);
+                showSuccessNotification(`✅ Se otorgaron ${points} puntos a ${user}. Nuevo total calculado.`);
                 // Limpiar inputs
                 if(select) select.value = '';
                 document.getElementById('comp-points-input').value = '';
@@ -4216,7 +4220,8 @@
                 
              } catch(e) {
                 console.error(e);
-                showErrorNotification('Error al otorgar puntos: ' + e.message);
+                // Mostrar el error exacto de Firebase
+                alert('Error al otorgar puntos:\n' + e.message + '\n\nCódigo: ' + (e.code || 'N/A'));
              } finally {
                 if(btn) { btn.disabled = false; btn.textContent = '🎁 Otorgar Puntos'; }
              }
