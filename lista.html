@@ -9151,8 +9151,26 @@
         
         // console.log(`✅ Datos guardados en localStorage para ${targetUser}`);
         
-        // Nota: El guardado en nube se hace en syncGamificationDataWithCloud o en puntos críticos, 
-        // no aquí para evitar bucles o escrituras excesivas en cada cambio menor local.
+        // PUSH AUTOMÁTICO A LA NUBE (Debounce simple para evitar saturación)
+        // Esto asegura que los cambios locales (como puntos por canciones o logros) se reflejen globalmente
+        if (window.db) {
+           const now = Date.now();
+           window._lastCloudPush = window._lastCloudPush || {};
+           const lastPush = window._lastCloudPush[targetUser.toLowerCase()] || 0;
+           
+           // Si han pasado más de 10 segundos desde el último push, o si es un cambio crítico (muchos puntos)
+           if (now - lastPush > 10000) {
+              window._lastCloudPush[targetUser.toLowerCase()] = now;
+              const normUser = String(targetUser).toLowerCase().replace(/^@/,'');
+              
+              // No bloquear la UI, hacerlo en segundo plano
+              db.collection('userStats').doc(normUser).set({
+                 totalPoints: data.points,
+                 gamification: data,
+                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+              }, { merge: true }).catch(err => console.error("Error auto-pushing stats:", err));
+           }
+        }
       }
 
       async function calculateUserStatsForUser(usuario = null) {
@@ -11009,7 +11027,23 @@
       // Análisis periódico cada 5 minutos
       setInterval(() => {
         analyzeNewUsersAutomatically().catch(console.error);
+        
+        // Sincronizar usuario actual automáticamente si está logueado
+        const currentUser = getCurrentUser();
+        if (currentUser) {
+           // Sincronizar en segundo plano sin bloquear
+           syncGamificationDataWithCloud(currentUser).catch(() => {});
+        }
       }, 5 * 60 * 1000); // 5 minutos
+
+      // Sincronización inicial al cargar la página
+      setTimeout(() => {
+         const currentUser = getCurrentUser();
+         if (currentUser) {
+            console.log('🔄 Sincronizando datos iniciales con la nube...');
+            syncGamificationDataWithCloud(currentUser).catch(console.error);
+         }
+      }, 3000); // Esperar un poco a que cargue todo
 
       [statsModal, themeModal, gamificationModal, confirmationModal].forEach(modal => {
         modal?.addEventListener('click', (e) => {
