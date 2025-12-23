@@ -9020,9 +9020,8 @@
         const data = localStorage.getItem('gamificationData');
         const allData = data ? JSON.parse(data) : {};
         
-        console.log(`📖 Recuperando datos para ${targetUser} de localStorage`);
+        // console.log(`📖 Recuperando datos para ${targetUser} de localStorage`);
         const userData = allData[targetUser.toLowerCase()];
-        console.log(`📊 Datos encontrados para ${targetUser}:`, userData);
         
         return userData || {
           points: 0,
@@ -9044,6 +9043,95 @@
         };
       }
 
+      // NUEVA FUNCIÓN: Sincronizar datos con la nube
+      async function syncGamificationDataWithCloud(username) {
+         try {
+            console.log(`☁️ Sincronizando gamificación para ${username}...`);
+            const normUser = String(username).toLowerCase().replace(/^@/,'');
+            const docRef = db.collection('userStats').doc(normUser);
+            const doc = await docRef.get();
+            
+            const localData = getGamificationDataForUser(username);
+            
+            if (!doc.exists) {
+               console.log('☁️ No hay datos en nube. Subiendo locales...');
+               // Subir datos locales si existen y tienen algo de valor
+               if (localData.points > 0 || localData.achievements.length > 0) {
+                  await docRef.set({
+                     totalPoints: localData.points,
+                     gamification: localData,
+                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                  }, { merge: true });
+               }
+               return localData;
+            }
+            
+            const cloudDataFull = doc.data();
+            const cloudPoints = Number(cloudDataFull.totalPoints || 0);
+            const cloudGamification = cloudDataFull.gamification || null;
+            
+            console.log(`☁️ Puntos nube: ${cloudPoints}, Puntos locales: ${localData.points}`);
+            
+            // Estrategia de fusión:
+            // 1. Si no hay objeto gamification en nube, pero hay puntos, intentar reconstruir o priorizar local si es mayor.
+            // 2. Si hay objeto gamification, fusionar logros y tomar máximos de rachas/puntos.
+            
+            let mergedData = { ...localData };
+            
+            if (cloudGamification) {
+               // Fusionar logros (Unión)
+               const localAch = new Set(localData.achievements || []);
+               const cloudAch = new Set(cloudGamification.achievements || []);
+               const mergedAch = [...new Set([...localAch, ...cloudAch])];
+               
+               // Tomar máximos
+               mergedData.achievements = mergedAch;
+               mergedData.points = Math.max(localData.points || 0, cloudGamification.points || 0, cloudPoints);
+               
+               // Rachas: Tomar la mejor racha histórica registrada
+               mergedData.streaks = {
+                  ...localData.streaks,
+                  ...cloudGamification.streaks,
+                  best: Math.max(localData.streaks?.best || 0, cloudGamification.streaks?.best || 0)
+               };
+               
+               // Si la nube tiene más puntos, confiar en su nivel/xp también (o recalcular después)
+               if ((cloudGamification.points || 0) > (localData.points || 0)) {
+                  mergedData.level = cloudGamification.level;
+                  mergedData.xp = cloudGamification.xp;
+                  mergedData.stats = cloudGamification.stats || mergedData.stats;
+               }
+            } else {
+               // Nube solo tiene totalPoints (migración o ajuste manual admin)
+               // Si nube tiene más puntos que local, actualizamos local.points
+               if (cloudPoints > localData.points) {
+                  mergedData.points = cloudPoints;
+                  // Recalcular nivel/XP se hará en processAchievements o similar si fuera necesario
+               }
+            }
+            
+            // Guardar fusión en local
+            saveGamificationDataForUser(mergedData, username);
+            
+            // Guardar fusión en nube (para que el otro dispositivo se actualice también)
+            // Solo si hubo cambios o si es necesario unificar
+            if (JSON.stringify(mergedData) !== JSON.stringify(cloudGamification) || cloudPoints !== mergedData.points) {
+               console.log('☁️ Actualizando nube con datos fusionados...');
+               await docRef.set({
+                  totalPoints: mergedData.points,
+                  gamification: mergedData,
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+               }, { merge: true });
+            }
+            
+            return mergedData;
+            
+         } catch (e) {
+            console.error('Error sincronizando con nube:', e);
+            return getGamificationDataForUser(username); // Fallback local
+         }
+      }
+
       function saveGamificationDataForUser(data, usuario = null) {
         const targetUser = usuario || getCurrentSelectedUser();
         
@@ -9056,12 +9144,15 @@
         const allDataStr = localStorage.getItem('gamificationData');
         const allData = allDataStr ? JSON.parse(allDataStr) : {};
         
-        console.log(`💾 Guardando datos para ${targetUser}:`, data);
+        // console.log(`💾 Guardando datos para ${targetUser}:`, data);
         
         allData[targetUser.toLowerCase()] = data;
         localStorage.setItem('gamificationData', JSON.stringify(allData));
         
-        console.log(`✅ Datos guardados en localStorage para ${targetUser}`);
+        // console.log(`✅ Datos guardados en localStorage para ${targetUser}`);
+        
+        // Nota: El guardado en nube se hace en syncGamificationDataWithCloud o en puntos críticos, 
+        // no aquí para evitar bucles o escrituras excesivas en cada cambio menor local.
       }
 
       async function calculateUserStatsForUser(usuario = null) {
@@ -9307,14 +9398,10 @@
       async function renderGamificationModal() {
         const targetUser = getCurrentSelectedUser();
         console.log(`🎨 INICIO - Renderizando modal para usuario: ${targetUser}`);
-        console.log(`🔍 currentSelectedUser actual: ${currentSelectedUser}`);
-        console.log(`👤 getCurrentUser(): ${getCurrentUser()}`);
         
-        // Obtener datos del usuario
-        let data = getGamificationDataForUser(targetUser);
-        console.log(`📊 Datos obtenidos para ${targetUser}:`, data);
-        console.log(`🔍 Tipo de datos:`, typeof data);
-        console.log(`🔍 Datos válidos:`, data && typeof data === 'object');
+        // PRIMER PASO: Intentar sincronizar con la nube para asegurar datos consistentes
+        // Esto arregla el problema de "diferentes puntos en diferentes dispositivos"
+        let data = await syncGamificationDataWithCloud(targetUser);
         
         if (!data || !data.stats) {
           console.warn(`⚠️ No hay datos para ${targetUser}, creando datos básicos`);
@@ -9332,7 +9419,8 @@
         console.log(`📊 Verificando logros para ${targetUser}...`);
         try {
           data = await processAchievementsForUser(targetUser, data);
-          console.log(`✅ Logros procesados para ${targetUser}:`, data);
+          // Si hubo cambios al procesar logros (ej: desbloqueo nuevo), guardar de nuevo
+          saveGamificationDataForUser(data, targetUser);
         } catch (error) {
           console.warn(`⚠️ Error procesando logros para ${targetUser}:`, error);
         }
