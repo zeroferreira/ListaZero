@@ -107,6 +107,34 @@
       }
     }
   </style>
+  <style>
+    /* Estilos dinámicos para fondo inmersivo */
+    @keyframes move-twink-back { from {background-position:0 0;} to {background-position:-10000px 5000px;} }
+    @keyframes move-clouds-back { from {background-position:0 0;} to {background-position:10000px 0;} }
+    
+    .stars-bg {
+      background: #000 url(http://www.script-tutorials.com/demos/360/images/stars.png) repeat top center;
+      z-index: -2;
+    }
+    .twinkling-bg {
+      background: transparent url(http://www.script-tutorials.com/demos/360/images/twinkling.png) repeat top center;
+      z-index: -1;
+      animation: move-twink-back 200s linear infinite;
+    }
+    .clouds-bg {
+      background: transparent url(http://www.script-tutorials.com/demos/360/images/clouds3.png) repeat top center;
+      z-index: 0; /* Bajo el contenido pero sobre estrellas */
+      opacity: 0.4;
+      animation: move-clouds-back 200s linear infinite;
+    }
+    
+    .immersive-layer {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      width: 100%; height: 100%;
+      display: block;
+    }
+  </style>
   
   <!-- Script de sincronización de temas -->
   <script>
@@ -273,21 +301,31 @@
           React.useEffect(function(){
              if (refPoints.current) { refPoints.current(); refPoints.current = null; }
              if (!window.db) return;
-             refPoints.current = window.db.collection('playedSongs').doc('userTotals').onSnapshot(function(doc){
-                var data = doc.data() || {};
-                var totals = data.totals || {};
-                var arr = [];
-                for (var u in totals) {
-                   if (totals.hasOwnProperty(u)) arr.push({u: u, c: Number(totals[u]||0)});
-                }
-                arr.sort(function(a,b){ return b.c - a.c; });
-                var top3 = arr.slice(0,3).map(function(it){ 
-                   // Capitalizar nombre
-                   var name = it.u.charAt(0).toUpperCase() + it.u.slice(1);
-                   return name + ' (' + (it.c * 25) + ')'; 
+             
+             // Consultar userStats para el Top 3 de Puntuación
+             refPoints.current = window.db.collection('userStats')
+                .orderBy('totalPoints', 'desc')
+                .limit(3)
+                .onSnapshot(function(snap){
+                   var arr = [];
+                   snap.forEach(function(doc){
+                      var d = doc.data() || {};
+                      var u = doc.id;
+                      // Capitalizar ID como nombre de visualización
+                      var name = u.charAt(0).toUpperCase() + u.slice(1);
+                      var points = d.totalPoints || 0;
+                      arr.push({ name: name, points: points });
+                   });
+                   
+                   var top3 = arr.map(function(it){ 
+                      return it.name + ' (' + it.points + ')'; 
+                   });
+                   
+                   setG(function(prev){ return Object.assign({}, prev, { topPoints3: top3 }); });
+                }, function(err){
+                   console.warn("Error cargando top puntos:", err);
                 });
-                setG(function(prev){ return Object.assign({}, prev, { topPoints3: top3 }); });
-             });
+                
              return function(){ if (refPoints.current) { refPoints.current(); refPoints.current = null; } };
           }, []);
 
@@ -380,6 +418,11 @@
   </style>
 </head>
 <body>
+  <div id="immersive-bg">
+     <div class="immersive-layer stars-bg"></div>
+     <div class="immersive-layer twinkling-bg"></div>
+     <div class="immersive-layer clouds-bg"></div>
+  </div>
 
   <main class="container">
     <section class="card" aria-labelledby="titulo">
@@ -411,7 +454,9 @@
               <li><button type="button" id="menu-gamification-open" class="menu-item" role="menuitem">🏆 Mi Perfil</button></li>
               <li><button type="button" id="menu-rewards-open" class="menu-item" role="menuitem">🎁 Puntos</button></li>
               <li><button type="button" id="menu-changelog-open" class="menu-item" role="menuitem">🚀 Mejoras (v2.0)</button></li>
-              <li><button type="button" id="menu-admin-open" class="menu-item" role="menuitem">⚙️ Modo Admin</button></li>
+              <li><button type="button" id="menu-admin-open" class="menu-item" role="menuitem">
+                ⚙️ Modo Admin <span id="admin-badge" class="notification-badge" hidden>0</span>
+              </button></li>
             </ul>
           </div>
 
@@ -424,6 +469,12 @@
         <div class="day-filter">
           <label for="day-select">Ver día:</label>
           <select id="day-select"></select>
+        </div>
+        <div class="immersive-toggle-container">
+           <label class="switch-label" for="immersive-toggle" title="Modo Inmersivo 3D">
+             <span class="switch-icon">🌌</span>
+           </label>
+           <input type="checkbox" id="immersive-toggle" class="immersive-checkbox" />
         </div>
       </div>
 
@@ -1626,6 +1677,7 @@
           const isVip = vipSet.has(unameLc);
           const isZ0Vip = z0VipSet.has(unameLc);
           const isDonador = donadorSet.has(unameLc);
+          const hasPendingReward = window.pendingRewardUsers && window.pendingRewardUsers.has(unameLc);
           const li = document.createElement('li');
 
           // Crear ID único para la canción
@@ -1648,6 +1700,10 @@
           } else {
             li.className = 'item';
           }
+          
+          if (hasPendingReward) {
+             li.classList.add('has-pending-reward');
+          }
 
           const selectedBadge = typeof window.getSelectedBadgeFor === 'function' ? window.getSelectedBadgeFor(it.usuario) : '';
           if (selectedBadge) {
@@ -1667,7 +1723,10 @@
 
           li.innerHTML = `
             <span class="col col-time">${it.hora || ''}</span>
-            <span class="col col-usuario usuario">${it.usuario}</span>
+            <span class="col col-usuario usuario">
+               ${it.usuario}
+               ${hasPendingReward ? '<span class="reward-pending-icon" title="Solicitud de recompensa pendiente">🎁</span>' : ''}
+            </span>
             <span class="col col-cancion">${it.cancion}</span>
             <span class="col col-artista">${it.artista}</span>
             <span class="col col-cancion-artista">
@@ -5511,6 +5570,28 @@
         }
       ];
 
+      // === MODO INMERSIVO ===
+      const immersiveToggle = document.getElementById('immersive-toggle');
+      if (immersiveToggle) {
+        // Cargar estado guardado
+        const isImmersive = localStorage.getItem('immersiveMode') === 'true';
+        immersiveToggle.checked = isImmersive;
+        if (isImmersive) {
+           document.body.classList.add('immersive-active');
+        }
+
+        immersiveToggle.addEventListener('change', (e) => {
+           if (e.target.checked) {
+              document.body.classList.add('immersive-active');
+              localStorage.setItem('immersiveMode', 'true');
+              // Opcional: Reproducir sonido sci-fi suave
+           } else {
+              document.body.classList.remove('immersive-active');
+              localStorage.setItem('immersiveMode', 'false');
+           }
+        });
+      }
+
       // Funciones del sistema de gamificación
       function getGamificationData() {
         return getGamificationDataForUser(getCurrentUser());
@@ -6834,9 +6915,30 @@
           console.log(`   - Nivel: ${data.level}`);
           console.log(`   - Logros totales: ${data.achievements.length}`);
           
-          // Guardar datos
+          // Guardar datos locales
           saveGamificationDataForUser(data, targetUser);
           console.log(`💾 Datos guardados para ${targetUser}`);
+
+          // PASO FINAL: Usar la lógica maestra de computeUserBreakdown para obtener el total exacto
+          // que incluye Manual Bonus, Top 1 Bonus, y Streak Bonus calculado correctamente.
+          // Esto asegura que el Top 3 Global coincida con la Transparencia.
+          try {
+             console.log(`🔄 Calculando total autorizado para ${targetUser} usando computeUserBreakdown...`);
+             const breakdown = await computeUserBreakdown(targetUser);
+             
+             if (breakdown && typeof breakdown.total === 'number') {
+                console.log(`✅ Total autorizado obtenido: ${breakdown.total} (vs local: ${data.points})`);
+                data.points = breakdown.total;
+                
+                // Actualizar nivel basado en el total real
+                data.level = calculateLevel(data.points);
+                
+                // Guardar de nuevo localmente con el total correcto
+                saveGamificationDataForUser(data, targetUser);
+             }
+          } catch(bdError) {
+             console.error('Error calculando breakdown autorizado:', bdError);
+          }
 
           // Persistir en Firestore para ranking global
           if (window.db) {
@@ -10719,6 +10821,79 @@
           showErrorNotification('Error al rechazar la solicitud: ' + error.message);
         }
       }
+
+      // Función para verificar notificaciones de admin
+      function checkAdminNotifications() {
+        if (!window.db) return;
+        
+        // Escuchar cambios en tiempo real solo para solicitudes pendientes
+        db.collection('rewardRequests')
+          .where('status', '==', 'pending')
+          .onSnapshot(snapshot => {
+             const count = snapshot.size;
+             const badge = document.getElementById('admin-badge');
+             
+             // Actualizar conjunto global de usuarios con solicitudes pendientes
+             const newPendingUsers = new Set();
+             snapshot.forEach(doc => {
+               const d = doc.data();
+               if (d.userId) newPendingUsers.add(String(d.userId).trim().toLowerCase());
+             });
+             
+             // Verificar si hubo cambios en los usuarios pendientes para re-renderizar lista
+             const prevSize = window.pendingRewardUsers ? window.pendingRewardUsers.size : 0;
+             const hasChanged = prevSize !== newPendingUsers.size || 
+                                [...newPendingUsers].some(u => !window.pendingRewardUsers.has(u));
+             
+             window.pendingRewardUsers = newPendingUsers;
+             
+             if (hasChanged) {
+               console.log('🎁 Actualizando lista por cambios en solicitudes pendientes');
+               // Re-renderizar lista actual para mostrar iconos
+               if (window.currentDayItems && typeof renderSolicitudes === 'function') {
+                 // Si hay orden manual, aplicarlo
+                 const ordered = typeof applyOrder === 'function' && window.currentManualOrder 
+                    ? applyOrder(window.currentDayItems, window.currentManualOrder) 
+                    : window.currentDayItems;
+                 renderSolicitudes(ordered);
+               }
+             }
+             
+             if (badge) {
+                if (count > 0) {
+                   badge.textContent = count;
+                   badge.hidden = false;
+                   
+                   // Enviar notificación del navegador si aumentó la cuenta y tenemos permiso
+                   if (count > (window._lastPendingCount || 0)) {
+                      sendBrowserNotification(`¡Nueva solicitud de recompensa!`, `Hay ${count} solicitudes pendientes de revisión.`);
+                   }
+                } else {
+                   badge.hidden = true;
+                }
+             }
+             window._lastPendingCount = count;
+          }, err => {
+             console.error("Error escuchando notificaciones admin:", err);
+          });
+      }
+
+      function sendBrowserNotification(title, body) {
+         if (!("Notification" in window)) return;
+         
+         if (Notification.permission === "granted") {
+            new Notification(title, { body, icon: 'favicon.ico' }); // Asegúrate de tener un icono o quitar la propiedad
+         } else if (Notification.permission !== "denied") {
+            Notification.requestPermission().then(permission => {
+               if (permission === "granted") {
+                  new Notification(title, { body });
+               }
+            });
+         }
+      }
+
+      // Inicializar notificaciones al cargar
+      setTimeout(checkAdminNotifications, 2000);
 
       // ===== FUNCIONES PARA MODAL DE CANJE DE PUNTOS =====
       
