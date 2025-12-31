@@ -178,32 +178,99 @@
       }
       function useGlobal(){
         var ref = React.useRef(null);
-        var st = React.useState({ total: 0, topArtists3: [], topUsers3: [], topSong: '', topSongCount: 0 });
+        var refPoints = React.useRef(null);
+        var st = React.useState({ total: 0, topArtists3: [], topUsers3: [], topSong: '', topSongCount: 0, topPoints3: [] });
         var g = st[0]; var setG = st[1];
+        
         React.useEffect(function(){
           if (ref.current) { ref.current(); ref.current = null; }
+          if (refPoints.current) { refPoints.current(); refPoints.current = null; }
           if (!window.db) return;
+          
+          // ESTRATEGIA HÍBRIDA ROBUSTA:
+          // 1. Escuchar 'solicitudes' para calcular totales en tiempo real (Client-side aggregation).
+          //    Esto garantiza que SIEMPRE hay datos si la colección existe, sin depender de un proceso server-side.
+          //    Aunque es más pesado, asegura "que todos vean lo mismo" si tienen los mismos datos.
+          
           ref.current = window.db.collection('solicitudes').onSnapshot(function(snap){
             var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var userOriginal = {}; var total = 0;
+            
             snap.forEach(function(doc){
               var d = doc.data()||{};
               var a=(String(d.artista||'').trim().toLowerCase());
               var ao=(String(d.artista||'').trim());
               var s=(String(d.cancion||'').trim().toLowerCase());
+              var so=(String(d.cancion||'').trim()); // Guardar nombre original de canción
               var u=(String(d.usuario||'').trim().toLowerCase());
               var uo=(String(d.usuario||'').trim());
+              
               if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; }
-              if (s){ songCount[s]=(songCount[s]||0)+1;}
+              if (s){ 
+                 // Usar clave compuesta para unicidad real o solo nombre
+                 songCount[s] = (songCount[s]||0)+1; 
+                 // Guardar la versión más bonita (capitalizada) si no existe
+                 if (!songCount[s+'_name']) songCount[s+'_name'] = so;
+              }
               if (u){ userCount[u]=(userCount[u]||0)+1; if(!userOriginal[u]) userOriginal[u]=uo; }
               total++;
             });
-            function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return {k:k,v:v}; }
-            var ta = Object.keys(artistCount).map(function(k){ return {k:k,c:artistCount[k],o:artistOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
-            var tu3 = Object.keys(userCount).map(function(k){ return {k:k,c:userCount[k],o:userOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
-            var ts = top(songCount);
-            setG({ total: total, topArtists3: ta, topUsers3: tu3, topSong: ts.k, topSongCount: ts.v });
+            
+            // Función auxiliar para ordenar y formatear
+            function getTop3(countObj, originalObj) {
+               return Object.keys(countObj)
+                  .map(function(k){ return { k: k, c: countObj[k], o: originalObj[k]||k }; })
+                  .sort(function(a,b){ return b.c - a.c; })
+                  .slice(0, 3)
+                  .map(function(it){ return it.o + ' (' + it.c + ')'; });
+            }
+            
+            function getTop1(countObj, nameSuffix) {
+               var max = 0; var maxK = ''; 
+               for(var k in countObj) { 
+                  if(k.endsWith('_name')) continue; 
+                  if(countObj[k] > max) { max = countObj[k]; maxK = k; } 
+               }
+               var name = maxK ? (countObj[maxK+'_name'] || maxK) : 'N/D';
+               // Capitalizar bonito si es fallback
+               if(name === maxK) name = name.charAt(0).toUpperCase() + name.slice(1);
+               return { name: name, count: max };
+            }
+            
+            var ta = getTop3(artistCount, artistOriginal);
+            var tu = getTop3(userCount, userOriginal);
+            var ts = getTop1(songCount, '_name');
+            
+            setG(function(prev){ 
+               return Object.assign({}, prev, { 
+                  total: total, 
+                  topArtists3: ta, 
+                  topUsers3: tu, 
+                  topSong: ts.name, 
+                  topSongCount: ts.count 
+               }); 
+            });
           });
-          return function(){ if (ref.current) { ref.current(); ref.current = null; } };
+          
+          // 2. Escuchar 'userStats' para Top Puntuación (Gamificación)
+          refPoints.current = window.db.collection('userStats')
+            .orderBy('totalPoints', 'desc')
+            .limit(3)
+            .onSnapshot(function(snap){
+               var arr = [];
+               snap.forEach(function(doc){
+                  var d = doc.data() || {};
+                  var u = doc.id;
+                  var name = u.charAt(0).toUpperCase() + u.slice(1);
+                  var points = d.totalPoints || 0;
+                  arr.push(name + ' (' + points + ')');
+               });
+               setG(function(prev){ return Object.assign({}, prev, { topPoints3: arr }); });
+            });
+            
+          return function(){ 
+             if (ref.current) { ref.current(); ref.current = null; }
+             if (refPoints.current) { refPoints.current(); refPoints.current = null; }
+          };
         }, []);
         return g;
       }
@@ -225,9 +292,9 @@
           );
         }
         return e(React.Fragment, null,
-          e(ModernChip, { label: '🎵 Canción top', value: fmt(g.topSong) }),
-          e(ModernChip, { label: '👤 Usuario top', value: fmt(g.topUser) }),
-          e(ModernChip, { label: '🎤 Top 3 artistas', value: (g.topArtists3 && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D') }),
+          e(ModernChip, { label: '🎵 Canción top', value: fmt(g.topSong)+' ('+(g.topSongCount||0)+')' }),
+          e(ModernChip, { label: '👤 Usuario top', value: 'N/D' }),
+          e(ModernChip, { label: '🎤 Top 3 artistas', value: Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D' }),
           e(ModernChip, { label: '🧮 Total', value: String(g.total||0) })
         );
       }
@@ -275,26 +342,24 @@
           React.useEffect(function(){
             if (ref.current) { ref.current(); ref.current = null; }
             if (!window.db) return;
-            ref.current = window.db.collection('solicitudes').onSnapshot(function(snap){
-              var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var userOriginal = {}; var total = 0;
-              snap.forEach(function(doc){
-                var d = doc.data()||{};
-                var a=(String(d.artista||'').trim().toLowerCase());
-                var ao=(String(d.artista||'').trim());
-                var s=(String(d.cancion||'').trim().toLowerCase());
-                var u=(String(d.usuario||'').trim().toLowerCase());
-                var uo=(String(d.usuario||'').trim());
-                if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; }
-                if (s){ songCount[s]=(songCount[s]||0)+1; }
-                if (u){ userCount[u]=(userCount[u]||0)+1; if(!userOriginal[u]) userOriginal[u]=uo; }
-                total++;
-              });
-              function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return k; }
-              var ta = Object.keys(artistCount).map(function(k){ return {k:k,c:artistCount[k],o:artistOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
-              var tu = Object.keys(userCount).map(function(k){ return {k:k,c:userCount[k],o:userOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
-              var ts = top(songCount);
-              setG(function(prev){ return Object.assign({}, prev, { total: total, topArtists3: ta, topUsers3: tu, topSong: ts, topSongCount: ts ? (songCount[ts]||0) : 0, topUser: top(userCount) }); });
+            
+            // AHORA: Escuchar de 'globalStats/general' para consistencia total
+            // Si no existe, fallar silenciosamente o usar valores por defecto
+            ref.current = window.db.collection('globalStats').doc('general').onSnapshot(function(doc){
+               if (doc.exists) {
+                  var d = doc.data() || {};
+                  setG(function(prev){ 
+                     return Object.assign({}, prev, { 
+                        total: d.totalRequests || 0, 
+                        topArtists3: d.topArtists || [], 
+                        topUsers3: d.topUsers || [], // Top por solicitudes
+                        topSong: d.topSong || 'N/D', 
+                        topSongCount: d.topSongCount || 0 
+                     }); 
+                  });
+               }
             });
+            
             return function(){ if (ref.current) { ref.current(); ref.current = null; } };
           }, []);
 
@@ -469,12 +534,6 @@
         <div class="day-filter">
           <label for="day-select">Ver día:</label>
           <select id="day-select"></select>
-        </div>
-        <div class="immersive-toggle-container">
-           <label class="switch-label" for="immersive-toggle" title="Modo Inmersivo 3D">
-             <span class="switch-icon">🌌</span>
-           </label>
-           <input type="checkbox" id="immersive-toggle" class="immersive-checkbox" />
         </div>
       </div>
 
@@ -1306,6 +1365,18 @@
                   <div class="color-preview" style="background: #ec4899;"></div>
                   <span>Rosa</span>
                 </button>
+                <button type="button" class="theme-color" data-color="magenta">
+                  <div class="color-preview" style="background: #d946ef;"></div>
+                  <span>Magenta</span>
+                </button>
+                <button type="button" class="theme-color" data-color="cyan">
+                  <div class="color-preview" style="background: #06b6d4;"></div>
+                  <span>Cian</span>
+                </button>
+                <button type="button" class="theme-color" data-color="orange">
+                  <div class="color-preview" style="background: #f97316;"></div>
+                  <span>Naranja</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1317,18 +1388,20 @@
         </div>
       </div>
 
-      <section class="list" aria-live="polite">
-        <div class="list-header" role="group" aria-label="Encabezados de lista">
-          <span class="col col-time">Hora</span>
-          <span class="col col-usuario">Usuario</span>
-          <span class="col col-cancion">Canción</span>
-          <span class="col col-artista">Artista</span>
-          <span class="col col-cancion-artista">Canción / Artista</span>
-          <span class="col col-action">✓</span>
-        </div>
-        <ul id="solicitudes-list" class="items"></ul>
-        <p id="empty" class="empty" hidden>Aún no hay solicitudes.</p>
-      </section>
+      <div class="list-scroll-container">
+        <section class="list" aria-live="polite">
+          <div class="list-header" role="group" aria-label="Encabezados de lista">
+            <span class="col col-time">Hora</span>
+            <span class="col col-usuario">Usuario</span>
+            <span class="col col-cancion">Canción</span>
+            <span class="col col-artista">Artista</span>
+            <span class="col col-cancion-artista">Canción / Artista</span>
+            <span class="col col-action">✓</span>
+          </div>
+          <ul id="solicitudes-list" class="items"></ul>
+          <p id="empty" class="empty" hidden>Aún no hay solicitudes.</p>
+        </section>
+      </div>
     </section>
   </main>
 
@@ -4916,7 +4989,7 @@
         
         // Limpiar clases anteriores
         document.body.classList.remove('dark-theme');
-        document.body.classList.remove('theme-blue', 'theme-green', 'theme-purple', 'theme-red', 'theme-pink');
+        document.body.classList.remove('theme-blue', 'theme-green', 'theme-purple', 'theme-red', 'theme-pink', 'theme-magenta', 'theme-cyan', 'theme-orange');
         document.documentElement.removeAttribute('data-theme');
         
         // Aplicar tema
@@ -11201,6 +11274,89 @@
         }
       }
 
+      // Función para calcular y guardar estadísticas globales
+      async function calculateAndSaveGlobalStats() {
+        if (!window.db) return;
+        
+        try {
+           console.log("📊 Calculando estadísticas globales maestras...");
+           
+           // Leemos la colección completa de solicitudes (solo metadatos si es posible, o todo)
+           // NOTA: Esto es pesado, así que solo lo hacemos si somos "Admin" y ha pasado tiempo.
+           // Para simplificar, asumiremos que si estamos en modo admin o es un dispositivo de confianza, lo hacemos.
+           
+           const snapshot = await window.db.collection('solicitudes').get();
+           
+           let totalRequests = 0;
+           const artistCount = {};
+           const userCount = {};
+           const songCount = {};
+           const artistOriginal = {};
+           const userOriginal = {};
+           
+           snapshot.forEach(doc => {
+              const d = doc.data() || {};
+              totalRequests++;
+              
+              const a = (String(d.artista||'').trim().toLowerCase());
+              const ao = (String(d.artista||'').trim());
+              const s = (String(d.cancion||'').trim().toLowerCase());
+              const u = (String(d.usuario||'').trim().toLowerCase());
+              const uo = (String(d.usuario||'').trim());
+              
+              if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; }
+              if (s){ songCount[s]=(songCount[s]||0)+1; }
+              if (u){ userCount[u]=(userCount[u]||0)+1; if(!userOriginal[u]) userOriginal[u]=uo; }
+           });
+           
+           // Calcular Tops
+           const topArtists = Object.keys(artistCount)
+              .map(k => ({ k, c: artistCount[k], o: artistOriginal[k]||k }))
+              .sort((a,b) => b.c - a.c)
+              .slice(0, 3)
+              .map(it => `${it.o} (${it.c})`);
+              
+           const topUsers = Object.keys(userCount)
+              .map(k => ({ k, c: userCount[k], o: userOriginal[k]||k }))
+              .sort((a,b) => b.c - a.c)
+              .slice(0, 3)
+              .map(it => `${it.o} (${it.c})`);
+           
+           let topSongName = 'N/D';
+           let topSongCountVal = 0;
+           
+           let maxS = 0;
+           let maxSk = '';
+           for (let k in songCount) {
+              if (songCount[k] > maxS) {
+                 maxS = songCount[k];
+                 maxSk = k;
+              }
+           }
+           if (maxSk) {
+              topSongName = maxSk; // Deberíamos buscar el nombre original bonito, pero usamos lowercase por simplicidad o buscamos uno
+              // Intentar buscar uno bonito del snapshot (lento) o simplemente capitalizar
+              topSongName = maxSk.charAt(0).toUpperCase() + maxSk.slice(1);
+              topSongCountVal = maxS;
+           }
+           
+           const globalStatsData = {
+              totalRequests,
+              topArtists,
+              topUsers,
+              topSong: topSongName,
+              topSongCount: topSongCountVal,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+           };
+           
+           await window.db.collection('globalStats').doc('general').set(globalStatsData);
+           console.log("✅ Estadísticas globales guardadas en 'globalStats/general'");
+           
+        } catch (e) {
+           console.error("Error calculando estadísticas globales:", e);
+        }
+      }
+
       // Análisis periódico cada 5 minutos
       setInterval(() => {
         analyzeNewUsersAutomatically().catch(console.error);
@@ -11210,6 +11366,12 @@
         if (currentUser) {
            // Sincronizar en segundo plano sin bloquear
            syncGamificationDataWithCloud(currentUser).catch(() => {});
+        }
+        
+        // Calcular estadísticas globales si estamos en modo admin (simple check de visibilidad de panel)
+        const adminPanel = document.getElementById('admin-panel');
+        if (adminPanel && !adminPanel.hidden) {
+           calculateAndSaveGlobalStats();
         }
       }, 5 * 60 * 1000); // 5 minutos
 
