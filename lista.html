@@ -2795,7 +2795,19 @@
         const snap = await db.collection('solicitudes').orderBy('day', 'desc').limit(500).get();
         const days = new Set();
         snap.forEach(doc => days.add(doc.data().day));
-        const sorted = Array.from(days).sort().reverse();
+        
+        // Obtener fecha actual local en formato YYYY-MM-DD
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const today = `${year}-${month}-${day}`;
+
+        // Filtrar fechas futuras (que sean mayores a hoy)
+        const sorted = Array.from(days)
+          .filter(d => d <= today)
+          .sort().reverse();
+
         daySelect.innerHTML = '';
         sorted.forEach(d => {
           const opt = document.createElement('option');
@@ -2811,15 +2823,18 @@
         if (!daySelect.value) {
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
           const localDays = Object.keys(byDay).sort().reverse();
-          if (localDays.length) {
+          // También filtrar locales por si acaso
+          const validLocalDays = localDays.filter(d => d <= today);
+          
+          if (validLocalDays.length) {
             daySelect.innerHTML = '';
-            localDays.forEach(d => {
+            validLocalDays.forEach(d => {
               const opt = document.createElement('option');
               opt.value = d;
               opt.textContent = d;
               daySelect.appendChild(opt);
             });
-            daySelect.value = localDays[0];
+            daySelect.value = validLocalDays[0];
             try { daySelect.dispatchEvent(new Event('change')); } catch (_){}
           }
         }
@@ -5646,26 +5661,11 @@
         }
       ];
 
-      // === MODO INMERSIVO ===
+      // === MODO INMERSIVO ELIMINADO ===
       const immersiveToggle = document.getElementById('immersive-toggle');
       if (immersiveToggle) {
-        // Cargar estado guardado
-        const isImmersive = localStorage.getItem('immersiveMode') === 'true';
-        immersiveToggle.checked = isImmersive;
-        if (isImmersive) {
-           document.body.classList.add('immersive-active');
-        }
-
-        immersiveToggle.addEventListener('change', (e) => {
-           if (e.target.checked) {
-              document.body.classList.add('immersive-active');
-              localStorage.setItem('immersiveMode', 'true');
-              // Opcional: Reproducir sonido sci-fi suave
-           } else {
-              document.body.classList.remove('immersive-active');
-              localStorage.setItem('immersiveMode', 'false');
-           }
-        });
+         // Eliminar listeners o elementos residuales si existen
+         immersiveToggle.parentElement?.remove();
       }
 
       // Funciones del sistema de gamificación
