@@ -2823,11 +2823,26 @@
       }
 
       async function loadDays() {
-        // Obtenemos TODAS las solicitudes ordenadas por día para sacar la lista completa de fechas
-        // Eliminamos el límite para que se vean todos los días desde el inicio de los tiempos
-        const snap = await db.collection('solicitudes').orderBy('day', 'desc').get();
+        // Obtenemos TODAS las solicitudes ordenadas por timestamp para asegurar que no dependemos del campo 'day' si falta
+        // y para obtener absolutamente todo el historial
+        const snap = await db.collection('solicitudes').orderBy('ts', 'desc').get();
         const days = new Set();
-        snap.forEach(doc => days.add(doc.data().day));
+        
+        snap.forEach(doc => {
+          const d = doc.data();
+          if (d.day) {
+            days.add(d.day);
+          } else if (d.ts) {
+            // Fallback: calcular día desde timestamp si el campo 'day' no existe
+            try {
+              const date = d.ts.toDate ? d.ts.toDate() : new Date(d.ts);
+              const yyyy = date.getFullYear();
+              const mm = String(date.getMonth() + 1).padStart(2, '0');
+              const dd = String(date.getDate()).padStart(2, '0');
+              days.add(`${yyyy}-${mm}-${dd}`);
+            } catch(e) {}
+          }
+        });
         
         // Obtener fecha actual local en formato YYYY-MM-DD
         const now = new Date();
