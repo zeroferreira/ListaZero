@@ -2973,71 +2973,45 @@
         let allResults = [];
 
         try {
-          // Buscar en Firestore
-          const firestoreSnapshot = await db.collection('solicitudes').get();
+          // Buscar en Firestore - SIN LÍMITE DE FECHA, ordenado por timestamp descendente
+          // Esto garantiza que buscamos en TODA la historia
+          const firestoreSnapshot = await db.collection('solicitudes').orderBy('ts', 'desc').get();
+          
           firestoreSnapshot.forEach((doc) => {
             const data = doc.data();
-            if (data.ts && data.ts.toDate) {
-              const date = data.ts.toDate();
-              const dayValue = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            
+            // Normalizar datos para búsqueda
+            const song = normalize(data.cancion);
+            const artist = normalize(data.artista);
+            const user = normalize(data.usuario);
+            
+            // Coincidencia parcial
+            if (song.includes(q) || artist.includes(q) || user.includes(q)) {
+              let dayValue = data.day;
               
-              const song = normalize(data.cancion);
-              const artist = normalize(data.artista);
-              const user = normalize(data.usuario);
-              
-              if (song.includes(q) || artist.includes(q) || user.includes(q)) {
-                allResults.push({
-                  usuario: data.usuario,
-                  cancion: data.cancion,
-                  artista: data.artista,
-                  hora: toHour(data.ts),
-                  day: data.day || dayValue
-                });
+              // Si no tiene día explícito, calcularlo del timestamp
+              if (!dayValue && data.ts && data.ts.toDate) {
+                 const date = data.ts.toDate();
+                 dayValue = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
               }
+              
+              allResults.push({
+                usuario: data.usuario,
+                cancion: data.cancion,
+                artista: data.artista,
+                hora: toHour(data.ts),
+                day: dayValue || 'N/D' // Fallback final
+              });
             }
           });
         } catch (error) {
-          console.log('Error buscando en Firestore, usando localStorage:', error);
+          console.log('Error buscando en Firestore:', error);
         }
 
-        // Buscar también en localStorage como respaldo
-        const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-        Object.keys(byDay).forEach(dayValue => {
-          const dayItems = Array.isArray(byDay[dayValue]) ? byDay[dayValue] : [];
-          dayItems.forEach(it => {
-            const song = normalize(it.cancion);
-            const artist = normalize(it.artista);
-            const user = normalize(it.usuario);
-            
-            if (song.includes(q) || artist.includes(q) || user.includes(q)) {
-              // Evitar duplicados de Firestore
-              const exists = allResults.some(result => 
-                result.cancion === it.cancion && 
-                result.artista === it.artista && 
-                result.usuario === it.usuario && 
-                result.day === dayValue
-              );
-              
-              if (!exists) {
-                allResults.push({
-                  usuario: it.usuario,
-                  cancion: it.cancion,
-                  artista: it.artista,
-                  hora: toHour(it.time),
-                  day: dayValue
-                });
-              }
-            }
-          });
-        });
-
-        // Ordenar por fecha más reciente primero
-        allResults.sort((a, b) => {
-          const dateA = new Date(a.day);
-          const dateB = new Date(b.day);
-          return dateB - dateA;
-        });
-
+        // Ya no necesitamos buscar en localStorage ni fusionar, Firestore es la fuente de la verdad completa.
+        // Pero si quieres mantener localStorage como fallback offline, puedes dejarlo, 
+        // pero la petición pedía "tomar los datos de la web en firestore".
+        
         return allResults;
       }
       window.searchSolicitudes = searchSolicitudes;
