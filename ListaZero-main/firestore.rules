@@ -1,0 +1,299 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Función para verificar si un dispositivo está autorizado
+    function isAuthorizedDevice() {
+      // NOTA: En Firebase Rules no podemos acceder al fingerprint del dispositivo directamente
+      // La validación específica del dispositivo autorizado se hace en el código del cliente
+      // mediante la comparación del fingerprint local con el masterFingerprint en systemConfig/djConfig
+      // Aquí solo validamos que el usuario esté autenticado como capa base de seguridad
+      return request.auth != null;
+    }
+
+    // Solicitudes de canciones (colección principal)
+    match /solicitudes/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow delete: if true;
+      allow update: if true; // Permitir actualizaciones para timestamps y metadatos
+      
+      // Validaciones para nuevas solicitudes
+      allow create: if request.resource.data.keys().hasAll(['usuario', 'cancion', 'artista', 'timestamp']) &&
+        request.resource.data.usuario is string &&
+        request.resource.data.cancion is string &&
+        request.resource.data.artista is string &&
+        request.resource.data.timestamp is timestamp &&
+        request.resource.data.usuario.size() > 0 &&
+        request.resource.data.cancion.size() > 0 &&
+        request.resource.data.artista.size() > 0;
+    }
+
+    // Colección alternativa: requests (para compatibilidad)
+    match /requests/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow delete: if true;
+      allow update: if true;
+    }
+
+    // Colección alternativa: songs (para compatibilidad)
+    match /songs/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow delete: if true;
+      allow update: if true;
+    }
+
+    // Colección alternativa: canciones (para compatibilidad)
+    match /canciones/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow delete: if true;
+      allow update: if true;
+    }
+
+    // Usuarios VIP (para el filtro y panel admin)
+    match /vipUsers/{doc} {
+      allow read: if true;
+      allow create, update, delete: if true;
+      
+      // Validar estructura de usuario VIP
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name']) &&
+         request.resource.data.name is string &&
+         request.resource.data.name.size() > 0);
+    }
+
+    // Usuarios Z0-VIP (para el filtro y panel admin)
+    match /z0VipUsers/{doc} {
+      allow read: if true;
+      allow create, update, delete: if true;
+      
+      // Validar estructura de usuario Z0-VIP
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name']) &&
+         request.resource.data.name is string &&
+         request.resource.data.name.size() > 0);
+    }
+
+    // Usuarios Donadores temporales (para el filtro y panel admin)
+    match /donadorUsers/{doc} {
+      allow read: if true;
+      allow create, update, delete: if true;
+      
+      // Validar estructura de usuario donador
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name']) &&
+         request.resource.data.name is string &&
+         request.resource.data.name.size() > 0);
+    }
+
+    // Usuarios registrados (para poblar select en Admin)
+    match /users/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Validar estructura de usuario
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name']) &&
+         request.resource.data.name is string &&
+         request.resource.data.name.size() > 0 &&
+         request.resource.data.name.size() <= 100);
+    }
+
+    // Estadísticas de usuarios (para gamificación y stats)
+    match /userStats/{userId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Validar estructura de estadísticas
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAny(['totalSongs', 'totalPoints', 'currentStreak', 'bestStreak', 'lastActivity']) &&
+         (request.resource.data.get('totalSongs', 0) is number) &&
+         (request.resource.data.get('totalPoints', 0) is number) &&
+         (request.resource.data.get('currentStreak', 0) is number) &&
+         (request.resource.data.get('bestStreak', 0) is number));
+    }
+
+    // Logros de usuarios (para sistema de gamificación)
+    match /userAchievements/{userId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    // Actividad diaria de usuarios (para calendario de racha)
+    match /userActivity/{userId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Subcolección para actividad por día
+      match /days/{dayId} {
+        allow read: if true;
+        allow create: if true;
+        allow update: if true;
+        allow delete: if true;
+      }
+    }
+
+    // Índice de actividad por día (para optimizar consultas del calendario)
+    match /dailyActivity/{date} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Validar formato de fecha
+      allow write: if resource == null || 
+        (request.resource.data.keys().hasAll(['date', 'users']) &&
+         request.resource.data.date is string &&
+         request.resource.data.users is map);
+    }
+
+    // Calendario de racha por usuario (cache optimizado)
+    match /userStreakCalendar/{userId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Validar estructura del calendario
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['userId', 'lastUpdated']) &&
+         request.resource.data.userId is string &&
+         request.resource.data.lastUpdated is timestamp);
+    }
+
+    // Configuraciones de usuario (temas, preferencias)
+    match /userSettings/{userId} {
+      allow read, write: if true;
+    }
+
+    // Recompensas disponibles (catálogo de recompensas)
+    match /rewards/{doc} {
+      allow read: if true;
+      allow create, update, delete: if true;
+      
+      // Validar estructura de recompensa
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name', 'cost', 'description']) &&
+         request.resource.data.name is string &&
+         request.resource.data.cost is number &&
+         request.resource.data.description is string &&
+         request.resource.data.name.size() > 0 &&
+         request.resource.data.cost > 0);
+    }
+
+    // Solicitudes de recompensas de usuarios
+    match /rewardRequests/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Validar estructura de solicitud
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['userId', 'rewardName', 'cost', 'status']) &&
+         request.resource.data.userId is string &&
+         request.resource.data.rewardName is string &&
+         request.resource.data.cost is number &&
+         request.resource.data.status is string &&
+         request.resource.data.userId.size() > 0 &&
+         request.resource.data.cost > 0);
+    }
+
+    // Historial de recompensas canjeadas
+    match /redeemedRewards/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+      
+      // Validar estructura de recompensa canjeada
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['userId', 'rewardName', 'cost']) &&
+         request.resource.data.userId is string &&
+         request.resource.data.rewardName is string &&
+         request.resource.data.cost is number &&
+         request.resource.data.userId.size() > 0 &&
+         request.resource.data.cost > 0);
+    }
+
+    // Configuración global del sistema
+    match /systemConfig/{doc} {
+      allow read: if true;
+      allow create, update, delete: if isAuthorizedDevice();
+      
+      // Validar estructura para configuración DJ
+      allow write: if doc == 'djConfig' && 
+        isAuthorizedDevice() &&
+        (resource == null || 
+         (request.resource.data.keys().hasAll(['masterFingerprint']) &&
+          request.resource.data.masterFingerprint is string &&
+          request.resource.data.masterFingerprint.size() > 0));
+    }
+
+    // Logs de actividad del sistema (opcional, para debugging)
+    match /activityLogs/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+
+    // Datos de sesión temporal (para sincronización en tiempo real)
+    match /sessionData/{userId} {
+      allow read, write: if true;
+    }
+
+    // Datos de canciones reproducidas por día (lectura y escritura abiertas para funcionalidad de Transparencia)
+    match /playedSongs/{day} {
+      allow read: if true;
+      allow create, update, delete: if true;
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAny(['songs', 'lastUpdated', 'day', 'rebuiltAt', 'rebuiltBy']) &&
+         (request.resource.data.get('songs', []) is list) &&
+         (request.resource.data.get('day', '') is string));
+    }
+
+    // Métricas y analytics del sistema
+    match /analytics/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+
+    // Notificaciones globales del sistema (opcional para futuras funcionalidades)
+    match /globalNotifications/{doc} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Eventos del sistema en tiempo real (para sincronización avanzada)
+    match /systemEvents/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+
+    // Backup de datos del sistema
+    match /backups/{doc} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Historial de canciones reproducidas (para análisis y estadísticas)
+    match /playedSongsHistory/{doc} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+  }
+}

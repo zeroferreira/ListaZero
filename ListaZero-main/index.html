@@ -1,0 +1,1063 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Canciones Zero Radio</title>
+  <link rel="stylesheet" href="styles.css" />
+  
+  <!-- Script de sincronización de temas -->
+  <script>
+    // Sincronización global de temas entre pestañas/ventanas
+    window.addEventListener('focus', function() {
+      // Cuando la ventana recibe foco, verificar si hay cambios de tema
+      if (typeof window.applyTheme === 'function') {
+        window.applyTheme();
+      }
+      if (typeof window.updateActiveStates === 'function') {
+        window.updateActiveStates();
+      }
+    });
+  </script>
+  
+  <!-- Firebase SDK (compat para uso sencillo en HTML) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <main class="container">
+    <section class="card" aria-labelledby="titulo">
+      <div class="header-with-points">
+        <h1 id="titulo">Lista de canciones</h1>
+        <div class="header-controls">
+          <div id="user-points-indicator" class="points-indicator" style="display: none;">
+            <div class="points-icon">🏆</div>
+            <div class="points-info">
+              <div class="points-value" id="header-points">0</div>
+              <div class="points-label">puntos</div>
+            </div>
+          </div>
+          <button type="button" class="theme-btn" id="theme-btn" aria-label="Cambiar tema">🎨</button>
+        </div>
+      </div>
+
+
+      <!-- Formulario: Usuario | Canción | Artista -->
+      <form id="formulario" class="nuevo-form" autocomplete="on" aria-label="Formulario para pedir nueva canción">
+        <div class="field">
+          <label for="usuario">Usuario</label>
+          <div class="user-split">
+            <input id="usuario" name="usuario" type="text" placeholder="Escribe aquí tu nombre de usuario" />
+            <select id="usuario-registrado" aria-label="Selecciona un usuario registrado">
+              <option value="">Selecciona un usuario</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="cancion">Canción</label>
+          <input id="cancion" name="cancion" type="text" required placeholder="¿Qué cancion vas a elegir?" />
+        </div>
+        <div class="field">
+          <label for="artista">Artista</label>
+          <input id="artista" name="artista" type="text" required placeholder="¿Quién interpreta la cancion?" />
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn">Enviar solicitud</button>
+          <a href="lista.html" class="btn">Lista de Canciones</a>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <!-- Modal de Temas -->
+  <div id="theme-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="theme-modal-title">
+      <button type="button" class="modal-close-btn" aria-label="Cerrar modal">&times;</button>
+      <h2 id="theme-modal-title">🎨 Personalizar Tema</h2>
+      
+      <div class="theme-options">
+        <div class="theme-section">
+          <h3>Modo de Color</h3>
+          <div class="theme-grid">
+            <button type="button" class="theme-option active" data-theme="light">
+              <div class="theme-preview light-preview"></div>
+              <span>Claro</span>
+            </button>
+            <button type="button" class="theme-option" data-theme="dark">
+              <div class="theme-preview dark-preview"></div>
+              <span>Oscuro</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="theme-section">
+          <h3>Colores de Acento</h3>
+          <div class="theme-grid">
+            <button type="button" class="theme-color active" data-color="default">
+              <div class="color-preview" style="background: #000;"></div>
+              <span>Negro</span>
+            </button>
+            <button type="button" class="theme-color" data-color="blue">
+              <div class="color-preview" style="background: #2563eb;"></div>
+              <span>Azul</span>
+            </button>
+            <button type="button" class="theme-color" data-color="green">
+              <div class="color-preview" style="background: #16a34a;"></div>
+              <span>Verde</span>
+            </button>
+            <button type="button" class="theme-color" data-color="purple">
+              <div class="color-preview" style="background: #9333ea;"></div>
+              <span>Morado</span>
+            </button>
+            <button type="button" class="theme-color" data-color="red">
+              <div class="color-preview" style="background: #dc2626;"></div>
+              <span>Rojo</span>
+            </button>
+            <button type="button" class="theme-color" data-color="pink">
+              <div class="color-preview" style="background: #ec4899;"></div>
+              <span>Rosa</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions modal-actions">
+        <button type="button" id="theme-reset" class="btn">Restablecer</button>
+        <button type="button" id="theme-close" class="btn">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Sistema de temas sincronizado
+    (function() {
+      // Función para aplicar tema
+      function applyTheme() {
+        const savedTheme = localStorage.getItem('selectedTheme') || 'light';
+        const savedColor = localStorage.getItem('selectedColor') || 'default';
+        
+        // Limpiar clases anteriores
+        document.body.classList.remove('dark-theme');
+        document.body.classList.remove('theme-blue', 'theme-green', 'theme-purple', 'theme-red', 'theme-pink');
+        
+        // Aplicar tema
+        if (savedTheme === 'dark') {
+          document.body.classList.add('dark-theme');
+        }
+        
+        // Aplicar color de acento
+        if (savedColor !== 'default') {
+          document.body.classList.add(`theme-${savedColor}`);
+        }
+      }
+      
+      // Aplicar tema al cargar
+      applyTheme();
+      
+      // Escuchar cambios en localStorage desde otras páginas
+      window.addEventListener('storage', function(e) {
+        if (e.key === 'selectedTheme' || e.key === 'selectedColor') {
+          applyTheme();
+          // Actualizar estados del modal si está abierto
+          if (typeof updateActiveStates === 'function') {
+            updateActiveStates();
+          }
+        }
+      });
+      
+      // Hacer la función global para uso en el modal
+      window.applyTheme = applyTheme;
+    })();
+
+    // Manejo del modal de tema
+    document.addEventListener('DOMContentLoaded', function() {
+      const themeBtn = document.getElementById('theme-btn');
+      const themeModal = document.getElementById('theme-modal');
+      const modalCloseBtn = themeModal.querySelector('.modal-close-btn');
+      const themeCloseBtn = document.getElementById('theme-close');
+      const themeResetBtn = document.getElementById('theme-reset');
+      const themeOptions = document.querySelectorAll('.theme-option');
+      const themeColors = document.querySelectorAll('.theme-color');
+
+      // Abrir modal
+      themeBtn.addEventListener('click', function() {
+        themeModal.hidden = false;
+        updateActiveStates();
+      });
+
+      // Cerrar modal
+      function closeModal() {
+        themeModal.hidden = true;
+      }
+
+      modalCloseBtn.addEventListener('click', closeModal);
+      themeCloseBtn?.addEventListener('click', closeModal);
+      themeModal.addEventListener('click', function(e) {
+        if (e.target === themeModal) closeModal();
+      });
+
+      // Actualizar estados activos
+      function updateActiveStates() {
+        const currentTheme = localStorage.getItem('selectedTheme') || 'light';
+        const currentColor = localStorage.getItem('selectedColor') || 'default';
+
+        themeOptions.forEach(option => {
+          option.classList.toggle('active', option.dataset.theme === currentTheme);
+        });
+
+        themeColors.forEach(color => {
+          color.classList.toggle('active', color.dataset.color === currentColor);
+        });
+      }
+      
+      // Hacer la función global
+      window.updateActiveStates = updateActiveStates;
+
+      // Cambiar tema
+      themeOptions.forEach(option => {
+        option.addEventListener('click', function() {
+          const theme = this.dataset.theme;
+          
+          // Guardar en localStorage
+          localStorage.setItem('selectedTheme', theme);
+          
+          // Aplicar tema usando la función global
+          window.applyTheme();
+          
+          // Actualizar estados
+          updateActiveStates();
+          
+          // Disparar evento personalizado para sincronización
+          window.dispatchEvent(new CustomEvent('themeChanged', { 
+            detail: { theme, color: localStorage.getItem('selectedColor') || 'default' }
+          }));
+        });
+      });
+
+      // Cambiar color
+      themeColors.forEach(color => {
+        color.addEventListener('click', function() {
+          const colorName = this.dataset.color;
+          
+          // Guardar en localStorage
+          localStorage.setItem('selectedColor', colorName);
+          
+          // Aplicar tema usando la función global
+          window.applyTheme();
+          
+          // Actualizar estados
+          updateActiveStates();
+          
+          // Disparar evento personalizado para sincronización
+          window.dispatchEvent(new CustomEvent('themeChanged', { 
+            detail: { theme: localStorage.getItem('selectedTheme') || 'light', color: colorName }
+          }));
+        });
+      });
+
+      // Restablecer tema
+      themeResetBtn?.addEventListener('click', function() {
+        localStorage.removeItem('selectedTheme');
+        localStorage.removeItem('selectedColor');
+        
+        // Aplicar tema usando la función global
+        window.applyTheme();
+        
+        // Actualizar estados
+        updateActiveStates();
+        
+        // Disparar evento personalizado para sincronización
+        window.dispatchEvent(new CustomEvent('themeChanged', { 
+          detail: { theme: 'light', color: 'default' }
+        }));
+      });
+
+      // Cerrar con Escape
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && !themeModal.hidden) {
+          closeModal();
+        }
+      });
+    });
+
+    (function () {
+      function getLocalDateKey(ts) {
+        const d = ts ? new Date(ts) : new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+      }
+
+      // Inicializa Firebase si aún no está
+      const firebaseConfig = {
+        apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+        authDomain: "zero-strom-web.firebaseapp.com",
+        projectId: "zero-strom-web",
+        storageBucket: "zero-strom-web.firebasestorage.app",
+        messagingSenderId: "758369466349",
+        appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+      };
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+      const db = firebase.firestore();
+
+      // Autenticación anónima para permitir reglas basadas en usuarios no registrados
+      firebase.auth().onAuthStateChanged((user) => {
+        if (!user) {
+          firebase.auth().signInAnonymously().catch((err) => {
+            console.error('Error al autenticar anónimamente:', err);
+          });
+        }
+      });
+
+      const form = document.getElementById('formulario');
+      const usuarioSelect = document.getElementById('usuario-registrado');
+
+      // Poblar lista de usuarios registrados desde localStorage
+      function collectRegisteredUsers() {
+        const map = new Map(); // clave: lower, valor: original (primera aparición)
+        try {
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
+            const original = String(it.usuario || '').trim().replace(/^@/, '');
+            const lower = original.toLowerCase();
+            if (original && !map.has(lower)) map.set(lower, original);
+          }));
+          const legacy = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          (legacy || []).forEach(it => {
+            const original = String(it.usuario || '').trim().replace(/^@/, '');
+            const lower = original.toLowerCase();
+            if (original && !map.has(lower)) map.set(lower, original);
+          });
+        } catch (e) {}
+        const arr = Array.from(map.values());
+        arr.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        return arr;
+      }
+
+      function populateRegisteredUsers() {
+        if (!usuarioSelect) return;
+        const users = collectRegisteredUsers();
+        usuarioSelect.innerHTML = '<option value="">Selecciona un usuario</option>' +
+          users.map(u => `<option value="${u}">@${u}</option>`).join('');
+      }
+
+      populateRegisteredUsers();
+
+      // Cargar el último usuario utilizado
+      const lastUser = localStorage.getItem('currentUser');
+      if (lastUser) {
+        const usuarioEl = document.getElementById('usuario');
+        if (usuarioEl) {
+          usuarioEl.value = lastUser;
+          // Actualizar indicador de puntos para el usuario cargado
+          // Se difiere la actualización para asegurar que las funciones de gamificación estén disponibles
+          setTimeout(function() {
+            if (typeof updatePointsIndicator === 'function') {
+              try { updatePointsIndicator(); } catch (e) {}
+            }
+          }, 0);
+        }
+      }
+
+      // Actualizar indicador de puntos cuando se selecciona usuario
+      function updatePointsIndicator() {
+        const usuarioEl = document.getElementById('usuario');
+        const usuarioText = (usuarioEl.value || '').trim().replace(/^@/, '');
+        const usuarioSel = (usuarioSelect?.value || '').trim().replace(/^@/, '');
+        const usuario = usuarioText || usuarioSel;
+        
+        const pointsIndicator = document.getElementById('user-points-indicator');
+        const pointsValue = document.getElementById('header-points');
+        
+        if (usuario) {
+          const data = getGamificationData(usuario);
+          pointsValue.textContent = data.points;
+          pointsIndicator.style.display = 'flex';
+        } else {
+          pointsIndicator.style.display = 'none';
+        }
+      }
+
+      // Event listeners para actualizar puntos
+      document.getElementById('usuario')?.addEventListener('input', updatePointsIndicator);
+      usuarioSelect?.addEventListener('change', updatePointsIndicator);
+
+      // Flags globales para evitar doble registro y doble ejecución
+      window.__FORM_SUBMIT_HANDLER_ADDED__ = window.__FORM_SUBMIT_HANDLER_ADDED__ || false;
+      window.__FORM_SUBMITTED__ = window.__FORM_SUBMITTED__ || false;
+
+      // Handler de envío (localStorage + Firestore)
+      if (form && !window.__FORM_SUBMIT_HANDLER_ADDED__) {
+        window.__FORM_SUBMIT_HANDLER_ADDED__ = true;
+
+        form.addEventListener('submit', async function (e) {
+          e.preventDefault();
+
+          // Si ya se procesó una vez (por duplicidad), no volver a validar ni alertar
+          if (window.__FORM_SUBMITTED__) return;
+
+          const usuarioEl = document.getElementById('usuario');
+          const cancionEl = document.getElementById('cancion');
+          const artistaEl = document.getElementById('artista');
+
+          const usuarioText = (usuarioEl.value || '').trim().replace(/^@/, '');
+          const usuarioSel = (usuarioSelect?.value || '').trim().replace(/^@/, '');
+          const usuario = usuarioText || usuarioSel;
+
+          const cancion = (cancionEl.value || '').trim();
+          const artista = (artistaEl.value || '').trim();
+
+          if (!usuario || !cancion || !artista) {
+            alert('Por favor completa Usuario (escribe o selecciona), Canción y Artista.');
+            return;
+          }
+
+          const ts = Date.now();
+          const dayKey = getLocalDateKey(ts);
+
+          // Guardar en localStorage (compatibilidad/local)
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
+          localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+
+          const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          arr.push({ usuario, cancion, artista, time: ts });
+          localStorage.setItem('solicitudes', JSON.stringify(arr));
+
+          // Guardar en Firestore (sincronización multi-dispositivo)
+          try {
+            await db.collection('solicitudes').add({
+              usuario,
+              cancion,
+              artista,
+              day: dayKey,
+              ts: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+
+            // Upsert del usuario para que aparezca en el panel Admin (colección users)
+            await db.collection('users')
+              .doc(usuario.toLowerCase())
+              .set({ name: usuario }, { merge: true });
+
+          } catch (err) {
+            console.error('Error guardando en Firestore:', err);
+            alert('Ocurrió un error guardando en la nube. Intenta nuevamente.');
+            return;
+          }
+
+          // Guardar el último usuario utilizado para facilitar próximas solicitudes
+          localStorage.setItem('currentUser', usuario);
+
+          // Procesar gamificación
+          processNewSongRequest(usuario);
+
+          // Marca que ya se procesó para evitar que otro handler muestre el alerta
+          window.__FORM_SUBMITTED__ = true;
+
+          form.reset();
+          window.location.href = 'lista.html';
+        });
+      }
+
+      // Modo Admin: gestión de VIP y visualización de usuarios registrados
+      const ADMIN_PASS = '1415130*';
+      const adminBtn = document.getElementById('admin-btn');
+      const adminPanel = document.getElementById('admin-panel');
+
+      // Referencias del modal
+      const adminModal = document.getElementById('admin-modal');
+      const adminPassInput = document.getElementById('admin-pass-input');
+      const adminPassError = document.getElementById('admin-pass-error');
+      const adminPassCancelBtn = document.getElementById('admin-pass-cancel');
+      const adminPassConfirmBtn = document.getElementById('admin-pass-confirm');
+
+      const vipAddBtn = document.getElementById('vip-add');
+      const vipListEl = document.getElementById('vip-list');
+      const usersSelectEl = document.getElementById('all-users-select');
+      const wipeAllBtn = document.getElementById('wipe-all');
+
+      function normUser(u) {
+        return String(u || '').trim().toLowerCase().replace(/^@/, '');
+      }
+      function escapeHTML(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function getVipUsers() {
+        const arr = JSON.parse(localStorage.getItem('vip_users') || '[]');
+        return Array.isArray(arr) ? arr : [];
+      }
+      function setVipUsers(arr) {
+        localStorage.setItem('vip_users', JSON.stringify(arr));
+      }
+      function renderVipList() {
+        const vipUsers = getVipUsers();
+        vipListEl.innerHTML = vipUsers.map(u => `
+          <li>
+            <span>@${escapeHTML(u)}</span>
+            <button type="button" class="remove-btn" data-user="${escapeHTML(u)}">Eliminar</button>
+          </li>
+        `).join('');
+      }
+      function renderAllUsersSelect() {
+        if (!usersSelectEl) return;
+        const users = collectRegisteredUsers();
+        usersSelectEl.innerHTML = '<option value="">Selecciona un usuario</option>' +
+          users.map(u => `<option value="${escapeHTML(u)}">@${escapeHTML(u)}</option>`).join('');
+      }
+
+      // Asegurar oculto al cargar
+      adminModal && (adminModal.hidden = true);
+      adminPanel && (adminPanel.hidden = true);
+
+      // Abrir modal solo al hacer click en "Modo Admin"
+      adminBtn?.addEventListener('click', () => {
+        if (!adminModal || !adminPassInput || !adminPassError) return;
+        adminModal.hidden = false;
+        adminPassInput.value = '';
+        adminPassError.hidden = true;
+        adminPassInput.focus();
+      });
+
+      function tryOpenAdmin() {
+        const pass = adminPassInput?.value;
+        if (pass === ADMIN_PASS) {
+          if (!adminModal || !adminPanel) return;
+          adminModal.hidden = true;
+          adminPanel.hidden = false;
+          // Inicializar contenido del panel
+          renderVipList?.();
+          renderAllUsersSelect?.();
+        } else {
+          if (!adminPassError || !adminPassInput) return;
+          adminPassError.hidden = false;
+          adminPassInput.focus();
+        }
+      }
+
+      adminPassConfirmBtn?.addEventListener('click', tryOpenAdmin);
+      adminPassCancelBtn?.addEventListener('click', () => {
+        if (adminModal) adminModal.hidden = true; // cerrar modal sin abrir panel
+      });
+      adminPassInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          tryOpenAdmin();
+        }
+      });
+
+      vipAddBtn?.addEventListener('click', () => {
+        const raw = usersSelectEl?.value || '';
+        const user = normUser(raw);
+        if (!user) {
+          alert('Selecciona un usuario registrado.');
+          return;
+        }
+        const vipUsers = getVipUsers();
+        if (vipUsers.includes(user)) {
+          alert('Ese usuario ya es VIP.');
+          return;
+        }
+        vipUsers.push(user);
+        setVipUsers(vipUsers);
+        renderVipList();
+      });
+
+      vipListEl?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.remove-btn');
+        if (!btn) return;
+        const user = btn.getAttribute('data-user');
+        if (!user) return;
+        const vipUsers = getVipUsers().filter(u => u !== user);
+        setVipUsers(vipUsers);
+        renderVipList();
+      });
+
+      wipeAllBtn?.addEventListener('click', () => {
+        const ok = confirm('Esto borrará todas las solicitudes guardadas (todos los días). ¿Quieres continuar?');
+        if (!ok) return;
+        localStorage.removeItem('solicitudes_by_day');
+        localStorage.removeItem('solicitudes');
+        renderAllUsersSelect();
+        alert('Solicitudes borradas. La lista está limpia.');
+      });
+    })();
+  </script>
+</body>
+</html>
+
+<script>
+  (function () {
+    function getLocalDateKey(ts) {
+      const d = ts ? new Date(ts) : new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dd}`;
+    }
+
+    // Flags globales para evitar doble registro y doble ejecución
+    window.__FORM_SUBMIT_HANDLER_ADDED__ = window.__FORM_SUBMIT_HANDLER_ADDED__ || false;
+    window.__FORM_SUBMITTED__ = window.__FORM_SUBMITTED__ || false;
+
+    // Inicializa Firebase si aún no está
+    const firebaseConfig = {
+      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+      authDomain: "zero-strom-web.firebaseapp.com",
+      projectId: "zero-strom-web",
+      storageBucket: "zero-strom-web.firebasestorage.app",
+      messagingSenderId: "758369466349",
+      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+    };
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.firestore();
+
+    const form = document.getElementById('formulario');
+    const usuarioSelect = document.getElementById('usuario-registrado');
+
+    // Poblar lista de usuarios registrados desde localStorage
+    function collectRegisteredUsers() {
+      const map = new Map(); // clave: lower, valor: original (primera aparición)
+      try {
+        const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+        Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
+          const original = String(it.usuario || '').trim().replace(/^@/, '');
+          const lower = original.toLowerCase();
+          if (original && !map.has(lower)) map.set(lower, original);
+        }));
+        const legacy = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+        (legacy || []).forEach(it => {
+          const original = String(it.usuario || '').trim().replace(/^@/, '');
+          const lower = original.toLowerCase();
+          if (original && !map.has(lower)) map.set(lower, original);
+        });
+      } catch (e) {}
+      const arr = Array.from(map.values());
+      arr.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      return arr;
+    }
+
+    function populateRegisteredUsers() {
+      if (!usuarioSelect) return;
+      const users = collectRegisteredUsers();
+      usuarioSelect.innerHTML = '<option value="">Selecciona un usuario</option>' +
+        users.map(u => `<option value="${u}">@${u}</option>`).join('');
+    }
+
+    populateRegisteredUsers();
+
+    // Cargar el último usuario utilizado
+    const lastUser = localStorage.getItem('currentUser');
+    if (lastUser) {
+      const usuarioEl = document.getElementById('usuario');
+      if (usuarioEl) {
+        usuarioEl.value = lastUser;
+      }
+    }
+
+    // Evitar doble registro del handler si el script está duplicado
+    if (form && !window.__FORM_SUBMIT_HANDLER_ADDED__) {
+      window.__FORM_SUBMIT_HANDLER_ADDED__ = true;
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        // Si ya se procesó una vez (por duplicidad), no volver a validar ni alertar
+        if (window.__FORM_SUBMITTED__) return;
+
+        const usuarioEl = document.getElementById('usuario');
+        const cancionEl = document.getElementById('cancion');
+        const artistaEl = document.getElementById('artista');
+
+        const usuarioText = (usuarioEl.value || '').trim().replace(/^@/, '');
+        const usuarioSel = (usuarioSelect?.value || '').trim().replace(/^@/, '');
+        const usuario = usuarioText || usuarioSel;
+
+        const cancion = (cancionEl.value || '').trim();
+        const artista = (artistaEl.value || '').trim();
+
+        if (!usuario || !cancion || !artista) {
+          alert('Por favor completa Usuario (escribe o selecciona), Canción y Artista.');
+          return;
+        }
+
+        const ts = Date.now();
+        const dayKey = getLocalDateKey(ts); // usa tu función ya definida
+
+        // Guardar en localStorage (compatibilidad/local)
+        const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+        (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
+        localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+
+        const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+        arr.push({ usuario, cancion, artista, time: ts });
+        localStorage.setItem('solicitudes', JSON.stringify(arr));
+
+        // Guardar en Firestore (sincronización multi-dispositivo)
+        try {
+          await db.collection('solicitudes').add({
+            usuario,
+            cancion,
+            artista,
+            day: dayKey, // lista.html filtra por este campo
+            ts: firebase.firestore.FieldValue.serverTimestamp(), // para hora y orden
+          });
+        } catch (err) {
+          console.error('Error guardando en Firestore:', err);
+          alert('Ocurrió un error guardando en la nube. Intenta nuevamente.');
+          return;
+        }
+
+        // Guardar el último usuario utilizado para facilitar próximas solicitudes
+        localStorage.setItem('currentUser', usuario);
+
+        // Marca que ya se procesó para evitar que otro handler muestre el alerta
+        window.__FORM_SUBMITTED__ = true;
+
+        form.reset();
+        window.location.href = 'lista.html';
+      });
+    }
+
+    // Modo Admin: gestión de VIP y visualización de usuarios registrados
+    const ADMIN_PASS = '1415130*';
+    const adminBtn = document.getElementById('admin-btn');
+    const adminPanel = document.getElementById('admin-panel');
+
+    // Referencias del modal
+    const adminModal = document.getElementById('admin-modal');
+    const adminPassInput = document.getElementById('admin-pass-input');
+    const adminPassError = document.getElementById('admin-pass-error');
+    const adminPassCancelBtn = document.getElementById('admin-pass-cancel');
+    const adminPassConfirmBtn = document.getElementById('admin-pass-confirm');
+
+    const vipAddBtn = document.getElementById('vip-add');
+    const vipListEl = document.getElementById('vip-list');
+    const usersSelectEl = document.getElementById('all-users-select');
+    const wipeAllBtn = document.getElementById('wipe-all');
+
+    function normUser(u) {
+      return String(u || '').trim().toLowerCase().replace(/^@/, '');
+    }
+    function escapeHTML(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getVipUsers() {
+      const arr = JSON.parse(localStorage.getItem('vip_users') || '[]');
+      return Array.isArray(arr) ? arr : [];
+    }
+    function setVipUsers(arr) {
+      localStorage.setItem('vip_users', JSON.stringify(arr));
+    }
+    function renderVipList() {
+      const vipUsers = getVipUsers();
+      vipListEl.innerHTML = vipUsers.map(u => `
+        <li>
+          <span>@${escapeHTML(u)}</span>
+          <button type="button" class="remove-btn" data-user="${escapeHTML(u)}">Eliminar</button>
+        </li>
+      `).join('');
+    }
+    function renderAllUsersSelect() {
+      if (!usersSelectEl) return;
+      const users = collectRegisteredUsers();
+      usersSelectEl.innerHTML = '<option value="">Selecciona un usuario</option>' +
+        users.map(u => `<option value="${escapeHTML(u)}">@${escapeHTML(u)}</option>`).join('');
+    }
+
+    // Asegurar oculto al cargar
+    adminModal.hidden = true;
+    adminPanel.hidden = true;
+
+    // Abrir modal solo al hacer click en "Modo Admin"
+    adminBtn?.addEventListener('click', () => {
+      adminModal.hidden = false;
+      adminPassInput.value = '';
+      adminPassError.hidden = true;
+      adminPassInput.focus();
+    });
+
+    function tryOpenAdmin() {
+      const pass = adminPassInput.value;
+      if (pass === ADMIN_PASS) {
+        adminModal.hidden = true;
+        adminPanel.hidden = false;
+        // Inicializar contenido del panel
+        renderVipList?.();
+        renderAllUsersSelect?.();
+      } else {
+        adminPassError.hidden = false;
+        adminPassInput.focus();
+      }
+    }
+
+    adminPassConfirmBtn?.addEventListener('click', tryOpenAdmin);
+    adminPassCancelBtn?.addEventListener('click', () => {
+      adminModal.hidden = true; // cerrar modal sin abrir panel
+    });
+    adminPassInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        tryOpenAdmin();
+      }
+    });
+
+    vipAddBtn?.addEventListener('click', () => {
+      const raw = usersSelectEl?.value || '';
+      const user = normUser(raw);
+      if (!user) {
+        alert('Selecciona un usuario registrado.');
+        return;
+      }
+      const vipUsers = getVipUsers();
+      if (vipUsers.includes(user)) {
+        alert('Ese usuario ya es VIP.');
+        return;
+      }
+      vipUsers.push(user);
+      setVipUsers(vipUsers);
+      renderVipList();
+    });
+
+    vipListEl?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.remove-btn');
+      if (!btn) return;
+      const user = btn.getAttribute('data-user');
+      if (!user) return;
+      const vipUsers = getVipUsers().filter(u => u !== user);
+      setVipUsers(vipUsers);
+      renderVipList();
+    });
+
+    wipeAllBtn?.addEventListener('click', () => {
+      const ok = confirm('Esto borrará todas las solicitudes guardadas (todos los días). ¿Quieres continuar?');
+      if (!ok) return;
+      localStorage.removeItem('solicitudes_by_day');
+      localStorage.removeItem('solicitudes');
+      renderAllUsersSelect();
+      alert('Solicitudes borradas. La lista está limpia.');
+    });
+  })();
+</script>
+
+<script>
+  // Autenticación: sesión anónima automática para usuarios normales
+  firebase.auth().onAuthStateChanged((user) => {
+    if (!user) {
+      firebase.auth().signInAnonymously().catch((err) => {
+        console.error('Error al autenticar anónimamente:', err);
+      });
+    }
+  });
+
+  // ===== FUNCIONES DE GAMIFICACIÓN =====
+  
+  // Configuración del sistema de puntos
+  const POINTS_CONFIG = {
+    SONG_REQUEST: 10,
+    DAILY_BONUS: 5,
+    STREAK_MULTIPLIER: 2,
+    VIP_BONUS: 15
+  };
+
+  function getGamificationData(usuario) {
+    const key = `gamificationData_${usuario.toLowerCase()}`;
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : {
+      points: 0,
+      level: 1,
+      xp: 0,
+      achievements: [],
+      streaks: {
+        current: 0,
+        best: 0,
+        lastActivity: null,
+        calendar: {}
+      },
+      stats: {
+        totalSongs: 0,
+        uniqueArtists: 0,
+        activeDays: 0,
+        isVip: false
+      }
+    };
+  }
+
+  function saveGamificationData(usuario, data) {
+    const key = `gamificationData_${usuario.toLowerCase()}`;
+    localStorage.setItem(key, JSON.stringify(data));
+  }
+
+  function addPoints(usuario, points) {
+    const data = getGamificationData(usuario);
+    data.points += points;
+    data.xp += points;
+    
+    // Verificar subida de nivel
+    const newLevel = calculateLevel(data.xp);
+    if (newLevel > data.level) {
+      data.level = newLevel;
+    }
+    
+    saveGamificationData(usuario, data);
+    return data;
+  }
+
+  function calculateLevel(xp) {
+    const levels = [
+      { level: 1, xpRequired: 0 },
+      { level: 2, xpRequired: 100 },
+      { level: 3, xpRequired: 250 },
+      { level: 4, xpRequired: 500 },
+      { level: 5, xpRequired: 1000 },
+      { level: 6, xpRequired: 2000 },
+      { level: 7, xpRequired: 5000 }
+    ];
+    
+    for (let i = levels.length - 1; i >= 0; i--) {
+      if (xp >= levels[i].xpRequired) {
+        return levels[i].level;
+      }
+    }
+    return 1;
+  }
+
+  function updateStreak(usuario) {
+    const data = getGamificationData(usuario);
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    
+    if (data.streaks.lastActivity === yesterday) {
+      // Continuar racha
+      data.streaks.current++;
+    } else if (data.streaks.lastActivity !== today) {
+      // Nueva racha o racha rota
+      data.streaks.current = 1;
+    }
+    
+    // Actualizar mejor racha
+    if (data.streaks.current > data.streaks.best) {
+      data.streaks.best = data.streaks.current;
+    }
+    
+    data.streaks.lastActivity = today;
+    data.streaks.calendar[today] = true;
+    
+    saveGamificationData(usuario, data);
+    return data.streaks.current;
+  }
+
+  function calculateUserStats(usuario) {
+    const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+    const vipUsers = JSON.parse(localStorage.getItem('vipUsers') || '[]');
+    
+    const userSongs = solicitudes.filter(s => s.usuario === usuario);
+    const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
+    const uniqueDays = [...new Set(userSongs.map(s => s.fecha?.split('T')[0]))].length;
+    const isVip = vipUsers.includes(usuario);
+
+    return {
+      totalSongs: userSongs.length,
+      uniqueArtists,
+      activeDays: uniqueDays,
+      isVip
+    };
+  }
+
+  function processNewSongRequest(usuario) {
+    const streakDays = updateStreak(usuario);
+    let points = POINTS_CONFIG.SONG_REQUEST;
+    
+    // Bonus por racha
+    if (streakDays > 1) {
+      points += POINTS_CONFIG.STREAK_MULTIPLIER * Math.min(streakDays - 1, 10);
+    }
+    
+    // Bonus VIP
+    const vipUsers = JSON.parse(localStorage.getItem('vipUsers') || '[]');
+    if (vipUsers.includes(usuario)) {
+      points += POINTS_CONFIG.VIP_BONUS;
+    }
+    
+    const data = addPoints(usuario, points);
+    
+    // Actualizar estadísticas
+    const stats = calculateUserStats(usuario);
+    data.stats = { ...data.stats, ...stats };
+    saveGamificationData(usuario, data);
+    
+    // Mostrar notificación de puntos ganados
+    showPointsNotification(points, streakDays);
+  }
+
+  function showPointsNotification(points, streak) {
+    // Crear notificación temporal
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+      color: white;
+      padding: 16px 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+      animation: slideInRight 0.3s ease;
+      max-width: 300px;
+      font-family: 'Avenir', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+    
+    let message = `+${points} puntos ganados! 🎵`;
+    if (streak > 1) {
+      message += `<br><small>Racha de ${streak} días! 🔥</small>`;
+    }
+    
+    notification.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="font-size: 24px;">🏆</div>
+        <div style="font-size: 14px; line-height: 1.3;">${message}</div>
+      </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+      notification.remove();
+    }, 3000);
+  }
+
+  // Agregar estilos para la animación
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+
+  // Ejemplo: cuando envías la solicitud, asegúrate de usar serverTimestamp() del SDK compat
+  // await db.collection('solicitudes').add({
+  //   usuario, cancion, artista, day,
+  //   ts: firebase.firestore.FieldValue.serverTimestamp(),
+  // });
+</script>
