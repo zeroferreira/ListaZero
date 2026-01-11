@@ -575,6 +575,23 @@
         <label><input type="checkbox" id="vip-only" /> Ver solo VIP</label>
       </div>
 
+      <!-- BUSCADOR -->
+      <div id="search-modal" class="modal-overlay" hidden>
+         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="search-modal-title">
+            <h2 id="search-modal-title">Buscar Canción</h2>
+            <div class="field">
+               <input type="text" id="search-input" placeholder="Escribe artista, canción o usuario..." class="search-input">
+            </div>
+            <div id="search-results" class="search-results-list">
+               <!-- Resultados aquí -->
+            </div>
+            <button type="button" id="search-load-more" class="btn btn-secondary" hidden style="width: 100%; margin-top: 10px;">Cargar más resultados...</button>
+            <div class="actions modal-actions">
+               <button type="button" id="search-close" class="btn">Cerrar</button>
+            </div>
+         </div>
+      </div>
+
       <div id="admin-panel" class="admin-panel" hidden>
         
         <!-- Selector de Sección Admin -->
@@ -2960,60 +2977,91 @@
       // Hacer accesible desde el IIFE de UI
       window.subscribeSolicitudesForDay = subscribeSolicitudesForDay;
 
-      // Buscar ignorando acentos y en canción/artista/usuario en TODOS los días
-      async function searchSolicitudes(query) {
-        const normalize = (s) => String(s || '')
-          .toLowerCase()
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '');
-
-        const q = normalize(query);
-        if (!q) return [];
-
-        let allResults = [];
-
-        try {
-          // Buscar en Firestore - SIN LÍMITE DE FECHA, ordenado por timestamp descendente
-          // Esto garantiza que buscamos en TODA la historia
-          const firestoreSnapshot = await db.collection('solicitudes').orderBy('ts', 'desc').get();
-          
-          firestoreSnapshot.forEach((doc) => {
-            const data = doc.data();
-            
-            // Normalizar datos para búsqueda
-            const song = normalize(data.cancion);
-            const artist = normalize(data.artista);
-            const user = normalize(data.usuario);
-            
-            // Coincidencia parcial
-            if (song.includes(q) || artist.includes(q) || user.includes(q)) {
-              let dayValue = data.day;
-              
-              // Si no tiene día explícito, calcularlo del timestamp
-              if (!dayValue && data.ts && data.ts.toDate) {
-                 const date = data.ts.toDate();
-                 dayValue = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-              }
-              
-              allResults.push({
-                usuario: data.usuario,
-                cancion: data.cancion,
-                artista: data.artista,
-                hora: toHour(data.ts),
-                day: dayValue || 'N/D' // Fallback final
-              });
-            }
-          });
-        } catch (error) {
-          console.log('Error buscando en Firestore:', error);
-        }
-
-        // Ya no necesitamos buscar en localStorage ni fusionar, Firestore es la fuente de la verdad completa.
-        // Pero si quieres mantener localStorage como fallback offline, puedes dejarlo, 
-        // pero la petición pedía "tomar los datos de la web en firestore".
-        
-        return allResults;
+      // Variables para paginación de búsqueda
+      let lastSearchDoc = null;
+      let currentSearchQuery = '';
+      
+      const searchModal = document.getElementById('search-modal');
+      const searchInput = document.getElementById('search-input');
+      const searchResults = document.getElementById('search-results');
+      const searchClose = document.getElementById('search-close');
+      const searchLoadMore = document.getElementById('search-load-more');
+      
+      function openSearchModal() {
+         searchModal.hidden = false;
+         searchInput.value = '';
+         searchResults.innerHTML = '';
+         searchLoadMore.hidden = true;
+         lastSearchDoc = null;
+         currentSearchQuery = '';
+         searchInput.focus();
       }
+      
+      async function performSearch(isLoadMore = false) {
+         const query = searchInput.value.trim();
+         if (!query) return;
+         
+         if (!isLoadMore) {
+            searchResults.innerHTML = '<p class="loading-text">Buscando...</p>';
+            lastSearchDoc = null;
+            currentSearchQuery = query;
+         } else {
+            searchLoadMore.textContent = 'Cargando...';
+            searchLoadMore.disabled = true;
+         }
+         
+         const { results, lastDoc } = await searchSolicitudes(query, lastSearchDoc);
+         
+         if (!isLoadMore) {
+            searchResults.innerHTML = '';
+         }
+         
+         lastSearchDoc = lastDoc;
+         
+         if (results.length === 0 && !isLoadMore) {
+            searchResults.innerHTML = '<p class="empty-search">No se encontraron resultados.</p>';
+            searchLoadMore.hidden = true;
+            return;
+         }
+         
+         results.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'search-result-item';
+            div.innerHTML = `
+               <div class="search-result-info">
+                  <span class="search-song">${item.cancion}</span>
+                  <span class="search-artist">${item.artista}</span>
+                  <div class="search-meta">
+                     <span class="search-user">👤 ${item.usuario}</span>
+                     <span class="search-date">📅 ${item.day}</span>
+                     <span class="search-time">🕒 ${item.hora}</span>
+                  </div>
+               </div>
+            `;
+            searchResults.appendChild(div);
+         });
+         
+         // Gestionar botón "Cargar más"
+         if (lastDoc) {
+            searchLoadMore.hidden = false;
+            searchLoadMore.textContent = 'Cargar más resultados...';
+            searchLoadMore.disabled = false;
+         } else {
+            searchLoadMore.hidden = true;
+         }
+      }
+      
+      // Event Listeners para búsqueda
+      document.getElementById('menu-search-open')?.addEventListener('click', openSearchModal);
+      searchClose?.addEventListener('click', () => { searchModal.hidden = true; });
+      
+      let searchTimeout;
+      searchInput?.addEventListener('input', () => {
+         clearTimeout(searchTimeout);
+         searchTimeout = setTimeout(() => performSearch(false), 600);
+      });
+      
+      searchLoadMore?.addEventListener('click', () => performSearch(true));
       window.searchSolicitudes = searchSolicitudes;
 
       function subscribeVipUsers() {
