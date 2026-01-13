@@ -1308,7 +1308,7 @@
                   <div class="stat-card">
                     <div class="stat-icon">🔥</div>
                     <div class="stat-number" id="breakdown-streak-residual">0</div>
-                    <div class="stat-label">Racha y otros</div>
+                    <div class="stat-label">Racha / Canjes / Ajustes</div>
                   </div>
                   <div class="stat-card">
                     <div class="stat-icon">💰</div>
@@ -7151,7 +7151,7 @@
 
           // Persistir en Firestore para ranking global
           if (window.db) {
-            const normUser = String(targetUser).toLowerCase().replace(/^@/,'');
+            const normUser = normalizeUserKey(targetUser);
             db.collection('userStats').doc(normUser).set({
               totalPoints: data.points,
               level: data.level,
@@ -7386,7 +7386,7 @@
         const norm = (s) => String(s || '').trim().replace(/^@/, '').toLowerCase();
         const unameLc = String(usuario||'').trim().toLowerCase();
         const rawLc = String(rawUser||'').trim().toLowerCase();
-        const isVip = (window.vipSet && (window.vipSet.has(unameLc) || window.vipSet.has(rawLc))) || (window.z0VipSet && (window.z0VipSet.has(unameLc) || window.z0VipSet.has(rawLc)));
+        let isVip = (window.vipSet && (window.vipSet.has(unameLc) || window.vipSet.has(rawLc))) || (window.z0VipSet && (window.z0VipSet.has(unameLc) || window.z0VipSet.has(rawLc)));
         const getHourKey = (x) => {
           try {
             if (typeof window.toHourKey === 'function') return window.toHourKey(x);
@@ -7674,9 +7674,9 @@
         let bestStreakVal = 0;
         let lastManualAdjustment = null;
         try {
-          const statsDocSnap = await db.collection('userStats').doc(norm(usuario)).get();
-          const statsDoc = statsDocSnap.exists ? (statsDocSnap.data() || {}) : {};
-          cloudTotal = statsDocSnap.exists ? Number((statsDoc.totalPoints || 0)) : 0;
+          const bestStats = await fetchBestUserStatsDoc(usuario);
+          const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
+          cloudTotal = Number((statsDoc.totalPoints || 0));
           if (typeof statsDoc.bestStreak === 'number') bestStreakVal = statsDoc.bestStreak;
           if (statsDoc.lastManualAdjustment) lastManualAdjustment = statsDoc.lastManualAdjustment;
         } catch (_) {}
@@ -7710,8 +7710,23 @@
         let redemptions = [];
         try {
           const dbRef = window.db || db;
+          const userKey = normalizeUserKey(usuario);
           const candidates = Array.from(new Set([rawUser, usuario, unameLc].map(x => String(x || '').trim()).filter(Boolean)));
           const map = new Map();
+          try {
+            const snapKey = await dbRef.collection('rewardRequests').where('userKey', '==', userKey).get();
+            snapKey.forEach(doc => {
+              const d = doc.data() || {};
+              map.set(doc.id, {
+                id: doc.id,
+                rewardId: d.rewardId,
+                rewardName: d.rewardName,
+                cost: Number(d.cost || 0),
+                status: String(d.status || ''),
+                timestamp: d.timestamp || d.processedAt || ''
+              });
+            });
+          } catch (_) {}
           for (let i = 0; i < candidates.length; i++) {
             const cand = candidates[i];
             try {
@@ -7844,6 +7859,7 @@
              const totalToggled = await countTotalToggledSongsForUser(u);
              bd.playedCount = totalToggled;
              bd.base = totalToggled * 25;
+             bd.vipBonus = bd.isVip ? (totalToggled * 40) : 0;
              
              const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0);
              const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
@@ -7857,7 +7873,8 @@
         setNum('breakdown-vip-bonus', Number(bd.vipBonus||0));
         setNum('breakdown-daily-bonus', Number(bd.dailyBonus||0));
         setNum('breakdown-achievements', Number(bd.achievements||0));
-        setNum('breakdown-streak-residual', Number(bd.streakBonus||0));
+        const others = Number(bd.streakBonus||0) + Number(bd.top1Bonus||0) + Number(bd.manualBonus||0) - Number(bd.redemptionsSpent||0) + Number(bd.adjustment||0);
+        setNum('breakdown-streak-residual', Number(others||0));
         setNum('breakdown-total', Number(bd.total||0));
         bd.playedCount = Number(bd.playedCount || Math.floor(Number(bd.base||0)/25));
         const headerPoints = document.getElementById('user-points');
@@ -8908,24 +8925,96 @@
         return currentSelectedUser || getCurrentUser();
       }
 
+      function normalizeUserKey(username) {
+        return String(username || '').trim().replace(/^@/, '').toLowerCase();
+      }
+
+      function normalizeUserKeyLoose(username) {
+        return String(username || '').replace(/^@/, '').toLowerCase();
+      }
+
+      function getUserStatsDocKeys(username) {
+        const a = normalizeUserKey(username);
+        const b = normalizeUserKeyLoose(username);
+        return Array.from(new Set([a, b].filter(Boolean)));
+      }
+
+      function getMillisFromTs(ts) {
+        try {
+          if (!ts) return 0;
+          if (typeof ts.toMillis === 'function') return ts.toMillis();
+          if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+          const d = new Date(ts);
+          const t = d.getTime();
+          return Number.isFinite(t) ? t : 0;
+        } catch (_) { return 0; }
+      }
+
+      async function fetchBestUserStatsDoc(username) {
+        try {
+          const dbRef = window.db || db;
+          if (!dbRef) return null;
+          const keys = getUserStatsDocKeys(username);
+          if (!keys.length) return null;
+          const docs = await Promise.all(keys.map(async (k) => {
+            try {
+              const ref = dbRef.collection('userStats').doc(k);
+              const snap = await ref.get();
+              return { key: k, snap, data: snap.exists ? (snap.data() || {}) : null };
+            } catch (_) {
+              return { key: k, snap: null, data: null };
+            }
+          }));
+          const existing = docs.filter(d => d && d.data);
+          if (!existing.length) return null;
+          existing.sort((x, y) => {
+            const px = Number(x.data.totalPoints || 0);
+            const py = Number(y.data.totalPoints || 0);
+            const diff = Math.abs(px - py);
+            if (diff >= 5000) return px - py;
+            const tx = Math.max(getMillisFromTs(x.data.updatedAt), getMillisFromTs(x.data.lastUpdated));
+            const ty = Math.max(getMillisFromTs(y.data.updatedAt), getMillisFromTs(y.data.lastUpdated));
+            if (ty !== tx) return ty - tx;
+            return px - py;
+          });
+          return existing[0];
+        } catch (_) {
+          return null;
+        }
+      }
+
       function subscribeUserStatsPointsForUser(username) {
         try {
-          if (window._userStatsPointsUnsub) {
-            window._userStatsPointsUnsub();
-            window._userStatsPointsUnsub = null;
+          if (Array.isArray(window._userStatsPointsUnsubs)) {
+            window._userStatsPointsUnsubs.forEach(fn => { try { fn && fn(); } catch (_) {} });
           }
+          window._userStatsPointsUnsubs = [];
         } catch (_) {}
         try {
           const dbRef = window.db || db;
           if (!dbRef || !username) return;
-          const normUser = String(username).toLowerCase().replace(/^@/,'');
-          window._userStatsPointsUnsub = dbRef.collection('userStats').doc(normUser).onSnapshot((doc) => {
+          const keys = getUserStatsDocKeys(username);
+          const latest = {};
+          const applyBest = () => {
             try {
-              if (!doc || !doc.exists) return;
-              const cloudPoints = Number((doc.data() || {}).totalPoints || 0);
               const u = getCurrentSelectedUser();
-              const currentNorm = String(u).toLowerCase().replace(/^@/,'');
-              if (currentNorm !== normUser) return;
+              const currentNorm = normalizeUserKey(u);
+              const lookingFor = normalizeUserKey(username);
+              if (currentNorm !== lookingFor) return;
+              const arr = Object.values(latest).filter(Boolean);
+              if (!arr.length) return;
+              arr.sort((x, y) => {
+                const px = Number(x.totalPoints || 0);
+                const py = Number(y.totalPoints || 0);
+                const diff = Math.abs(px - py);
+                if (diff >= 5000) return px - py;
+                const tx = Math.max(getMillisFromTs(x.updatedAt), getMillisFromTs(x.lastUpdated));
+                const ty = Math.max(getMillisFromTs(y.updatedAt), getMillisFromTs(y.lastUpdated));
+                if (ty !== tx) return ty - tx;
+                return px - py;
+              });
+              const best = arr[0];
+              const cloudPoints = Number(best.totalPoints || 0);
               const local = getGamificationDataForUser(u) || {};
               local.points = cloudPoints;
               local._cloudSyncedPoints = cloudPoints;
@@ -8935,7 +9024,18 @@
               const rewardsPtsEl = document.getElementById('rewards-user-points');
               if (rewardsPtsEl) rewardsPtsEl.textContent = String(cloudPoints);
             } catch (_) {}
-          }, () => {});
+          };
+          keys.forEach((k) => {
+            const unsub = dbRef.collection('userStats').doc(k).onSnapshot((doc) => {
+              try {
+                if (!doc || !doc.exists) return;
+                const d = doc.data() || {};
+                latest[k] = d;
+                applyBest();
+              } catch (_) {}
+            }, () => {});
+            window._userStatsPointsUnsubs.push(unsub);
+          });
         } catch (_) {}
       }
 
@@ -9451,13 +9551,13 @@
       async function syncGamificationDataWithCloud(username) {
          try {
             console.log(`☁️ Sincronizando gamificación para ${username}...`);
-            const normUser = String(username).toLowerCase().replace(/^@/,'');
+            const normUser = normalizeUserKey(username);
             const docRef = db.collection('userStats').doc(normUser);
-            const doc = await docRef.get();
+            const best = await fetchBestUserStatsDoc(username);
             
             const localData = getGamificationDataForUser(username);
             
-            if (!doc.exists) {
+            if (!best || !best.data) {
                console.log('☁️ No hay datos en nube. Subiendo locales...');
                // Subir datos locales si existen y tienen algo de valor
                if (localData.points > 0 || localData.achievements.length > 0) {
@@ -9470,7 +9570,7 @@
                return localData;
             }
             
-            const cloudDataFull = doc.data();
+            const cloudDataFull = best.data || {};
             const cloudPoints = Number(cloudDataFull.totalPoints || 0);
             const cloudGamification = cloudDataFull.gamification || null;
             
@@ -9517,7 +9617,7 @@
             
             // Guardar fusión en nube (para que el otro dispositivo se actualice también)
             // Solo si hubo cambios o si es necesario unificar
-            if (JSON.stringify(mergedData) !== JSON.stringify(cloudGamification) || cloudPoints !== mergedData.points) {
+            if ((best && best.key && best.key !== normUser) || JSON.stringify(mergedData) !== JSON.stringify(cloudGamification) || cloudPoints !== mergedData.points) {
                console.log('☁️ Actualizando nube con datos fusionados...');
                await docRef.set({
                   totalPoints: mergedData.points,
@@ -9563,7 +9663,7 @@
            // Si han pasado más de 10 segundos desde el último push, o si es un cambio crítico (muchos puntos)
            if (now - lastPush > 10000) {
               window._lastCloudPush[targetUser.toLowerCase()] = now;
-              const normUser = String(targetUser).toLowerCase().replace(/^@/,'');
+              const normUser = normalizeUserKey(targetUser);
               
               // No bloquear la UI, hacerlo en segundo plano
               const safePoints = Math.max(0, Number(data.points || 0));
@@ -11256,10 +11356,9 @@
         // Actualizar información del usuario
         rewardsUserInfo.textContent = targetUser;
         try {
-          const normUser = String(targetUser).toLowerCase().replace(/^@/,'');
-          const doc = await db.collection('userStats').doc(normUser).get();
-          if (doc.exists) {
-            const cloudPoints = Number((doc.data() || {}).totalPoints || 0);
+          const best = await fetchBestUserStatsDoc(targetUser);
+          if (best && best.data) {
+            const cloudPoints = Number((best.data || {}).totalPoints || 0);
             effectivePoints = cloudPoints;
           }
           rewardsUserPoints.textContent = String(effectivePoints);
@@ -11318,7 +11417,7 @@
         try {
           console.log('📊 Obteniendo datos del usuario...');
           // Obtener puntos actuales de Firestore para asegurar consistencia
-          const normUser = String(username).toLowerCase().replace(/^@/,'');
+          const normUser = normalizeUserKey(username);
           const userDocRef = db.collection('userStats').doc(normUser);
           const userDoc = await userDocRef.get();
           
@@ -11352,6 +11451,7 @@
           const rewardRequest = {
             id: requestId,
             userId: username,
+            userKey: normUser,
             rewardId: rewardId,
             rewardName: reward.name,
             cost: cost,
@@ -11409,14 +11509,17 @@
         if(!pendingContainer) return;
         
         try {
-           // Cargar desde Firestore
+           const userKey = normalizeUserKey(username);
            const snapshot = await db.collection('rewardRequests')
-             .where('userId', '==', username)
              .where('status', '==', 'pending')
              .get();
-             
+
            const pendingRequests = [];
-           snapshot.forEach(doc => pendingRequests.push(doc.data()));
+           snapshot.forEach(doc => {
+             const d = doc.data() || {};
+             const k = d.userKey ? normalizeUserKey(d.userKey) : normalizeUserKey(d.userId);
+             if (k === userKey) pendingRequests.push(d);
+           });
            
            if (pendingRequests.length === 0) {
              pendingContainer.innerHTML = '<p>No tienes solicitudes pendientes.</p>';
