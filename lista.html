@@ -1129,6 +1129,7 @@
               <option value="vip">VIP</option>
               <option value="donador">Donador</option>
             </select>
+            <div id="earned-badges" class="earned-badges"></div>
           </div>
 
           <!-- Barra de Progreso -->
@@ -6968,6 +6969,7 @@
         if (userLevelNameEl) userLevelNameEl.textContent = currentLevel.name;
         if (userLevelNumberEl) userLevelNumberEl.textContent = `Nivel ${data.level}`;
         if (userPointsEl) userPointsEl.textContent = data.points;
+        try { renderEarnedBadgesForUser(username); } catch (_) {}
       }
 
       // Inicializar sistema de gamificación
@@ -7703,16 +7705,48 @@
         if (lastManualAdjustment && typeof lastManualAdjustment.amount === 'number') {
            manualBonus = lastManualAdjustment.amount;
         }
-        
-        const sumCalc = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus;
-        const residual = Math.max(0, cloudTotal - sumCalc); // Prevent negative residuals
+
+        let redemptionsSpent = 0;
+        let redemptions = [];
         try {
-          if (window.__ALLOW_BREAKDOWN_WRITE__ && !cloudTotal && sumCalc > 0) {
+          const dbRef = window.db || db;
+          const candidates = Array.from(new Set([rawUser, usuario, unameLc].map(x => String(x || '').trim()).filter(Boolean)));
+          const map = new Map();
+          for (let i = 0; i < candidates.length; i++) {
+            const cand = candidates[i];
+            try {
+              const snap = await dbRef.collection('rewardRequests').where('userId', '==', cand).get();
+              snap.forEach(doc => {
+                const d = doc.data() || {};
+                map.set(doc.id, {
+                  id: doc.id,
+                  rewardId: d.rewardId,
+                  rewardName: d.rewardName,
+                  cost: Number(d.cost || 0),
+                  status: String(d.status || ''),
+                  timestamp: d.timestamp || d.processedAt || ''
+                });
+              });
+            } catch (_) {}
+          }
+          redemptions = Array.from(map.values()).sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+          redemptionsSpent = redemptions
+            .filter(r => r && (r.status === 'pending' || r.status === 'approved'))
+            .reduce((sum, r) => sum + Math.max(0, Number(r.cost || 0)), 0);
+        } catch (_) {}
+
+        const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus;
+        const predictedNet = earnedTotal - redemptionsSpent;
+        const displayTotal = cloudTotal ? Math.max(0, Number(cloudTotal || 0)) : Math.max(0, predictedNet);
+        const adjustment = displayTotal - predictedNet;
+
+        try {
+          if (window.__ALLOW_BREAKDOWN_WRITE__ && !cloudTotal && displayTotal > 0) {
             await db.collection('userStats').doc(norm(usuario)).set({
-              totalPoints: sumCalc,
+              totalPoints: displayTotal,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
-            cloudTotal = sumCalc;
+            cloudTotal = displayTotal;
           }
         } catch (_) {}
         // Construir lista de insignias para UI
@@ -7748,11 +7782,28 @@
             return { id, title: (found && found.title) || id, points: (found && typeof found.points === 'number') ? found.points : 0 };
           });
         } catch (_){}
-        // Total igual al desglose calculado desde nube
-        let displayTotal = sumCalc;
-        // Ensure total is never negative
-        displayTotal = Math.max(0, displayTotal);
-        return { usuario, playedCount, activeDaysValid, isVip, base: (playedCount * 25), vipBonus: (isVip ? (playedCount * 40) : 0), dailyBonus: (activeDaysValid * 5), achievements, streakBonus, top1Bonus, manualBonus, residual, total: displayTotal, detail, achievementsList };
+        return {
+          usuario,
+          playedCount,
+          activeDaysValid,
+          isVip,
+          base: (playedCount * 25),
+          vipBonus: (isVip ? (playedCount * 40) : 0),
+          dailyBonus: (activeDaysValid * 5),
+          achievements,
+          streakBonus,
+          top1Count,
+          top1Bonus,
+          manualBonus,
+          cloudTotal: Math.max(0, Number(cloudTotal || 0)),
+          earnedTotal: Math.max(0, Number(earnedTotal || 0)),
+          redemptionsSpent: Math.max(0, Number(redemptionsSpent || 0)),
+          adjustment: Number(adjustment || 0),
+          total: Math.max(0, Number(displayTotal || 0)),
+          detail,
+          achievementsList,
+          redemptions
+        };
       }
       async function renderPointsBreakdownForUser(u, force=false) {
         // Cache simple para mejorar tiempos de carga
@@ -7794,8 +7845,11 @@
              bd.playedCount = totalToggled;
              bd.base = totalToggled * 25;
              
-             // Recalcular total con el nuevo base
-             bd.total = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0);
+             const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0);
+             const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
+             bd.earnedTotal = earnedTotal;
+             bd.adjustment = (Number(bd.cloudTotal || 0) ? (Number(bd.cloudTotal || 0) - predictedNet) : 0);
+             bd.total = Number(bd.cloudTotal || 0) ? Number(bd.cloudTotal || 0) : Math.max(0, predictedNet);
              
           } catch(e) { console.error('Error actualizando transparencia con toggled:', e); }
 
@@ -7843,6 +7897,27 @@
           // Compensación (si existe)
           if (bd.manualBonus && bd.manualBonus !== 0) {
             lines.push(`<div class="genre-chip"><span>🎁 Compensación </span><span>${bd.manualBonus}</span></div>`);
+          }
+
+          if (Number(bd.redemptionsSpent || 0) > 0) {
+            lines.push(`<div class="genre-chip"><span>🎁 Canjes </span><span>-${Number(bd.redemptionsSpent || 0)}</span></div>`);
+            try {
+              const statusText = (s) => s === 'approved' ? 'Aprobado' : (s === 'rejected' ? 'Rechazado' : 'Pendiente');
+              const listRed = Array.isArray(bd.redemptions) ? bd.redemptions : [];
+              listRed.slice(0, 10).forEach(r => {
+                if (!r || !r.cost) return;
+                const st = statusText(String(r.status || 'pending'));
+                const cost = Math.max(0, Number(r.cost || 0));
+                const sign = (r.status === 'rejected') ? '+' : '-';
+                lines.push(`<div class="genre-chip"><span>• ${r.rewardName || r.rewardId || 'Recompensa'} (${st})</span><span>${sign}${cost}</span></div>`);
+              });
+            } catch (_) {}
+          }
+
+          if (Number(bd.adjustment || 0) !== 0) {
+            const adj = Number(bd.adjustment || 0);
+            const sign = adj > 0 ? '+' : '';
+            lines.push(`<div class="genre-chip"><span>🧩 Ajuste </span><span>${sign}${adj}</span></div>`);
           }
           
           // Total
@@ -10476,12 +10551,13 @@
       initGamification().catch(console.error);
 
       function getEarnedBadgesForUser(username) {
+        const key = String(username || '').trim().replace(/^@/, '').toLowerCase();
         const res = [];
-        if (window.vipSet && window.vipSet.has(username)) res.push('vip');
-        if (window.z0VipSet && window.z0VipSet.has(username)) res.push('z0-vip');
-        if (window.donadorSet && window.donadorSet.has(username)) res.push('donador');
-        if (window.z0FanSet && window.z0FanSet.has(username)) res.push('z0-fan');
-        if (window.z0PlatinumSet && window.z0PlatinumSet.has(username)) res.push('z0-platino');
+        if (window.vipSet && window.vipSet.has(key)) res.push('vip');
+        if (window.z0VipSet && window.z0VipSet.has(key)) res.push('z0-vip');
+        if (window.donadorSet && window.donadorSet.has(key)) res.push('donador');
+        if (window.z0FanSet && window.z0FanSet.has(key)) res.push('z0-fan');
+        if (window.z0PlatinumSet && window.z0PlatinumSet.has(key)) res.push('z0-platino');
         return res;
       }
 
@@ -10504,11 +10580,12 @@
       }
 
       function getCurrentMembership(username) {
-        if (window.vipSet && window.vipSet.has(username)) return 'vip';
-        if (window.z0VipSet && window.z0VipSet.has(username)) return 'z0-vip';
-        if (window.z0PlatinumSet && window.z0PlatinumSet.has(username)) return 'z0-platino';
-        if (window.donadorSet && window.donadorSet.has(username)) return 'donador';
-        if (window.z0FanSet && window.z0FanSet.has(username)) return 'z0-fan';
+        const key = String(username || '').trim().replace(/^@/, '').toLowerCase();
+        if (window.vipSet && window.vipSet.has(key)) return 'vip';
+        if (window.z0VipSet && window.z0VipSet.has(key)) return 'z0-vip';
+        if (window.z0PlatinumSet && window.z0PlatinumSet.has(key)) return 'z0-platino';
+        if (window.donadorSet && window.donadorSet.has(key)) return 'donador';
+        if (window.z0FanSet && window.z0FanSet.has(key)) return 'z0-fan';
         return '';
       }
 
@@ -10601,6 +10678,25 @@
           const fallback = getCurrentMembership(username);
           select.value = earned.includes(currentSelected) ? currentSelected : (earned.includes(fallback) ? fallback : '');
         }
+        try { renderEarnedBadgesForUser(username); } catch (_) {}
+      }
+
+      function renderEarnedBadgesForUser(username) {
+        const el = document.getElementById('earned-badges');
+        if (!el) return;
+        const earned = Array.isArray(getEarnedBadgesForUser(username)) ? getEarnedBadgesForUser(username) : [];
+        if (!earned.length) {
+          el.innerHTML = '';
+          return;
+        }
+        const label = {
+          'z0-fan': 'z0',
+          'z0-vip': 'z0Vip',
+          'z0-platino': 'VIP Platino',
+          'vip': 'VIP',
+          'donador': 'Donador'
+        };
+        el.innerHTML = earned.map(b => `<span class="earned-badge-chip ${b}">${label[b] || b}</span>`).join('');
       }
 
       document.getElementById('badge-select')?.addEventListener('change', async (e) => {
