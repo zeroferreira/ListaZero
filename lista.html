@@ -3607,7 +3607,35 @@
           }));
         } catch (error) { }
 
+        try {
+          const cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
+          cached.forEach(name => {
+            const u = String(name || '').trim();
+            if (u) set.add(u);
+          });
+        } catch (_) {}
+
+        try {
+          const dbRef = window.db || db;
+          if (dbRef) {
+            const statsSnap = await dbRef.collection('userStats').get();
+            statsSnap.forEach(doc => { if (doc.id) set.add(String(doc.id).trim()); });
+          }
+        } catch (_) {}
+
+        try {
+          const dbRef = window.db || db;
+          if (dbRef) {
+            const usersSnap = await dbRef.collection('users').get();
+            usersSnap.forEach(doc => {
+              const d = doc.data() || {};
+              if (d.name) set.add(String(d.name).trim());
+            });
+          }
+        } catch (_) {}
+
         const list = Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        try { localStorage.setItem('knownUsers', JSON.stringify(list)); } catch (_) {}
         
         // Función helper para llenar selects
         const fillSelect = (el) => {
@@ -7121,7 +7149,8 @@
 
           // Persistir en Firestore para ranking global
           if (window.db) {
-            db.collection('userStats').doc(targetUser.toLowerCase()).set({
+            const normUser = String(targetUser).toLowerCase().replace(/^@/,'');
+            db.collection('userStats').doc(normUser).set({
               totalPoints: data.points,
               level: data.level,
               achievements: data.achievements,
@@ -8505,6 +8534,33 @@
             });
           } catch (_) {}
 
+          try {
+            const cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
+            cached.forEach(name => {
+              const u = String(name || '').trim();
+              if (u) users.add(u);
+            });
+          } catch (_) {}
+
+          try {
+            const dbRef = window.db || db;
+            if (dbRef) {
+              const statsSnap = await dbRef.collection('userStats').get();
+              statsSnap.forEach(doc => { if (doc.id) users.add(String(doc.id).trim()); });
+            }
+          } catch (_) {}
+
+          try {
+            const dbRef = window.db || db;
+            if (dbRef) {
+              const usersSnap = await dbRef.collection('users').get();
+              usersSnap.forEach(doc => {
+                const d = doc.data() || {};
+                if (d.name) users.add(String(d.name).trim());
+              });
+            }
+          } catch (_) {}
+
           // Complementar con usuarios de localStorage
           try {
             const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
@@ -8770,10 +8826,42 @@
           }
         } catch (_){ }
         console.log(`✅ FIN - Modal actualizado para usuario: ${currentSelectedUser}`);
+        try { subscribeUserStatsPointsForUser(currentSelectedUser); } catch (_) {}
       }
 
       function getCurrentSelectedUser() {
         return currentSelectedUser || getCurrentUser();
+      }
+
+      function subscribeUserStatsPointsForUser(username) {
+        try {
+          if (window._userStatsPointsUnsub) {
+            window._userStatsPointsUnsub();
+            window._userStatsPointsUnsub = null;
+          }
+        } catch (_) {}
+        try {
+          const dbRef = window.db || db;
+          if (!dbRef || !username) return;
+          const normUser = String(username).toLowerCase().replace(/^@/,'');
+          window._userStatsPointsUnsub = dbRef.collection('userStats').doc(normUser).onSnapshot((doc) => {
+            try {
+              if (!doc || !doc.exists) return;
+              const cloudPoints = Number((doc.data() || {}).totalPoints || 0);
+              const u = getCurrentSelectedUser();
+              const currentNorm = String(u).toLowerCase().replace(/^@/,'');
+              if (currentNorm !== normUser) return;
+              const local = getGamificationDataForUser(u) || {};
+              local.points = cloudPoints;
+              local._cloudSyncedPoints = cloudPoints;
+              saveGamificationDataForUser(local, u);
+              const ptsEl = document.getElementById('user-points');
+              if (ptsEl) ptsEl.textContent = String(cloudPoints);
+              const rewardsPtsEl = document.getElementById('rewards-user-points');
+              if (rewardsPtsEl) rewardsPtsEl.textContent = String(cloudPoints);
+            } catch (_) {}
+          }, () => {});
+        } catch (_) {}
       }
 
       // Función de prueba para verificar y otorgar todos los logros de insignias
@@ -9325,9 +9413,10 @@
                const cloudAch = new Set(cloudGamification.achievements || []);
                const mergedAch = [...new Set([...localAch, ...cloudAch])];
                
-               // Tomar máximos
+               // Puntos: la fuente de verdad es totalPoints en la nube (puede bajar por canjes)
                mergedData.achievements = mergedAch;
-               mergedData.points = Math.max(localData.points || 0, cloudGamification.points || 0, cloudPoints);
+               mergedData.points = cloudPoints;
+               mergedData._cloudSyncedPoints = cloudPoints;
                
                // Rachas: Tomar la mejor racha histórica registrada
                mergedData.streaks = {
@@ -9344,11 +9433,8 @@
                }
             } else {
                // Nube solo tiene totalPoints (migración o ajuste manual admin)
-               // Si nube tiene más puntos que local, actualizamos local.points
-               if (cloudPoints > localData.points) {
-                  mergedData.points = cloudPoints;
-                  // Recalcular nivel/XP se hará en processAchievements o similar si fuera necesario
-               }
+               mergedData.points = cloudPoints;
+               mergedData._cloudSyncedPoints = cloudPoints;
             }
             
             // Guardar fusión en local
@@ -9405,11 +9491,37 @@
               const normUser = String(targetUser).toLowerCase().replace(/^@/,'');
               
               // No bloquear la UI, hacerlo en segundo plano
-              db.collection('userStats').doc(normUser).set({
-                 totalPoints: data.points,
-                 gamification: data,
-                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-              }, { merge: true }).catch(err => console.error("Error auto-pushing stats:", err));
+              const safePoints = Math.max(0, Number(data.points || 0));
+              const docRef = db.collection('userStats').doc(normUser);
+              const pushWithBase = (basePoints) => {
+                 const base = Math.max(0, Number(basePoints || 0));
+                 const delta = safePoints - base;
+                 const payload = {
+                    gamification: Object.assign({}, data, { _cloudSyncedPoints: base + Math.max(0, delta) }),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                 };
+                 if (delta > 0) {
+                    payload.totalPoints = firebase.firestore.FieldValue.increment(delta);
+                    try {
+                      data._cloudSyncedPoints = base + delta;
+                      const allDataStr2 = localStorage.getItem('gamificationData');
+                      const allData2 = allDataStr2 ? JSON.parse(allDataStr2) : {};
+                      allData2[targetUser.toLowerCase()] = data;
+                      localStorage.setItem('gamificationData', JSON.stringify(allData2));
+                    } catch (_) {}
+                 }
+                 docRef.set(payload, { merge: true }).catch(err => console.error("Error auto-pushing stats:", err));
+              };
+              if (typeof data._cloudSyncedPoints === 'number') {
+                 pushWithBase(data._cloudSyncedPoints);
+              } else {
+                 docRef.get().then((doc) => {
+                    const cloudPoints = doc && doc.exists ? Number((doc.data() || {}).totalPoints || 0) : 0;
+                    pushWithBase(cloudPoints);
+                 }).catch(() => {
+                    pushWithBase(safePoints);
+                 });
+              }
            }
         }
       }
@@ -9661,6 +9773,7 @@
         // PRIMER PASO: Intentar sincronizar con la nube para asegurar datos consistentes
         // Esto arregla el problema de "diferentes puntos en diferentes dispositivos"
         let data = await syncGamificationDataWithCloud(targetUser);
+        try { subscribeUserStatsPointsForUser(targetUser); } catch (_) {}
         
         if (!data || !data.stats) {
           console.warn(`⚠️ No hay datos para ${targetUser}, creando datos básicos`);
@@ -11041,25 +11154,34 @@
         console.log('🔄 Renderizando modal de recompensas...');
         const targetUser = getCurrentSelectedUser();
         const userData = getGamificationDataForUser(targetUser);
-        console.log('👤 Usuario objetivo:', targetUser, 'Puntos:', userData.points);
+        console.log('👤 Usuario objetivo:', targetUser, 'Puntos (local):', userData.points);
+        let effectivePoints = Number(userData.points || 0);
         
         // Actualizar información del usuario
         rewardsUserInfo.textContent = targetUser;
         try {
-          const doc = await db.collection('userStats').doc(targetUser.toLowerCase()).get();
-          const cloudPoints = doc.exists ? Number((doc.data() || {}).totalPoints || 0) : 0;
-          const displayPoints = Math.max(Number(userData.points || 0), cloudPoints);
-          rewardsUserPoints.textContent = displayPoints;
+          const normUser = String(targetUser).toLowerCase().replace(/^@/,'');
+          const doc = await db.collection('userStats').doc(normUser).get();
+          if (doc.exists) {
+            const cloudPoints = Number((doc.data() || {}).totalPoints || 0);
+            effectivePoints = cloudPoints;
+          }
+          rewardsUserPoints.textContent = String(effectivePoints);
         } catch (_) {
-          rewardsUserPoints.textContent = userData.points;
+          rewardsUserPoints.textContent = String(effectivePoints);
         }
+        try {
+          userData.points = Math.max(0, Number(effectivePoints) || 0);
+          userData._cloudSyncedPoints = userData.points;
+          saveGamificationDataForUser(userData, targetUser);
+        } catch (_) {}
         
         // Renderizar las tarjetas de recompensas
         const rewardsContainer = document.getElementById('rewards-list');
         rewardsContainer.innerHTML = '';
         
         REWARDS.forEach(reward => {
-          const canAfford = userData.points >= reward.cost;
+          const canAfford = effectivePoints >= reward.cost;
           const rewardCard = document.createElement('div');
           rewardCard.className = `reward-card ${canAfford ? 'affordable' : 'expensive'}`;
           
@@ -11161,7 +11283,8 @@
           // Actualizar localmente también para reflejo inmediato en UI
           const userData = getGamificationDataForUser(username);
           userData.points = Math.max(0, currentPoints - cost); // Estimado
-          updateGamificationDataForUser(username, userData);
+          userData._cloudSyncedPoints = userData.points;
+          saveGamificationDataForUser(userData, username);
           
           showMessageModal({
              title: '✅ Solicitud Enviada',
@@ -11261,14 +11384,44 @@
         }
 
         try {
-          // Obtener datos combinados de Firestore y localStorage
-          const allSolicitudes = await getAllCombinedSolicitudes();
-          
-          // Obtener usuarios únicos
-          const users = [...new Set(allSolicitudes
-            .map(s => s.usuario)
-            .filter(user => user && user.trim() !== '')
-          )];
+          const set = new Set();
+
+          try {
+            const allSolicitudes = await getAllCombinedSolicitudes();
+            (allSolicitudes || []).forEach(s => {
+              const u = String(s?.usuario || '').trim();
+              if (u) set.add(u);
+            });
+          } catch (_) {}
+
+          try {
+            const cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
+            cached.forEach(name => {
+              const u = String(name || '').trim();
+              if (u) set.add(u);
+            });
+          } catch (_) {}
+
+          try {
+            const dbRef = window.db || db;
+            if (dbRef) {
+              const statsSnap = await dbRef.collection('userStats').get();
+              statsSnap.forEach(doc => { if (doc.id) set.add(String(doc.id).trim()); });
+            }
+          } catch (_) {}
+
+          try {
+            const dbRef = window.db || db;
+            if (dbRef) {
+              const usersSnap = await dbRef.collection('users').get();
+              usersSnap.forEach(doc => {
+                const d = doc.data() || {};
+                if (d.name) set.add(String(d.name).trim());
+              });
+            }
+          } catch (_) {}
+
+          const users = Array.from(set);
           
           users.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
