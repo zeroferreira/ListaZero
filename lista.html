@@ -3,9 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Lista d'Canciones - Zero Radio</title>
-  <!-- Cache busting para asegurar que se vean los cambios -->
-  <link rel="stylesheet" href="styles.css?v=2.3" />
+  <link rel="stylesheet" href="styles.css" />
   <style>
     .calendar-navigation {
       display: flex;
@@ -114,17 +116,17 @@
     @keyframes move-clouds-back { from {background-position:0 0;} to {background-position:10000px 0;} }
     
     .stars-bg {
-      background: #000 url(http://www.script-tutorials.com/demos/360/images/stars.png) repeat top center;
+      background: #000;
       z-index: -2;
     }
     .twinkling-bg {
-      background: transparent url(http://www.script-tutorials.com/demos/360/images/twinkling.png) repeat top center;
+      background: transparent;
       z-index: -1;
       animation: move-twink-back 200s linear infinite;
     }
     .clouds-bg {
-      background: transparent url(http://www.script-tutorials.com/demos/360/images/clouds3.png) repeat top center;
-      z-index: 0; /* Bajo el contenido pero sobre estrellas */
+      background: transparent;
+      z-index: 0;
       opacity: 0.4;
       animation: move-clouds-back 200s linear infinite;
     }
@@ -543,6 +545,9 @@
      <div class="immersive-layer stars-bg"></div>
      <div class="immersive-layer twinkling-bg"></div>
      <div class="immersive-layer clouds-bg"></div>
+  </div>
+  <div id="stats-ticker" class="stats-ticker" hidden>
+    <div class="ticker-content">Cargando estadísticas…</div>
   </div>
 
   <main class="container">
@@ -2990,6 +2995,13 @@
           window.__dayItems = items;
           renderSolicitudes(items);
           try { if (window.refreshStatsTicker) window.refreshStatsTicker(); } catch (_) {}
+          try {
+            if (window.__usersSelectTimer) clearTimeout(window.__usersSelectTimer);
+            window.__usersSelectTimer = setTimeout(() => {
+              try { if (typeof window.renderAllUsersSelect === 'function') window.renderAllUsersSelect(); } catch (_) {}
+              try { if (typeof window.populateUserSelectorFromLocalStorage === 'function') window.populateUserSelectorFromLocalStorage(); } catch (_) {}
+            }, 150);
+          } catch (_) {}
         }, (err) => {
           console.error('Error suscripción solicitudes:', err);
         });
@@ -3005,6 +3017,13 @@
           window.__dayItems = ordered;
           renderSolicitudes(ordered);
           try { if (window.refreshStatsTicker) window.refreshStatsTicker(); } catch (_) {}
+          try {
+            if (window.__usersSelectTimer) clearTimeout(window.__usersSelectTimer);
+            window.__usersSelectTimer = setTimeout(() => {
+              try { if (typeof window.renderAllUsersSelect === 'function') window.renderAllUsersSelect(); } catch (_) {}
+              try { if (typeof window.populateUserSelectorFromLocalStorage === 'function') window.populateUserSelectorFromLocalStorage(); } catch (_) {}
+            }, 150);
+          } catch (_) {}
         });
 
         
@@ -3098,7 +3117,14 @@
       });
       
       searchLoadMore?.addEventListener('click', () => performSearch(true));
-      window.searchSolicitudes = searchSolicitudes;
+      window.searchSolicitudes = async (query) => {
+        try {
+          if (typeof query === 'string') {
+            if (searchInput) searchInput.value = query;
+          }
+          return await performSearch(false);
+        } catch (_) {}
+      };
 
       function subscribeVipUsers() {
         console.log('🔄 Iniciando suscripción VIP...');
@@ -3555,50 +3581,24 @@
         // Si no existen los elementos en el DOM, no hacer nada
         if (!allUsersSelect) return;
 
-        // Esperar a que window.db esté listo si es necesario
-        if (!window.db) {
-           console.log('⏳ Esperando DB para cargar usuarios...');
-           await new Promise(r => setTimeout(r, 1000));
-           if (!window.db) {
-             console.warn('⚠️ DB no disponible, cargando usuarios desde caché local.');
-           }
-        }
-
         const set = new Set();
         
-        // 1. Intentar obtener usuarios de la colección 'userStats' (la más fiable)
         try {
-          if (window.db) {
-            const statsSnap = await window.db.collection('userStats').get();
-            statsSnap.forEach(doc => {
-               if (doc.id) set.add(doc.id);
-            });
-          }
-        } catch (e) { console.warn('Error userStats:', e); }
+          const items = Array.isArray(window.__dayItems) ? window.__dayItems : [];
+          items.forEach(it => {
+            const u = String(it?.usuario || '').trim();
+            if (u) set.add(u);
+          });
+        } catch (_) {}
 
-        // 2. Obtener usuarios de la colección 'users' si existe
         try {
-          if (window.db) {
-            const usersSnap = await window.db.collection('users').orderBy('name').get();
-            usersSnap.forEach(doc => {
-              const d = doc.data();
-              if (d.name) set.add(d.name);
-            });
-          }
-        } catch (e) { }
+          const all = await getAllCombinedSolicitudes();
+          (all || []).forEach(s => {
+            const u = String(s?.usuario || '').trim();
+            if (u) set.add(u);
+          });
+        } catch (_) {}
 
-        // 3. Obtener usuarios de solicitudes recientes como fallback
-        try {
-          if (window.db) {
-            const reqSnap = await window.db.collection('solicitudes').orderBy('day', 'desc').limit(500).get();
-            reqSnap.forEach(doc => {
-              const u = String(doc.data().usuario || '').trim();
-              if (u) set.add(u);
-            });
-          }
-        } catch (error) { }
-
-        // 4. Agregar usuarios de localStorage como complemento final
         try {
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
           Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
@@ -3942,28 +3942,27 @@
     function shouldShowStatsTicker() {
       try {
         const params = new URLSearchParams(window.location.search);
+        if (params.get('showTicker') === '0') return false;
         if (params.get('showTicker') === '1') return true;
-        return localStorage.getItem('showStatsTicker') === '1';
+        return true;
       } catch (_) { return false; }
     }
     function ensureStatsTicker() {
-      if (!document.getElementById('stats-ticker')) {
-        const styles = document.createElement('style');
-        styles.textContent = ' .stats-ticker{position:fixed;top:0;left:0;width:100%;z-index:10000;overflow:hidden;height:36px;display:flex;align-items:center;padding:0 12px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.35)} .stats-ticker .ticker-content{white-space:nowrap;display:inline-block;padding-left:100%;animation:ticker-scroll 30s linear infinite} @keyframes ticker-scroll{0%{transform:translateX(0)}100%{transform:translateX(-100%)}} body.dark-theme .stats-ticker{background:rgba(0,0,0,0.35);color:#fff;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border-bottom:1px solid rgba(255,255,255,0.08)} body:not(.dark-theme) .stats-ticker{background:rgba(255,255,255,0.6);color:#111;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border-bottom:1px solid rgba(0,0,0,0.08)} ';
-        document.head.appendChild(styles);
-        const el = document.createElement('div');
-        el.id = 'stats-ticker';
-        el.className = 'stats-ticker';
-        const content = document.createElement('div');
-        content.className = 'ticker-content';
-        content.textContent = 'Cargando estadísticas…';
-        el.appendChild(content);
-        document.body.appendChild(el);
-      }
+      const el = document.getElementById('stats-ticker');
+      if (!el) return;
+      document.body.classList.add('has-stats-ticker');
+      el.hidden = !shouldShowStatsTicker();
     }
 
     function computeGlobalStats() {
-      const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+      let solicitudes = [];
+      try { solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]') || []; } catch (_) { solicitudes = []; }
+      try {
+        const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}') || {};
+        Object.values(byDay).forEach(arr => {
+          (arr || []).forEach(it => { if (it) solicitudes.push(it); });
+        });
+      } catch (_) {}
       const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
       for (let i = 0; i < solicitudes.length; i++) {
         const s = solicitudes[i] || {};
@@ -8490,24 +8489,21 @@
         try {
           const users = new Set();
 
-          // Obtener usuarios de Firebase
           try {
-            // Obtener usuarios de la colección 'users'
-            const usersSnap = await db.collection('users').orderBy('name').get();
-            usersSnap.forEach(doc => {
-              const { name } = doc.data();
-              if (name && name.trim()) users.add(name.trim());
+            const items = Array.isArray(window.__dayItems) ? window.__dayItems : [];
+            items.forEach(it => {
+              const u = String(it?.usuario || '').trim();
+              if (u) users.add(u);
             });
+          } catch (_) {}
 
-            // Obtener usuarios de la colección 'solicitudes'
-            const solicitudesSnap = await db.collection('solicitudes').orderBy('day', 'desc').limit(1000).get();
-            solicitudesSnap.forEach(doc => {
-              const usuario = doc.data().usuario;
-              if (usuario && usuario.trim()) users.add(usuario.trim());
+          try {
+            const all = await getAllCombinedSolicitudes();
+            (all || []).forEach(s => {
+              const u = String(s?.usuario || '').trim();
+              if (u) users.add(u);
             });
-          } catch (error) {
-            console.error('Error obteniendo usuarios de Firebase:', error);
-          }
+          } catch (_) {}
 
           // Complementar con usuarios de localStorage
           try {
@@ -8667,15 +8663,65 @@
 
       // Función auxiliar para obtener todos los datos combinados
       async function getAllCombinedSolicitudes() {
+        const allSolicitudesMap = new Map();
+        const toKey = (s) => {
+          const usuario = String(s?.usuario || '').trim();
+          const cancion = String(s?.cancion || '').trim();
+          const artista = String(s?.artista || '').trim();
+          const hora = String(s?.hora || '').trim() || String(s?.time || s?.ts || '').trim();
+          return `${usuario}-${cancion}-${artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+        };
+        const add = (s) => {
+          if (!s || !s.usuario || !s.cancion || !s.artista) return;
+          const key = toKey(s);
+          if (!key) return;
+          allSolicitudesMap.set(key, s);
+        };
+
         try {
-          // Obtener todas las solicitudes de Firestore
-          const firestoreSnapshot = await db.collection('solicitudes').get();
-          const firestoreSolicitudes = [];
-          
-          firestoreSnapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.usuario && data.cancion && data.artista) {
-              firestoreSolicitudes.push({
+          const dayItems = Array.isArray(window.__dayItems) ? window.__dayItems : [];
+          dayItems.forEach(it => add({
+            usuario: it.usuario,
+            cancion: it.cancion,
+            artista: it.artista,
+            day: it.day,
+            ts: it.ts || it.time,
+            hora: it.hora || ''
+          }));
+        } catch (_) {}
+
+        try {
+          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]') || [];
+          localSolicitudes.forEach(s => add({
+            usuario: s.usuario,
+            cancion: s.cancion,
+            artista: s.artista,
+            day: s.day,
+            ts: s.time || s.ts,
+            hora: s.hora || ''
+          }));
+        } catch (_) {}
+
+        try {
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}') || {};
+          Object.values(byDay).forEach(arr => (arr || []).forEach(s => add({
+            usuario: s.usuario,
+            cancion: s.cancion,
+            artista: s.artista,
+            day: s.day,
+            ts: s.time || s.ts,
+            hora: s.hora || ''
+          })));
+        } catch (_) {}
+
+        try {
+          const daySel = document.getElementById('day-select')?.value || '';
+          const dbRef = window.db || db;
+          if (dbRef && daySel) {
+            const snap = await dbRef.collection('solicitudes').where('day', '==', daySel).orderBy('ts', 'desc').limit(1000).get();
+            snap.forEach(doc => {
+              const data = doc.data() || {};
+              add({
                 usuario: data.usuario,
                 cancion: data.cancion,
                 artista: data.artista,
@@ -8683,98 +8729,11 @@
                 ts: data.ts ? data.ts.toMillis() : Date.now(),
                 hora: data.hora || ''
               });
-            }
-          });
-          
-          console.log(`🔥 Firestore: ${firestoreSolicitudes.length} solicitudes obtenidas`);
-          
-          // Obtener solicitudes de localStorage como respaldo
-          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          
-          console.log(`💾 localStorage: ${localSolicitudes.length} solicitudes directas`);
-          console.log(`📅 localStorage byDay: ${Object.keys(byDay).length} días con datos`);
-          
-          // Combinar datos de Firestore y localStorage, evitando duplicados
-          const allSolicitudesMap = new Map();
-          
-          // Agregar solicitudes de Firestore
-          firestoreSolicitudes.forEach(s => {
-            const hora = s.hora || (window.toHourKey ? window.toHourKey(s.ts) : '') || '';
-            const key = `${s.usuario}-${s.cancion}-${s.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
-            allSolicitudesMap.set(key, s);
-          });
-          
-          // Agregar solicitudes de localStorage que no estén en Firestore
-          localSolicitudes.forEach(s => {
-            const hora = s.hora || (window.toHourKey ? window.toHourKey(s.time) : '') || '';
-            const key = `${s.usuario}-${s.cancion}-${s.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
-            if (!allSolicitudesMap.has(key)) {
-              allSolicitudesMap.set(key, {
-                usuario: s.usuario,
-                cancion: s.cancion,
-                artista: s.artista,
-                ts: s.time,
-                hora: s.hora || ''
-              });
-            }
-          });
-          
-          // Agregar solicitudes de byDay que no estén incluidas
-          Object.values(byDay).flat().forEach(s => {
-            const hora = s.hora || (window.toHourKey ? window.toHourKey(s.time) : '') || '';
-            const key = `${s.usuario}-${s.cancion}-${s.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g,'');
-            if (!allSolicitudesMap.has(key)) {
-              allSolicitudesMap.set(key, {
-                usuario: s.usuario,
-                cancion: s.cancion,
-                artista: s.artista,
-                ts: s.time,
-                hora: s.hora || '',
-                day: s.day || (s.fecha||'').split('T')[0] // Asegurar que tenga día
-              });
-            }
-          });
+            });
+          }
+        } catch (_) {}
 
-          const finalResult = Array.from(allSolicitudesMap.values());
-          console.log(`🎵 Total solicitudes combinadas: ${finalResult.length}`);
-          
-          // Mostrar estadísticas por usuario para debugging
-          const userStats = {};
-          finalResult.forEach(s => {
-            if (!userStats[s.usuario]) userStats[s.usuario] = 0;
-            userStats[s.usuario]++;
-          });
-          
-          console.log(`👥 Usuarios con solicitudes:`, Object.keys(userStats).length);
-          console.log(`📊 Top 5 usuarios:`, Object.entries(userStats)
-            .sort(([,a], [,b]) => b - a)
-            .slice(0, 5)
-            .map(([user, count]) => `${user}: ${count}`)
-          );
-          
-          return finalResult;
-        } catch (error) {
-          console.error('❌ Error en getAllCombinedSolicitudes:', error);
-          
-          // Fallback a localStorage
-          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          
-          const allLocal = [...localSolicitudes];
-          Object.values(byDay).flat().forEach(s => {
-            if (!allLocal.find(existing => 
-              existing.usuario === s.usuario && 
-              existing.cancion === s.cancion && 
-              existing.artista === s.artista && 
-              existing.time === s.time
-            )) {
-              allLocal.push(s);
-            }
-          });
-          
-          return allLocal;
-        }
+        return Array.from(allSolicitudesMap.values());
       }
 
       async function switchToUser(username) {
