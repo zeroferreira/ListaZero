@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Canciones Zero Radio</title>
-  <link rel="stylesheet" href="styles.css" />
+  <!-- Cache busting para asegurar que se vean los cambios -->
+  <link rel="stylesheet" href="styles.css?v=2.2" />
   
   <!-- Script de sincronización de temas -->
   <script>
@@ -319,31 +320,45 @@
       const form = document.getElementById('formulario');
       const usuarioSelect = document.getElementById('usuario-registrado');
 
-      // Poblar lista de usuarios registrados desde localStorage
-      function collectRegisteredUsers() {
-        const map = new Map(); // clave: lower, valor: original (primera aparición)
+      // Poblar lista de usuarios registrados desde localStorage y Firestore
+      async function collectRegisteredUsers() {
+        const set = new Set();
+        
+        // 1. Obtener desde localStorage (sincrono)
         try {
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
           Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
             const original = String(it.usuario || '').trim().replace(/^@/, '');
-            const lower = original.toLowerCase();
-            if (original && !map.has(lower)) map.set(lower, original);
+            if (original) set.add(original);
           }));
           const legacy = JSON.parse(localStorage.getItem('solicitudes') || '[]');
           (legacy || []).forEach(it => {
             const original = String(it.usuario || '').trim().replace(/^@/, '');
-            const lower = original.toLowerCase();
-            if (original && !map.has(lower)) map.set(lower, original);
+            if (original) set.add(original);
           });
         } catch (e) {}
-        const arr = Array.from(map.values());
+        
+        // 2. Intentar obtener desde Firestore (asincrono)
+        try {
+           if (db) {
+             // Desde userStats
+             const statsSnap = await db.collection('userStats').get();
+             statsSnap.forEach(doc => { if (doc.id) set.add(doc.id); });
+             
+             // Desde users (si existe)
+             const usersSnap = await db.collection('users').orderBy('name').get();
+             usersSnap.forEach(doc => { const d=doc.data(); if (d.name) set.add(d.name); });
+           }
+        } catch (e) { console.warn('Error fetching users from Firestore:', e); }
+
+        const arr = Array.from(set);
         arr.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
         return arr;
       }
 
-      function populateRegisteredUsers() {
+      async function populateRegisteredUsers() {
         if (!usuarioSelect) return;
-        const users = collectRegisteredUsers();
+        const users = await collectRegisteredUsers();
         usuarioSelect.innerHTML = '<option value="">Selecciona un usuario</option>' +
           users.map(u => `<option value="${u}">@${u}</option>`).join('');
       }
@@ -510,9 +525,9 @@
           </li>
         `).join('');
       }
-      function renderAllUsersSelect() {
+      async function renderAllUsersSelect() {
         if (!usersSelectEl) return;
-        const users = collectRegisteredUsers();
+        const users = await collectRegisteredUsers();
         usersSelectEl.innerHTML = '<option value="">Selecciona un usuario</option>' +
           users.map(u => `<option value="${escapeHTML(u)}">@${escapeHTML(u)}</option>`).join('');
       }
@@ -596,268 +611,6 @@
   </script>
 </body>
 </html>
-
-<script>
-  (function () {
-    function getLocalDateKey(ts) {
-      const d = ts ? new Date(ts) : new Date();
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${dd}`;
-    }
-
-    // Flags globales para evitar doble registro y doble ejecución
-    window.__FORM_SUBMIT_HANDLER_ADDED__ = window.__FORM_SUBMIT_HANDLER_ADDED__ || false;
-    window.__FORM_SUBMITTED__ = window.__FORM_SUBMITTED__ || false;
-
-    // Inicializa Firebase si aún no está
-    const firebaseConfig = {
-      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-      authDomain: "zero-strom-web.firebaseapp.com",
-      projectId: "zero-strom-web",
-      storageBucket: "zero-strom-web.firebasestorage.app",
-      messagingSenderId: "758369466349",
-      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
-    };
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
-    }
-    const db = firebase.firestore();
-
-    const form = document.getElementById('formulario');
-    const usuarioSelect = document.getElementById('usuario-registrado');
-
-    // Poblar lista de usuarios registrados desde localStorage
-    function collectRegisteredUsers() {
-      const map = new Map(); // clave: lower, valor: original (primera aparición)
-      try {
-        const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-        Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
-          const original = String(it.usuario || '').trim().replace(/^@/, '');
-          const lower = original.toLowerCase();
-          if (original && !map.has(lower)) map.set(lower, original);
-        }));
-        const legacy = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-        (legacy || []).forEach(it => {
-          const original = String(it.usuario || '').trim().replace(/^@/, '');
-          const lower = original.toLowerCase();
-          if (original && !map.has(lower)) map.set(lower, original);
-        });
-      } catch (e) {}
-      const arr = Array.from(map.values());
-      arr.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-      return arr;
-    }
-
-    function populateRegisteredUsers() {
-      if (!usuarioSelect) return;
-      const users = collectRegisteredUsers();
-      usuarioSelect.innerHTML = '<option value="">Selecciona un usuario</option>' +
-        users.map(u => `<option value="${u}">@${u}</option>`).join('');
-    }
-
-    populateRegisteredUsers();
-
-    // Cargar el último usuario utilizado
-    const lastUser = localStorage.getItem('currentUser');
-    if (lastUser) {
-      const usuarioEl = document.getElementById('usuario');
-      if (usuarioEl) {
-        usuarioEl.value = lastUser;
-      }
-    }
-
-    // Evitar doble registro del handler si el script está duplicado
-    if (form && !window.__FORM_SUBMIT_HANDLER_ADDED__) {
-      window.__FORM_SUBMIT_HANDLER_ADDED__ = true;
-
-      form.addEventListener('submit', async function (e) {
-        e.preventDefault();
-
-        // Si ya se procesó una vez (por duplicidad), no volver a validar ni alertar
-        if (window.__FORM_SUBMITTED__) return;
-
-        const usuarioEl = document.getElementById('usuario');
-        const cancionEl = document.getElementById('cancion');
-        const artistaEl = document.getElementById('artista');
-
-        const usuarioText = (usuarioEl.value || '').trim().replace(/^@/, '');
-        const usuarioSel = (usuarioSelect?.value || '').trim().replace(/^@/, '');
-        const usuario = usuarioText || usuarioSel;
-
-        const cancion = (cancionEl.value || '').trim();
-        const artista = (artistaEl.value || '').trim();
-
-        if (!usuario || !cancion || !artista) {
-          alert('Por favor completa Usuario (escribe o selecciona), Canción y Artista.');
-          return;
-        }
-
-        const ts = Date.now();
-        const dayKey = getLocalDateKey(ts); // usa tu función ya definida
-
-        // Guardar en localStorage (compatibilidad/local)
-        const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-        (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
-        localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
-
-        const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-        arr.push({ usuario, cancion, artista, time: ts });
-        localStorage.setItem('solicitudes', JSON.stringify(arr));
-
-        // Guardar en Firestore (sincronización multi-dispositivo)
-        try {
-          await db.collection('solicitudes').add({
-            usuario,
-            cancion,
-            artista,
-            day: dayKey, // lista.html filtra por este campo
-            ts: firebase.firestore.FieldValue.serverTimestamp(), // para hora y orden
-          });
-        } catch (err) {
-          console.error('Error guardando en Firestore:', err);
-          alert('Ocurrió un error guardando en la nube. Intenta nuevamente.');
-          return;
-        }
-
-        // Guardar el último usuario utilizado para facilitar próximas solicitudes
-        localStorage.setItem('currentUser', usuario);
-
-        // Marca que ya se procesó para evitar que otro handler muestre el alerta
-        window.__FORM_SUBMITTED__ = true;
-
-        form.reset();
-        window.location.href = 'lista.html';
-      });
-    }
-
-    // Modo Admin: gestión de VIP y visualización de usuarios registrados
-    const ADMIN_PASS = '1415130*';
-    const adminBtn = document.getElementById('admin-btn');
-    const adminPanel = document.getElementById('admin-panel');
-
-    // Referencias del modal
-    const adminModal = document.getElementById('admin-modal');
-    const adminPassInput = document.getElementById('admin-pass-input');
-    const adminPassError = document.getElementById('admin-pass-error');
-    const adminPassCancelBtn = document.getElementById('admin-pass-cancel');
-    const adminPassConfirmBtn = document.getElementById('admin-pass-confirm');
-
-    const vipAddBtn = document.getElementById('vip-add');
-    const vipListEl = document.getElementById('vip-list');
-    const usersSelectEl = document.getElementById('all-users-select');
-    const wipeAllBtn = document.getElementById('wipe-all');
-
-    function normUser(u) {
-      return String(u || '').trim().toLowerCase().replace(/^@/, '');
-    }
-    function escapeHTML(str) {
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    }
-
-    function getVipUsers() {
-      const arr = JSON.parse(localStorage.getItem('vip_users') || '[]');
-      return Array.isArray(arr) ? arr : [];
-    }
-    function setVipUsers(arr) {
-      localStorage.setItem('vip_users', JSON.stringify(arr));
-    }
-    function renderVipList() {
-      const vipUsers = getVipUsers();
-      vipListEl.innerHTML = vipUsers.map(u => `
-        <li>
-          <span>@${escapeHTML(u)}</span>
-          <button type="button" class="remove-btn" data-user="${escapeHTML(u)}">Eliminar</button>
-        </li>
-      `).join('');
-    }
-    function renderAllUsersSelect() {
-      if (!usersSelectEl) return;
-      const users = collectRegisteredUsers();
-      usersSelectEl.innerHTML = '<option value="">Selecciona un usuario</option>' +
-        users.map(u => `<option value="${escapeHTML(u)}">@${escapeHTML(u)}</option>`).join('');
-    }
-
-    // Asegurar oculto al cargar
-    adminModal.hidden = true;
-    adminPanel.hidden = true;
-
-    // Abrir modal solo al hacer click en "Modo Admin"
-    adminBtn?.addEventListener('click', () => {
-      adminModal.hidden = false;
-      adminPassInput.value = '';
-      adminPassError.hidden = true;
-      adminPassInput.focus();
-    });
-
-    function tryOpenAdmin() {
-      const pass = adminPassInput.value;
-      if (pass === ADMIN_PASS) {
-        adminModal.hidden = true;
-        adminPanel.hidden = false;
-        // Inicializar contenido del panel
-        renderVipList?.();
-        renderAllUsersSelect?.();
-      } else {
-        adminPassError.hidden = false;
-        adminPassInput.focus();
-      }
-    }
-
-    adminPassConfirmBtn?.addEventListener('click', tryOpenAdmin);
-    adminPassCancelBtn?.addEventListener('click', () => {
-      adminModal.hidden = true; // cerrar modal sin abrir panel
-    });
-    adminPassInput?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        tryOpenAdmin();
-      }
-    });
-
-    vipAddBtn?.addEventListener('click', () => {
-      const raw = usersSelectEl?.value || '';
-      const user = normUser(raw);
-      if (!user) {
-        alert('Selecciona un usuario registrado.');
-        return;
-      }
-      const vipUsers = getVipUsers();
-      if (vipUsers.includes(user)) {
-        alert('Ese usuario ya es VIP.');
-        return;
-      }
-      vipUsers.push(user);
-      setVipUsers(vipUsers);
-      renderVipList();
-    });
-
-    vipListEl?.addEventListener('click', (e) => {
-      const btn = e.target.closest('.remove-btn');
-      if (!btn) return;
-      const user = btn.getAttribute('data-user');
-      if (!user) return;
-      const vipUsers = getVipUsers().filter(u => u !== user);
-      setVipUsers(vipUsers);
-      renderVipList();
-    });
-
-    wipeAllBtn?.addEventListener('click', () => {
-      const ok = confirm('Esto borrará todas las solicitudes guardadas (todos los días). ¿Quieres continuar?');
-      if (!ok) return;
-      localStorage.removeItem('solicitudes_by_day');
-      localStorage.removeItem('solicitudes');
-      renderAllUsersSelect();
-      alert('Solicitudes borradas. La lista está limpia.');
-    });
-  })();
-</script>
 
 <script>
   // Autenticación: sesión anónima automática para usuarios normales
