@@ -7484,10 +7484,10 @@
         } catch (_) {}
         
         let playedCount = 0;
-        // NUEVA LÓGICA: Usar countTotalToggledSongsForUser
+        // Conteo consistente (une fuentes y evita desajustes con el total real)
         try {
-           playedCount = await countTotalToggledSongsForUser(usuario);
-        } catch(e) { console.error('Error counting toggled:', e); }
+           playedCount = await getConsistentPlayedCountForUser(usuario);
+        } catch(e) { console.error('Error counting consistent played:', e); }
         
         let activeDaysValid = 0;
         const playedArtistsSet = new Set();
@@ -7665,9 +7665,9 @@
             }
           } catch (_){}
           try {
-            const statsDoc = await db.collection('userStats').doc(uid).get();
-            if (statsDoc.exists) {
-              const sdata = statsDoc.data() || {};
+            const bestStats = await fetchBestUserStatsDoc(uid);
+            if (bestStats && bestStats.data) {
+              const sdata = bestStats.data || {};
               const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
               (statAch || []).forEach(id => idSet.add(String(id)));
             }
@@ -7867,13 +7867,12 @@
           const el = document.getElementById(id);
           if (el) el.textContent = String(val);
         };
-          // --- NUEVA LÓGICA DE TRANSPARENCIA (usando countTotalToggledSongsForUser) ---
+          // --- Transparencia: recalcular con conteo consistente ---
           try {
-             // Reemplazar lógica antigua con la nueva función unificada
-             const totalToggled = await countTotalToggledSongsForUser(u);
-             bd.playedCount = totalToggled;
-             bd.base = totalToggled * 25;
-             bd.vipBonus = bd.isVip ? (totalToggled * 40) : 0;
+             const totalPlayed = await getConsistentPlayedCountForUser(u);
+             bd.playedCount = totalPlayed;
+             bd.base = totalPlayed * 25;
+             bd.vipBonus = bd.isVip ? (totalPlayed * 40) : 0;
              
              const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0);
              const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
@@ -7881,7 +7880,7 @@
              bd.adjustment = (Number(bd.cloudTotal || 0) ? (Number(bd.cloudTotal || 0) - predictedNet) : 0);
              bd.total = Number(bd.cloudTotal || 0) ? Number(bd.cloudTotal || 0) : Math.max(0, predictedNet);
              
-          } catch(e) { console.error('Error actualizando transparencia con toggled:', e); }
+          } catch(e) { console.error('Error actualizando transparencia con conteo consistente:', e); }
 
         setNum('breakdown-played-base', Number(bd.base||0));
         setNum('breakdown-vip-bonus', Number(bd.vipBonus||0));
