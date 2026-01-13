@@ -3284,6 +3284,7 @@
         });
       }
 
+      // Función para calcular estadísticas del día
       function computeDayStatsFromItems(items) {
         const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
         for (let i = 0; i < items.length; i++) {
@@ -3519,34 +3520,41 @@
       async function renderAllUsersSelect() {
         const allUsersSelect = document.getElementById('all-users-select');
         const allUsersSelectDonador = document.getElementById('all-users-select-donador');
+        // Si no existen los elementos en el DOM, no hacer nada
         if (!allUsersSelect) return;
 
         const set = new Set();
         
+        // 1. Intentar obtener usuarios de la colección 'userStats' (la más fiable)
         try {
-          // 1. Intentar obtener usuarios de la colección 'userStats' (la más fiable para usuarios reales)
-          const statsSnap = await db.collection('userStats').get();
-          statsSnap.forEach(doc => {
-             if (doc.id) set.add(doc.id);
-          });
+          if (window.db) {
+            const statsSnap = await window.db.collection('userStats').get();
+            statsSnap.forEach(doc => {
+               if (doc.id) set.add(doc.id);
+            });
+          }
         } catch (e) { console.warn('Error userStats:', e); }
 
+        // 2. Obtener usuarios de la colección 'users' si existe
         try {
-          // 2. Obtener usuarios de la colección 'users' si existe
-          const usersSnap = await db.collection('users').orderBy('name').get();
-          usersSnap.forEach(doc => {
-            const d = doc.data();
-            if (d.name) set.add(d.name);
-          });
+          if (window.db) {
+            const usersSnap = await window.db.collection('users').orderBy('name').get();
+            usersSnap.forEach(doc => {
+              const d = doc.data();
+              if (d.name) set.add(d.name);
+            });
+          }
         } catch (e) { }
 
+        // 3. Obtener usuarios de solicitudes recientes como fallback
         try {
-          // 3. Obtener usuarios de solicitudes recientes como fallback
-          const reqSnap = await db.collection('solicitudes').orderBy('day', 'desc').limit(500).get();
-          reqSnap.forEach(doc => {
-            const u = String(doc.data().usuario || '').trim();
-            if (u) set.add(u);
-          });
+          if (window.db) {
+            const reqSnap = await window.db.collection('solicitudes').orderBy('day', 'desc').limit(500).get();
+            reqSnap.forEach(doc => {
+              const u = String(doc.data().usuario || '').trim();
+              if (u) set.add(u);
+            });
+          }
         } catch (error) { }
 
         // 4. Agregar usuarios de localStorage como complemento final
@@ -3563,6 +3571,7 @@
         // Función helper para llenar selects
         const fillSelect = (el) => {
            if (!el) return;
+           const currentVal = el.value; // Preservar valor si ya tenía algo
            el.innerHTML = '<option value="">Selecciona un usuario</option>';
            list.forEach(name => {
              const opt = document.createElement('option');
@@ -3570,6 +3579,9 @@
              opt.textContent = name;
              el.appendChild(opt);
            });
+           if (currentVal && list.includes(currentVal)) {
+             el.value = currentVal;
+           }
         };
 
         fillSelect(allUsersSelect);
