@@ -355,86 +355,94 @@
           
           React.useEffect(function(){
             if (ref.current) { ref.current(); ref.current = null; }
-            if (!window.db) return;
             
-            // VOLVEMOS A: Escuchar 'solicitudes' para calcular totales en tiempo real (Client-side aggregation).
-            // Esto garantiza que todos vean los mismos datos calculados desde la base de datos viva.
-            ref.current = window.db.collection('solicitudes').onSnapshot(function(snap){
-              var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var userOriginal = {}; var total = 0;
-              
-              snap.forEach(function(doc){
-                var d = doc.data()||{};
-                var a=(String(d.artista||'').trim().toLowerCase());
-                var ao=(String(d.artista||'').trim());
-                var s=(String(d.cancion||'').trim().toLowerCase());
-                var so=(String(d.cancion||'').trim());
-                var u=(String(d.usuario||'').trim().toLowerCase());
-                var uo=(String(d.usuario||'').trim());
-                
-                if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; }
-                if (s){ 
-                   songCount[s] = (songCount[s]||0)+1; 
-                   if (!songCount[s+'_name']) songCount[s+'_name'] = so;
-                }
-                if (u){ userCount[u]=(userCount[u]||0)+1; if(!userOriginal[u]) userOriginal[u]=uo; }
-                total++;
-              });
-              
-              function getTop3(countObj, originalObj) {
-                 return Object.keys(countObj)
-                    .map(function(k){ return { k: k, c: countObj[k], o: originalObj[k]||k }; })
-                    .sort(function(a,b){ return b.c - a.c; })
-                    .slice(0, 3)
-                    .map(function(it){ return it.o + ' (' + it.c + ')'; });
-              }
-              
-              function getTop1(countObj, nameSuffix) {
-                 var max = 0; var maxK = ''; 
-                 for(var k in countObj) { 
-                    if(k.endsWith('_name')) continue; 
-                    if(countObj[k] > max) { max = countObj[k]; maxK = k; } 
+            function connect() {
+               if (!window.db) { setTimeout(connect, 500); return; }
+               
+               // VOLVEMOS A: Escuchar 'solicitudes' para calcular totales en tiempo real (Client-side aggregation).
+               // Esto garantiza que todos vean los mismos datos calculados desde la base de datos viva.
+               ref.current = window.db.collection('solicitudes').onSnapshot(function(snap){
+                 var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var userOriginal = {}; var total = 0;
+                 
+                 snap.forEach(function(doc){
+                   var d = doc.data()||{};
+                   var a=(String(d.artista||'').trim().toLowerCase());
+                   var ao=(String(d.artista||'').trim());
+                   var s=(String(d.cancion||'').trim().toLowerCase());
+                   var so=(String(d.cancion||'').trim());
+                   var u=(String(d.usuario||'').trim().toLowerCase());
+                   var uo=(String(d.usuario||'').trim());
+                   
+                   if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; }
+                   if (s){ 
+                      songCount[s] = (songCount[s]||0)+1; 
+                      if (!songCount[s+'_name']) songCount[s+'_name'] = so;
+                   }
+                   if (u){ userCount[u]=(userCount[u]||0)+1; if(!userOriginal[u]) userOriginal[u]=uo; }
+                   total++;
+                 });
+                 
+                 function getTop3(countObj, originalObj) {
+                    return Object.keys(countObj)
+                       .map(function(k){ return { k: k, c: countObj[k], o: originalObj[k]||k }; })
+                       .sort(function(a,b){ return b.c - a.c; })
+                       .slice(0, 3)
+                       .map(function(it){ return it.o + ' (' + it.c + ')'; });
                  }
-                 var name = maxK ? (countObj[maxK+'_name'] || maxK) : 'N/D';
-                 if(name === maxK && name !== 'N/D') name = name.charAt(0).toUpperCase() + name.slice(1);
-                 return { name: name, count: max };
-              }
-              
-              var ta = getTop3(artistCount, artistOriginal);
-              var tu = getTop3(userCount, userOriginal);
-              var ts = getTop1(songCount, '_name');
-              
-              setG(function(prev){ 
-                 return Object.assign({}, prev, { 
-                    total: total, 
-                    topArtists3: ta, 
-                    topUsers3: tu, 
-                    topSong: ts.name, 
-                    topSongCount: ts.count 
-                 }); 
-              });
-            });
+                 
+                 function getTop1(countObj, nameSuffix) {
+                    var max = 0; var maxK = ''; 
+                    for(var k in countObj) { 
+                       if(k.endsWith('_name')) continue; 
+                       if(countObj[k] > max) { max = countObj[k]; maxK = k; } 
+                    }
+                    var name = maxK ? (countObj[maxK+'_name'] || maxK) : 'N/D';
+                    if(name === maxK && name !== 'N/D') name = name.charAt(0).toUpperCase() + name.slice(1);
+                    return { name: name, count: max };
+                 }
+                 
+                 var ta = getTop3(artistCount, artistOriginal);
+                 var tu = getTop3(userCount, userOriginal);
+                 var ts = getTop1(songCount, '_name');
+                 
+                 setG(function(prev){ 
+                    return Object.assign({}, prev, { 
+                       total: total, 
+                       topArtists3: ta, 
+                       topUsers3: tu, 
+                       topSong: ts.name, 
+                       topSongCount: ts.count 
+                    }); 
+                 });
+               });
+            }
+            connect();
             
             return function(){ if (ref.current) { ref.current(); ref.current = null; } };
           }, []);
 
           React.useEffect(function(){
              if (refPoints.current) { refPoints.current(); refPoints.current = null; }
-             if (!window.db) return;
              
-             refPoints.current = window.db.collection('userStats')
-                .orderBy('totalPoints', 'desc')
-                .limit(3)
-                .onSnapshot(function(snap){
-                   var arr = [];
-                   snap.forEach(function(doc){
-                      var d = doc.data() || {};
-                      var u = doc.id;
-                      var name = u.charAt(0).toUpperCase() + u.slice(1);
-                      var points = d.totalPoints || 0;
-                      arr.push(name + ' (' + points + ')');
+             function connectPoints() {
+                if (!window.db) { setTimeout(connectPoints, 500); return; }
+                
+                refPoints.current = window.db.collection('userStats')
+                   .orderBy('totalPoints', 'desc')
+                   .limit(3)
+                   .onSnapshot(function(snap){
+                      var arr = [];
+                      snap.forEach(function(doc){
+                         var d = doc.data() || {};
+                         var u = doc.id;
+                         var name = u.charAt(0).toUpperCase() + u.slice(1);
+                         var points = d.totalPoints || 0;
+                         arr.push(name + ' (' + points + ')');
+                      });
+                      setG(function(prev){ return Object.assign({}, prev, { topPoints3: arr }); });
                    });
-                   setG(function(prev){ return Object.assign({}, prev, { topPoints3: arr }); });
-                });
+             }
+             connectPoints();
                 
              return function(){ if (refPoints.current) { refPoints.current(); refPoints.current = null; } };
           }, []);
@@ -1472,6 +1480,8 @@
 
   <script>
     (function () {
+      console.log('🚀 Iniciando aplicación v2.1 - Fixes applied');
+      window.playedSongsCache = {}; // Cache global para canciones reproducidas
       const firebaseConfig = {
         apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
         authDomain: "zero-strom-web.firebaseapp.com",
@@ -1850,9 +1860,12 @@
           }
 
           // Verificar si la canción está marcada como reproducida
-          const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
           const currentDay = document.getElementById('day-select')?.value || '';
-          if (playedSongs[currentDay] && playedSongs[currentDay].includes(songId)) {
+          // Usar cache de memoria (prioridad) o localStorage (persistencia)
+          const localPlayedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+          const dayPlayedSongs = window.playedSongsCache[currentDay] || localPlayedMap[currentDay] || [];
+          
+          if (dayPlayedSongs.includes(songId)) {
             li.classList.add('played');
           }
 
@@ -2285,6 +2298,11 @@
           
           // Guardar en localStorage como respaldo
           localStorage.setItem('playedSongs', JSON.stringify(localPlayedSongs));
+          
+          // Actualizar cache global
+          if (typeof window.playedSongsCache === 'object') {
+             window.playedSongsCache[currentDay] = localPlayedSongs[currentDay];
+          }
           
           // Sincronizar con Firebase para que todos los usuarios vean el cambio
           try {
@@ -3286,6 +3304,9 @@
               const localPlayedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
               localPlayedSongs[day] = firebaseSongs;
               localStorage.setItem('playedSongs', JSON.stringify(localPlayedSongs));
+              
+              // Actualizar cache global
+              window.playedSongsCache[day] = firebaseSongs;
               
               // Actualizar interfaz visual
           updatePlayedSongsUI(day, firebaseSongs);
