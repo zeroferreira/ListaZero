@@ -320,9 +320,16 @@
           var dayState = st[0]; var setDayState = st[1];
           React.useEffect(function(){
             function getDay(){ var el = document.getElementById('day-select'); return el && el.value ? el.value : ''; }
-            function resub(){ if (ref.current) { ref.current(); ref.current = null; }
+            function resub(){ 
+              if (ref.current) { ref.current(); ref.current = null; }
               var d = getDay();
-              if (!window.db || !d) { setDayState({ items: [], day: d }); return; }
+              // Si no hay db, reintentar pronto
+              if (!window.db) { 
+                 setDayState({ items: [], day: d }); 
+                 setTimeout(resub, 500);
+                 return; 
+              }
+              if (!d) { setDayState({ items: [], day: d }); return; }
               var q = window.db.collection('solicitudes').where('day','==',d).orderBy('ts','desc');
               ref.current = q.onSnapshot(function(snap){ var items = []; snap.forEach(function(doc){ var x = doc.data()||{}; items.push({ usuario:x.usuario, cancion:x.cancion, artista:x.artista, day:d }); }); setDayState({ items: items, day: d }); });
             }
@@ -330,7 +337,13 @@
             var el = document.getElementById('day-select');
             function onChange(){ resub(); }
             el && el.addEventListener('change', onChange);
-            return function(){ el && el.removeEventListener('change', onChange); if (ref.current) { ref.current(); ref.current = null; } };
+            // Escuchar evento personalizado por si el cambio de día no dispara 'change' nativo
+            window.addEventListener('day-changed', onChange);
+            return function(){ 
+               el && el.removeEventListener('change', onChange); 
+               window.removeEventListener('day-changed', onChange);
+               if (ref.current) { ref.current(); ref.current = null; } 
+            };
           }, []);
           return dayState;
         }
@@ -3523,6 +3536,15 @@
         const allUsersSelectDonador = document.getElementById('all-users-select-donador');
         // Si no existen los elementos en el DOM, no hacer nada
         if (!allUsersSelect) return;
+
+        // Esperar a que window.db esté listo si es necesario
+        if (!window.db) {
+           console.log('⏳ Esperando DB para cargar usuarios...');
+           await new Promise(r => setTimeout(r, 1000));
+           if (!window.db) {
+             console.warn('⚠️ DB no disponible, cargando usuarios desde caché local.');
+           }
+        }
 
         const set = new Set();
         
