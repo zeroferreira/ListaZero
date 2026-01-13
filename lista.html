@@ -3514,92 +3514,66 @@
       }
 
       async function renderAllUsersSelect() {
+        const allUsersSelect = document.getElementById('all-users-select');
+        const allUsersSelectDonador = document.getElementById('all-users-select-donador');
+        if (!allUsersSelect) return;
+
         const set = new Set();
+        
+        try {
+          // 1. Intentar obtener usuarios de la colección 'userStats' (la más fiable para usuarios reales)
+          const statsSnap = await db.collection('userStats').get();
+          statsSnap.forEach(doc => {
+             if (doc.id) set.add(doc.id);
+          });
+        } catch (e) { console.warn('Error userStats:', e); }
 
         try {
-          // Obtener usuarios de la colección 'users' de Firebase
-          const snap = await db.collection('users').orderBy('name').get();
-          snap.forEach(doc => {
-            const { name } = doc.data();
-            if (name) set.add(name);
+          // 2. Obtener usuarios de la colección 'users' si existe
+          const usersSnap = await db.collection('users').orderBy('name').get();
+          usersSnap.forEach(doc => {
+            const d = doc.data();
+            if (d.name) set.add(d.name);
           });
+        } catch (e) { }
 
-          // Obtener usuarios de la colección 'solicitudes' de Firebase
-          const reqSnap = await db.collection('solicitudes').orderBy('day', 'desc').limit(1000).get();
+        try {
+          // 3. Obtener usuarios de solicitudes recientes como fallback
+          const reqSnap = await db.collection('solicitudes').orderBy('day', 'desc').limit(500).get();
           reqSnap.forEach(doc => {
             const u = String(doc.data().usuario || '').trim();
             if (u) set.add(u);
           });
-        } catch (error) {
-          console.error('Error obteniendo usuarios de Firebase:', error);
-        }
+        } catch (error) { }
 
-        // Siempre agregar usuarios de localStorage como complemento
+        // 4. Agregar usuarios de localStorage como complemento final
         try {
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
           Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
             const u = String(it.usuario || '').trim();
             if (u) set.add(u);
           }));
-          const legacy = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          (legacy || []).forEach(it => {
-            const u = String(it.usuario || '').trim();
-            if (u) set.add(u);
-          });
-        } catch (error) {
-          console.error('Error obteniendo usuarios de localStorage:', error);
-        }
+        } catch (error) { }
 
         const list = Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-        allUsersSelect.innerHTML = '<option value="">Selecciona un usuario</option>';
-        const allUsersSelectZ0 = document.getElementById('all-users-select-z0');
-        const allUsersSelectZ0Fan = document.getElementById('all-users-select-z0-fan');
-        const allUsersSelectZ0Platino = document.getElementById('all-users-select-z0-platino');
-        if (allUsersSelectZ0) {
-          allUsersSelectZ0.innerHTML = '<option value="">Selecciona un usuario</option>';
-        }
-        if (allUsersSelectDonador) {
-          allUsersSelectDonador.innerHTML = '<option value="">Selecciona un usuario</option>';
-        }
-        if (allUsersSelectZ0Fan) {
-          allUsersSelectZ0Fan.innerHTML = '<option value="">Selecciona un usuario</option>';
-        }
-        if (allUsersSelectZ0Platino) {
-          allUsersSelectZ0Platino.innerHTML = '<option value="">Selecciona un usuario</option>';
-        }
         
-        list.forEach(name => {
-          const opt = document.createElement('option');
-          opt.value = name;
-          opt.textContent = name;
-          allUsersSelect.appendChild(opt);
-          
-          if (allUsersSelectZ0) {
-            const optZ0 = document.createElement('option');
-            optZ0.value = name;
-            optZ0.textContent = name;
-            allUsersSelectZ0.appendChild(optZ0);
-          }
-          
-          if (allUsersSelectDonador) {
-            const optDonador = document.createElement('option');
-            optDonador.value = name;
-            optDonador.textContent = name;
-            allUsersSelectDonador.appendChild(optDonador);
-          }
-          if (allUsersSelectZ0Fan) {
-            const optZF = document.createElement('option');
-            optZF.value = name;
-            optZF.textContent = name;
-            allUsersSelectZ0Fan.appendChild(optZF);
-          }
-          if (allUsersSelectZ0Platino) {
-            const optZP = document.createElement('option');
-            optZP.value = name;
-            optZP.textContent = name;
-            allUsersSelectZ0Platino.appendChild(optZP);
-          }
-        });
+        // Función helper para llenar selects
+        const fillSelect = (el) => {
+           if (!el) return;
+           el.innerHTML = '<option value="">Selecciona un usuario</option>';
+           list.forEach(name => {
+             const opt = document.createElement('option');
+             opt.value = name;
+             opt.textContent = name;
+             el.appendChild(opt);
+           });
+        };
+
+        fillSelect(allUsersSelect);
+        fillSelect(document.getElementById('all-users-select-z0'));
+        fillSelect(document.getElementById('all-users-select-donador'));
+        fillSelect(document.getElementById('all-users-select-z0-fan'));
+        fillSelect(document.getElementById('all-users-select-z0-platino'));
       }
       window.renderAllUsersSelect = renderAllUsersSelect;
 
