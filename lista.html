@@ -8742,29 +8742,32 @@
         }
 
         try {
-          const users = new Set();
+          const users = new Map();
+          const addUser = (name) => {
+            const u = String(name || '').trim();
+            if (!u) return;
+            const key = u.toLowerCase();
+            if (!users.has(key)) users.set(key, u);
+          };
 
           try {
             const items = Array.isArray(window.__dayItems) ? window.__dayItems : [];
             items.forEach(it => {
-              const u = String(it?.usuario || '').trim();
-              if (u) users.add(u);
+              addUser(it?.usuario);
             });
           } catch (_) {}
 
           try {
             const all = await getAllCombinedSolicitudes();
             (all || []).forEach(s => {
-              const u = String(s?.usuario || '').trim();
-              if (u) users.add(u);
+              addUser(s?.usuario);
             });
           } catch (_) {}
 
           try {
             const cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
             cached.forEach(name => {
-              const u = String(name || '').trim();
-              if (u) users.add(u);
+              addUser(name);
             });
           } catch (_) {}
 
@@ -8772,7 +8775,7 @@
             const dbRef = window.db || db;
             if (dbRef) {
               const statsSnap = await dbRef.collection('userStats').get();
-              statsSnap.forEach(doc => { if (doc.id) users.add(String(doc.id).trim()); });
+              statsSnap.forEach(doc => { if (doc.id) addUser(doc.id); });
             }
           } catch (_) {}
 
@@ -8782,7 +8785,7 @@
               const usersSnap = await dbRef.collection('users').get();
               usersSnap.forEach(doc => {
                 const d = doc.data() || {};
-                if (d.name) users.add(String(d.name).trim());
+                if (d.name) addUser(d.name);
               });
             }
           } catch (_) {}
@@ -8794,12 +8797,12 @@
             
             // Agregar usuarios de solicitudes locales
             solicitudes.forEach(s => {
-              if (s.usuario && s.usuario.trim()) users.add(s.usuario.trim());
+              addUser(s.usuario);
             });
             
             // Agregar usuarios de byDay
             Object.values(byDay).flat().forEach(s => {
-              if (s.usuario && s.usuario.trim()) users.add(s.usuario.trim());
+              addUser(s.usuario);
             });
           } catch (error) {
             console.error('Error obteniendo usuarios de localStorage:', error);
@@ -8809,7 +8812,7 @@
           try {
             const addFromSet = (s) => {
               if (!s) return;
-              Array.from(s).forEach(name => { if (name && name.trim()) users.add(name.trim()); });
+              Array.from(s).forEach(name => addUser(name));
             };
             addFromSet(window.vipSet);
             addFromSet(window.z0VipSet);
@@ -8820,7 +8823,7 @@
             console.warn('No se pudieron agregar usuarios desde sets de insignias:', setErr);
           }
 
-          const usersList = Array.from(users).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+          const usersList = Array.from(users.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
           const lastProfileUser = String(localStorage.getItem('lastProfileUser')||'').trim();
           const ordered = lastProfileUser && usersList.includes(lastProfileUser)
             ? [lastProfileUser, ...usersList.filter(u => u !== lastProfileUser)]
@@ -8860,7 +8863,13 @@
         if (!userSelect) return;
 
         try {
-          const users = new Set();
+          const users = new Map();
+          const addUser = (name) => {
+            const u = String(name || '').trim();
+            if (!u) return;
+            const key = u.toLowerCase();
+            if (!users.has(key)) users.set(key, u);
+          };
           
           // Obtener usuarios de localStorage
           const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
@@ -8868,15 +8877,15 @@
           
           // Agregar usuarios de solicitudes locales
           solicitudes.forEach(s => {
-            if (s.usuario && s.usuario.trim()) users.add(s.usuario.trim());
+            addUser(s.usuario);
           });
           
           // Agregar usuarios de byDay
           Object.values(byDay).flat().forEach(s => {
-            if (s.usuario && s.usuario.trim()) users.add(s.usuario.trim());
+            addUser(s.usuario);
           });
           
-          const usersList = Array.from(users).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+          const usersList = Array.from(users.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
           const lastProfileUser = String(localStorage.getItem('lastProfileUser')||'').trim();
           const ordered = lastProfileUser && usersList.includes(lastProfileUser)
             ? [lastProfileUser, ...usersList.filter(u => u !== lastProfileUser)]
@@ -8906,27 +8915,33 @@
         
         try {
            compSelect.innerHTML = '<option value="">Cargando usuarios...</option>';
-           const users = new Set();
+           const users = new Map();
+           const addUser = (name) => {
+             const u = String(name || '').trim();
+             if (!u) return;
+             const key = u.toLowerCase();
+             if (!users.has(key)) users.set(key, u);
+           };
            
            // 1. Firebase Users
            try {
              const snap = await db.collection('users').get();
-             snap.forEach(d => { const n = d.data().name; if(n) users.add(n.trim()); });
+             snap.forEach(d => { const n = d.data().name; if(n) addUser(n); });
            } catch(e){}
            
            // 2. Solicitudes recientes
            try {
              const snap = await db.collection('solicitudes').orderBy('day','desc').limit(500).get();
-             snap.forEach(d => { const u = d.data().usuario; if(u) users.add(u.trim()); });
+             snap.forEach(d => { const u = d.data().usuario; if(u) addUser(u); });
            } catch(e){}
            
            // 3. LocalStorage
            try {
               const local = JSON.parse(localStorage.getItem('solicitudes')||'[]');
-              local.forEach(s => { if(s.usuario) users.add(s.usuario.trim()); });
+              local.forEach(s => { if(s.usuario) addUser(s.usuario); });
            } catch(e){}
            
-           const sorted = Array.from(users).sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+           const sorted = Array.from(users.values()).sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()));
            
            let opts = '<option value="">Seleccionar usuario...</option>';
            sorted.forEach(u => {
