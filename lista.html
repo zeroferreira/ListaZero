@@ -1816,8 +1816,6 @@
       window.vipSet = new Set();
       window.z0VipSet = new Set();
       window.donadorSet = new Set();
-      
-      // Referencias locales para compatibilidad
       let vipSet = window.vipSet;
       let z0VipSet = window.z0VipSet;
       let donadorSet = window.donadorSet;
@@ -1827,6 +1825,83 @@
       let unsubscribeManualOrder = null;
       let currentManualOrder = [];
 
+      function showCopyNotification(anchor) {
+        try {
+          const existing = document.getElementById('copy-toast');
+          if (existing) existing.remove();
+          const n = document.createElement('div');
+          n.id = 'copy-toast';
+          n.textContent = 'Contenido copiado';
+          let top = 0;
+          let left = 0;
+          if (anchor && anchor.getBoundingClientRect) {
+            const rect = anchor.getBoundingClientRect();
+            top = rect.top + window.scrollY - 28;
+            left = rect.left + window.scrollX + rect.width / 2;
+            n.style.position = 'absolute';
+            n.style.transform = 'translate(-50%, 6px)';
+          } else {
+            n.style.position = 'fixed';
+            n.style.bottom = '16px';
+            n.style.right = '16px';
+          }
+          if (top || top === 0) {
+            n.style.top = top + 'px';
+          }
+          if (left || left === 0) {
+            n.style.left = left + 'px';
+          }
+          n.style.padding = '8px 12px';
+          n.style.borderRadius = '999px';
+          n.style.fontSize = '12px';
+          n.style.background = 'rgba(17, 24, 39, 0.9)';
+          n.style.color = '#f9fafb';
+          n.style.boxShadow = '0 8px 20px rgba(0,0,0,0.35)';
+          n.style.zIndex = '2147483647';
+          n.style.opacity = '0';
+          if (!n.style.transform) n.style.transform = 'translateY(6px)';
+          n.style.transition = 'opacity 0.18s ease-out, transform 0.18s ease-out';
+          document.body.appendChild(n);
+          requestAnimationFrame(function () {
+            n.style.opacity = '1';
+            n.style.transform = 'translate(-50%, 0)';
+          });
+          setTimeout(function () {
+            n.style.opacity = '0';
+            n.style.transform = 'translate(-50%, 6px)';
+            setTimeout(function () {
+              if (n.parentNode) n.parentNode.removeChild(n);
+            }, 180);
+          }, 1200);
+        } catch (_) {}
+      }
+
+      function copyTextToClipboard(text, anchor) {
+        if (!text) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text)
+            .then(function () {
+              showCopyNotification(anchor);
+            })
+            .catch(function (e) {
+              console.error('Error copiando al portapapeles', e);
+            });
+        } else {
+          const temp = document.createElement('textarea');
+          temp.value = text;
+          temp.style.position = 'fixed';
+          temp.style.opacity = '0';
+          document.body.appendChild(temp);
+          temp.focus();
+          temp.select();
+          try {
+            document.execCommand('copy');
+            showCopyNotification(anchor);
+          } catch (e) {}
+          document.body.removeChild(temp);
+        }
+      }
+      
       function renderSolicitudes(items) {
         if (!solicitudesList) {
           console.error('❌ solicitudesList no encontrado');
@@ -1897,18 +1972,43 @@
                ${it.usuario}
                ${hasPendingReward ? '<span class="reward-pending-icon" title="Solicitud de recompensa pendiente">🎁</span>' : ''}
             </span>
-            <span class="col col-cancion">${it.cancion}</span>
-            <span class="col col-artista">${it.artista}</span>
+            <span class="col col-cancion">
+              <span class="text">${it.cancion}</span>
+              <button class="copy-chip copy-chip-inline" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>
+            </span>
+            <span class="col col-artista">
+              <span class="text">${it.artista}</span>
+              <button class="copy-chip copy-chip-inline" type="button" title="Copiar artista" data-copy="${it.artista}">⧉</button>
+            </span>
             <span class="col col-cancion-artista">
-              <div class="cancion-line">${it.cancion}</div>
-              <div class="artista-line">${it.artista}</div>
+              <div class="line-with-copy">
+                <div class="cancion-line">${it.cancion}</div>
+                <button class="copy-chip" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>
+              </div>
+              <div class="line-with-copy">
+                <div class="artista-line">${it.artista}</div>
+                <button class="copy-chip" type="button" title="Copiar artista" data-copy="${it.artista}">⧉</button>
+              </div>
             </span>
             <button class="play-toggle-btn" title="Marcar como reproducida/no reproducida">
               <span class="play-icon">▶️</span>
             </button>
             <button class="delete-btn" title="Eliminar canción" aria-label="Eliminar">🗑️</button>
-            <span class="drag-handle" title="Arrastrar para reordenar">≡</span>
           `;
+
+          const copyButtons = li.querySelectorAll('.copy-chip');
+          if (copyButtons && copyButtons.length) {
+            copyButtons.forEach(function (btn) {
+              btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const textToCopy = btn.getAttribute('data-copy') || '';
+                if (textToCopy) {
+                  copyTextToClipboard(textToCopy, e.currentTarget || btn);
+                }
+              });
+            });
+          }
 
           // Texto seleccionable / cursor según modo
           li.style.userSelect = 'text';
@@ -7766,18 +7866,39 @@
 
         const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus;
         const predictedNet = earnedTotal - redemptionsSpent;
-        const displayTotal = cloudTotal ? Math.max(0, Number(cloudTotal || 0)) : Math.max(0, predictedNet);
-        const adjustment = displayTotal - predictedNet;
+        
+        // --- COHERENCIA GLOBAL: Usar siempre el cálculo reconstruido como verdad ---
+        // Si el historial (playedSongs + requests) dice X, entonces es X.
+        // Ignoramos el valor cacheado 'cloudTotal' para el display, pero lo actualizamos si difiere.
+        const displayTotal = Math.max(0, predictedNet);
+        const adjustment = 0; 
 
         try {
-          if (window.__ALLOW_BREAKDOWN_WRITE__ && !cloudTotal && displayTotal > 0) {
-            await db.collection('userStats').doc(norm(usuario)).set({
-              totalPoints: displayTotal,
-              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-            cloudTotal = displayTotal;
+          // Sincronizar con Firebase si hay discrepancia para que otros dispositivos vean el dato actualizado
+          if (window.__ALLOW_BREAKDOWN_WRITE__) {
+            const diff = Math.abs(Number(cloudTotal || 0) - displayTotal);
+            if (diff > 0.1 || !cloudTotal) {
+                const docRef = db.collection('userStats').doc(norm(usuario));
+                // Guardamos desglose completo para debugging y coherencia
+                await docRef.set({
+                  totalPoints: displayTotal,
+                  breakdown: {
+                    base: (playedCount * 25),
+                    vip: (isVip ? (playedCount * 40) : 0),
+                    daily: (activeDaysValid * 5),
+                    achievements: achievements,
+                    streak: streakBonus,
+                    top1: top1Bonus,
+                    manual: manualBonus,
+                    spent: redemptionsSpent
+                  },
+                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                cloudTotal = displayTotal;
+            }
           }
-        } catch (_) {}
+        } catch (e) { console.error('Error syncing points to cloud:', e); }
         // Construir lista de insignias para UI
         let achievementsList = [];
         try {
@@ -7877,8 +7998,9 @@
              const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0);
              const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
              bd.earnedTotal = earnedTotal;
-             bd.adjustment = (Number(bd.cloudTotal || 0) ? (Number(bd.cloudTotal || 0) - predictedNet) : 0);
-             bd.total = Number(bd.cloudTotal || 0) ? Number(bd.cloudTotal || 0) : Math.max(0, predictedNet);
+             // --- COHERENCIA: Usar cálculo real ---
+             bd.adjustment = 0; 
+             bd.total = Math.max(0, predictedNet);
              
           } catch(e) { console.error('Error actualizando transparencia con conteo consistente:', e); }
 
