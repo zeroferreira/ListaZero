@@ -3696,45 +3696,44 @@
         // Si no existen los elementos en el DOM, no hacer nada
         if (!allUsersSelect) return;
 
-        const set = new Set();
+        const userMap = new Map();
+        const addUser = (rawName) => {
+           const u = String(rawName || '').trim();
+           if (!u) return;
+           const key = u.toLowerCase();
+           // Estrategia: si no existe, lo agregamos.
+           // Si existe, podríamos reemplazar si el nuevo tiene mejor capitalización, 
+           // pero por simplicidad y estabilidad, nos quedamos con el primero (o el último).
+           if (!userMap.has(key)) {
+             userMap.set(key, u);
+           }
+        };
         
         try {
           const items = Array.isArray(window.__dayItems) ? window.__dayItems : [];
-          items.forEach(it => {
-            const u = String(it?.usuario || '').trim();
-            if (u) set.add(u);
-          });
+          items.forEach(it => addUser(it?.usuario));
         } catch (_) {}
 
         try {
           const all = await getAllCombinedSolicitudes();
-          (all || []).forEach(s => {
-            const u = String(s?.usuario || '').trim();
-            if (u) set.add(u);
-          });
+          (all || []).forEach(s => addUser(s?.usuario));
         } catch (_) {}
 
         try {
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
-            const u = String(it.usuario || '').trim();
-            if (u) set.add(u);
-          }));
+          Object.values(byDay).forEach(arr => (arr || []).forEach(it => addUser(it.usuario)));
         } catch (error) { }
 
         try {
           const cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
-          cached.forEach(name => {
-            const u = String(name || '').trim();
-            if (u) set.add(u);
-          });
+          cached.forEach(name => addUser(name));
         } catch (_) {}
 
         try {
           const dbRef = window.db || db;
           if (dbRef) {
             const statsSnap = await dbRef.collection('userStats').get();
-            statsSnap.forEach(doc => { if (doc.id) set.add(String(doc.id).trim()); });
+            statsSnap.forEach(doc => { if (doc.id) addUser(doc.id); });
           }
         } catch (_) {}
 
@@ -3744,12 +3743,12 @@
             const usersSnap = await dbRef.collection('users').get();
             usersSnap.forEach(doc => {
               const d = doc.data() || {};
-              if (d.name) set.add(String(d.name).trim());
+              if (d.name) addUser(d.name);
             });
           }
         } catch (_) {}
 
-        const list = Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        const list = Array.from(userMap.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
         try { localStorage.setItem('knownUsers', JSON.stringify(list)); } catch (_) {}
         
         // Función helper para llenar selects
