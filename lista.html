@@ -2334,7 +2334,23 @@
             localStorage.setItem('isMasterDJDevice', 'true');
           } else {
             // Sincronizar con la configuración existente en Firebase
-            const masterFingerprint = djConfigDoc.data().masterFingerprint;
+            let masterFingerprint = djConfigDoc.data().masterFingerprint;
+            
+            // Heurística de recuperación: Si soy un dispositivo Desktop (probable Admin)
+            // y el fingerprint no coincide, actualizar el registro maestro.
+            // Esto asegura que "esta computadora" recupere el control automáticamente.
+            const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const hasLargeScreen = (window.screen.width >= 1024);
+            
+            if (!isMobileUA && hasLargeScreen && masterFingerprint !== currentFingerprint) {
+                console.log('Restoring DJ control to Desktop device');
+                await djConfigRef.set({
+                  masterFingerprint: currentFingerprint,
+                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                masterFingerprint = currentFingerprint;
+            }
+
             localStorage.setItem('masterDJFingerprint', masterFingerprint);
             
             const isMaster = masterFingerprint === currentFingerprint;
@@ -2404,6 +2420,10 @@
 
       // Función para generar fingerprint del dispositivo
       function generateDeviceFingerprint() {
+        // Intentar recuperar fingerprint cacheado para estabilidad (especialmente al redimensionar o usar devtools)
+        const cached = localStorage.getItem('device_fingerprint_cached');
+        if (cached) return cached;
+
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         ctx.textBaseline = 'top';
@@ -2427,7 +2447,7 @@
         }
         
         const deviceId = 'device_' + Math.abs(hash).toString(36);
-        
+        localStorage.setItem('device_fingerprint_cached', deviceId);
         return deviceId;
       }
 
