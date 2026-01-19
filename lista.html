@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>Lista d'Canciones - Zero Radio</title>
-  <link rel="stylesheet" href="styles.css?v=2.5" />
+  <link rel="stylesheet" href="styles.css?v=2.6" />
   <style>
     .calendar-navigation {
       display: flex;
@@ -2354,20 +2354,44 @@
       // Función para verificar si este dispositivo puede modificar canciones
       function isDJDevice() {
         try {
-          // 1. Verificación estricta por localStorage (prioridad manual)
-          if (localStorage.getItem('isMasterDJDevice') === 'true') return true;
-          
-          // 2. Heurística para escritorio (restaurado por petición de usuario)
-          // Detectar si es un navegador de escritorio (no móvil) con pantalla grande
-          const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-          const hasLargeScreen = (window.screen.width >= 1024) || (window.innerWidth >= 1024);
-          
-          // Permitir si es Desktop y pantalla grande (asume que es el PC del DJ)
-          return (!isMobileUA && hasLargeScreen);
+          // SOLO localStorage para máxima seguridad y control manual
+          return localStorage.getItem('isMasterDJDevice') === 'true';
         } catch (e) {
           return false;
         }
       }
+
+      // Trigger secreto: 5 clicks rápidos en el título
+      let titleClicks = 0;
+      let titleTimer = null;
+      document.addEventListener('DOMContentLoaded', () => {
+        const titleEl = document.querySelector('h1#titulo');
+        if (titleEl) {
+          titleEl.style.cursor = 'pointer';
+          titleEl.style.userSelect = 'none';
+          titleEl.addEventListener('click', () => {
+            titleClicks++;
+            if (titleTimer) clearTimeout(titleTimer);
+            titleTimer = setTimeout(() => { titleClicks = 0; }, 1000);
+            
+            if (titleClicks === 5) {
+              const currentState = localStorage.getItem('isMasterDJDevice') === 'true';
+              if (currentState) {
+                localStorage.removeItem('isMasterDJDevice');
+                alert('🔴 MODO DJ DESACTIVADO: Este dispositivo ya no puede controlar canciones.');
+              } else {
+                localStorage.setItem('isMasterDJDevice', 'true');
+                alert('🟢 MODO DJ ACTIVADO: Este dispositivo ahora puede controlar canciones.');
+              }
+              // Recargar para aplicar cambios en UI
+              window.location.reload();
+            }
+          });
+        }
+        
+        // Resize inicial
+        resize();
+      });
 
       // Función para generar fingerprint del dispositivo
       function generateDeviceFingerprint() {
