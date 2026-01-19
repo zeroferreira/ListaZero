@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>Lista d'Canciones - Zero Radio</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2.2" />
   <style>
     .calendar-navigation {
       display: flex;
@@ -121,7 +121,7 @@
       width: 100%;
       height: 100%;
       pointer-events: none;
-      z-index: -10;
+      z-index: 0;
       background: #fff;
     }
 
@@ -129,21 +129,9 @@
       background: #000;
     }
     
-    .stars-bg {
-      background: transparent;
-      z-index: -2;
-    }
-    .twinkling-bg {
-      background: transparent;
-      z-index: -1;
-      animation: move-twink-back 200s linear infinite;
-    }
-    .clouds-bg {
-      background: transparent;
-      z-index: 0;
-      opacity: 0.4;
-      animation: move-clouds-back 200s linear infinite;
-    }
+    .stars-bg { background: transparent; z-index: 0; }
+    .twinkling-bg { background: transparent; z-index: 1; animation: move-twink-back 200s linear infinite; }
+    .clouds-bg { background: transparent; z-index: 2; opacity: 0.4; animation: move-clouds-back 200s linear infinite; }
     
     .immersive-layer {
       position: absolute;
@@ -151,6 +139,8 @@
       width: 100%; height: 100%;
       display: block;
     }
+    
+    .orb-background-canvas { z-index: 3; pointer-events: none; }
   </style>
   
   <!-- Script de sincronización de temas -->
@@ -559,6 +549,7 @@
      <div class="immersive-layer stars-bg"></div>
      <div class="immersive-layer twinkling-bg"></div>
      <div class="immersive-layer clouds-bg"></div>
+     <canvas id="orb-background" class="immersive-layer orb-background-canvas"></canvas>
   </div>
   <div id="stats-ticker" class="stats-ticker" hidden>
     <div class="ticker-content">Cargando estadísticas…</div>
@@ -605,15 +596,14 @@
         
       </div>
 
-      <div class="day-filter-row" role="group" aria-label="Filtro de día">
+      <div class="filter-controls-row" role="group" aria-label="Filtros de lista">
         <div class="day-filter">
-          <label for="day-select">Ver día:</label>
+          <label for="day-select" style="margin-right: 8px;">Ver día:</label>
           <select id="day-select"></select>
         </div>
-      </div>
-
-      <div class="vip-filter">
-        <label><input type="checkbox" id="vip-only" /> Ver solo VIP</label>
+        <div class="vip-filter">
+          <label><input type="checkbox" id="vip-only" /> Ver solo VIP</label>
+        </div>
       </div>
 
       <!-- BUSCADOR -->
@@ -1470,6 +1460,35 @@
                   <div class="color-preview" style="background: #f97316;"></div>
                   <span>Naranja</span>
                 </button>
+              </div>
+            </div>
+
+            <div class="theme-section">
+              <h3>Forma del Fondo</h3>
+              <div class="theme-grid">
+                <button type="button" class="theme-shape active" data-shape="orb">
+                  <div class="shape-preview shape-orb"></div>
+                  <span>Orb</span>
+                </button>
+                <button type="button" class="theme-shape" data-shape="triangle">
+                  <div class="shape-preview shape-triangle"></div>
+                  <span>Triángulo</span>
+                </button>
+                <button type="button" class="theme-shape" data-shape="hexagon">
+                  <div class="shape-preview shape-hexagon"></div>
+                  <span>Teseracto</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="theme-section">
+              <h3>Transparencia de Fondo</h3>
+              <div class="transparency-control" style="padding: 0 4px;">
+                <input type="range" id="theme-transparency" min="0" max="100" value="0" style="width: 100%; margin-bottom: 8px; cursor: pointer;">
+                <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary, #666);">
+                  <span>Opaco</span>
+                  <span>Transparente</span>
+                </div>
               </div>
             </div>
           </div>
@@ -5228,6 +5247,8 @@
       const themeResetBtn = document.getElementById('theme-reset');
       const themeOptions = document.querySelectorAll('.theme-option');
       const themeColors = document.querySelectorAll('.theme-color');
+      const themeTransparency = document.getElementById('theme-transparency');
+      const themeShapes = document.querySelectorAll('.theme-shape');
 
       // Migrar datos de tema de claves antiguas a nuevas (solo una vez)
       (function migrateThemeData() {
@@ -5249,6 +5270,7 @@
       function applyTheme() {
         const savedTheme = localStorage.getItem('selectedTheme') || 'light';
         const savedColor = localStorage.getItem('selectedColor') || 'default';
+        const savedTransparency = parseInt(localStorage.getItem('themeTransparency') || '0');
         
         // Limpiar clases anteriores
         document.body.classList.remove('dark-theme');
@@ -5265,12 +5287,25 @@
         if (savedColor !== 'default') {
           document.body.classList.add(`theme-${savedColor}`);
         }
+
+        // Aplicar transparencia
+        // Base alpha: Light 0.96, Dark 0.88
+        // Min alpha (max transparency): 0.4
+        const isDark = savedTheme === 'dark';
+        const baseAlpha = isDark ? 0.88 : 0.96;
+        const minAlpha = 0.4;
+        
+        // 0% slider = baseAlpha, 100% slider = minAlpha
+        const currentAlpha = baseAlpha - (savedTransparency / 100) * (baseAlpha - minAlpha);
+        document.documentElement.style.setProperty('--card-bg-alpha', currentAlpha);
       }
 
       // Actualizar estados activos del modal
       function updateActiveStates() {
         const savedTheme = localStorage.getItem('selectedTheme') || 'light';
         const savedColor = localStorage.getItem('selectedColor') || 'default';
+        const savedShape = localStorage.getItem('selectedShape') || 'orb';
+        const savedTransparency = localStorage.getItem('themeTransparency') || '0';
         
         themeOptions.forEach(option => {
           option.classList.toggle('active', option.dataset.theme === savedTheme);
@@ -5278,6 +5313,13 @@
         themeColors.forEach(color => {
           color.classList.toggle('active', color.dataset.color === savedColor);
         });
+        themeShapes.forEach(shape => {
+          shape.classList.toggle('active', shape.dataset.shape === savedShape);
+        });
+        
+        if (themeTransparency) {
+          themeTransparency.value = savedTransparency;
+        }
       }
 
       // Cargar tema guardado
@@ -5288,9 +5330,13 @@
       
       // Escuchar cambios en localStorage desde otras páginas
       window.addEventListener('storage', function(e) {
-        if (e.key === 'selectedTheme' || e.key === 'selectedColor') {
+        if (e.key === 'selectedTheme' || e.key === 'selectedColor' || e.key === 'themeTransparency' || e.key === 'selectedShape') {
           applyTheme();
           updateActiveStates();
+          
+          if (e.key === 'selectedShape') {
+            window.dispatchEvent(new CustomEvent('shapeChanged', { detail: { shape: e.newValue } }));
+          }
         }
       });
 
@@ -5298,6 +5344,7 @@
       themeBtn?.addEventListener('click', () => {
         hideSearchResults();
         themeModal.hidden = false;
+        updateActiveStates(); // Asegurar que el slider esté sincronizado al abrir
       });
 
       // Cerrar modal de temas
@@ -5327,7 +5374,11 @@
           
           // Disparar evento personalizado para sincronización
           window.dispatchEvent(new CustomEvent('themeChanged', { 
-            detail: { theme, color: localStorage.getItem('selectedColor') || 'default' }
+            detail: { 
+              theme, 
+              color: localStorage.getItem('selectedColor') || 'default',
+              transparency: localStorage.getItem('themeTransparency') || '0'
+            }
           }));
         });
       });
@@ -5346,15 +5397,55 @@
           
           // Disparar evento personalizado para sincronización
           window.dispatchEvent(new CustomEvent('themeChanged', { 
-            detail: { theme: localStorage.getItem('selectedTheme') || 'light', color: colorName }
+            detail: { 
+              theme: localStorage.getItem('selectedTheme') || 'light', 
+              color: colorName,
+              transparency: localStorage.getItem('themeTransparency') || '0'
+            }
           }));
         });
+      });
+      
+      // Cambiar forma del fondo
+      themeShapes.forEach(shape => {
+        shape.addEventListener('click', () => {
+          const shapeName = shape.dataset.shape;
+          
+          // Guardar preferencia
+          localStorage.setItem('selectedShape', shapeName);
+          
+          // Actualizar UI
+          updateActiveStates();
+          
+          // Disparar evento para el canvas
+          window.dispatchEvent(new CustomEvent('shapeChanged', { 
+            detail: { shape: shapeName } 
+          }));
+        });
+      });
+      
+      // Control de transparencia
+      themeTransparency?.addEventListener('input', (e) => {
+        const val = e.target.value;
+        localStorage.setItem('themeTransparency', val);
+        applyTheme();
+        
+        window.dispatchEvent(new CustomEvent('themeChanged', { 
+          detail: { 
+            theme: localStorage.getItem('selectedTheme') || 'light', 
+            color: localStorage.getItem('selectedColor') || 'default',
+            transparency: val
+          }
+        }));
       });
 
       // Restablecer tema
       themeResetBtn?.addEventListener('click', () => {
         localStorage.removeItem('selectedTheme');
         localStorage.removeItem('selectedColor');
+        localStorage.removeItem('themeTransparency');
+        localStorage.removeItem('selectedShape');
+        
         applyTheme();
         updateActiveStates();
         
@@ -5365,6 +5456,14 @@
         themeColors.forEach(color => {
           color.classList.toggle('active', color.dataset.color === 'default');
         });
+        themeShapes.forEach(shape => {
+          shape.classList.toggle('active', shape.dataset.shape === 'orb');
+        });
+        
+        // Resetear forma
+        window.dispatchEvent(new CustomEvent('shapeChanged', { 
+          detail: { shape: 'orb' } 
+        }));
       });
 
       // Cerrar modales con Escape o click fuera
@@ -13551,6 +13650,256 @@
       
       console.log('🎯 Sistema de racha por usuario establecido');
     })();
+  </script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var canvas = document.getElementById('orb-background');
+      if (!canvas || !canvas.getContext) return;
+      var ctx = canvas.getContext('2d');
+      var width = 0;
+      var height = 0;
+      var dpr = window.devicePixelRatio || 1;
+      var particles = [];
+      var baseRadius = 0;
+      var particleCount = 900;
+      var lastTime = 0;
+      var rotationX = 0;
+      var rotationY = 0;
+      var velocityX = 0.00015;
+      var velocityY = 0.00025;
+      var lastScrollY = window.scrollY || 0;
+      var currentShape = localStorage.getItem('selectedShape') || 'orb';
+
+      function hexToRgba(hex, alpha) {
+        if (!hex || hex[0] !== '#') return hex;
+        if (hex.length === 4) {
+          hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+        }
+        var r = parseInt(hex.slice(1, 3), 16);
+        var g = parseInt(hex.slice(3, 5), 16);
+        var b = parseInt(hex.slice(5, 7), 16);
+        return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+      }
+
+      function getSpherePoint(r) {
+        var u = Math.random();
+        var v = Math.random();
+        var theta = 2 * Math.PI * u;
+        var phi = Math.acos(2 * v - 1);
+        // Aumentar radio para igualar visualmente al teseracto (aprox 1.6x)
+        var rr = r * 1.6 * (0.8 + 0.2 * Math.random());
+        return {
+          x: rr * Math.sin(phi) * Math.cos(theta),
+          y: rr * Math.cos(phi),
+          z: rr * Math.sin(phi) * Math.sin(theta)
+        };
+      }
+
+      function getTrianglePoint(r) {
+        // Aumentar escala del triángulo para igualar peso visual (aprox 2.3x)
+        var s = r * 2.3;
+        var verts = [
+          {x: s, y: s, z: s},
+          {x: -s, y: -s, z: s},
+          {x: -s, y: s, z: -s},
+          {x: s, y: -s, z: -s}
+        ];
+        var f = Math.floor(Math.random() * 4);
+        var p1 = verts[f];
+        var p2 = verts[(f + 1) % 4];
+        var p3 = verts[(f + 2) % 4];
+        var a = Math.random();
+        var b = Math.random();
+        if (a + b > 1) { a = 1 - a; b = 1 - b; }
+        var x = p1.x + a * (p2.x - p1.x) + b * (p3.x - p1.x);
+        var y = p1.y + a * (p2.y - p1.y) + b * (p3.y - p1.y);
+        var z = p1.z + a * (p2.z - p1.z) + b * (p3.z - p1.z);
+        var noise = (Math.random() - 0.5) * r * 0.1;
+        return {x: x + noise, y: y + noise, z: z + noise};
+      }
+
+      function getHexagonPoint(r) {
+        var sizeOuter = r * 1.0;
+        var sizeInner = r * 0.6;
+        var useInner = Math.random() < 0.5;
+        var s = useInner ? sizeInner : sizeOuter;
+        var axis = Math.floor(Math.random() * 3);
+        var sign1 = Math.random() < 0.5 ? -1 : 1;
+        var sign2 = Math.random() < 0.5 ? -1 : 1;
+        var t = Math.random() * 2 - 1;
+        var x, y, z;
+        if (axis === 0) {
+          x = t * s;
+          y = sign1 * s;
+          z = sign2 * s;
+        } else if (axis === 1) {
+          y = t * s;
+          x = sign1 * s;
+          z = sign2 * s;
+        } else {
+          z = t * s;
+          x = sign1 * s;
+          y = sign2 * s;
+        }
+        var noise = (Math.random() - 0.5) * r * 0.1;
+        return {x: x + noise, y: y + noise, z: z + noise};
+      }
+
+      function getTargetPoint(r) {
+        if (currentShape === 'triangle') return getTrianglePoint(r);
+        if (currentShape === 'hexagon') return getHexagonPoint(r);
+        return getSpherePoint(r);
+      }
+
+      function createParticles() {
+        var accentHex = getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim();
+        var accentRgba = hexToRgba(accentHex, 0.8);
+        var exists = particles.length > 0;
+        
+        if (particles.length !== particleCount) {
+           particles = [];
+           exists = false;
+        }
+        
+        for (var i = 0; i < particleCount; i++) {
+          var t = i / particleCount;
+          var color;
+          if (Math.random() < 0.35 && accentRgba) {
+            color = accentRgba;
+          } else {
+            var hue = 200 + 160 * t;
+            color = 'hsla(' + hue + ', 80%, 60%, 0.8)';
+          }
+          var size = 1 + 1.2 * Math.random();
+          var target = getTargetPoint(baseRadius);
+          
+          if (!exists) {
+             particles.push({ 
+                x: target.x, y: target.y, z: target.z, 
+                tx: target.x, ty: target.y, tz: target.z,
+                color: color, size: size 
+             });
+          } else {
+             particles[i].color = color;
+             particles[i].tx = target.x;
+             particles[i].ty = target.y;
+             particles[i].tz = target.z;
+          }
+        }
+      }
+
+      // Observar cambios de tema para regenerar colores
+      var observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+          if (mutation.attributeName === 'class') {
+             createParticles();
+          }
+        });
+      });
+      observer.observe(document.body, { attributes: true });
+
+      function resize() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        baseRadius = Math.min(width, height) * 0.35;
+        dpr = window.devicePixelRatio || 1;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = width + 'px';
+        canvas.style.height = height + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        createParticles();
+      }
+
+      function renderFrame(time) {
+        if (!lastTime) lastTime = time;
+        var delta = time - lastTime;
+        lastTime = time;
+        
+        // Movimiento base tenue (idle) + velocidad dinámica
+        rotationX += (velocityX + 0.00005) * delta;
+        rotationY += (velocityY + 0.0001) * delta;
+        
+        velocityX *= 0.98;
+        velocityY *= 0.98;
+        ctx.clearRect(0, 0, width, height);
+        // Usar clientWidth para centrar respecto al contenido (excluyendo scrollbar)
+        var centerX = document.body.clientWidth / 2;
+        var centerY = height / 2;
+        var cosX = Math.cos(rotationX);
+        var sinX = Math.sin(rotationX);
+        var cosY = Math.cos(rotationY);
+        var sinY = Math.sin(rotationY);
+        var fov = baseRadius * 2;
+        var projected = [];
+        
+        // Factor de interpolación para transiciones suaves (lerp)
+        var lerpFactor = 0.05;
+
+        for (var i = 0; i < particles.length; i++) {
+          var p = particles[i];
+          
+          // Actualizar posición hacia el objetivo (transición de forma)
+          p.x += (p.tx - p.x) * lerpFactor;
+          p.y += (p.ty - p.y) * lerpFactor;
+          p.z += (p.tz - p.z) * lerpFactor;
+          
+          var x = p.x;
+          var y = p.y;
+          var z = p.z;
+          var x1 = x * cosY + z * sinY;
+          var z1 = -x * sinY + z * cosY;
+          var y1 = y * cosX - z1 * sinX;
+          var z2 = y * sinX + z1 * cosX;
+          var scale = fov / (fov + z2 + baseRadius);
+          var px = centerX + x1 * scale;
+          var py = centerY + y1 * scale;
+          projected.push({ x: px, y: py, z: z2, color: p.color, size: p.size * scale });
+        }
+        projected.sort(function(a, b) { return a.z - b.z; });
+        for (var j = 0; j < projected.length; j++) {
+          var q = projected[j];
+          ctx.beginPath();
+          ctx.fillStyle = q.color;
+          var s = q.size;
+          ctx.arc(q.x, q.y, s, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        window.requestAnimationFrame(renderFrame);
+      }
+
+      function handleScroll() {
+        var y = window.scrollY || 0;
+        var delta = y - lastScrollY;
+        lastScrollY = y;
+        velocityY += delta * 0.000002;
+        velocityX += delta * 0.000001;
+      }
+
+      function boostRotation() {
+        velocityY += 0.003 * (Math.random() > 0.5 ? 1 : -1);
+        velocityX += 0.003 * (Math.random() > 0.5 ? 1 : -1);
+      }
+
+      // Escuchar cambios de forma desde el modal de temas
+      window.addEventListener('shapeChanged', function(e) {
+        if (e.detail && e.detail.shape) {
+          currentShape = e.detail.shape;
+          createParticles();
+        }
+      });
+
+      resize();
+      window.addEventListener('resize', resize);
+      window.addEventListener('scroll', handleScroll, { passive: true });
+      window.addEventListener('wheel', function(e) {
+        velocityY += e.deltaY * 0.0000008;
+        velocityX += e.deltaX * 0.0000008;
+      }, { passive: true });
+      window.addEventListener('pointerdown', boostRotation, { passive: true });
+      window.addEventListener('touchstart', boostRotation, { passive: true });
+      window.requestAnimationFrame(renderFrame);
+    });
   </script>
 </body>
 <script>
