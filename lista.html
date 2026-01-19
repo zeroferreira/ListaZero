@@ -2371,49 +2371,59 @@
       })();
 
       // Función para alternar el estado de canción reproducida (con sincronización Firebase)
-      // Función para sincronizar configuración con Firebase
-      async function bootstrapDJConfig() {
+      // Función para sincronizar configuración con Firebase (SOLO LECTURA / VALIDACIÓN)
+      async function syncDJStatus() {
         try {
+          // Generar fingerprint actual
+          const currentFingerprint = generateDeviceFingerprint();
+          
+          // 1. Validar contra localStorage primero (rápido)
+          const storedMaster = localStorage.getItem('masterDJFingerprint');
+          const isStoredAsMaster = localStorage.getItem('isMasterDJDevice') === 'true';
+
+          // Si dice ser master, validamos que tenga el fingerprint correcto
+          if (isStoredAsMaster && storedMaster !== currentFingerprint) {
+             console.warn('Detectado cambio de fingerprint en dispositivo DJ. Revocando permisos.');
+             localStorage.setItem('isMasterDJDevice', 'false');
+          }
+
           if (!window.db) return;
           
-          const currentFingerprint = generateDeviceFingerprint();
           const djConfigRef = window.db.collection('systemConfig').doc('djConfig');
-          
-          // Verificar si ya existe una configuración en Firebase
           const djConfigDoc = await djConfigRef.get();
           
-          if (!djConfigDoc.exists) {
-            // Primera vez: registrar este dispositivo como el autorizado en Firebase
-            await djConfigRef.set({
-              masterFingerprint: currentFingerprint,
-              lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            localStorage.setItem('masterDJFingerprint', currentFingerprint);
-            localStorage.setItem('isMasterDJDevice', 'true');
-          } else {
-            // Sincronizar con la configuración existente en Firebase
-            let masterFingerprint = djConfigDoc.data().masterFingerprint;
+          if (djConfigDoc.exists) {
+            // Si existe config en la nube, la verdad absoluta está ahí
+            const remoteMasterFingerprint = djConfigDoc.data().masterFingerprint;
             
-            // Heurística de recuperación eliminada por solicitud del usuario:
-            // "Lo que no quiero es que cualquier dispositivo pc pueda tener el control. solo esta."
-            // Se debe usar el botón en el panel Admin para tomar el control manualmente.
-
-            localStorage.setItem('masterDJFingerprint', masterFingerprint);
+            // Si el fingerprint remoto coincide con el nuestro, somos el DJ
+            const isMaster = remoteMasterFingerprint === currentFingerprint;
             
-            const isMaster = masterFingerprint === currentFingerprint;
+            // Actualizar estado local
+            localStorage.setItem('masterDJFingerprint', remoteMasterFingerprint);
             localStorage.setItem('isMasterDJDevice', isMaster ? 'true' : 'false');
+            
+            // Actualizar UI
+            updateDJControls();
+          } else {
+             // Si no existe config en la nube, NADIE es DJ automáticamente.
+             // Se requiere acción manual en el botón "Establecer como DJ".
+             // Por seguridad, si creíamos ser DJ pero no hay config, dejamos de serlo 
+             // (o podríamos mantenerlo si asumimos modo offline, pero mejor ser seguros)
+             // Para modo offline, confiamos en localStorage si ya estaba seteado.
           }
-        } catch (error) {
-          // En caso de error, usar solo localStorage
-          const currentFingerprint = generateDeviceFingerprint();
-          const masterFingerprint = localStorage.getItem('masterDJFingerprint');
           
-          if (!masterFingerprint) {
-            localStorage.setItem('masterDJFingerprint', currentFingerprint);
-            localStorage.setItem('isMasterDJDevice', 'true');
-          }
+        } catch (error) {
+          console.warn('Error sincronizando estado DJ (modo offline o error de red):', error);
+          // En error, NO otorgamos permisos nuevos. 
+          // Mantenemos el estado actual de localStorage (asumiendo que fue validado antes).
         }
       }
+
+      // Ejecutar validación al inicio
+      document.addEventListener('DOMContentLoaded', () => {
+        syncDJStatus();
+      });
 
       // Función para verificar si este dispositivo puede modificar canciones
       // Determinación estricta de dispositivo maestro (DJ)
