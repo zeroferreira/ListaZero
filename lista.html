@@ -789,6 +789,10 @@
                <button type="button" id="rebuild-played-btn" class="btn btn-secondary">🔄 Recontar Reproducidas</button>
                <button type="button" id="wipe-all" class="btn btn-danger">🗑️ Borrar día seleccionado</button>
             </div>
+            
+            <div class="maintenance-actions" style="margin-top: 15px;">
+               <button type="button" id="set-master-dj" class="btn" style="background: #6610f2; color: white; width: 100%;">🎛️ Establecer ESTE dispositivo como DJ Maestro</button>
+            </div>
 
             <hr style="margin: 20px 0; border: 0; border-top: 1px solid #ddd;">
             
@@ -2336,20 +2340,9 @@
             // Sincronizar con la configuración existente en Firebase
             let masterFingerprint = djConfigDoc.data().masterFingerprint;
             
-            // Heurística de recuperación: Si soy un dispositivo Desktop (probable Admin)
-            // y el fingerprint no coincide, actualizar el registro maestro.
-            // Esto asegura que "esta computadora" recupere el control automáticamente.
-            const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            const hasLargeScreen = (window.screen.width >= 1024);
-            
-            if (!isMobileUA && hasLargeScreen && masterFingerprint !== currentFingerprint) {
-                console.log('Restoring DJ control to Desktop device');
-                await djConfigRef.set({
-                  masterFingerprint: currentFingerprint,
-                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                masterFingerprint = currentFingerprint;
-            }
+            // Heurística de recuperación eliminada por solicitud del usuario:
+            // "Lo que no quiero es que cualquier dispositivo pc pueda tener el control. solo esta."
+            // Se debe usar el botón en el panel Admin para tomar el control manualmente.
 
             localStorage.setItem('masterDJFingerprint', masterFingerprint);
             
@@ -2369,22 +2362,15 @@
       }
 
       // Función para verificar si este dispositivo puede modificar canciones
-      // Determinación automática de dispositivo maestro (DJ)
-      // Se basa en heurística: Pantalla grande + No móvil
+      // Determinación estricta de dispositivo maestro (DJ)
       function isDJDevice() {
         try {
           // 1. Si se estableció manualmente, respetar
           if (localStorage.getItem('isMasterDJDevice') === 'true') return true;
           if (localStorage.getItem('isMasterDJDevice') === 'false') return false;
 
-          // 2. Heurística automática (comportamiento original)
-          // Si es un dispositivo móvil/tablet, NO es DJ por defecto
-          const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-          // Si la pantalla es grande (desktop)
-          const hasLargeScreen = (window.screen.width >= 1024) || (window.innerWidth >= 1024);
-          
-          // Es DJ si NO es móvil Y tiene pantalla grande
-          return (!isMobileUA && hasLargeScreen);
+          // 2. Por defecto false si no hay configuración explícita
+          return false;
         } catch (e) {
           return false;
         }
@@ -8699,6 +8685,33 @@
           btn.disabled = false;
         });
       })();
+
+      (function attachSetMasterDJ(){
+        const btn = document.getElementById('set-master-dj');
+        if (!btn) return;
+        btn.addEventListener('click', async () => {
+            if (!confirm('¿Estás seguro de tomar el control de DJ desde ESTE dispositivo? Cualquier otro dispositivo perderá el control.')) return;
+            
+            try {
+                const currentFingerprint = generateDeviceFingerprint();
+                const db = firebase.firestore();
+                await db.collection('systemConfig').doc('djConfig').set({
+                  masterFingerprint: currentFingerprint,
+                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                localStorage.setItem('masterDJFingerprint', currentFingerprint);
+                localStorage.setItem('isMasterDJDevice', 'true');
+                alert('✅ Control DJ asignado a este dispositivo exitosamente.');
+                // Forzar actualización de UI
+                if (typeof updateDJControls === 'function') updateDJControls();
+                location.reload();
+            } catch (e) {
+                console.error(e);
+                alert('❌ Error al asignar control: ' + e.message);
+            }
+        });
+      })();
       
       // Función para corregir puntos de todos los usuarios
       window.corregirPuntosTodosLosUsuarios = async function() {
@@ -13756,8 +13769,8 @@
       }
 
       function getTrianglePoint(r) {
-        // Ajustar escala del triángulo para igualar peso visual (reducido a 1.0x para igualar esfera/teseracto)
-        var s = r * 1.0;
+        // Ajustar escala del triángulo para igualar peso visual (reducido a 0.7x para corregir tamaño "gigante")
+        var s = r * 0.7;
         var verts = [
           {x: s, y: s, z: s},
           {x: -s, y: -s, z: s},
@@ -13813,6 +13826,9 @@
 
       function createParticles() {
         var accentHex = getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim();
+        // Fallback si no obtiene el color
+        if (!accentHex) accentHex = document.body.classList.contains('dark-theme') ? '#0d6efd' : '#007bff';
+        
         var accentRgba = hexToRgba(accentHex, 0.8);
         var exists = particles.length > 0;
         var isMobile = window.innerWidth <= 600 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -13825,12 +13841,18 @@
         for (var i = 0; i < particleCount; i++) {
           var t = i / particleCount;
           var color;
-          if (Math.random() < 0.35 && accentRgba) {
+          // Aumentar probabilidad de color de acento (60%) para que se note más
+          if (Math.random() < 0.6 && accentRgba) {
             color = accentRgba;
           } else {
+            // Color secundario complementario o variación
+            // En modo oscuro, asegurar brillo
+            var isDark = document.body.classList.contains('dark-theme');
             var hue = 200 + 160 * t;
-            color = 'hsla(' + hue + ', 80%, 60%, 0.8)';
+            var lightness = isDark ? '70%' : '60%';
+            color = 'hsla(' + hue + ', 80%, ' + lightness + ', 0.8)';
           }
+          
           var baseSize = isMobile ? 1.6 : 1;
           var size = baseSize + 1.2 * Math.random();
           var target = getTargetPoint(baseRadius);
