@@ -2460,7 +2460,18 @@
 
       async function toggleSongPlayed(element, songId, passedDay) {
         try {
-          if (!isDJDevice()) { return; }
+          if (!isDJDevice()) { 
+             // Feedback visual para no-DJs (Petición: que se pueda presionar pero sin cambiar estado)
+             const btn = element.querySelector('.play-toggle-btn');
+             if (btn) {
+               btn.classList.add('clicked-anim');
+               setTimeout(() => btn.classList.remove('clicked-anim'), 200);
+             }
+             
+             // Mostrar mensaje no intrusivo
+             showNotification('🔒 Solo el DJ Maestro puede marcar canciones.', 'info');
+             return; 
+          }
           
           // Obtener el día actual del selector, parámetro o dataset del elemento
           const dayFromItem = String(element?.dataset?.day || '').trim();
@@ -8773,26 +8784,49 @@
       (function attachSetMasterDJ(){
         const btn = document.getElementById('set-master-dj');
         if (!btn) return;
+
+        // Actualizar estado visual del botón al cargar
+        const updateBtnState = () => {
+            const isDJ = localStorage.getItem('isMasterDJDevice') === 'true';
+            btn.innerHTML = isDJ 
+              ? '🎛️ Liberar Control DJ (Modo Solo Lectura)' 
+              : '🎛️ Establecer ESTE dispositivo como DJ Maestro';
+            btn.style.background = isDJ ? '#dc3545' : '#6610f2'; // Rojo para soltar, Púrpura para tomar
+        };
+        updateBtnState();
+
         btn.addEventListener('click', async () => {
-            if (!confirm('¿Estás seguro de tomar el control de DJ desde ESTE dispositivo? Cualquier otro dispositivo perderá el control.')) return;
+            const isCurrentlyDJ = localStorage.getItem('isMasterDJDevice') === 'true';
             
-            try {
-                const currentFingerprint = generateDeviceFingerprint();
-                const db = firebase.firestore();
-                await db.collection('systemConfig').doc('djConfig').set({
-                  masterFingerprint: currentFingerprint,
-                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                
-                localStorage.setItem('masterDJFingerprint', currentFingerprint);
-                localStorage.setItem('isMasterDJDevice', 'true');
-                alert('✅ Control DJ asignado a este dispositivo exitosamente.');
-                // Forzar actualización de UI
-                if (typeof updateDJControls === 'function') updateDJControls();
+            if (isCurrentlyDJ) {
+                // Desactivar modo DJ
+                if (!confirm('¿Liberar control DJ? Los botones de las canciones se podrán presionar pero NO cambiarán el estado.')) return;
+                localStorage.setItem('isMasterDJDevice', 'false');
+                alert('✅ Control liberado. Modo "Invitado" activo.');
                 location.reload();
-            } catch (e) {
-                console.error(e);
-                alert('❌ Error al asignar control: ' + e.message);
+            } else {
+                // Activar modo DJ
+                if (!confirm('¿Tomar control DJ? Podrás marcar canciones como reproducidas.')) return;
+                
+                try {
+                    const currentFingerprint = generateDeviceFingerprint();
+                    if (window.db) {
+                        await window.db.collection('systemConfig').doc('djConfig').set({
+                          masterFingerprint: currentFingerprint,
+                          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    }
+                    
+                    localStorage.setItem('masterDJFingerprint', currentFingerprint);
+                    localStorage.setItem('isMasterDJDevice', 'true');
+                    alert('✅ Control DJ asignado. Modo "Admin" activo.');
+                    // Forzar actualización de UI
+                    if (typeof updateDJControls === 'function') updateDJControls();
+                    location.reload();
+                } catch (e) {
+                    console.error(e);
+                    alert('❌ Error al asignar control: ' + e.message);
+                }
             }
         });
       })();
@@ -14171,5 +14205,34 @@
   
   });
 })();
+
+// Función de notificaciones tipo Toast
+window.showNotification = function(message, type = 'info') {
+  // Crear contenedor si no existe
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `toast-notification ${type}`;
+  toast.textContent = message;
+  
+  document.body.appendChild(toast);
+  
+  // Forzar reflow para animación
+  toast.offsetHeight;
+  
+  // Mostrar
+  requestAnimationFrame(() => toast.classList.add('show'));
+  
+  // Ocultar y remover
+  setTimeout(() => {
+    toast.classList.remove('show');
+    toast.addEventListener('transitionend', () => toast.remove());
+  }, 3000);
+};
 </script>
 </html>
