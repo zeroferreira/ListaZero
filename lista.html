@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>Lista d'Canciones - Zero Radio</title>
-  <link rel="stylesheet" href="styles.css?v=2.6" />
+  <link rel="stylesheet" href="styles.css?v=2.8" />
   <style>
     .calendar-navigation {
       display: flex;
@@ -2352,42 +2352,50 @@
       }
 
       // Función para verificar si este dispositivo puede modificar canciones
+      // Determinación automática de dispositivo maestro (DJ)
+      // Se basa en heurística: Pantalla grande + No móvil
       function isDJDevice() {
         try {
-          // SOLO localStorage para máxima seguridad y control manual
-          return localStorage.getItem('isMasterDJDevice') === 'true';
+          // 1. Si se estableció manualmente, respetar
+          if (localStorage.getItem('isMasterDJDevice') === 'true') return true;
+          if (localStorage.getItem('isMasterDJDevice') === 'false') return false;
+
+          // 2. Heurística automática (comportamiento original)
+          // Si es un dispositivo móvil/tablet, NO es DJ por defecto
+          const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+          // Si la pantalla es grande (desktop)
+          const hasLargeScreen = (window.screen.width >= 1024) || (window.innerWidth >= 1024);
+          
+          // Es DJ si NO es móvil Y tiene pantalla grande
+          return (!isMobileUA && hasLargeScreen);
         } catch (e) {
           return false;
         }
       }
 
-      // Trigger secreto: 5 clicks rápidos en el título
-      let titleClicks = 0;
-      let titleTimer = null;
+      // Inicializar estado de controles
+      function updateDJControls() {
+        const isMaster = isDJDevice();
+        document.querySelectorAll('.play-toggle-btn').forEach(btn => {
+          if (isMaster) {
+            btn.removeAttribute('disabled');
+            btn.title = "Marcar como sonada/pendiente";
+            btn.style.opacity = "1";
+            btn.style.pointerEvents = "auto";
+            btn.style.filter = "none";
+          } else {
+            btn.setAttribute('disabled', 'true');
+            btn.title = "Solo el DJ puede controlar esto";
+            btn.style.opacity = "0.1";
+            btn.style.pointerEvents = "none";
+            btn.style.filter = "grayscale(100%)";
+          }
+        });
+      }
+
       document.addEventListener('DOMContentLoaded', () => {
-        const titleEl = document.querySelector('h1#titulo');
-        if (titleEl) {
-          titleEl.style.cursor = 'pointer';
-          titleEl.style.userSelect = 'none';
-          titleEl.addEventListener('click', () => {
-            titleClicks++;
-            if (titleTimer) clearTimeout(titleTimer);
-            titleTimer = setTimeout(() => { titleClicks = 0; }, 1000);
-            
-            if (titleClicks === 5) {
-              const currentState = localStorage.getItem('isMasterDJDevice') === 'true';
-              if (currentState) {
-                localStorage.removeItem('isMasterDJDevice');
-                alert('🔴 MODO DJ DESACTIVADO: Este dispositivo ya no puede controlar canciones.');
-              } else {
-                localStorage.setItem('isMasterDJDevice', 'true');
-                alert('🟢 MODO DJ ACTIVADO: Este dispositivo ahora puede controlar canciones.');
-              }
-              // Recargar para aplicar cambios en UI
-              window.location.reload();
-            }
-          });
-        }
+        // Ejecutar validación inicial
+        updateDJControls();
         
         // Resize inicial
         resize();
