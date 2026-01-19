@@ -2035,12 +2035,18 @@
 
           // Toggle reproducida
           const toggleBtn = li.querySelector('.play-toggle-btn');
-          toggleBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            // Eliminada restricción isDJDevice para permitir marcar
-            toggleSongPlayed(li, songId, currentDay);
-          });
+          if (toggleBtn) {
+            const isDJ = isDJDevice();
+            if (!isDJ) {
+              toggleBtn.disabled = true;
+            } else {
+              toggleBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleSongPlayed(li, songId, currentDay);
+              });
+            }
+          }
 
           // Eliminar canción (solo en modo edición)
           const deleteBtn = li.querySelector('.delete-btn');
@@ -2348,12 +2354,12 @@
       // Función para verificar si este dispositivo puede modificar canciones
       function isDJDevice() {
         try {
-          // Detectar automáticamente si es un dispositivo de escritorio
+          const flag = localStorage.getItem('isMasterDJDevice');
+          if (flag === 'true') return true;
+          if (flag === 'false') return false;
           const isDesktop = !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
           const hasLargeScreen = screen.width >= 1024;
-          const isLikelyDJDevice = isDesktop && hasLargeScreen;
-          
-          return isLikelyDJDevice;
+          return isDesktop && hasLargeScreen;
         } catch (e) {
           return false;
         }
@@ -2390,10 +2396,7 @@
 
       async function toggleSongPlayed(element, songId, passedDay) {
         try {
-          // Verificar si este dispositivo puede modificar canciones
-          // NOTA: Se ha eliminado la restricción estricta para permitir que funcione en todos los dispositivos
-          // si el usuario tiene permisos de escritura en Firebase.
-          // if (!isDJDevice()) { return; }
+          if (!isDJDevice()) { return; }
           
           // Obtener el día actual del selector, parámetro o dataset del elemento
           const dayFromItem = String(element?.dataset?.day || '').trim();
@@ -13755,6 +13758,7 @@
         var accentHex = getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim();
         var accentRgba = hexToRgba(accentHex, 0.8);
         var exists = particles.length > 0;
+        var isMobile = window.innerWidth <= 600 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         
         if (particles.length !== particleCount) {
            particles = [];
@@ -13770,7 +13774,8 @@
             var hue = 200 + 160 * t;
             color = 'hsla(' + hue + ', 80%, 60%, 0.8)';
           }
-          var size = 1 + 1.2 * Math.random();
+          var baseSize = isMobile ? 1.6 : 1;
+          var size = baseSize + 1.2 * Math.random();
           var target = getTargetPoint(baseRadius);
           
           if (!exists) {
