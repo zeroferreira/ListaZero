@@ -557,6 +557,10 @@
           <button id="theme-btn" class="theme-btn" type="button" aria-label="Cambiar tema" title="Cambiar tema">
             🎨
           </button>
+          <!-- Botón de lápiz para modo edición (visible solo en modo admin) -->
+          <button id="edit-toggle-btn" class="edit-toggle-btn" type="button" title="Editar lista (eliminar / mover)" aria-pressed="false" hidden>
+            ✏️
+          </button>
           <button id="menu-btn" class="menu-btn" type="button" aria-label="Abrir menú" aria-haspopup="true" aria-expanded="false" aria-controls="menu-dropdown">
             <span class="bar bar1"></span>
             <span class="bar bar2"></span>
@@ -928,51 +932,6 @@
             <button type="button" id="wipe-all-cancel" class="btn">Cancelar</button>
             <button type="button" id="wipe-all-confirm" class="btn">Borrar</button>
           </div>
-        </div>
-      </div>
-
-      <!-- Modal de Autenticación -->
-      <div id="auth-modal" class="modal-overlay" hidden>
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
-          <button type="button" class="modal-close-btn" aria-label="Cerrar modal">&times;</button>
-          <h2 id="auth-modal-title">👤 Acceso de Usuarios</h2>
-          
-          <div class="auth-tabs">
-            <button type="button" class="auth-tab active" data-target="login">Iniciar Sesión</button>
-            <button type="button" class="auth-tab" data-target="register">Registrarse</button>
-          </div>
-
-          <!-- Formulario de Login -->
-          <form id="login-form" class="auth-form active">
-            <div class="field">
-              <label for="login-email">Correo Electrónico</label>
-              <input type="email" id="login-email" required placeholder="tu@email.com">
-            </div>
-            <div class="field">
-              <label for="login-pass">Contraseña</label>
-              <input type="password" id="login-pass" required placeholder="********">
-            </div>
-            <button type="submit" class="btn">Entrar</button>
-            <div id="login-error" class="auth-error"></div>
-          </form>
-
-          <!-- Formulario de Registro -->
-          <form id="register-form" class="auth-form">
-            <div class="field">
-              <label for="reg-username">Nombre de Usuario (Visible)</label>
-              <input type="text" id="reg-username" required placeholder="Ej: ZeroCool" maxlength="20">
-            </div>
-            <div class="field">
-              <label for="reg-email">Correo Electrónico</label>
-              <input type="email" id="reg-email" required placeholder="tu@email.com">
-            </div>
-            <div class="field">
-              <label for="reg-pass">Contraseña</label>
-              <input type="password" id="reg-pass" required placeholder="Mínimo 6 caracteres" minlength="6">
-            </div>
-            <button type="submit" class="btn">Registrarse</button>
-            <div id="reg-error" class="auth-error"></div>
-          </form>
         </div>
       </div>
 
@@ -5510,13 +5469,11 @@
       });
 
       // Abrir modal de temas
-      function openThemeModal() {
-        if(typeof hideSearchResults === 'function') hideSearchResults();
-        if(themeModal) themeModal.hidden = false;
+      themeBtn?.addEventListener('click', () => {
+        hideSearchResults();
+        themeModal.hidden = false;
         updateActiveStates(); // Asegurar que el slider esté sincronizado al abrir
-      }
-
-      themeBtn?.addEventListener('click', openThemeModal);
+      });
 
       // Lógica de Acordeón para el modal de temas
       const accordionHeaders = themeModal?.querySelectorAll('.accordion-header');
@@ -14321,159 +14278,5 @@ window.showNotification = function(message, type = 'info') {
     toast.addEventListener('transitionend', () => toast.remove());
   }, 3000);
 };
-
-// ===== AUTENTICACIÓN DE USUARIOS =====
-(function() {
-  const authModal = document.getElementById('auth-modal');
-  const menuAuthBtn = document.getElementById('menu-auth-open');
-  const authCloseBtn = authModal ? authModal.querySelector('.modal-close-btn') : null;
-  const authTabs = authModal ? authModal.querySelectorAll('.auth-tab') : [];
-  const authForms = authModal ? authModal.querySelectorAll('.auth-form') : [];
-  const loginForm = document.getElementById('login-form');
-  const registerForm = document.getElementById('register-form');
-  const loginError = document.getElementById('login-error');
-  const regError = document.getElementById('reg-error');
-  
-  // Abrir/Cerrar Modal
-  function openAuthModal() {
-    // Si ya está logueado, cerrar sesión
-    if (firebase.auth().currentUser && !firebase.auth().currentUser.isAnonymous) {
-      if(confirm('¿Cerrar sesión de ' + firebase.auth().currentUser.displayName + '?')) {
-        firebase.auth().signOut().then(() => {
-           alert('Has cerrado sesión.');
-           window.location.reload(); // Recargar para limpiar estado
-        });
-      }
-      return;
-    }
-    if (authModal) {
-      authModal.hidden = false;
-      // Reset forms
-      if(loginForm) loginForm.reset();
-      if(registerForm) registerForm.reset();
-      if(loginError) loginError.style.display = 'none';
-      if(regError) regError.style.display = 'none';
-    }
-  }
-  
-  if(menuAuthBtn) menuAuthBtn.addEventListener('click', openAuthModal);
-  if(authCloseBtn) authCloseBtn.addEventListener('click', () => authModal.hidden = true);
-  if(authModal) authModal.addEventListener('click', (e) => {
-    if(e.target === authModal) authModal.hidden = true;
-  });
-
-  // Tabs
-  authTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      authTabs.forEach(t => t.classList.remove('active'));
-      authForms.forEach(f => f.classList.remove('active'));
-      tab.classList.add('active');
-      const target = tab.dataset.target; // 'login' or 'register'
-      const targetForm = document.getElementById(target + '-form');
-      if(targetForm) targetForm.classList.add('active');
-    });
-  });
-
-  // Login
-  if(loginForm) loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if(loginError) loginError.style.display = 'none';
-    const email = document.getElementById('login-email').value;
-    const pass = document.getElementById('login-pass').value;
-    
-    try {
-      await firebase.auth().signInWithEmailAndPassword(email, pass);
-      if(authModal) authModal.hidden = true;
-    } catch (err) {
-      console.error(err);
-      if(loginError) {
-        loginError.textContent = getAuthErrorMessage(err.code);
-        loginError.style.display = 'block';
-      }
-    }
-  });
-
-  // Register
-  if(registerForm) registerForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if(regError) regError.style.display = 'none';
-    const usernameInput = document.getElementById('reg-username');
-    const emailInput = document.getElementById('reg-email');
-    const passInput = document.getElementById('reg-pass');
-    
-    const username = usernameInput.value.trim();
-    const email = emailInput.value;
-    const pass = passInput.value;
-    
-    if(!username) {
-      if(regError) {
-        regError.textContent = 'El nombre de usuario es obligatorio';
-        regError.style.display = 'block';
-      }
-      return;
-    }
-
-    try {
-      // 1. Crear usuario auth
-      const userCred = await firebase.auth().createUserWithEmailAndPassword(email, pass);
-      const user = userCred.user;
-      
-      // 2. Actualizar perfil
-      await user.updateProfile({ displayName: username });
-      
-      // 3. Guardar en Firestore (users collection)
-      const db = firebase.firestore();
-      await db.collection('users').doc(user.uid).set({
-        name: username,
-        email: email,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        uid: user.uid
-      });
-
-      if(authModal) authModal.hidden = true;
-      alert('¡Registro exitoso! Bienvenido, ' + username);
-    } catch (err) {
-      console.error(err);
-      if(regError) {
-        regError.textContent = getAuthErrorMessage(err.code);
-        regError.style.display = 'block';
-      }
-    }
-  });
-
-  // Mensajes de error amigables
-  function getAuthErrorMessage(code) {
-    switch(code) {
-      case 'auth/email-already-in-use': return 'Este correo ya está registrado.';
-      case 'auth/invalid-email': return 'Correo inválido.';
-      case 'auth/weak-password': return 'La contraseña es muy débil.';
-      case 'auth/user-not-found': return 'Usuario no encontrado.';
-      case 'auth/wrong-password': return 'Contraseña incorrecta.';
-      default: return 'Error: ' + code;
-    }
-  }
-
-  // Monitor de Estado
-  firebase.auth().onAuthStateChanged(user => {
-    if (user && !user.isAnonymous) {
-      // Logueado
-      const name = user.displayName || user.email;
-      if(menuAuthBtn) {
-         menuAuthBtn.innerHTML = '🚪 Cerrar Sesión <strong>(' + name + ')</strong>';
-         menuAuthBtn.style.color = 'var(--accent-color, #007bff)';
-      }
-      // Sincronizar localStorage para que la app lo use por defecto
-      if(user.displayName) {
-        localStorage.setItem('currentUser', user.displayName);
-      }
-    } else {
-      // No logueado o anónimo
-      if(menuAuthBtn) {
-         menuAuthBtn.textContent = '👤 Iniciar Sesión / Registro';
-         menuAuthBtn.style.color = '';
-      }
-    }
-  });
-})();
 </script>
 </html>
