@@ -498,19 +498,31 @@
         messagingSenderId: "758369466349",
         appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
       };
-      if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-      }
-      const db = firebase.firestore();
 
-      // Autenticación anónima para permitir reglas basadas en usuarios no registrados
-      firebase.auth().onAuthStateChanged((user) => {
-        if (!user) {
-          firebase.auth().signInAnonymously().catch((err) => {
-            console.error('Error al autenticar anónimamente:', err);
-          });
+      let db = null;
+      try {
+        if (typeof firebase !== 'undefined' && firebase.apps) {
+          if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+          }
+          db = firebase.firestore();
+          
+          // Autenticación anónima para permitir reglas basadas en usuarios no registrados
+          if (firebase.auth) {
+             firebase.auth().onAuthStateChanged((user) => {
+              if (!user) {
+                firebase.auth().signInAnonymously().catch((err) => {
+                  console.error('Error al autenticar anónimamente:', err);
+                });
+              }
+            });
+          }
+        } else {
+           console.warn('Firebase SDK not loaded - Offline mode');
         }
-      });
+      } catch (e) {
+        console.error('Error initializing Firebase:', e);
+      }
 
       const form = document.getElementById('formulario');
       const usuarioSelect = document.getElementById('usuario-registrado');
@@ -643,23 +655,26 @@
 
           // Guardar en Firestore (sincronización multi-dispositivo)
           try {
-            await db.collection('solicitudes').add({
-              usuario,
-              cancion,
-              artista,
-              day: dayKey,
-              ts: firebase.firestore.FieldValue.serverTimestamp(),
-            });
+            if (db) {
+              await db.collection('solicitudes').add({
+                usuario,
+                cancion,
+                artista,
+                day: dayKey,
+                ts: firebase.firestore.FieldValue.serverTimestamp(),
+              });
 
-            // Upsert del usuario para que aparezca en el panel Admin (colección users)
-            await db.collection('users')
-              .doc(usuario.toLowerCase())
-              .set({ name: usuario }, { merge: true });
-
+              // Upsert del usuario para que aparezca en el panel Admin (colección users)
+              await db.collection('users')
+                .doc(usuario.toLowerCase())
+                .set({ name: usuario }, { merge: true });
+            } else {
+               console.warn('Firestore no disponible. Se guardó localmente.');
+               // Opcional: Podríamos mostrar un toast o aviso no bloqueante
+            }
           } catch (err) {
             console.error('Error guardando en Firestore:', err);
-            alert('Ocurrió un error guardando en la nube. Intenta nuevamente.');
-            return;
+            // Fallo silencioso en Firestore, ya que se guardó localmente
           }
 
           // Guardar el último usuario utilizado para facilitar próximas solicitudes
