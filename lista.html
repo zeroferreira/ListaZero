@@ -162,26 +162,56 @@
       var target = document.getElementById('react-modern-widget');
       if (!target || typeof React === 'undefined' || typeof ReactDOM === 'undefined') return;
       var e = React.createElement;
+      
       function useDay(){
         var ref = React.useRef(null);
         var st = React.useState({ items: [], day: '' });
         var state = st[0]; var setState = st[1];
+        
         React.useEffect(function(){
           function getDay(){ var el = document.getElementById('day-select'); return el && el.value ? el.value : ''; }
-          function resub(){ if (ref.current) { ref.current(); ref.current = null; }
+          
+          function resub(){ 
+            if (ref.current) { ref.current(); ref.current = null; }
             var d = getDay();
-            if (!window.db || !d) { setState({ items: [], day: d }); return; }
+            
+            // Si no hay db, reintentar (robustez)
+            if (!window.db) { 
+               setState({ items: [], day: d }); 
+               setTimeout(resub, 500);
+               return; 
+            }
+            
+            if (!d) { setState({ items: [], day: d }); return; }
+            
             var q = window.db.collection('solicitudes').where('day','==',d).orderBy('ts','desc');
-            ref.current = q.onSnapshot(function(snap){ var items = []; snap.forEach(function(doc){ var x = doc.data()||{}; items.push({ usuario:x.usuario, cancion:x.cancion, artista:x.artista, day:d }); }); setState({ items: items, day: d }); });
+            ref.current = q.onSnapshot(function(snap){ 
+              var items = []; 
+              snap.forEach(function(doc){ 
+                var x = doc.data()||{}; 
+                items.push({ usuario:x.usuario, cancion:x.cancion, artista:x.artista, day:d }); 
+              }); 
+              setState({ items: items, day: d }); 
+            });
           }
+          
           resub();
+          
           var el = document.getElementById('day-select');
           function onChange(){ resub(); }
-          el && el.addEventListener('change', onChange);
-          return function(){ el && el.removeEventListener('change', onChange); if (ref.current) { ref.current(); ref.current = null; } };
+          
+          if(el) el.addEventListener('change', onChange);
+          window.addEventListener('day-changed', onChange);
+          
+          return function(){ 
+            if(el) el.removeEventListener('change', onChange); 
+            window.removeEventListener('day-changed', onChange);
+            if (ref.current) { ref.current(); ref.current = null; } 
+          };
         }, []);
         return state;
       }
+      
       function useGlobal(){
         var ref = React.useRef(null);
         var refPoints = React.useRef(null);
@@ -190,94 +220,103 @@
         
         React.useEffect(function(){
           if (ref.current) { ref.current(); ref.current = null; }
-          if (refPoints.current) { refPoints.current(); refPoints.current = null; }
-          if (!window.db) return;
           
-          // ESTRATEGIA HÍBRIDA ROBUSTA:
-          // 1. Escuchar 'solicitudes' para calcular totales en tiempo real (Client-side aggregation).
-          //    Esto garantiza que SIEMPRE hay datos si la colección existe, sin depender de un proceso server-side.
-          //    Aunque es más pesado, asegura "que todos vean lo mismo" si tienen los mismos datos.
-          
-          ref.current = window.db.collection('solicitudes').onSnapshot(function(snap){
-            var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var userOriginal = {}; var total = 0;
+          function connect() {
+            if (!window.db) { setTimeout(connect, 500); return; }
             
-            snap.forEach(function(doc){
-              var d = doc.data()||{};
-              var a=(String(d.artista||'').trim().toLowerCase());
-              var ao=(String(d.artista||'').trim());
-              var s=(String(d.cancion||'').trim().toLowerCase());
-              var so=(String(d.cancion||'').trim()); // Guardar nombre original de canción
-              var u=(String(d.usuario||'').trim().toLowerCase());
-              var uo=(String(d.usuario||'').trim());
+            // ESTRATEGIA HÍBRIDA ROBUSTA: Client-side aggregation
+            ref.current = window.db.collection('solicitudes').orderBy('ts', 'desc').onSnapshot(function(snap){
+              var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var userOriginal = {}; var total = 0;
               
-              if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; }
-              if (s){ 
-                 // Usar clave compuesta para unicidad real o solo nombre
-                 songCount[s] = (songCount[s]||0)+1; 
-                 // Guardar la versión más bonita (capitalizada) si no existe
-                 if (!songCount[s+'_name']) songCount[s+'_name'] = so;
+              snap.forEach(function(doc){
+                var d = doc.data()||{};
+                var a=(String(d.artista||'').trim().toLowerCase());
+                var ao=(String(d.artista||'').trim());
+                var s=(String(d.cancion||'').trim().toLowerCase());
+                var so=(String(d.cancion||'').trim());
+                var u=(String(d.usuario||'').trim().toLowerCase());
+                var uo=(String(d.usuario||'').trim());
+                
+                if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; }
+                if (s){ 
+                   songCount[s] = (songCount[s]||0)+1; 
+                   if (!songCount[s+'_name']) songCount[s+'_name'] = so;
+                }
+                if (u){ userCount[u]=(userCount[u]||0)+1; if(!userOriginal[u]) userOriginal[u]=uo; }
+                total++;
+              });
+              
+              function getTop3(countObj, originalObj) {
+                 return Object.keys(countObj)
+                    .map(function(k){ return { k: k, c: countObj[k], o: originalObj[k]||k }; })
+                    .sort(function(a,b){ 
+                        var diff = b.c - a.c;
+                        if (diff !== 0) return diff;
+                        return a.k.localeCompare(b.k); // Desempate alfabético
+                    })
+                    .slice(0, 3)
+                    .map(function(it){ return it.o + ' (' + it.c + ')'; });
               }
-              if (u){ userCount[u]=(userCount[u]||0)+1; if(!userOriginal[u]) userOriginal[u]=uo; }
-              total++;
+              
+              function getTop1(countObj, nameSuffix) {
+                 var max = 0; var maxK = ''; 
+                 for(var k in countObj) { 
+                    if(k.endsWith('_name')) continue; 
+                    if(countObj[k] > max) { max = countObj[k]; maxK = k; } 
+                    else if(countObj[k] === max) { if(!maxK || k < maxK) maxK = k; } // Desempate alfabético
+                 }
+                 var name = maxK ? (countObj[maxK+'_name'] || maxK) : 'N/D';
+                 if(name === maxK && name !== 'N/D') name = name.charAt(0).toUpperCase() + name.slice(1);
+                 return { name: name, count: max };
+              }
+              
+              var ta = getTop3(artistCount, artistOriginal);
+              var tu = getTop3(userCount, userOriginal);
+              var ts = getTop1(songCount, '_name');
+              
+              setG(function(prev){ 
+                 return Object.assign({}, prev, { 
+                    total: total, 
+                    topArtists3: ta, 
+                    topUsers3: tu, 
+                    topSong: ts.name, 
+                    topSongCount: ts.count 
+                 }); 
+              });
             });
-            
-            // Función auxiliar para ordenar y formatear
-            function getTop3(countObj, originalObj) {
-               return Object.keys(countObj)
-                  .map(function(k){ return { k: k, c: countObj[k], o: originalObj[k]||k }; })
-                  .sort(function(a,b){ return b.c - a.c; })
-                  .slice(0, 3)
-                  .map(function(it){ return it.o + ' (' + it.c + ')'; });
-            }
-            
-            function getTop1(countObj, nameSuffix) {
-               var max = 0; var maxK = ''; 
-               for(var k in countObj) { 
-                  if(k.endsWith('_name')) continue; 
-                  if(countObj[k] > max) { max = countObj[k]; maxK = k; } 
-               }
-               var name = maxK ? (countObj[maxK+'_name'] || maxK) : 'N/D';
-               // Capitalizar bonito si es fallback
-               if(name === maxK) name = name.charAt(0).toUpperCase() + name.slice(1);
-               return { name: name, count: max };
-            }
-            
-            var ta = getTop3(artistCount, artistOriginal);
-            var tu = getTop3(userCount, userOriginal);
-            var ts = getTop1(songCount, '_name');
-            
-            setG(function(prev){ 
-               return Object.assign({}, prev, { 
-                  total: total, 
-                  topArtists3: ta, 
-                  topUsers3: tu, 
-                  topSong: ts.name, 
-                  topSongCount: ts.count 
-               }); 
-            });
-          });
+          }
+          connect();
           
-          // 2. Escuchar 'userStats' para Top Puntuación (Gamificación)
-          refPoints.current = window.db.collection('userStats')
-            .orderBy('totalPoints', 'desc')
-            .limit(3)
-            .onSnapshot(function(snap){
-               var arr = [];
-               snap.forEach(function(doc){
-                  var d = doc.data() || {};
-                  var u = doc.id;
-                  var name = u.charAt(0).toUpperCase() + u.slice(1);
-                  var points = d.totalPoints || 0;
-                  arr.push(name + ' (' + points + ')');
-               });
-               setG(function(prev){ return Object.assign({}, prev, { topPoints3: arr }); });
-            });
-            
-          return function(){ 
-             if (ref.current) { ref.current(); ref.current = null; }
-             if (refPoints.current) { refPoints.current(); refPoints.current = null; }
-          };
+          return function(){ if (ref.current) { ref.current(); ref.current = null; } };
         }, []);
+        
+        // Hook separado para UserStats (puntos) con retry
+        React.useEffect(function(){
+           if (refPoints.current) { refPoints.current(); refPoints.current = null; }
+           
+           function connectPoints() {
+              if (!window.db) { setTimeout(connectPoints, 500); return; }
+              
+              refPoints.current = window.db.collection('userStats')
+                 .orderBy('totalPoints', 'desc')
+                 .limit(3)
+                 .onSnapshot(function(snap){
+                    var arr = [];
+                    snap.forEach(function(doc){
+                       var d = doc.data() || {};
+                       var u = doc.id;
+                       var name = u.charAt(0).toUpperCase() + u.slice(1);
+                       var points = d.totalPoints || 0;
+                       arr.push(name + ' (' + points + ')');
+                    });
+                    setG(function(prev){ return Object.assign({}, prev, { topPoints3: arr }); });
+                 });
+           }
+           connectPoints();
+           
+           return function(){ if (refPoints.current) { refPoints.current(); refPoints.current = null; } };
+        }, []);
+        
         return g;
       }
       function ModernChip(props){ return e('div', { className: 'modern-chip' }, e('span', { className: 'label' }, props.label), e('span', { className: 'value' }, props.value)); }
@@ -286,10 +325,18 @@
         var g = useGlobal();
         function fmt(x){ return x && x.length ? x : 'N/D'; }
         if (Array.isArray(day.items) && day.items.length){
-          var ac = {}; var sc = {}; var uc = {}; day.items.forEach(function(it){ var a=String(it.artista||'').trim().toLowerCase(); var s=String(it.cancion||'').trim().toLowerCase(); var u=String(it.usuario||'').trim().toLowerCase(); if(a) ac[a]=(ac[a]||0)+1; if(s) sc[s]=(sc[s]||0)+1; if(u) uc[u]=(uc[u]||0)+1; });
-          function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return {k:k,v:v}; }
-          var ts = top(sc); var tu = top(uc);
-          var a3 = Object.keys(ac).map(function(k){ return {k:k,c:ac[k]}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.k+' ('+it.c+')'; });
+          var ac = {}; var ao = {}; var sc = {}; var so = {}; var uc = {}; var uo = {}; 
+          day.items.forEach(function(it){ 
+              var a=String(it.artista||'').trim().toLowerCase(); var aOrig=String(it.artista||'').trim();
+              var s=String(it.cancion||'').trim().toLowerCase(); var sOrig=String(it.cancion||'').trim();
+              var u=String(it.usuario||'').trim().toLowerCase(); var uOrig=String(it.usuario||'').trim();
+              if(a) { ac[a]=(ac[a]||0)+1; if(!ao[a]) ao[a]=aOrig; }
+              if(s) { sc[s]=(sc[s]||0)+1; if(!so[s]) so[s]=sOrig; }
+              if(u) { uc[u]=(uc[u]||0)+1; if(!uo[u]) uo[u]=uOrig; }
+          });
+          function top(m, o){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } else if(val===v && (!k || key<k)){ k=key; } } return {k:o[k]||k, v:v}; }
+          var ts = top(sc, so); var tu = top(uc, uo);
+          var a3 = Object.keys(ac).map(function(k){ return {k:k,c:ac[k],o:ao[k]||k}; }).sort(function(a,b){ var d=b.c-a.c; if(d!==0)return d; return a.k.localeCompare(b.k); }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
           return e(React.Fragment, null,
             e(ModernChip, { label: '🎵 Canción top', value: fmt(ts.k)+' ('+(ts.v||0)+')' }),
             e(ModernChip, { label: '👤 Usuario top', value: fmt(tu.k) }),
@@ -366,7 +413,7 @@
                
                // VOLVEMOS A: Escuchar 'solicitudes' para calcular totales en tiempo real (Client-side aggregation).
                // Esto garantiza que todos vean los mismos datos calculados desde la base de datos viva.
-               ref.current = window.db.collection('solicitudes').onSnapshot(function(snap){
+               ref.current = window.db.collection('solicitudes').orderBy('ts', 'desc').onSnapshot(function(snap){
                  var artistCount = {}; var artistOriginal = {}; var songCount = {}; var userCount = {}; var userOriginal = {}; var total = 0;
                  
                  snap.forEach(function(doc){
@@ -390,7 +437,11 @@
                  function getTop3(countObj, originalObj) {
                     return Object.keys(countObj)
                        .map(function(k){ return { k: k, c: countObj[k], o: originalObj[k]||k }; })
-                       .sort(function(a,b){ return b.c - a.c; })
+                       .sort(function(a,b){ 
+                           var diff = b.c - a.c;
+                           if (diff !== 0) return diff;
+                           return a.k.localeCompare(b.k); // Desempate alfabético
+                       })
                        .slice(0, 3)
                        .map(function(it){ return it.o + ' (' + it.c + ')'; });
                  }
@@ -399,7 +450,8 @@
                     var max = 0; var maxK = ''; 
                     for(var k in countObj) { 
                        if(k.endsWith('_name')) continue; 
-                       if(countObj[k] > max) { max = countObj[k]; maxK = k; } 
+                       if(countObj[k] > max) { max = countObj[k]; maxK = k; }
+                       else if(countObj[k] === max) { if(!maxK || k < maxK) maxK = k; } // Desempate alfabético
                     }
                     var name = maxK ? (countObj[maxK+'_name'] || maxK) : 'N/D';
                     if(name === maxK && name !== 'N/D') name = name.charAt(0).toUpperCase() + name.slice(1);
@@ -458,23 +510,22 @@
           var day = useDay();
           var g = useGlobal();
           function fmt(x){ return x && x.length ? x : 'N/D'; }
-          var ac = {}; var sc = {}; var uc = {}; var artistOriginal = {}; var userOriginal = {};
+          var ac = {}; var sc = {}; var uc = {}; var artistOriginal = {}; var userOriginal = {}; var songOriginal = {};
           (Array.isArray(day.items) ? day.items : []).forEach(function(it){
             var a=String(it.artista||'').trim().toLowerCase();
             var s=String(it.cancion||'').trim().toLowerCase();
             var u=String(it.usuario||'').trim().toLowerCase();
             var ao=String(it.artista||'').trim();
+            var so=String(it.cancion||'').trim();
             var uo=String(it.usuario||'').trim();
-            if(a) ac[a]=(ac[a]||0)+1;
-            if(s) sc[s]=(sc[s]||0)+1;
-            if(u) uc[u]=(uc[u]||0)+1;
-            if(a && !artistOriginal[a]) artistOriginal[a]=ao;
-            if(u && !userOriginal[u]) userOriginal[u]=uo;
+            if(a) { ac[a]=(ac[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; }
+            if(s) { sc[s]=(sc[s]||0)+1; if(!songOriginal[s]) songOriginal[s]=so; }
+            if(u) { uc[u]=(uc[u]||0)+1; if(!userOriginal[u]) userOriginal[u]=uo; }
           });
-          function top(m){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } } return {k:k,v:v}; }
-          var ts = top(sc);
-          var usersTop3Day = Object.keys(uc).map(function(k){ return {k:k,c:uc[k],o:userOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
-          var artistsTop3Day = Object.keys(ac).map(function(k){ return {k:k,c:ac[k],o:artistOriginal[k]||k}; }).sort(function(a,b){ return b.c-a.c; }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
+          function top(m, o){ var k=''; var v=0; for(var key in m){ var val=m[key]; if(val>v){ v=val; k=key; } else if(val===v && (!k || key<k)){ k=key; } } return {k:o[k]||k,v:v}; }
+          var ts = top(sc, songOriginal);
+          var usersTop3Day = Object.keys(uc).map(function(k){ return {k:k,c:uc[k],o:userOriginal[k]||k}; }).sort(function(a,b){ var d=b.c-a.c; if(d!==0)return d; return a.k.localeCompare(b.k); }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
+          var artistsTop3Day = Object.keys(ac).map(function(k){ return {k:k,c:ac[k],o:artistOriginal[k]||k}; }).sort(function(a,b){ var d=b.c-a.c; if(d!==0)return d; return a.k.localeCompare(b.k); }).slice(0,3).map(function(it){ return it.o+' ('+it.c+')'; });
           var latest = Array.isArray(day.items) && day.items.length ? day.items[0] : null;
           var latestTxt = latest ? (String(latest.cancion||'').trim() + (latest.artista ? ' — ' + String(latest.artista).trim() : '')) : 'N/D';
           var globalUsersTop3 = Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D';
@@ -3096,6 +3147,7 @@
         });
         const days = Array.from(daysSet).sort();
         const perUser = new Map();
+        const originalNames = {};
         for (let di = 0; di < days.length; di++) {
           const day = days[di];
           const playedSet = playedMap.get(day) || new Set();
@@ -3104,14 +3156,18 @@
           const countedUsersDay = new Set();
           q.forEach(doc => {
             const data = doc.data() || {};
-            const usuario = String(data.usuario || '').trim();
+            const rawUser = String(data.usuario || '').trim();
+            const usuario = rawUser.toLowerCase();
             const cancion = String(data.cancion || '').trim();
             const artista = String(data.artista || '').trim();
             const ts = data.ts || null;
             const horaStr = String(data.hora || '').trim();
             if (!usuario) return;
+            if (!originalNames[usuario] || (rawUser && rawUser !== usuario)) {
+              originalNames[usuario] = rawUser;
+            }
             distinctUsersDay.add(usuario);
-            const sid = makeSongId(usuario, cancion, artista, ts, horaStr);
+            const sid = makeSongId(rawUser, cancion, artista, ts, horaStr);
             if (playedSet.has(sid)) {
               const prev = perUser.get(usuario) || { played: 0, activeDays: 0 };
               prev.played += 1;
@@ -3129,17 +3185,28 @@
         }
         const batchUpdates = [];
         perUser.forEach((val, user) => {
-          const isVip = vipNow.has(user) || z0vipNow.has(user);
+          // Check VIP status (case-insensitive check against sets assumed to be lowercase or we check both)
+          // Actually vipNow/z0vipNow are sets of strings. How are they populated?
+          // Usually we should check lowercase.
+          // Assuming user is already lowercase here.
+          let isVip = false;
+          // Iterate sets to find case-insensitive match or assume sets are normalized?
+          // Let's assume sets might contain original names.
+          // Best effort check.
+          for (let v of vipNow) { if (v.toLowerCase() === user) { isVip = true; break; } }
+          if (!isVip) { for (let v of z0vipNow) { if (v.toLowerCase() === user) { isVip = true; break; } } }
+          
           const base = val.played * 25;
           const vipBonus = isVip ? val.played * 40 : 0;
           const dailyBonus = val.activeDays * 5;
           const total = base + vipBonus + dailyBonus;
-          batchUpdates.push({ user, totalPoints: total });
+          batchUpdates.push({ user, totalPoints: total, displayName: originalNames[user] || user });
         });
         for (let i = 0; i < batchUpdates.length; i++) {
-          const u = batchUpdates[i].user.toLowerCase();
+          const u = batchUpdates[i].user;
           await db.collection('userStats').doc(u).set({
             totalPoints: batchUpdates[i].totalPoints,
+            displayName: batchUpdates[i].displayName,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
         }
@@ -3547,7 +3614,7 @@
           snap.forEach((doc) => {
             const { name } = doc.data();
             if (name) {
-              window.z0FanSet.add(name);
+              window.z0FanSet.add(String(name).trim().toLowerCase());
               if (listEl) {
                 const li = document.createElement('li');
                 li.innerHTML = `<span>${name}</span><button type="button" class="remove-btn" data-user="${name}" data-type="z0-fan" aria-label="Quitar z0-Fan">×</button>`;
@@ -3555,6 +3622,17 @@
               }
             }
           });
+          
+          // Procesar logros z0-Fan después de cargar los datos
+          console.log(`🔄 z0-Fan set actualizado, procesando logros para ${window.z0FanSet.size} usuarios z0-Fan`);
+          setTimeout(() => {
+            window.z0FanSet.forEach(username => {
+              if (typeof window.grantBadgeAchievement === 'function') {
+                window.grantBadgeAchievement(username);
+              }
+            });
+          }, 1000);
+
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
           applySelectedBadgeToAll();
           refreshBadgeSelectUI();
@@ -3569,7 +3647,7 @@
           snap.forEach((doc) => {
             const { name } = doc.data();
             if (name) {
-              window.z0PlatinumSet.add(name);
+              window.z0PlatinumSet.add(String(name).trim().toLowerCase());
               if (listEl) {
                 const li = document.createElement('li');
                 li.innerHTML = `<span>${name}</span><button type="button" class="remove-btn" data-user="${name}" data-type="z0-platino" aria-label="Quitar z0-Platino">×</button>`;
@@ -3577,6 +3655,17 @@
               }
             }
           });
+          
+          // Procesar logros z0-Platino después de cargar los datos
+          console.log(`🔄 z0-Platino set actualizado, procesando logros para ${window.z0PlatinumSet.size} usuarios z0-Platino`);
+          setTimeout(() => {
+            window.z0PlatinumSet.forEach(username => {
+              if (typeof window.grantBadgeAchievement === 'function') {
+                window.grantBadgeAchievement(username);
+              }
+            });
+          }, 1000);
+
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
           applySelectedBadgeToAll();
           refreshBadgeSelectUI();
@@ -3639,7 +3728,7 @@
           if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(it.usuario || '').trim(); }
           if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
         }
-        function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } } return k; }
+        function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } else if (val === v && (!k || key.localeCompare(k) < 0)) { k = key; } } return k; }
         const day = document.getElementById('day-select')?.value || '';
         const played = JSON.parse(localStorage.getItem('playedSongs') || '{}');
         const playedCount = Array.isArray(played[day]) ? played[day].length : 0;
@@ -3653,12 +3742,12 @@
         const ta = top(artistCount);
         const artistTop3 = Object.keys(artistCount)
           .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
-          .sort((a, b) => b.c - a.c)
+          .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
           .slice(0, 3)
           .map(it => `${it.o} (${it.c})`);
         const usersTop3 = Object.keys(userCount)
           .map(k => ({ k, c: userCount[k], o: userOriginal[k] || k }))
-          .sort((a, b) => b.c - a.c)
+          .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
           .slice(0, 3)
           .map(it => `${it.o} (${it.c})`);
         return {
@@ -4285,16 +4374,16 @@
         if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(s.usuario || '').trim(); }
         if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
       }
-      function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } } return k; }
+      function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } else if (val === v && (!k || key.localeCompare(k) < 0)) { k = key; } } return k; }
       const ta = top(artistCount);
       const artistTop3 = Object.keys(artistCount)
         .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
-        .sort((a, b) => b.c - a.c)
+        .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
         .slice(0, 3)
         .map(it => `${it.o} (${it.c})`);
       const usersTop3 = Object.keys(userCount)
         .map(k => ({ k, c: userCount[k], o: userOriginal[k] || k }))
-        .sort((a, b) => b.c - a.c)
+        .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
         .slice(0, 3)
         .map(it => `${it.o} (${it.c})`);
       const ts = top(songCount);
@@ -4376,16 +4465,16 @@
           if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
           total++;
         });
-        function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } } return k; }
+        function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } else if (val === v && (!k || key.localeCompare(k) < 0)) { k = key; } } return k; }
         const ta = top(artistCount);
         const artistTop3 = Object.keys(artistCount)
           .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
-          .sort((a, b) => b.c - a.c)
+          .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
           .slice(0, 3)
           .map(it => `${it.o} (${it.c})`);
         const usersTop3 = Object.keys(userCount)
           .map(k => ({ k, c: userCount[k], o: userOriginal[k] || k }))
-          .sort((a, b) => b.c - a.c)
+          .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
           .slice(0, 3)
           .map(it => `${it.o} (${it.c})`);
         const ts = top(songCount);
@@ -4454,7 +4543,7 @@
         window.__globalGenreCount = gVal;
         
         // Calcular Top 3 Puntos
-        usersPoints.sort((a,b) => b.points - a.points);
+        usersPoints.sort((a,b) => { var d = b.points - a.points; if (d !== 0) return d; return a.user.localeCompare(b.user); });
         const top3 = usersPoints.slice(0, 3).map(u => `${u.user} (${u.points})`);
         window.__globalTopPointsUsers = top3;
         
