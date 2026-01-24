@@ -8346,6 +8346,7 @@
           cloudTotal: Math.max(0, Number(cloudTotal || 0)),
           earnedTotal: Math.max(0, Number(earnedTotal || 0)),
           redemptionsSpent: Math.max(0, Number(redemptionsSpent || 0)),
+          redemptions: redemptions || [],
           adjustment: Number(adjustment || 0),
           total: Math.max(0, Number(displayTotal || 0)),
           detail,
@@ -8450,7 +8451,7 @@
             lines.push(`<div class="genre-chip"><span>🎁 Compensación </span><span>${bd.manualBonus}</span></div>`);
           }
 
-          if (Number(bd.redemptionsSpent || 0) > 0) {
+          if (Number(bd.redemptionsSpent || 0) > 0 || (Array.isArray(bd.redemptions) && bd.redemptions.length > 0)) {
             lines.push(`<div class="genre-chip"><span>🎁 Canjes </span><span>-${Number(bd.redemptionsSpent || 0)}</span></div>`);
             try {
               const statusText = (s) => s === 'approved' ? 'Aprobado' : (s === 'rejected' ? 'Rechazado' : 'Pendiente');
@@ -10740,43 +10741,52 @@
             console.log('✅ Calendario oficial ya existe y está completo, no sobrescribir');
             return;
           }
+
+          // Prioridad 1: Usar datos pasados explícitamente (del perfil de usuario)
+          let allActivity = {};
           
-          // Usar nuestra función de calendario completo
-          if (window.createCompleteStreakCalendar) {
-            console.log('✅ Usando calendario completo con todos los datos');
-            window.createCompleteStreakCalendar();
-            return;
+          if (calendar && Object.keys(calendar).length > 0) {
+             console.log('✅ Usando datos de calendario del perfil:', Object.keys(calendar).length, 'días');
+             allActivity = calendar;
+          } else {
+              // Prioridad 2: Fallback a createSimpleCalendar si es el usuario actual
+              // (Esto asegura consistencia si estamos viendo nuestra propia info)
+              const currentUser = getCurrentUser();
+              const selectedUser = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : currentUser;
+              
+              if (normalizeUserKey(currentUser) === normalizeUserKey(selectedUser) && typeof createSimpleCalendar === 'function') {
+                  console.log('✅ Usando createSimpleCalendar para usuario actual');
+                  await createSimpleCalendar();
+                  return;
+              }
+              
+              // Prioridad 3: Fallback manual con datos locales
+              console.log('📦 Fallback: combinando datos manualmente...');
+              
+              // Obtener TODOS los datos
+              const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+              const solicitudesByDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+              const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+              
+              // 1. Agregar playedSongs
+              Object.keys(playedSongs).forEach(function(date) {
+                allActivity[date] = (allActivity[date] || 0) + playedSongs[date].length;
+              });
+              
+              // 2. Agregar solicitudes_by_day
+              Object.keys(solicitudesByDay).forEach(function(date) {
+                const dayData = solicitudesByDay[date] || [];
+                allActivity[date] = (allActivity[date] || 0) + dayData.length;
+              });
+              
+              // 3. Agregar solicitudes legacy
+              solicitudes.forEach(function(song) {
+                if (song.time) {
+                  const date = new Date(song.time).toISOString().split('T')[0];
+                  allActivity[date] = (allActivity[date] || 0) + 1;
+                }
+              });
           }
-          
-          // Fallback: usar datos combinados directamente
-          console.log('📦 Fallback: combinando datos manualmente...');
-          
-          // Obtener TODOS los datos
-          const playedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-          const solicitudesByDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          
-          // Combinar todos los datos por fecha
-          const allActivity = {};
-          
-          // 1. Agregar playedSongs
-          Object.keys(playedSongs).forEach(function(date) {
-            allActivity[date] = (allActivity[date] || 0) + playedSongs[date].length;
-          });
-          
-          // 2. Agregar solicitudes_by_day
-          Object.keys(solicitudesByDay).forEach(function(date) {
-            const dayData = solicitudesByDay[date] || [];
-            allActivity[date] = (allActivity[date] || 0) + dayData.length;
-          });
-          
-          // 3. Agregar solicitudes legacy
-          solicitudes.forEach(function(song) {
-            if (song.time) {
-              const date = new Date(song.time).toISOString().split('T')[0];
-              allActivity[date] = (allActivity[date] || 0) + 1;
-            }
-          });
           
           const today = new Date();
           const days = [];
@@ -10814,8 +10824,8 @@
           }
           
           container.innerHTML = days.join('');
-          container.setAttribute('data-calendar-source', 'fallback');
-          console.log('✅ Calendario renderizado con datos combinados (fallback)');
+          container.setAttribute('data-calendar-source', 'fallback-v2');
+          console.log('✅ Calendario renderizado con datos (fallback-v2)');
           
         } catch (error) {
           console.error('Error renderizando calendario de rachas:', error);
@@ -13338,17 +13348,58 @@
           const targetUser = (userName || '').trim();
           console.log(`📊 Generando actividad REAL para ${targetUser} (últimos ${days} días)`);
           
-          // Obtener todas las solicitudes (esto ya combina Firebase y LocalStorage)
-          // Aseguramos que la función existe
-          const allSolicitudes = typeof getAllCombinedSolicitudes === 'function' 
-            ? await getAllCombinedSolicitudes() 
-            : JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          let allSolicitudes = [];
           
-          // Filtrar por usuario
-          const userSongs = allSolicitudes.filter(s => {
-            const u = s.usuario || '';
-            return u.toLowerCase().trim() === targetUser.toLowerCase();
+          // 1. Intentar obtener historial de Firestore (últimos 30-40 días)
+          if (window.db && targetUser) {
+             try {
+                // Usamos una consulta simple sin orderBy compuesto para evitar errores de índice
+                // Traemos un lote reciente (sin orden garantizado si no hay índice, pero Firestore suele traer en orden de ID o inserción)
+                // Si hay índice compuesto usuario+ts, mejor. Pero asumimos que no.
+                // Simplemente traemos documentos donde usuario coincida.
+                const snap = await window.db.collection('solicitudes')
+                  .where('usuario', '==', targetUser)
+                  .limit(300) 
+                  .get();
+                  
+                if (!snap.empty) {
+                   console.log(`📡 Encontradas ${snap.size} solicitudes en Firestore para ${targetUser}`);
+                   snap.forEach(doc => {
+                      const d = doc.data();
+                      if (d) allSolicitudes.push(d);
+                   });
+                }
+             } catch (e) {
+                console.warn('⚠️ Error obteniendo historial Firestore:', e);
+             }
+          }
+
+          // 2. Obtener datos combinados locales/sesión
+          if (typeof getAllCombinedSolicitudes === 'function') {
+            const combined = await getAllCombinedSolicitudes();
+            allSolicitudes = allSolicitudes.concat(combined);
+          } else {
+            const local = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+            allSolicitudes = allSolicitudes.concat(local);
+          }
+          
+          // 3. Filtrar por usuario y eliminar duplicados
+          const uniqueMap = new Map();
+          const targetUserLower = targetUser.toLowerCase();
+          
+          allSolicitudes.forEach(s => {
+            const u = (s.usuario || '').trim();
+            if (u.toLowerCase() === targetUserLower) {
+                // Crear clave única robusta
+                const timeKey = s.ts ? (s.ts.seconds || s.ts) : (s.time || s.day || Math.random());
+                const key = `${u}-${s.cancion}-${s.artista}-${timeKey}`;
+                uniqueMap.set(key, s);
+            }
           });
+          
+          const userSongs = Array.from(uniqueMap.values());
+          console.log(`🎵 Total canciones únicas para procesar: ${userSongs.length}`);
+
 
           const activity = {};
           const baseDate = startDate ? new Date(startDate) : new Date();
@@ -13407,12 +13458,15 @@
         
         // Intentar cargar datos reales de Firebase
         let activityPattern = {};
-        let isUsingRealData = false;
+        let isUsingRealData = true;
         
-        // Usar datos simulados por defecto (como funcionaba antes)
-        console.log('🎭 Generando datos simulados...');
-        activityPattern = generateUserActivity(currentUser, 30);
-        isUsingRealData = false;
+        console.log('📡 Obteniendo actividad del usuario...');
+        try {
+            activityPattern = await generateUserActivity(currentUser, 30);
+        } catch (e) {
+            console.error('Error obteniendo actividad:', e);
+            activityPattern = {};
+        }
         
         console.log(`📊 Patrón de actividad final: ${Object.keys(activityPattern).length} días con datos`);
         console.log(`🎯 Tipo de datos: ${isUsingRealData ? 'REALES' : 'SIMULADOS'}`);
