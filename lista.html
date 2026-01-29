@@ -3402,12 +3402,60 @@
          searchInput.focus();
       }
       
+      // Función de búsqueda de datos (simulada o real)
+      async function querySolicitudes(query, lastDoc = null) {
+        if (!query) return { results: [], lastDoc: null };
+        const qStr = String(query).toLowerCase();
+        
+        // Búsqueda en Firestore por canción (prefijo)
+        // Nota: Esto es case-sensitive por defecto en Firestore.
+        // Se asume que el usuario busca empezando con Mayúscula o que los datos están normalizados.
+        // Para mejorar, idealmente deberíamos tener un campo 'keywords' o 'searchKey' en minúsculas.
+        // Como fallback, buscaremos coincidencias exactas de lo que escribe el usuario.
+        
+        // Capitalizar primera letra para mejorar probabilidad de match (convención común)
+        const capitalized = query.charAt(0).toUpperCase() + query.slice(1);
+        
+        try {
+          let q = db.collection('solicitudes')
+            .where('cancion', '>=', capitalized)
+            .where('cancion', '<=', capitalized + '\uf8ff')
+            .orderBy('cancion')
+            .limit(20);
+            
+          if (lastDoc) {
+            q = q.startAfter(lastDoc);
+          }
+          
+          const snap = await q.get();
+          const results = [];
+          snap.forEach(doc => {
+            const d = doc.data();
+            results.push({
+              id: doc.id,
+              ...d,
+              // Asegurar campos necesarios para render
+              day: d.day || getSongDay(d),
+              ts: d.ts || d.timestamp || d.time
+            });
+          });
+          
+          return { results, lastDoc: snap.docs[snap.docs.length - 1] || null };
+        } catch (e) {
+          console.error("Error buscando solicitudes:", e);
+          return { results: [], lastDoc: null };
+        }
+      }
+
       async function performSearch(isLoadMore = false) {
          const query = searchInput.value.trim();
          if (!query) return;
          
          if (!isLoadMore) {
-            searchResults.innerHTML = '<p class="loading-text">Buscando...</p>';
+            // Si no es "Cargar más", dejamos que el listener de input maneje la UI inicial (predicciones)
+            // O si queremos que el botón de búsqueda fuerce resultados:
+            searchResults.innerHTML = '<div class="search-loading">Buscando...</div>';
+            searchResults.hidden = false;
             lastSearchDoc = null;
             currentSearchQuery = query;
          } else {
@@ -3415,36 +3463,28 @@
             searchLoadMore.disabled = true;
          }
          
-         const { results, lastDoc } = await searchSolicitudes(query, lastSearchDoc);
-         
-         if (!isLoadMore) {
-            searchResults.innerHTML = '';
-         }
+         const { results, lastDoc } = await querySolicitudes(query, lastSearchDoc);
          
          lastSearchDoc = lastDoc;
          
          if (results.length === 0 && !isLoadMore) {
-            searchResults.innerHTML = '<p class="empty-search">No se encontraron resultados.</p>';
+            searchResults.innerHTML = '<div class="search-error">No se encontraron resultados.</div>';
             searchLoadMore.hidden = true;
             return;
          }
          
-         results.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'search-result-item';
-            div.innerHTML = `
-               <div class="search-result-info">
-                  <span class="search-song">${item.cancion}</span>
-                  <span class="search-artist">${item.artista}</span>
-                  <div class="search-meta">
-                     <span class="search-user">👤 ${item.usuario}</span>
-                     <span class="search-date">📅 ${item.day}</span>
-                     <span class="search-time">🕒 ${item.hora}</span>
-                  </div>
-               </div>
-            `;
-            searchResults.appendChild(div);
-         });
+         // Si es carga inicial, usamos renderSearchResults para mantener consistencia
+         if (!isLoadMore) {
+           renderSearchResults(results);
+         } else {
+           // Si es cargar más, añadimos (esto requiere que renderSearchResults soporte append o hacerlo manual)
+           // Por simplicidad, renderSearchResults reemplaza. 
+           // Aquí haremos append manual compatible con el estilo de renderSearchResults
+           const html = results.map(it => createSearchResultItemHTML(it)).join('');
+           const tempDiv = document.createElement('div');
+           tempDiv.innerHTML = html;
+           Array.from(tempDiv.children).forEach(child => searchResults.appendChild(child));
+         }
          
          // Gestionar botón "Cargar más"
          if (lastDoc) {
@@ -3456,24 +3496,40 @@
          }
       }
       
+      // Helper para generar HTML de item (extraído de renderSearchResults)
+      function createSearchResultItemHTML(it) {
+          const formatDate = (dateStr) => {
+            if (!dateStr) return '';
+            try {
+              const date = new Date(dateStr);
+              if (isNaN(date.getTime())) return dateStr;
+              return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' });
+            } catch(e) { return dateStr; }
+          };
+          
+          return `
+            <div class="search-result" data-day="${it.day || ''}" tabindex="0" title="Click para ir a la fecha">
+              <span class="sr-song">${it.cancion || ''}</span>
+              <span class="sr-artist">${it.artista || ''}</span>
+              <span class="sr-user">${it.usuario || ''}</span>
+              <span class="sr-date">${formatDate(it.day)}</span>
+              <span class="sr-arrow">→</span>
+            </div>
+          `;
+      }
+      
       // Event Listeners para búsqueda
       document.getElementById('menu-search-open')?.addEventListener('click', openSearchModal);
       searchClose?.addEventListener('click', () => { searchModal.hidden = true; });
       
-      let searchTimeout;
-      searchInput?.addEventListener('input', () => {
-         clearTimeout(searchTimeout);
-         searchTimeout = setTimeout(() => performSearch(false), 600);
-      });
+      // Eliminamos el listener duplicado de input que llamaba a performSearch directamente
+      // searchInput?.addEventListener('input', ...); -> ELIMINADO/COMENTADO para evitar conflicto con el listener de la línea 5080
       
       searchLoadMore?.addEventListener('click', () => performSearch(true));
+      
       window.searchSolicitudes = async (query) => {
-        try {
-          if (typeof query === 'string') {
-            if (searchInput) searchInput.value = query;
-          }
-          return await performSearch(false);
-        } catch (_) {}
+        const { results } = await querySolicitudes(query);
+        return results;
       };
 
       function subscribeVipUsers() {
@@ -4932,121 +4988,26 @@
 
       function renderSearchResults(rows) {
         if (!searchResults) return;
-        if (!rows.length) {
+        if (!rows || !rows.length) {
           searchResults.hidden = true;
           searchResults.innerHTML = '';
           return;
         }
-        const list = rows.slice(0, 10).map(it => {
-          // Formatear fecha para mostrar
-          const formatDate = (dateStr) => {
-            if (!dateStr) return '';
-            const date = new Date(dateStr);
-            const pad = (n) => String(n).padStart(2, '0');
-            const toLocalDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-            const today = new Date();
-            const yesterday = new Date(today);
-            yesterday.setDate(yesterday.getDate() - 1);
-            const todayStr = toLocalDay(today);
-            const yesterdayStr = toLocalDay(yesterday);
-            if (dateStr === todayStr) {
-              return 'Hoy';
-            } else if (dateStr === yesterdayStr) {
-              return 'Ayer';
-            } else {
-              return date.toLocaleDateString('es-ES', { 
-                day: '2-digit', 
-                month: '2-digit',
-                year: '2-digit'
-              });
-            }
-          };
-
-        // Función de prueba súper simple para debug
-        window.testBasic = async function() {
-          console.log('🔍 === PRUEBA BÁSICA ===');
-          
-          // 1. Verificar Firebase
-          console.log('1. Verificando Firebase...');
-          if (typeof db === 'undefined') {
-            console.error('❌ db no está definido');
-            return;
-          }
-          console.log('✅ Firebase db disponible');
-          
-          // 2. Verificar sets
-          console.log('2. Verificando sets...');
-          console.log('vipSet:', typeof vipSet, vipSet);
-          console.log('z0VipSet:', typeof z0VipSet, z0VipSet);
-          console.log('donadorSet:', typeof donadorSet, donadorSet);
-          
-          // 3. Intentar leer datos directamente de Firebase
-          console.log('3. Leyendo datos directamente de Firebase...');
-          try {
-            const vipSnapshot = await db.collection('vipUsers').get();
-            console.log('VIP users en Firebase:', vipSnapshot.size);
-            vipSnapshot.forEach(doc => {
-              console.log('- VIP:', doc.id, doc.data());
-            });
-            
-            const z0VipSnapshot = await db.collection('z0VipUsers').get();
-            console.log('Z0-VIP users en Firebase:', z0VipSnapshot.size);
-            z0VipSnapshot.forEach(doc => {
-              console.log('- Z0-VIP:', doc.id, doc.data());
-            });
-            
-            const donadorSnapshot = await db.collection('donadorUsers').get();
-            console.log('Donador users en Firebase:', donadorSnapshot.size);
-            donadorSnapshot.forEach(doc => {
-              console.log('- Donador:', doc.id, doc.data());
-            });
-            
-          } catch (error) {
-            console.error('❌ Error leyendo Firebase:', error);
-            return;
-          }
-          
-          // 4. Intentar escribir datos de prueba
-          console.log('4. Probando escritura en Firebase...');
-          try {
-            const testUser = 'test_user_' + Date.now();
-            const testData = {
-              points: 100,
-              level: 1,
-              achievements: ['test_achievement'],
-              lastUpdated: new Date()
-            };
-            
-            await db.collection('userStats').doc(testUser).set(testData);
-            console.log('✅ Escritura exitosa para:', testUser);
-            
-            // Leer de vuelta para confirmar
-            const readBack = await db.collection('userStats').doc(testUser).get();
-            if (readBack.exists) {
-              console.log('✅ Lectura confirmada:', readBack.data());
-              
-              // Limpiar datos de prueba
-              await db.collection('userStats').doc(testUser).delete();
-              console.log('✅ Datos de prueba eliminados');
-            }
-            
-          } catch (error) {
-            console.error('❌ Error en escritura/lectura:', error);
-          }
-          
-          console.log('🔍 === FIN PRUEBA BÁSICA ===');
-        };
-          
-          return `
-            <div class="search-result" data-day="${it.day || ''}" tabindex="0" title="Click para ir a la fecha: ${formatDate(it.day)}">
+        
+        // Usar el helper createSearchResultItemHTML si está disponible, o definir la lógica aquí
+        const createItem = (typeof createSearchResultItemHTML === 'function') 
+          ? createSearchResultItemHTML 
+          : (it) => {
+            // Fallback por si no se cargó el helper
+             return `
+            <div class="search-result" data-day="${it.day || ''}" tabindex="0">
               <span class="sr-song">${it.cancion}</span>
               <span class="sr-artist">${it.artista}</span>
-              <span class="sr-user">${it.usuario}</span>
-              <span class="sr-date">${formatDate(it.day)}</span>
-              <span class="sr-arrow">→</span>
-            </div>
-          `;
-        }).join('');
+            </div>`;
+          };
+
+        const list = rows.slice(0, 10).map(it => createItem(it)).join('');
+        
         searchResults.innerHTML = list;
         searchResults.hidden = false;
       }
