@@ -720,11 +720,11 @@
       }
 
       function getVipUsers() {
-        const arr = JSON.parse(localStorage.getItem('vip_users') || '[]');
+        const arr = JSON.parse(localStorage.getItem('vipUsers') || '[]');
         return Array.isArray(arr) ? arr : [];
       }
       function setVipUsers(arr) {
-        localStorage.setItem('vip_users', JSON.stringify(arr));
+        localStorage.setItem('vipUsers', JSON.stringify(arr));
       }
       function renderVipList() {
         const vipUsers = getVipUsers();
@@ -782,22 +782,34 @@
         }
       });
 
-      vipAddBtn?.addEventListener('click', () => {
-        const raw = usersSelectEl?.value || '';
-        const user = normUser(raw);
-        if (!user) {
-          alert('Selecciona un usuario registrado.');
-          return;
-        }
-        const vipUsers = getVipUsers();
-        if (vipUsers.includes(user)) {
-          alert('Ese usuario ya es VIP.');
-          return;
-        }
-        vipUsers.push(user);
-        setVipUsers(vipUsers);
-        renderVipList();
-      });
+      vipAddBtn?.addEventListener('click', async () => {
+          const raw = usersSelectEl?.value || '';
+          const user = normUser(raw);
+          if (!user) {
+            alert('Selecciona un usuario registrado.');
+            return;
+          }
+          const vipUsers = getVipUsers();
+          if (vipUsers.includes(user)) {
+            alert('Ese usuario ya es VIP.');
+            return;
+          }
+          
+          try {
+            await db.collection('vipUsers').doc(user).set({ 
+              name: user,
+              activatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            
+            vipUsers.push(user);
+            setVipUsers(vipUsers);
+            renderVipList();
+            alert('Usuario VIP agregado correctamente.');
+          } catch (err) {
+            console.error('Error guardando VIP:', err);
+            alert('Error al guardar VIP en la nube.');
+          }
+        });
 
       vipListEl?.addEventListener('click', (e) => {
         const btn = e.target.closest('.remove-btn');

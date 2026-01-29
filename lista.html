@@ -704,6 +704,7 @@
               <div class="admin-list-section">
                 <strong>Usuarios VIP:</strong>
                 <ul id="vip-list" class="vip-list"></ul>
+
               </div>
             </div>
           </div>
@@ -3587,12 +3588,34 @@
         db.collection('vipUsers').onSnapshot((snap) => {
           console.log(`📊 VIP snapshot recibido: ${snap.size} documentos`);
           window.vipSet = new Set();
+          window.vipMap = new Map();
           vipSet = window.vipSet;
           vipListEl.innerHTML = '';
           snap.forEach((doc) => {
-            const { name } = doc.data();
+            const data = doc.data();
+            const { name, activatedAt } = data;
+
+            // AUTO-CORRECCIÓN: Si no tiene fecha de activación, asignar fecha actual
+            if (name && !activatedAt) {
+               console.log(`🔧 Auto-corrigiendo fecha VIP para: ${name}`);
+               doc.ref.set({
+                 activatedAt: firebase.firestore.FieldValue.serverTimestamp()
+               }, { merge: true }).catch(e => console.error('Error auto-fix VIP:', e));
+            }
+
             if (name) {
-              vipSet.add(String(name).trim().toLowerCase());
+              const normalizedName = String(name).trim().toLowerCase();
+              vipSet.add(normalizedName);
+              
+              let activationDate = null;
+              if (activatedAt) {
+                 try {
+                   const d = activatedAt.toDate ? activatedAt.toDate() : new Date(activatedAt);
+                   activationDate = d.toISOString().split('T')[0];
+                 } catch(e) { console.warn('Fecha VIP inválida:', e); }
+              }
+              window.vipMap.set(normalizedName, { activatedAt: activationDate });
+
               const li = document.createElement('li');
               li.innerHTML = `
                 <span>${name}</span>
@@ -4145,7 +4168,10 @@
           return;
         }
         try {
-          await db.collection('vipUsers').doc(name).set({ name }, { merge: true });
+          await db.collection('vipUsers').doc(name).set({ 
+            name,
+            activatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
         } catch (err) {
           console.error('Error al agregar VIP:', err);
           alert('No se pudo agregar el usuario a VIP. Revisa reglas/permisos.');
@@ -8108,7 +8134,33 @@
           }
         } catch (_) {}
         const base = playedCount * 25;
-        let vipBonus = isVip ? playedCount * 40 : 0;
+        let vipBonus = 0;
+        
+        // Calcular Bonus VIP respetando fecha de activación
+        if (isVip) {
+           let vipActivationDate = null;
+           if (window.vipMap && window.vipMap.has(unameLc)) {
+              vipActivationDate = window.vipMap.get(unameLc).activatedAt;
+           } else if (window.vipMap && window.vipMap.has(rawLc)) {
+              vipActivationDate = window.vipMap.get(rawLc).activatedAt;
+           }
+           
+           if (vipActivationDate) {
+              let vipEligibleSongs = 0;
+              detail.forEach(d => {
+                 if (d.day >= vipActivationDate) {
+                    vipEligibleSongs += d.played;
+                 }
+              });
+              vipBonus = vipEligibleSongs * 40;
+              console.log(`💎 VIP Bonus calculado desde ${vipActivationDate}: ${vipEligibleSongs} canciones (${vipBonus} pts)`);
+           } else {
+              // Comportamiento legacy: todas las canciones cuentan si no hay fecha
+              vipBonus = playedCount * 40;
+              // console.log(`💎 VIP Bonus legacy (sin fecha): ${playedCount} canciones (${vipBonus} pts)`);
+           }
+        }
+        
         let dailyBonus = activeDaysValid * 5;
         const uniqueArtistsPlayed = Array.from(playedArtistsSet).filter(Boolean).length;
         let achievements = 0;
