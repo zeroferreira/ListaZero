@@ -3407,40 +3407,90 @@
         if (!query) return { results: [], lastDoc: null };
         const qStr = String(query).toLowerCase();
         
-        // Búsqueda en Firestore por canción (prefijo)
-        // Nota: Esto es case-sensitive por defecto en Firestore.
-        // Se asume que el usuario busca empezando con Mayúscula o que los datos están normalizados.
-        // Para mejorar, idealmente deberíamos tener un campo 'keywords' o 'searchKey' en minúsculas.
-        // Como fallback, buscaremos coincidencias exactas de lo que escribe el usuario.
+        // Estrategia de búsqueda mejorada:
+        // 1. Intentar buscar por 'cancion' (prefijo)
+        // 2. Intentar buscar por 'artista' (prefijo)
+        // 3. Intentar buscar por 'usuario' (prefijo)
+        // 4. Combinar resultados y eliminar duplicados
+        // Nota: Como no podemos hacer OR eficiente en cliente con SDK v8/v9 compat sin índices complejos,
+        // haremos consultas paralelas limitadas y combinaremos en memoria.
         
-        // Capitalizar primera letra para mejorar probabilidad de match (convención común)
         const capitalized = query.charAt(0).toUpperCase() + query.slice(1);
+        const upper = query.toUpperCase();
+        const lower = query.toLowerCase(); // Por si acaso hay datos en minúsculas
+        
+        // Si hay paginación (lastDoc), la cosa se complica para búsquedas paralelas combinadas.
+        // Simplificación: Si es "cargar más", solo seguiremos la estrategia que dio resultados antes o
+        // reseteamos la lógica.
+        // Para simplificar la UX actual: haremos una búsqueda nueva combinada de los primeros N resultados de cada criterio.
+        // La paginación real en búsquedas combinadas cliente es compleja. 
+        // Asumiremos que el usuario quiere ver "lo mejor" de cada categoría.
         
         try {
-          let q = db.collection('solicitudes')
+          const limitPerCategory = 10;
+          
+          // Consultas paralelas
+          const promises = [];
+          
+          // 1. Por Canción (Capitalized)
+          promises.push(db.collection('solicitudes')
             .where('cancion', '>=', capitalized)
             .where('cancion', '<=', capitalized + '\uf8ff')
-            .orderBy('cancion')
-            .limit(20);
+            .limit(limitPerCategory)
+            .get());
             
-          if (lastDoc) {
-            q = q.startAfter(lastDoc);
-          }
+          // 2. Por Artista (Capitalized)
+          promises.push(db.collection('solicitudes')
+            .where('artista', '>=', capitalized)
+            .where('artista', '<=', capitalized + '\uf8ff')
+            .limit(limitPerCategory)
+            .get());
+            
+          // 3. Por Usuario (minusculas o exacto, usualmente usuario se guarda tal cual viene)
+          // Probamos con lo que escribió el usuario tal cual y en minusculas
+          promises.push(db.collection('solicitudes')
+            .where('usuario', '>=', qStr)
+            .where('usuario', '<=', qStr + '\uf8ff')
+            .limit(limitPerCategory)
+            .get());
+
+          // Ejecutar todas
+          const snapshots = await Promise.all(promises);
           
-          const snap = await q.get();
-          const results = [];
-          snap.forEach(doc => {
-            const d = doc.data();
-            results.push({
-              id: doc.id,
-              ...d,
-              // Asegurar campos necesarios para render
-              day: d.day || getSongDay(d),
-              ts: d.ts || d.timestamp || d.time
+          const resultsMap = new Map();
+          
+          snapshots.forEach(snap => {
+            snap.forEach(doc => {
+              // Evitar duplicados
+              if (!resultsMap.has(doc.id)) {
+                 const d = doc.data();
+                 resultsMap.set(doc.id, {
+                   id: doc.id,
+                   ...d,
+                   day: d.day || getSongDay(d),
+                   ts: d.ts || d.timestamp || d.time
+                 });
+              }
             });
           });
           
-          return { results, lastDoc: snap.docs[snap.docs.length - 1] || null };
+          // Convertir a array
+          let results = Array.from(resultsMap.values());
+          
+          // Ordenar resultados en memoria (mejor match primero?)
+          // Prioridad: coincidencia exacta > empieza con > contiene
+          results.sort((a, b) => {
+             // Lógica simple: fecha más reciente primero
+             const ta = a.ts && a.ts.toMillis ? a.ts.toMillis() : 0;
+             const tb = b.ts && b.ts.toMillis ? b.ts.toMillis() : 0;
+             return tb - ta;
+          });
+          
+          // Simular paginación o simplemente devolver todo lo encontrado (hasta 30 items)
+          // Para esta versión simple, devolvemos todo y lastDoc null (desactivamos "cargar más" real por ahora para búsquedas complejas)
+          // O devolvemos el último de la lista para cumplir la firma, aunque no funcione perfecto el next cursor.
+          
+          return { results, lastDoc: null };
         } catch (e) {
           console.error("Error buscando solicitudes:", e);
           return { results: [], lastDoc: null };
