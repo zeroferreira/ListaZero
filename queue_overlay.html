@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Cola de Pedidos - Zero FM</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap');
+
+    :root {
+      /* Variables Configurables */
+      --queue-width: 350px;
+      --queue-bg-color: rgba(0, 0, 0, 1);
+      --queue-bg-color-transparent: rgba(0, 0, 0, 0.6);
+      --queue-bg-color-tertiary: rgba(0, 0, 0, 0.3);
+      --queue-accent-color: #00e5ff;
+      --queue-text-color: #ffffff;
+      --queue-font-family: 'Montserrat', sans-serif;
+      --queue-font-size: 16px;
+      --queue-item-spacing: 15px;
+      --queue-border-radius: 6px;
+      --queue-item-min-height: 80px;
+      --queue-padding: 15px;
+      --queue-text-gap: 4px;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: transparent; /* Importante para OBS */
+      overflow: hidden;
+      font-family: var(--queue-font-family);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center; /* Centrado horizontal */
+      justify-content: flex-start; /* Lista vertical desde arriba */
+    }
+
+    #queue-container {
+      margin: 20px;
+      width: var(--queue-width);
+      display: flex;
+      flex-direction: column;
+      gap: var(--queue-item-spacing);
+    }
+
+    .queue-item {
+      background: transparent;
+      margin-bottom: var(--queue-item-spacing); /* Gap */
+      display: flex;
+      flex-direction: column;
+      /* Animación de layout (colapso al salir) */
+      transition: max-height 0.8s cubic-bezier(0.4, 0, 0.2, 1), 
+                  margin-bottom 0.8s cubic-bezier(0.4, 0, 0.2, 1), 
+                  opacity 0.5s ease;
+      max-height: 200px; /* Aumentado para permitir alturas mayores */
+      overflow: visible; /* Importante para ver el elemento salir volando */
+    }
+
+    /* Caja visual interna */
+    .queue-item-inner {
+      box-sizing: border-box; /* Incluir padding en el cálculo de altura */
+      background: var(--queue-bg-color);
+      border-left: 5px solid var(--queue-accent-color); 
+      border-radius: var(--queue-border-radius);
+      min-height: var(--queue-item-min-height);
+      padding: var(--queue-padding);
+      color: var(--queue-text-color);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+      display: flex;
+      flex-direction: column;
+      justify-content: center; /* Centrar verticalmente si la altura es grande */
+      
+      /* Animación de Entrada Base */
+      opacity: 0;
+      transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    /* Estilos para tarjetas en cola (2ª) */
+    .queue-item:nth-child(2) .queue-item-inner {
+      background: var(--queue-bg-color-transparent, var(--queue-bg-color));
+    }
+
+    /* Estilos para tarjetas en cola (3ª en adelante) */
+    .queue-item:nth-child(n+3) .queue-item-inner {
+      background: var(--queue-bg-color-tertiary, var(--queue-bg-color-transparent));
+    }
+
+    .queue-item:nth-child(n+2) .item-header {
+      display: none !important;
+    }
+
+    /* Variantes de Entrada (se aplican con .show) */
+    
+    /* 1. Slide Left (Original/Default: translateX(-30px)) */
+    .anim-entry-slide-left .queue-item-inner { transform: translateX(-30px); }
+    .anim-entry-slide-left .queue-item.show .queue-item-inner { opacity: 1; transform: translateX(0); }
+
+    /* 2. Slide Up */
+    .anim-entry-slide-up .queue-item-inner { transform: translateY(30px); }
+    .anim-entry-slide-up .queue-item.show .queue-item-inner { opacity: 1; transform: translateY(0); }
+
+    /* 3. Fade */
+    .anim-entry-fade .queue-item-inner { transform: scale(1); }
+    .anim-entry-fade .queue-item.show .queue-item-inner { opacity: 1; }
+
+    /* 4. Zoom In */
+    .anim-entry-zoom .queue-item-inner { transform: scale(0.5); }
+    .anim-entry-zoom .queue-item.show .queue-item-inner { opacity: 1; transform: scale(1); }
+
+
+    /* Variantes de Salida (se aplican con .removing) */
+    /* Nota: .removing en el wrapper colapsa height/margin. La animación visual va en inner */
+    .queue-item.removing {
+      max-height: 0;
+      margin-bottom: 0;
+      opacity: 0; /* Fade out container wrapper too */
+    }
+
+    /* 1. Slide Right (Original/Default) */
+    .anim-exit-slide-right .queue-item.removing .queue-item-inner { animation: slideOutRight 0.8s forwards; }
+
+    /* 2. Slide Down */
+    .anim-exit-slide-down .queue-item.removing .queue-item-inner { animation: slideOutDown 0.8s forwards; }
+
+    /* 3. Fade Out */
+    .anim-exit-fade .queue-item.removing .queue-item-inner { animation: fadeOut 0.8s forwards; }
+
+    /* 4. Zoom Out */
+    .anim-exit-zoom .queue-item.removing .queue-item-inner { animation: zoomOut 0.8s forwards; }
+
+
+    /* Keyframes */
+    @keyframes slideOutRight {
+      to { opacity: 0; transform: translateX(100%); }
+    }
+    @keyframes slideOutDown {
+      to { opacity: 0; transform: translateY(50px); }
+    }
+    @keyframes fadeOut {
+      to { opacity: 0; }
+    }
+    @keyframes zoomOut {
+      to { opacity: 0; transform: scale(0.5); }
+    }
+
+    .item-header {
+      font-size: calc(var(--queue-font-size) * 0.7); /* 11px relativo a 16px */
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--queue-accent-color);
+      font-weight: 800;
+      margin-bottom: var(--queue-text-gap);
+      display: flex;
+      justify-content: space-between;
+    }
+    .hide-header .item-header { display: none !important; }
+
+    .item-song {
+      font-size: calc(var(--queue-font-size) * 1.125); /* 18px */
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: calc(var(--queue-text-gap) * 0.5);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .item-artist {
+      font-size: calc(var(--queue-font-size) * 0.875); /* 14px */
+      color: rgba(255,255,255,0.7); /* Usar opacidad para adaptarse al color de texto base */
+      margin-bottom: var(--queue-text-gap);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hide-artist .item-artist { display: none !important; }
+
+    .item-user {
+      font-size: calc(var(--queue-font-size) * 0.7); /* 11px */
+      color: rgba(255,255,255,0.5);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .hide-user .item-user { display: none !important; }
+
+    .user-badge {
+      background: #333;
+      padding: 1px 6px;
+      border-radius: 3px;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    /* Animación de posición */
+    .queue-pos-1 .queue-item-inner { border-left-color: var(--queue-accent-color); }
+    .queue-pos-2 .queue-item-inner { border-left-color: var(--queue-accent-color); opacity: 0.9; filter: brightness(0.8); }
+    .queue-pos-3 .queue-item-inner { border-left-color: var(--queue-accent-color); opacity: 0.8; filter: brightness(0.6); }
+
+    /* Panel de Configuración */
+    #settings-btn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      font-size: 24px;
+      background: rgba(0,0,0,0.5);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      cursor: pointer;
+      z-index: 10001;
+      opacity: 0.2;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #settings-btn:hover { 
+      opacity: 1; 
+      background: rgba(0,0,0,0.8);
+      transform: rotate(90deg);
+    }
+
+    #settings-panel {
+      position: fixed;
+      top: 70px;
+      left: 20px;
+      transform: none;
+      transform-origin: top left;
+      background: #1a1a1a;
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      width: 300px;
+      z-index: 10002;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+      display: none;
+      max-height: 80vh;
+      overflow-y: auto;
+      font-family: sans-serif;
+    }
+    #settings-panel.open { 
+      display: block; 
+      animation: menu-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes menu-pop {
+      from { opacity: 0; transform: scale(0.5); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    
+    .settings-group { margin-bottom: 15px; }
+    .settings-group label { display: block; margin-bottom: 5px; font-size: 14px; color: #ccc; }
+    .settings-group input[type="text"],
+    .settings-group input[type="number"], 
+    .settings-group select {
+      width: 100%;
+      padding: 8px;
+      background: #333;
+      border: 1px solid #444;
+      color: white;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .settings-group input[type="color"] {
+      width: 100%;
+      height: 40px;
+      border: none;
+      background: none;
+      cursor: pointer;
+    }
+    .settings-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-save { background: #00e5ff; color: #000; }
+    .btn-reset { background: #444; color: #fff; }
+
+  </style>
+  
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+  <div id="queue-container">
+    <!-- Items se inyectarán aquí -->
+  </div>
+
+  <!-- Botón de Configuración -->
+  <button id="settings-btn" onclick="toggleSettings()" title="Configurar Overlay">⚙️</button>
+
+  <!-- Panel de Configuración -->
+  <div id="settings-panel">
+    <h3 style="margin-top:0; border-bottom: 1px solid #333; padding-bottom: 10px;">Configuración</h3>
+    
+    <div class="settings-group">
+      <label>Ancho de Tarjeta (px)</label>
+      <input type="number" id="inp-width" value="350">
+    </div>
+
+    <div class="settings-group">
+      <label>Alto Mínimo de Tarjeta (px)</label>
+      <input type="number" id="inp-minHeight" value="80" min="0">
+    </div>
+
+    <div class="settings-group">
+      <label>Espacio entre Tarjetas (px)</label>
+      <input type="number" id="inp-spacing" value="15" min="0">
+    </div>
+
+    <div class="settings-group">
+      <label>Radio de Borde (px)</label>
+      <input type="number" id="inp-borderRadius" value="6">
+    </div>
+
+    <div class="settings-group">
+      <label>Relleno (Padding) (px)</label>
+      <input type="number" id="inp-padding" value="15" min="0">
+    </div>
+
+    <div class="settings-group">
+      <label>Espaciado Textos (Gap) (px)</label>
+      <input type="number" id="inp-textGap" value="4" min="0">
+    </div>
+
+    <div class="settings-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
+       <label style="width: 100%;">Visibilidad de Elementos</label>
+       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+         <input type="checkbox" id="inp-showHeader" checked> Cabecera
+       </label>
+       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+         <input type="checkbox" id="inp-showArtist" checked> Artista
+       </label>
+       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+         <input type="checkbox" id="inp-showUser" checked> Usuario
+       </label>
+    </div>
+
+    <div class="settings-group">
+      <label>Animación de Entrada</label>
+      <select id="inp-animEntry">
+        <option value="anim-entry-slide-left">Slide Left (Default)</option>
+        <option value="anim-entry-slide-up">Slide Up</option>
+        <option value="anim-entry-fade">Fade In</option>
+        <option value="anim-entry-zoom">Zoom In</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Animación de Salida</label>
+      <select id="inp-animExit">
+        <option value="anim-exit-slide-right">Slide Right (Default)</option>
+        <option value="anim-exit-slide-down">Slide Down</option>
+        <option value="anim-exit-fade">Fade Out</option>
+        <option value="anim-exit-zoom">Zoom Out</option>
+      </select>
+    </div>
+
+
+    <div class="settings-group">
+      <label>Fuente</label>
+      <select id="inp-font">
+        <option value="'Montserrat', sans-serif">Montserrat</option>
+        <option value="'Roboto', sans-serif">Roboto</option>
+        <option value="'Open Sans', sans-serif">Open Sans</option>
+        <option value="'Lato', sans-serif">Lato</option>
+        <option value="sans-serif">System Default</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño de Fuente Base (px)</label>
+      <input type="number" id="inp-fontSize" value="16">
+    </div>
+
+    <div class="settings-group">
+      <label>Color de Acento</label>
+      <input type="color" id="inp-accent" value="#00e5ff">
+    </div>
+
+    <div class="settings-group">
+      <label>Color de Fondo (Opacidad se maneja auto)</label>
+      <input type="color" id="inp-bg" value="#000000">
+    </div>
+
+    <div class="settings-group">
+      <label>Opacidad Tarjeta Principal (0-100%)</label>
+      <input type="range" id="inp-primaryOpacity" min="0" max="100" value="100" oninput="document.getElementById('primary-opacity-val').innerText = this.value + '%'">
+      <span id="primary-opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">100%</span>
+    </div>
+
+    <div class="settings-group">
+      <label>Opacidad Tarjetas Cola (0-100%)</label>
+      <input type="range" id="inp-secondaryOpacity" min="0" max="100" value="60" oninput="document.getElementById('opacity-val').innerText = this.value + '%'">
+      <span id="opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">60%</span>
+    </div>
+
+    <div class="settings-group">
+      <label>Color de Texto</label>
+      <input type="color" id="inp-text" value="#ffffff">
+    </div>
+
+    <div class="settings-actions">
+      <button class="btn btn-reset" onclick="resetSettings()">Reset</button>
+      <button class="btn btn-save" onclick="saveSettings()">Guardar</button>
+    </div>
+  </div>
+
+  <!-- Controles de Depuración -->
+  <div id="debug-controls" style="position: fixed; top: 20px; right: 20px; opacity: 0.2; transition: opacity 0.3s; z-index: 10000;">
+    <button onclick="simulateQueueRequest()" style="padding: 10px; cursor: pointer;">➕ Simular Pedido</button>
+    <button onclick="simulateToggleFirst()" style="padding: 10px; cursor: pointer;">✅ Marcar como Reproducida</button>
+  </div>
+
+  <script>
+    // --- Configuración / Settings Logic ---
+    const defaultSettings = {
+      width: 350,
+      minHeight: 80,
+      spacing: 15,
+      padding: 15,
+      textGap: 4,
+      borderRadius: 6,
+      showHeader: true,
+      showArtist: true,
+      showUser: true,
+      animEntry: 'anim-entry-slide-left',
+      animExit: 'anim-exit-slide-right',
+      font: "'Montserrat', sans-serif",
+      fontSize: 16,
+      accent: "#00e5ff",
+      bg: "#000000",
+      primaryOpacity: 100,
+      secondaryOpacity: 60,
+      text: "#ffffff"
+    };
+
+    function loadSettings() {
+      const saved = localStorage.getItem('queue_overlay_settings');
+      // Merge saved with default to ensure new keys exist
+      const settings = saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+      applySettings(settings);
+      
+      // Update Inputs
+      document.getElementById('inp-width').value = settings.width;
+      document.getElementById('inp-minHeight').value = settings.minHeight;
+      document.getElementById('inp-spacing').value = settings.spacing !== undefined ? settings.spacing : 15;
+      document.getElementById('inp-padding').value = settings.padding !== undefined ? settings.padding : 15;
+      document.getElementById('inp-textGap').value = settings.textGap !== undefined ? settings.textGap : 4;
+      document.getElementById('inp-borderRadius').value = settings.borderRadius;
+      
+      document.getElementById('inp-showHeader').checked = settings.showHeader !== undefined ? settings.showHeader : true;
+      document.getElementById('inp-showArtist').checked = settings.showArtist !== undefined ? settings.showArtist : true;
+      document.getElementById('inp-showUser').checked = settings.showUser !== undefined ? settings.showUser : true;
+
+      document.getElementById('inp-animEntry').value = settings.animEntry;
+      document.getElementById('inp-animExit').value = settings.animExit;
+      
+      document.getElementById('inp-font').value = settings.font;
+      document.getElementById('inp-fontSize').value = settings.fontSize;
+      document.getElementById('inp-accent').value = settings.accent;
+      document.getElementById('inp-bg').value = settings.bg;
+      
+      const primaryOpacityVal = settings.primaryOpacity !== undefined ? settings.primaryOpacity : 100;
+      document.getElementById('inp-primaryOpacity').value = primaryOpacityVal;
+      document.getElementById('primary-opacity-val').innerText = primaryOpacityVal + '%';
+
+      const opacityVal = settings.secondaryOpacity !== undefined ? settings.secondaryOpacity : 60;
+      document.getElementById('inp-secondaryOpacity').value = opacityVal;
+      document.getElementById('opacity-val').innerText = opacityVal + '%';
+
+      document.getElementById('inp-text').value = settings.text;
+    }
+
+    function applySettings(s) {
+      const root = document.documentElement;
+      root.style.setProperty('--queue-width', s.width + 'px');
+      root.style.setProperty('--queue-item-min-height', s.minHeight + 'px');
+      root.style.setProperty('--queue-item-spacing', (s.spacing !== undefined ? s.spacing : 15) + 'px');
+      root.style.setProperty('--queue-padding', (s.padding !== undefined ? s.padding : 15) + 'px');
+      root.style.setProperty('--queue-text-gap', (s.textGap !== undefined ? s.textGap : 4) + 'px');
+      root.style.setProperty('--queue-border-radius', s.borderRadius + 'px');
+      
+      // Set Global Animation Classes on Container
+      const container = document.getElementById('queue-container');
+      // Limpiar clases de animación previas
+      container.className = ''; 
+      // Añadir las seleccionadas
+      container.classList.add(s.animEntry);
+      container.classList.add(s.animExit);
+      
+      // Toggle visibility classes
+      container.classList.toggle('hide-header', s.showHeader === false);
+      container.classList.toggle('hide-artist', s.showArtist === false);
+      container.classList.toggle('hide-user', s.showUser === false);
+
+      root.style.setProperty('--queue-font-family', s.font);
+      root.style.setProperty('--queue-font-size', s.fontSize + 'px');
+      root.style.setProperty('--queue-accent-color', s.accent);
+      root.style.setProperty('--queue-text-color', s.text);
+      
+      const r = parseInt(s.bg.substr(1,2), 16);
+      const g = parseInt(s.bg.substr(3,2), 16);
+      const b = parseInt(s.bg.substr(5,2), 16);
+      
+      const primaryOpacity = (s.primaryOpacity !== undefined ? s.primaryOpacity : 100) / 100;
+      const opacity = (s.secondaryOpacity !== undefined ? s.secondaryOpacity : 60) / 100;
+      const tertiaryOpacity = Math.max(0, opacity * 0.5); // 50% de la opacidad secundaria
+      
+      root.style.setProperty('--queue-bg-color', `rgba(${r},${g},${b},${primaryOpacity})`);
+      root.style.setProperty('--queue-bg-color-transparent', `rgba(${r},${g},${b},${opacity})`);
+      root.style.setProperty('--queue-bg-color-tertiary', `rgba(${r},${g},${b},${tertiaryOpacity})`);
+    }
+
+    function getSettingsFromInputs() {
+      return {
+        width: document.getElementById('inp-width').value,
+        minHeight: document.getElementById('inp-minHeight').value,
+        spacing: document.getElementById('inp-spacing').value,
+        padding: document.getElementById('inp-padding').value,
+        textGap: document.getElementById('inp-textGap').value,
+        borderRadius: document.getElementById('inp-borderRadius').value,
+        showHeader: document.getElementById('inp-showHeader').checked,
+        showArtist: document.getElementById('inp-showArtist').checked,
+        showUser: document.getElementById('inp-showUser').checked,
+        animEntry: document.getElementById('inp-animEntry').value,
+        animExit: document.getElementById('inp-animExit').value,
+        font: document.getElementById('inp-font').value,
+        fontSize: document.getElementById('inp-fontSize').value,
+        accent: document.getElementById('inp-accent').value,
+        bg: document.getElementById('inp-bg').value,
+        primaryOpacity: document.getElementById('inp-primaryOpacity').value,
+        secondaryOpacity: document.getElementById('inp-secondaryOpacity').value,
+        text: document.getElementById('inp-text').value
+      };
+    }
+
+    function previewSettings() {
+      const settings = getSettingsFromInputs();
+      applySettings(settings);
+    }
+
+    function saveSettings() {
+      const settings = getSettingsFromInputs();
+      localStorage.setItem('queue_overlay_settings', JSON.stringify(settings));
+      applySettings(settings);
+      toggleSettings(); // close panel
+    }
+    
+    // Listeners para vista previa en tiempo real
+    document.addEventListener('DOMContentLoaded', () => {
+        // Text/Number inputs
+        ['inp-width', 'inp-minHeight', 'inp-spacing', 'inp-padding', 'inp-textGap', 'inp-borderRadius', 'inp-animEntry', 'inp-animExit', 
+         'inp-font', 'inp-fontSize', 'inp-accent', 'inp-bg', 'inp-primaryOpacity', 'inp-secondaryOpacity', 'inp-text'].forEach(id => {
+           const el = document.getElementById(id);
+           if(el) {
+             el.addEventListener('input', previewSettings);
+             el.addEventListener('change', previewSettings);
+           }
+        });
+        
+        // Checkboxes
+        ['inp-showHeader', 'inp-showArtist', 'inp-showUser'].forEach(id => {
+           const el = document.getElementById(id);
+           if(el) {
+             el.addEventListener('change', previewSettings);
+           }
+        });
+    });
+
+    function resetSettings() {
+      if(confirm('¿Restablecer valores por defecto?')) {
+        applySettings(defaultSettings);
+        localStorage.removeItem('queue_overlay_settings');
+        loadSettings(); // reload inputs
+        toggleSettings();
+      }
+    }
+
+    function toggleSettings() {
+      const panel = document.getElementById('settings-panel');
+      panel.classList.toggle('open');
+    }
+
+    // Inicializar settings
+    loadSettings();
+
+    // Configuración de Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+      authDomain: "zero-strom-web.firebaseapp.com",
+      projectId: "zero-strom-web",
+      storageBucket: "zero-strom-web.firebasestorage.app",
+      messagingSenderId: "758369466349",
+      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const container = document.getElementById('queue-container');
+    
+    // Estado local
+    let allRequests = []; // Todas las solicitudes del día
+    let playedSongIds = new Set(); // IDs de canciones ya reproducidas
+    let visibleQueue = []; // Las 3 canciones actualmente mostradas
+
+    // Utilidad: Obtener clave de fecha local (YYYY-MM-DD)
+    function getLocalDateKey(ts) {
+      const d = ts ? new Date(ts) : new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dd}`;
+    }
+
+    // Utilidad: Generar ID de canción (debe coincidir con lista.html)
+    function generateSongId(req) {
+      // Necesitamos recrear el formato HH:MM desde el timestamp
+      const d = req.ts && req.ts.toDate ? req.ts.toDate() : new Date(req.ts || Date.now());
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const hora = `${hh}:${mm}`;
+      
+      return `${req.usuario}-${req.cancion}-${req.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+    }
+
+    function createQueueItem(req, index) {
+      const div = document.createElement('div');
+      // Wrapper con clases de posición
+      div.className = `queue-item queue-pos-${index + 1}`; 
+      div.dataset.songId = generateSongId(req);
+      
+      div.innerHTML = `
+        <div class="queue-item-inner">
+           <div class="item-header">
+              <span>#${index + 1}</span>
+              <span>En cola</span>
+           </div>
+           <div class="item-song">${req.cancion}</div>
+           <div class="item-artist">${req.artista}</div>
+           <div class="item-user">
+              Pedido por <span class="user-badge">${req.usuario}</span>
+           </div>
+        </div>
+      `;
+      return div;
+    }
+
+    function renderQueue() {
+      // 1. Filtrar solicitudes que NO están en playedSongIds
+      const pendingRequests = allRequests.filter(req => {
+        const id = generateSongId(req);
+        return !playedSongIds.has(id);
+      });
+
+      // 2. Tomar las primeras 3 (las más antiguas, FIFO)
+      const nextThree = pendingRequests.slice(0, 3);
+      const nextThreeIds = nextThree.map(req => generateSongId(req));
+
+      // 3. Lógica de Diffing (Diferencias)
+      
+      // A. Identificar REMOVIDOS (Están en DOM pero no en nextThree)
+      const currentChildren = Array.from(container.children);
+      currentChildren.forEach(child => {
+        // Ignorar nodos que ya se están eliminando
+        if (child.classList.contains('removing')) return;
+        
+        const id = child.dataset.songId;
+        // Si tiene ID y NO está en la nueva lista -> Se va
+        if (id && !nextThreeIds.includes(id)) {
+           // Marcar como "Saliendo" (activa animaciones CSS)
+           child.classList.add('removing');
+           
+           // Eliminar del DOM después de la animación
+           setTimeout(() => {
+             if (child.parentNode) child.parentNode.removeChild(child);
+           }, 800); // 800ms coincide con la transición CSS
+        }
+      });
+
+      // B. Identificar NUEVOS y ACTUALIZAR EXISTENTES
+      nextThree.forEach((req, index) => {
+        const id = generateSongId(req);
+        // Buscar si ya existe (incluso si se estaba eliminando, lo rescatamos)
+        let existingEl = container.querySelector(`.queue-item[data-song-id="${id}"]`);
+        
+        if (existingEl) {
+           // Si estaba marcado para borrar pero volvió (ej. toggle rápido), lo revivimos
+           if (existingEl.classList.contains('removing')) {
+             existingEl.classList.remove('removing');
+           }
+           
+           // Actualizar posición y textos
+           // Nota: Mantenemos la clase 'show' para que no re-anime entrada
+           existingEl.className = `queue-item queue-pos-${index + 1} show`;
+           
+           const headerSpan = existingEl.querySelector('.item-header span:first-child');
+           if (headerSpan) headerSpan.textContent = `#${index + 1}`;
+           
+           // Mover al final de la lista visual (ordenar)
+           // appendChild mueve el elemento existente
+           container.appendChild(existingEl);
+           
+        } else {
+           // Elemento NUEVO
+           const newEl = createQueueItem(req, index);
+           container.appendChild(newEl);
+           
+           // Forzar reflow y activar animación de entrada
+           requestAnimationFrame(() => {
+             newEl.classList.add('show');
+           });
+        }
+      });
+      
+      if (nextThree.length === 0) {
+        // Cola vacía
+      }
+    }
+
+    const currentDay = getLocalDateKey();
+    console.log("Escuchando día:", currentDay);
+
+    // 1. Suscripción a Solicitudes (Cola)
+    // Ordenamos por timestamp ASCENDENTE (el más viejo primero va a ser atendido primero)
+    db.collection('solicitudes')
+      .where('day', '==', currentDay)
+      .orderBy('ts', 'asc') 
+      .onSnapshot((snapshot) => {
+        const temp = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          // Añadir ID del doc por si acaso
+          temp.push({ ...data, id: doc.id });
+        });
+        allRequests = temp;
+        renderQueue();
+      }, (error) => {
+        console.error("Error en solicitudes:", error);
+      });
+
+    // 2. Suscripción a Canciones Reproducidas (Estado Toggle)
+    db.collection('playedSongs').doc(currentDay)
+      .onSnapshot((doc) => {
+        if (doc.exists) {
+          const data = doc.data();
+          const songs = data.songs || [];
+          playedSongIds = new Set(songs);
+        } else {
+          playedSongIds = new Set();
+        }
+        renderQueue();
+      }, (error) => {
+        console.error("Error en playedSongs:", error);
+      });
+
+    // --- Lógica de Simulación ---
+    const debugControls = document.getElementById('debug-controls');
+    debugControls.addEventListener('mouseenter', () => debugControls.style.opacity = '1');
+    debugControls.addEventListener('mouseleave', () => debugControls.style.opacity = '0.2');
+
+    function simulateQueueRequest() {
+      const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
+      const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
+      const users = ["UsuarioTest", "DJ_Zero", "Invitado123", "FanNumero1", "Moderador_Top"];
+
+      const randomArtist = artists[Math.floor(Math.random() * artists.length)];
+      const randomSong = songs[Math.floor(Math.random() * songs.length)];
+      const randomUser = users[Math.floor(Math.random() * users.length)];
+      
+      const now = new Date();
+      const req = {
+        usuario: randomUser,
+        cancion: randomSong,
+        artista: randomArtist,
+        ts: now, // Objeto Date directo
+        day: getLocalDateKey(now)
+      };
+
+      // Simular llegada añadiendo a la lista local
+      // (Nota: En producción real, esto vendría de Firebase)
+      allRequests.push(req);
+      // Reordenar por timestamp (aunque al añadir al final ya debería estar ordenado si es 'ahora')
+      allRequests.sort((a, b) => {
+        const ta = a.ts.toDate ? a.ts.toDate() : new Date(a.ts);
+        const tb = b.ts.toDate ? b.ts.toDate() : new Date(b.ts);
+        return ta - tb;
+      });
+      
+      renderQueue();
+    }
+
+    function simulateToggleFirst() {
+      // Identificar el primer elemento PENDIENTE (no el primero de allRequests, sino el primero visible)
+      const pendingRequests = allRequests.filter(req => {
+        const id = generateSongId(req);
+        return !playedSongIds.has(id);
+      });
+
+      if (pendingRequests.length > 0) {
+        const toToggle = pendingRequests[0];
+        const id = generateSongId(toToggle);
+        
+        console.log("Simulando toggle para:", id);
+        playedSongIds.add(id);
+        renderQueue();
+      } else {
+        alert("No hay canciones pendientes para marcar.");
+      }
+    }
+
+    // Modo test automático ?test=true
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('test') === 'true') {
+       setInterval(() => {
+         if (Math.random() > 0.3) simulateQueueRequest();
+         else simulateToggleFirst();
+       }, 3000);
+    }
+
+
+  </script>
+</body>
+</html>

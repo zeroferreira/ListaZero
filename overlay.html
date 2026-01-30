@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Overlay Pedidos - Zero FM</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap');
+
+    :root {
+      --card-width: 400px;
+      --card-bg-color: rgba(0, 0, 0, 0.85);
+      --accent-color: #ff0055;
+      --text-color: #ffffff;
+      --font-family: 'Montserrat', sans-serif;
+      --font-size-base: 16px;
+      --font-size-header: 14px;
+      --font-size-song: 24px;
+      --font-size-artist: 16px;
+      --font-size-user: 12px;
+      --card-min-height: 100px;
+      --card-border-radius: 8px;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: transparent; /* Importante para OBS */
+      overflow: hidden;
+      font-family: var(--font-family);
+      height: 100vh;
+      display: flex;
+      align-items: center; /* Centrado vertical */
+      justify-content: center; /* Centrado horizontal */
+    }
+
+    #notification-container {
+      margin: 0;
+      width: var(--card-width);
+      perspective: 1000px;
+    }
+
+    .card {
+      background: var(--card-bg-color);
+      border-left: 6px solid var(--accent-color);
+      border-radius: var(--card-border-radius);
+      min-height: var(--card-min-height);
+      padding: 20px;
+      color: var(--text-color);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      transform-origin: left center;
+      opacity: 0;
+      transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    /* Animaciones de Entrada (controladas por clase en el contenedor o tarjeta) */
+    /* Default: Flip In */
+    .anim-flip .card { transform: translateX(-50px) rotateY(90deg); }
+    .anim-flip .card.show { opacity: 1; transform: translateX(0) rotateY(0); }
+
+    /* Slide Up */
+    .anim-slide-up .card { transform: translateY(50px); }
+    .anim-slide-up .card.show { opacity: 1; transform: translateY(0); }
+
+    /* Zoom In */
+    .anim-zoom .card { transform: scale(0.5); }
+    .anim-zoom .card.show { opacity: 1; transform: scale(1); }
+
+    /* Bounce In */
+    .anim-bounce .card { transform: scale(0.8) translateY(20px); }
+    .anim-bounce .card.show { opacity: 1; transform: scale(1) translateY(0); animation: bounceEffect 0.8s; }
+
+    @keyframes bounceEffect {
+      0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
+      40% {transform: translateY(-20px);}
+      60% {transform: translateY(-10px);}
+    }
+
+
+    .header {
+      font-size: var(--font-size-header);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--accent-color);
+      font-weight: 900;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header::before {
+      content: '🎵';
+      font-size: calc(var(--font-size-song) * 1.0); /* Proporcional a canción */
+      background: var(--accent-color-bg);
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 15px;
+      animation: icon-pulse 2s infinite ease-in-out;
+      box-shadow: 0 0 15px var(--accent-color-glow);
+      border: 2px solid var(--accent-color);
+    }
+
+    @keyframes icon-pulse {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 var(--accent-color-bg); }
+      50% { transform: scale(1.1); box-shadow: 0 0 20px 0 var(--accent-color-glow); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 var(--accent-color-bg); }
+    }
+
+    /* Text Animations */
+    .text-anim-fade .song-title, .text-anim-fade .artist {
+       animation: text-fade 1s ease-out forwards;
+    }
+    @keyframes text-fade { from { opacity: 0; } to { opacity: 1; } }
+
+    .text-anim-slide .song-title { animation: text-slide 0.8s ease-out forwards; }
+    .text-anim-slide .artist { animation: text-slide 1s ease-out forwards; }
+    @keyframes text-slide { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+    .text-anim-scale .song-title, .text-anim-scale .artist { animation: text-scale 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+    @keyframes text-scale { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+
+    .song-title {
+      font-size: var(--font-size-song);
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 4px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+      /* Truncar si es muy largo */
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .artist {
+      font-size: var(--font-size-artist);
+      color: rgba(255,255,255,0.9); /* Usar opacidad para adaptarse */
+      margin-bottom: 12px;
+      font-weight: 400;
+    }
+
+    .requested-by {
+      font-size: var(--font-size-user);
+      color: rgba(255,255,255,0.7);
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .user-badge {
+      background: #333;
+      padding: 2px 8px;
+      border-radius: 4px;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    /* Animación de entrada */
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 0, 85, 0.4); } /* Debería usar accent color dinámico, pero keyframes son difíciles de inyectar var() en colores complejos si necesitamos opacidad. 
+      Pero podemos usar currentColor si seteamos color en el elemento, o simplemente simplificar */
+      /* Usaremos una variable para el color de sombra o lo dejamos fijo por simplicidad, o mejor: */
+      0% { box-shadow: 0 0 0 0 var(--accent-color); }
+      70% { box-shadow: 0 0 0 10px rgba(0,0,0,0); } /* Fade out to transparent */
+      100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+    }
+    
+    .card.show {
+      /* Re-habilitamos animación simple, nota: rgba dinámico en keyframes es complejo sin pre-cálculo */
+      /* Por ahora desactivamos el pulse de color específico o lo hacemos blanco sutil */
+      animation: none; /* Simplificar para evitar problemas con variables en keyframes complejos */
+      /* Opcional: Reemplazar con algo genérico */
+    }
+
+    /* Panel de Configuración */
+    #settings-btn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 1000;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      padding: 10px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 20px;
+      transition: all 0.3s ease;
+    }
+    #settings-btn:hover {
+      background: rgba(0,0,0,0.8);
+      transform: rotate(90deg);
+    }
+
+    #settings-panel {
+      position: fixed;
+      top: 70px;
+      left: 20px;
+      transform: none;
+      transform-origin: top left;
+      width: 90%;
+      max-width: 400px;
+      background: rgba(15, 15, 15, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 20px;
+      z-index: 1001;
+      color: white;
+      display: none;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    #settings-panel.open { 
+      display: block; 
+      animation: menu-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes menu-pop {
+      from { opacity: 0; transform: scale(0.5); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    
+    .settings-group { margin-bottom: 15px; }
+    .settings-group label { display: block; margin-bottom: 5px; font-size: 14px; color: #ccc; }
+    .settings-group input[type="text"],
+    .settings-group input[type="number"], 
+    .settings-group select {
+      width: 100%;
+      padding: 8px;
+      background: #333;
+      border: 1px solid #444;
+      color: white;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .settings-group input[type="color"] {
+      width: 100%;
+      height: 40px;
+      border: none;
+      background: none;
+      cursor: pointer;
+    }
+    .settings-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-save { background: #ff0055; color: #fff; }
+    .btn-reset { background: #444; color: #fff; }
+
+    /* Estilos para controles de depuración */
+    #debug-controls {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10000;
+      opacity: 0.2; /* Discreto por defecto */
+      transition: opacity 0.3s;
+    }
+    #debug-controls:hover {
+      opacity: 1;
+    }
+    #debug-controls button {
+      padding: 10px 20px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      font-family: 'Montserrat', sans-serif;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    #debug-controls button:hover {
+      background: #eee;
+    }
+  </style>
+  
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+  <div id="notification-container">
+    <div id="card" class="card">
+      <div class="header">Nueva Solicitud</div>
+      <div class="song-title" id="song">Canción</div>
+      <div class="artist" id="artist">Artista</div>
+      <div class="requested-by">
+        Pedida por: <span class="user-badge" id="user">Usuario</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Botón de Configuración -->
+  <button id="settings-btn" onclick="toggleSettings()" title="Configurar Overlay">⚙️</button>
+
+  <!-- Panel de Configuración -->
+  <div id="settings-panel">
+    <h3 style="margin-top:0; border-bottom: 1px solid #333; padding-bottom: 10px;">Configuración</h3>
+    
+    <div class="settings-group">
+      <label>Ancho de Tarjeta (px)</label>
+      <input type="number" id="inp-width" value="400">
+    </div>
+
+    <div class="settings-group">
+      <label>Alto Mínimo (px)</label>
+      <input type="number" id="inp-minHeight" value="100">
+    </div>
+
+    <div class="settings-group">
+      <label>Radio de Borde (px)</label>
+      <input type="number" id="inp-borderRadius" value="8">
+    </div>
+
+    <div class="settings-group">
+      <label>Animación de Entrada</label>
+      <select id="inp-animType">
+        <option value="anim-flip">Flip In (Default)</option>
+        <option value="anim-slide-up">Slide Up</option>
+        <option value="anim-zoom">Zoom In</option>
+        <option value="anim-bounce">Bounce In</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Animación de Texto</label>
+      <select id="inp-textAnim">
+        <option value="text-anim-none">Ninguna</option>
+        <option value="text-anim-fade">Fade In</option>
+        <option value="text-anim-slide">Slide In</option>
+        <option value="text-anim-scale">Scale Up</option>
+      </select>
+    </div>
+
+
+    <div class="settings-group">
+      <label>Fuente</label>
+      <select id="inp-font">
+        <option value="'Montserrat', sans-serif">Montserrat</option>
+        <option value="'Roboto', sans-serif">Roboto</option>
+        <option value="'Open Sans', sans-serif">Open Sans</option>
+        <option value="'Lato', sans-serif">Lato</option>
+        <option value="sans-serif">System Default</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Título (px)</label>
+      <input type="number" id="inp-fontSizeSong" value="42">
+    </div>
+    
+    <div class="settings-group">
+      <label>Tamaño Artista (px)</label>
+      <input type="number" id="inp-fontSizeArtist" value="28">
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Usuario / Pedido por (px)</label>
+      <input type="number" id="inp-fontSizeUser" value="21">
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Cabecera (px)</label>
+      <input type="number" id="inp-fontSizeHeader" value="24">
+    </div>
+
+    <!-- Deprecated Base Font Size hidden or removed -->
+    <!-- <div class="settings-group">
+      <label>Tamaño de Fuente Base (px)</label>
+      <input type="number" id="inp-fontSize" value="16">
+    </div> -->
+
+    <div class="settings-group">
+      <label>Color de Acento</label>
+      <input type="color" id="inp-accent" value="#ff0055">
+    </div>
+
+    <div class="settings-group">
+      <label>Color de Fondo</label>
+      <input type="color" id="inp-bg" value="#000000">
+    </div>
+
+    <div class="settings-group">
+      <label>Opacidad Fondo (0-100%)</label>
+      <input type="range" id="inp-opacity" min="0" max="100" value="85" oninput="document.getElementById('bg-opacity-val').innerText = this.value + '%'">
+      <span id="bg-opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">85%</span>
+    </div>
+
+    <div class="settings-group">
+      <label>Color de Texto</label>
+      <input type="color" id="inp-text" value="#ffffff">
+    </div>
+
+    <div class="settings-group">
+      <label>Duración en Pantalla (segundos)</label>
+      <input type="number" id="inp-duration" value="10">
+    </div>
+
+    <div class="settings-actions">
+      <button class="btn btn-reset" onclick="resetSettings()">Reset</button>
+      <button class="btn btn-save" onclick="saveSettings()">Guardar</button>
+    </div>
+  </div>
+
+  <!-- Controles de Depuración (Solo visibles para pruebas) -->
+  <div id="debug-controls">
+    <button onclick="simulateRequest()">🔔 Simular Pedido</button>
+  </div>
+
+  <script>
+    // --- Configuración / Settings Logic ---
+    const defaultSettings = {
+      width: 800, // Ajustado para 1080p
+      minHeight: 200,
+      borderRadius: 20,
+      animType: 'anim-flip',
+      textAnim: 'text-anim-fade',
+      font: "'Montserrat', sans-serif",
+      // Default font sizes optimized for 1080p vertical
+      fontSizeSong: 42,
+      fontSizeArtist: 28,
+      fontSizeUser: 21,
+      fontSizeHeader: 24,
+      accent: "#ff0055",
+      bg: "#000000",
+      opacity: 85,
+      text: "#ffffff",
+      duration: 10
+    };
+
+    let displayDuration = 10000;
+
+    function loadSettings() {
+      const saved = localStorage.getItem('overlay_settings');
+      // Merge saved with default to ensure new keys exist
+      const settings = saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+      
+      // Migration check: if old "fontSize" exists but new specific sizes don't (from old save), calculate them
+      // But merge above handles default values if keys are missing. 
+      // If user saved old settings, they might lack the new keys, so defaults fill in.
+      // If user wants to keep their "base" scale, it's tricky without logic.
+      // Let's assume if 'fontSizeSong' is missing in saved, we calculate from saved 'fontSize' if available, or use defaults.
+      
+      if(saved) {
+         const parsed = JSON.parse(saved);
+         if(!parsed.fontSizeSong && parsed.fontSize) {
+            // Migrar valores basados en el antiguo base fontSize
+            settings.fontSizeSong = Math.round(parsed.fontSize * 1.5);
+            settings.fontSizeArtist = parsed.fontSize;
+            settings.fontSizeUser = Math.round(parsed.fontSize * 0.75);
+            settings.fontSizeHeader = Math.round(parsed.fontSize * 0.875);
+         }
+      }
+
+      applySettings(settings);
+      
+      // Update Inputs
+      document.getElementById('inp-width').value = settings.width;
+      document.getElementById('inp-minHeight').value = settings.minHeight;
+      document.getElementById('inp-borderRadius').value = settings.borderRadius;
+      document.getElementById('inp-animType').value = settings.animType;
+      document.getElementById('inp-textAnim').value = settings.textAnim || 'text-anim-fade';
+      
+      document.getElementById('inp-font').value = settings.font;
+      
+      document.getElementById('inp-fontSizeSong').value = settings.fontSizeSong;
+      document.getElementById('inp-fontSizeArtist').value = settings.fontSizeArtist;
+      document.getElementById('inp-fontSizeUser').value = settings.fontSizeUser;
+      document.getElementById('inp-fontSizeHeader').value = settings.fontSizeHeader;
+
+      document.getElementById('inp-accent').value = settings.accent;
+      document.getElementById('inp-bg').value = settings.bg;
+      
+      const opVal = settings.opacity !== undefined ? settings.opacity : 85;
+      document.getElementById('inp-opacity').value = opVal;
+      document.getElementById('bg-opacity-val').innerText = opVal + '%';
+
+      document.getElementById('inp-text').value = settings.text;
+      document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
+    }
+
+    function applySettings(s) {
+      const root = document.documentElement;
+      root.style.setProperty('--card-width', s.width + 'px');
+      root.style.setProperty('--card-min-height', s.minHeight + 'px');
+      root.style.setProperty('--card-border-radius', s.borderRadius + 'px');
+      
+      // Apply Animation Class to Container or Card Wrapper
+      const container = document.getElementById('notification-container');
+      // Reset animation classes
+      container.className = '';
+      container.classList.add(s.animType);
+      if (s.textAnim) container.classList.add(s.textAnim);
+
+      root.style.setProperty('--font-family', s.font);
+      
+      // Apply specific font sizes
+      root.style.setProperty('--font-size-song', s.fontSizeSong + 'px');
+      root.style.setProperty('--font-size-artist', s.fontSizeArtist + 'px');
+      root.style.setProperty('--font-size-user', s.fontSizeUser + 'px');
+      root.style.setProperty('--font-size-header', s.fontSizeHeader + 'px');
+
+      root.style.setProperty('--accent-color', s.accent);
+      root.style.setProperty('--text-color', s.text);
+      
+      const r = parseInt(s.bg.substr(1,2), 16);
+      const g = parseInt(s.bg.substr(3,2), 16);
+      const b = parseInt(s.bg.substr(5,2), 16);
+      const opacity = (s.opacity !== undefined ? s.opacity : 85) / 100;
+      root.style.setProperty('--card-bg-color', `rgba(${r},${g},${b},${opacity})`);
+
+      // Calculate accent color rgba variants
+      const ar = parseInt(s.accent.substr(1,2), 16);
+      const ag = parseInt(s.accent.substr(3,2), 16);
+      const ab = parseInt(s.accent.substr(5,2), 16);
+      root.style.setProperty('--accent-color-bg', `rgba(${ar},${ag},${ab},0.2)`);
+      root.style.setProperty('--accent-color-glow', `rgba(${ar},${ag},${ab},0.4)`);
+      
+      displayDuration = (s.duration !== undefined ? s.duration : 10) * 1000;
+    }
+
+    function getSettingsFromInputs() {
+      return {
+        width: document.getElementById('inp-width').value,
+        minHeight: document.getElementById('inp-minHeight').value,
+        borderRadius: document.getElementById('inp-borderRadius').value,
+        animType: document.getElementById('inp-animType').value,
+        textAnim: document.getElementById('inp-textAnim').value,
+        font: document.getElementById('inp-font').value,
+        
+        fontSizeSong: document.getElementById('inp-fontSizeSong').value,
+        fontSizeArtist: document.getElementById('inp-fontSizeArtist').value,
+        fontSizeUser: document.getElementById('inp-fontSizeUser').value,
+        fontSizeHeader: document.getElementById('inp-fontSizeHeader').value,
+
+        accent: document.getElementById('inp-accent').value,
+        bg: document.getElementById('inp-bg').value,
+        opacity: document.getElementById('inp-opacity').value,
+        text: document.getElementById('inp-text').value,
+        duration: document.getElementById('inp-duration').value
+      };
+    }
+
+    function previewSettings() {
+      const settings = getSettingsFromInputs();
+      applySettings(settings);
+    }
+
+    function saveSettings() {
+      const settings = getSettingsFromInputs();
+      localStorage.setItem('overlay_settings', JSON.stringify(settings));
+      applySettings(settings);
+      toggleSettings(); // close panel
+    }
+    
+    // Listeners para vista previa en tiempo real
+    document.addEventListener('DOMContentLoaded', () => {
+        ['inp-width', 'inp-minHeight', 'inp-borderRadius', 'inp-animType', 'inp-textAnim',
+         'inp-font', 'inp-fontSizeSong', 'inp-fontSizeArtist', 'inp-fontSizeUser', 'inp-fontSizeHeader', 
+         'inp-accent', 'inp-bg', 'inp-opacity', 'inp-text', 'inp-duration'].forEach(id => {
+           const el = document.getElementById(id);
+           if(el) {
+             el.addEventListener('input', previewSettings);
+             el.addEventListener('change', previewSettings);
+           }
+        });
+    });
+
+    function resetSettings() {
+      if(confirm('¿Restablecer valores por defecto?')) {
+        applySettings(defaultSettings);
+        localStorage.removeItem('overlay_settings');
+        loadSettings(); // reload inputs
+        toggleSettings();
+      }
+    }
+
+    function toggleSettings() {
+      const panel = document.getElementById('settings-panel');
+      panel.classList.toggle('open');
+    }
+
+    // Inicializar settings
+    loadSettings();
+
+    // Configuración de Firebase (Tomada de index.html)
+    const firebaseConfig = {
+      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+      authDomain: "zero-strom-web.firebaseapp.com",
+      projectId: "zero-strom-web",
+      storageBucket: "zero-strom-web.firebasestorage.app",
+      messagingSenderId: "758369466349",
+      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+    };
+
+    // Inicializar Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const card = document.getElementById('card');
+    const songEl = document.getElementById('song');
+    const artistEl = document.getElementById('artist');
+    const userEl = document.getElementById('user');
+
+    let hideTimeout;
+    // const DISPLAY_DURATION = 10000; // Deprecated, using dynamic variable displayDuration
+
+    function showNotification(data) {
+      // Rellenar datos
+      songEl.textContent = data.cancion || 'Desconocida';
+      artistEl.textContent = data.artista || 'Desconocido';
+      userEl.textContent = data.usuario || 'Anónimo';
+
+      // Resetear animación
+      card.classList.remove('show');
+      void card.offsetWidth; // Trigger reflow
+      card.classList.add('show');
+
+      // Limpiar timeout anterior si existe
+      if (hideTimeout) clearTimeout(hideTimeout);
+
+      // Ocultar después de X segundos
+      hideTimeout = setTimeout(() => {
+        card.classList.remove('show');
+      }, displayDuration);
+    }
+
+    // Escuchar la colección 'solicitudes'
+    // Ordenamos por timestamp descendente y limitamos a 1 para ver el último
+    db.collection('solicitudes')
+      .orderBy('ts', 'desc')
+      .limit(1)
+      .onSnapshot((snapshot) => {
+        if (snapshot.empty) return;
+
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            
+            // Validar timestamp para no mostrar solicitudes viejas al cargar
+            // Si la solicitud tiene más de 1 minuto de antigüedad, la ignoramos al inicio
+            // Si data.ts es null, es una escritura local pendiente (muy reciente), así que la mostramos.
+            let docTime = Date.now();
+            if (data.ts && typeof data.ts.toDate === 'function') {
+              docTime = data.ts.toDate().getTime();
+            }
+            
+            const now = Date.now();
+            const oneMinute = 60 * 1000;
+
+            if (now - docTime < oneMinute) {
+              showNotification(data);
+            } else {
+              console.log('Solicitud antigua ignorada:', data);
+            }
+          }
+        });
+      }, (error) => {
+        console.error("Error escuchando solicitudes:", error);
+      });
+
+    // Función de simulación para pruebas manuales
+    function simulateRequest() {
+      const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
+      const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
+      const users = ["UsuarioTest", "DJ_Zero", "Invitado123", "FanNumero1", "Moderador_Top"];
+
+      const randomArtist = artists[Math.floor(Math.random() * artists.length)];
+      const randomSong = songs[Math.floor(Math.random() * songs.length)];
+      const randomUser = users[Math.floor(Math.random() * users.length)];
+
+      showNotification({
+        cancion: randomSong,
+        artista: randomArtist,
+        usuario: randomUser
+      });
+    }
+
+    // Modo de prueba automático: ?test=true
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('test') === 'true') {
+      setTimeout(() => {
+        simulateRequest();
+      }, 1000);
+    }
+   </script>
+</body>
+</html>
