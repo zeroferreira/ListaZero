@@ -89,6 +89,26 @@
       background: var(--queue-bg-color-tertiary, var(--queue-bg-color-transparent));
     }
 
+    /* Estado Vacío */
+    #empty-state {
+      display: none;
+      color: var(--queue-text-color);
+      opacity: 0.7;
+      text-align: center;
+      margin-top: 50px;
+      font-weight: 300;
+      background: var(--queue-bg-color-tertiary);
+      padding: 20px;
+      border-radius: var(--queue-border-radius);
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #empty-state.visible {
+      display: block;
+      animation: fadeIn 0.5s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 0.7; } }
+
     .queue-item:nth-child(n+2) .item-header {
       display: none !important;
     }
@@ -300,6 +320,10 @@
 <body>
 
   <div id="queue-container">
+    <div id="empty-state">
+      <div style="font-size: 40px; margin-bottom: 10px;">🎵</div>
+      <div>Esperando solicitudes...</div>
+    </div>
     <!-- Items se inyectarán aquí -->
   </div>
 
@@ -351,6 +375,17 @@
        <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
          <input type="checkbox" id="inp-showUser" checked> Usuario
        </label>
+       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+         <input type="checkbox" id="inp-showEmpty" checked> Mensaje Vacío
+       </label>
+    </div>
+
+    <div class="settings-group">
+      <label>Pruebas</label>
+      <div style="display: flex; gap: 10px;">
+        <button class="btn" style="background: #444;" onclick="simulateQueueRequest()">➕ Simular</button>
+        <button class="btn" style="background: #444;" onclick="simulateToggleFirst()">✅ Completar</button>
+      </div>
     </div>
 
     <div class="settings-group">
@@ -423,11 +458,11 @@
     </div>
   </div>
 
-  <!-- Controles de Depuración -->
-  <div id="debug-controls" style="position: fixed; top: 20px; right: 20px; opacity: 0.2; transition: opacity 0.3s; z-index: 10000;">
+  <!-- Controles de Depuración (Movidos al panel de configuración) -->
+  <!-- <div id="debug-controls" style="position: fixed; top: 20px; right: 20px; opacity: 0.2; transition: opacity 0.3s; z-index: 10000;">
     <button onclick="simulateQueueRequest()" style="padding: 10px; cursor: pointer;">➕ Simular Pedido</button>
     <button onclick="simulateToggleFirst()" style="padding: 10px; cursor: pointer;">✅ Marcar como Reproducida</button>
-  </div>
+  </div> -->
 
   <script>
     // --- Configuración / Settings Logic ---
@@ -441,6 +476,7 @@
       showHeader: true,
       showArtist: true,
       showUser: true,
+      showEmpty: true,
       animEntry: 'anim-entry-slide-left',
       animExit: 'anim-exit-slide-right',
       font: "'Montserrat', sans-serif",
@@ -469,6 +505,7 @@
       document.getElementById('inp-showHeader').checked = settings.showHeader !== undefined ? settings.showHeader : true;
       document.getElementById('inp-showArtist').checked = settings.showArtist !== undefined ? settings.showArtist : true;
       document.getElementById('inp-showUser').checked = settings.showUser !== undefined ? settings.showUser : true;
+      document.getElementById('inp-showEmpty').checked = settings.showEmpty !== undefined ? settings.showEmpty : true;
 
       document.getElementById('inp-animEntry').value = settings.animEntry;
       document.getElementById('inp-animExit').value = settings.animExit;
@@ -511,6 +548,18 @@
       container.classList.toggle('hide-artist', s.showArtist === false);
       container.classList.toggle('hide-user', s.showUser === false);
 
+      // Empty State visibility logic moved to renderQueue or handled here via CSS class if needed
+      // But renderQueue controls the DOM, so we store the setting in a global var or dataset
+      container.dataset.showEmpty = s.showEmpty;
+      const emptyState = document.getElementById('empty-state');
+      if (emptyState) {
+         if (s.showEmpty && container.children.length <= 1) { // 1 because empty-state is a child
+             emptyState.classList.add('visible');
+         } else {
+             emptyState.classList.remove('visible');
+         }
+      }
+
       root.style.setProperty('--queue-font-family', s.font);
       root.style.setProperty('--queue-font-size', s.fontSize + 'px');
       root.style.setProperty('--queue-accent-color', s.accent);
@@ -540,6 +589,7 @@
         showHeader: document.getElementById('inp-showHeader').checked,
         showArtist: document.getElementById('inp-showArtist').checked,
         showUser: document.getElementById('inp-showUser').checked,
+        showEmpty: document.getElementById('inp-showEmpty').checked,
         animEntry: document.getElementById('inp-animEntry').value,
         animExit: document.getElementById('inp-animExit').value,
         font: document.getElementById('inp-font').value,
@@ -577,7 +627,7 @@
         });
         
         // Checkboxes
-        ['inp-showHeader', 'inp-showArtist', 'inp-showUser'].forEach(id => {
+        ['inp-showHeader', 'inp-showArtist', 'inp-showUser', 'inp-showEmpty'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('change', previewSettings);
@@ -733,6 +783,16 @@
       
       if (nextThree.length === 0) {
         // Cola vacía
+        const emptyState = document.getElementById('empty-state');
+        const showEmpty = container.dataset.showEmpty === 'true'; // string from dataset
+        if (showEmpty && emptyState) {
+             emptyState.classList.add('visible');
+        } else if (emptyState) {
+             emptyState.classList.remove('visible');
+        }
+      } else {
+        const emptyState = document.getElementById('empty-state');
+        if (emptyState) emptyState.classList.remove('visible');
       }
     }
 
@@ -773,9 +833,11 @@
       });
 
     // --- Lógica de Simulación ---
+    /*
     const debugControls = document.getElementById('debug-controls');
     debugControls.addEventListener('mouseenter', () => debugControls.style.opacity = '1');
     debugControls.addEventListener('mouseleave', () => debugControls.style.opacity = '0.2');
+    */
 
     function simulateQueueRequest() {
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
