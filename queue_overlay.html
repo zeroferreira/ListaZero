@@ -684,6 +684,7 @@
     let allRequests = []; // Todas las solicitudes del día
     let playedSongIds = new Set(); // IDs de canciones ya reproducidas
     let visibleQueue = []; // Las 3 canciones actualmente mostradas
+    let currentManualOrder = []; // Orden manual compartido
 
     // Utilidad: Obtener clave de fecha local (YYYY-MM-DD)
     function getLocalDateKey(ts) {
@@ -703,6 +704,29 @@
       const hora = `${hh}:${mm}`;
       
       return `${req.usuario}-${req.cancion}-${req.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+    }
+
+    // Orden manual: aplicar
+    function applyOrder(items, order) {
+      try {
+        if (!Array.isArray(order) || !order.length) return items;
+
+        const inOrderSet = new Set(order);
+
+        // Elementos presentes en 'order' respetando ese orden
+        const ordered = [];
+        order.forEach((sid) => {
+          const found = items.find((it) => generateSongId(it) === sid);
+          if (found) ordered.push(found);
+        });
+
+        // Nuevos (no presentes en 'order') arriba en su orden natural
+        const notInOrder = items.filter((it) => !inOrderSet.has(generateSongId(it)));
+
+        return [...notInOrder, ...ordered];
+      } catch {
+        return items;
+      }
     }
 
     function createQueueItem(req, index) {
@@ -730,12 +754,15 @@
     function renderQueue() {
       console.log("renderQueue called. Pending requests:", allRequests.length);
       // 1. Filtrar solicitudes que NO están en playedSongIds
-      const pendingRequests = allRequests.filter(req => {
+      let pendingRequests = allRequests.filter(req => {
         const id = generateSongId(req);
         return !playedSongIds.has(id);
       });
 
-      // 2. Tomar las primeras 3 (las más antiguas, FIFO)
+      // 1.5 Aplicar orden manual si existe
+      pendingRequests = applyOrder(pendingRequests, currentManualOrder);
+
+      // 2. Tomar las primeras 3
       const nextThree = pendingRequests.slice(0, 3);
       console.log("Next three to show:", nextThree);
       const nextThreeIds = nextThree.map(req => generateSongId(req));
@@ -841,7 +868,7 @@
       .onSnapshot((doc) => {
         if (doc.exists) {
           const data = doc.data();
-          const songs = data.songs || [];
+          const songs = data.songs || data.list || [];
           playedSongIds = new Set(songs);
         } else {
           playedSongIds = new Set();
@@ -849,6 +876,19 @@
         renderQueue();
       }, (error) => {
         console.error("Error en playedSongs:", error);
+      });
+
+    // 3. Suscripción a Orden Manual (Mover canciones)
+    db.collection('manualOrders').doc(currentDay)
+      .onSnapshot((doc) => {
+        if (doc.exists) {
+          currentManualOrder = Array.isArray(doc.data().order) ? doc.data().order : [];
+        } else {
+          currentManualOrder = [];
+        }
+        renderQueue();
+      }, (error) => {
+        console.error("Error en manualOrders:", error);
       });
 
     // --- Lógica de Simulación ---
