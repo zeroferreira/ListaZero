@@ -818,10 +818,10 @@
     console.log("Escuchando día:", currentDay);
 
     // 1. Suscripción a Solicitudes (Cola)
-    // Ordenamos por timestamp ASCENDENTE (el más viejo primero va a ser atendido primero)
+    // Usamos 'desc' para aprovechar el índice existente de lista.html y luego invertimos el orden
     db.collection('solicitudes')
       .where('day', '==', currentDay)
-      .orderBy('ts', 'asc') 
+      .orderBy('ts', 'desc') 
       .onSnapshot((snapshot) => {
         const temp = [];
         snapshot.forEach(doc => {
@@ -829,7 +829,8 @@
           // Añadir ID del doc por si acaso
           temp.push({ ...data, id: doc.id });
         });
-        allRequests = temp;
+        // Invertir para tener orden cronológico (Oldest first)
+        allRequests = temp.reverse();
         renderQueue();
       }, (error) => {
         console.error("Error en solicitudes:", error);
@@ -870,20 +871,15 @@
         cancion: randomSong,
         artista: randomArtist,
         ts: now, // Objeto Date directo
-        day: getLocalDateKey(now)
+        day: getLocalDateKey(now),
+        isSimulation: true
       };
 
-      // Simular llegada añadiendo a la lista local
-      // (Nota: En producción real, esto vendría de Firebase)
-      allRequests.push(req);
-      // Reordenar por timestamp (aunque al añadir al final ya debería estar ordenado si es 'ahora')
-      allRequests.sort((a, b) => {
-        const ta = a.ts.toDate ? a.ts.toDate() : new Date(a.ts);
-        const tb = b.ts.toDate ? b.ts.toDate() : new Date(b.ts);
-        return ta - tb;
-      });
-      
-      renderQueue();
+      // Enviar a Firebase para que se refleje en OBS
+      console.log("Enviando simulación a Firebase:", req);
+      db.collection('solicitudes').add(req)
+        .then(() => console.log("Simulación enviada con éxito"))
+        .catch(err => console.error("Error enviando simulación:", err));
     }
 
     function simulateToggleFirst() {
