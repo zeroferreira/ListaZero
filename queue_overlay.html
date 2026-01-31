@@ -624,6 +624,14 @@
       const settings = getSettingsFromInputs();
       localStorage.setItem('queue_overlay_settings', JSON.stringify(settings));
       applySettings(settings);
+
+      // Sync to Firestore
+      if (db) {
+        db.collection('userSettings').doc('global_queue_config').set(settings)
+          .then(() => console.log("Configuración guardada en la nube"))
+          .catch(err => console.error("Error guardando configuración:", err));
+      }
+
       toggleSettings(); // close panel
     }
     
@@ -677,6 +685,55 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+
+    // Sincronizar configuración global desde Firestore
+    db.collection('userSettings').doc('global_queue_config')
+      .onSnapshot((doc) => {
+        if (doc.exists) {
+          console.log("Configuración remota recibida");
+          const remoteSettings = doc.data();
+          const settings = { ...defaultSettings, ...remoteSettings };
+          
+          // Guardar localmente y aplicar
+          localStorage.setItem('queue_overlay_settings', JSON.stringify(settings));
+          applySettings(settings);
+          
+          // Actualizar inputs si existen
+          if (document.getElementById('inp-width')) {
+            document.getElementById('inp-width').value = settings.width;
+            document.getElementById('inp-minHeight').value = settings.minHeight;
+            document.getElementById('inp-spacing').value = settings.spacing !== undefined ? settings.spacing : 15;
+            document.getElementById('inp-padding').value = settings.padding !== undefined ? settings.padding : 15;
+            document.getElementById('inp-textGap').value = settings.textGap !== undefined ? settings.textGap : 4;
+            document.getElementById('inp-borderRadius').value = settings.borderRadius;
+            
+            document.getElementById('inp-showHeader').checked = settings.showHeader !== undefined ? settings.showHeader : true;
+            document.getElementById('inp-showArtist').checked = settings.showArtist !== undefined ? settings.showArtist : true;
+            document.getElementById('inp-showUser').checked = settings.showUser !== undefined ? settings.showUser : true;
+            document.getElementById('inp-showEmpty').checked = settings.showEmpty !== undefined ? settings.showEmpty : true;
+
+            document.getElementById('inp-animEntry').value = settings.animEntry;
+            document.getElementById('inp-animExit').value = settings.animExit;
+            
+            document.getElementById('inp-font').value = settings.font;
+            document.getElementById('inp-fontSize').value = settings.fontSize;
+            document.getElementById('inp-accent').value = settings.accent;
+            document.getElementById('inp-bg').value = settings.bg;
+            
+            const primaryOpacityVal = settings.primaryOpacity !== undefined ? settings.primaryOpacity : 100;
+            document.getElementById('inp-primaryOpacity').value = primaryOpacityVal;
+            document.getElementById('primary-opacity-val').innerText = primaryOpacityVal + '%';
+
+            const opacityVal = settings.secondaryOpacity !== undefined ? settings.secondaryOpacity : 60;
+            document.getElementById('inp-secondaryOpacity').value = opacityVal;
+            document.getElementById('opacity-val').innerText = opacityVal + '%';
+
+            document.getElementById('inp-text').value = settings.text;
+          }
+        }
+      }, (error) => {
+         console.warn("No se pudo sincronizar configuración remota:", error);
+      });
 
     const container = document.getElementById('queue-container');
     

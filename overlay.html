@@ -580,6 +580,14 @@
       const settings = getSettingsFromInputs();
       localStorage.setItem('overlay_settings', JSON.stringify(settings));
       applySettings(settings);
+      
+      // Sync to Firestore
+      if (db) {
+        db.collection('userSettings').doc('global_overlay_config').set(settings)
+          .then(() => console.log("Configuración guardada en la nube"))
+          .catch(err => console.error("Error guardando configuración:", err));
+      }
+
       toggleSettings(); // close panel
     }
     
@@ -626,6 +634,48 @@
     // Inicializar Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+
+    // Sincronizar configuración global desde Firestore
+    db.collection('userSettings').doc('global_overlay_config')
+      .onSnapshot((doc) => {
+        if (doc.exists) {
+          console.log("Configuración remota recibida");
+          const remoteSettings = doc.data();
+          const settings = { ...defaultSettings, ...remoteSettings };
+          
+          // Guardar localmente y aplicar
+          localStorage.setItem('overlay_settings', JSON.stringify(settings));
+          applySettings(settings);
+          
+          // Actualizar inputs si el panel está abierto (o para la próxima vez)
+          if (document.getElementById('inp-width')) {
+              document.getElementById('inp-width').value = settings.width;
+              document.getElementById('inp-minHeight').value = settings.minHeight;
+              document.getElementById('inp-borderRadius').value = settings.borderRadius;
+              document.getElementById('inp-animType').value = settings.animType;
+              document.getElementById('inp-textAnim').value = settings.textAnim || 'text-anim-fade';
+              
+              document.getElementById('inp-font').value = settings.font;
+              
+              document.getElementById('inp-fontSizeSong').value = settings.fontSizeSong;
+              document.getElementById('inp-fontSizeArtist').value = settings.fontSizeArtist;
+              document.getElementById('inp-fontSizeUser').value = settings.fontSizeUser;
+              document.getElementById('inp-fontSizeHeader').value = settings.fontSizeHeader;
+        
+              document.getElementById('inp-accent').value = settings.accent;
+              document.getElementById('inp-bg').value = settings.bg;
+              
+              const opVal = settings.opacity !== undefined ? settings.opacity : 85;
+              document.getElementById('inp-opacity').value = opVal;
+              document.getElementById('bg-opacity-val').innerText = opVal + '%';
+        
+              document.getElementById('inp-text').value = settings.text;
+              document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
+          }
+        }
+      }, (error) => {
+         console.warn("No se pudo sincronizar configuración remota (posiblemente offline o sin permisos):", error);
+      });
 
     const card = document.getElementById('card');
     const songEl = document.getElementById('song');
