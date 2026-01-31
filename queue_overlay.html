@@ -455,7 +455,7 @@
   </div>
 
   <!-- Controles de Depuración -->
-   <div id="debug-controls" style="position: fixed; top: 20px; right: 20px; opacity: 0.2; transition: opacity 0.3s; z-index: 10000;">
+   <div id="debug-controls" style="position: fixed; bottom: 20px; left: 20px; opacity: 0.2; transition: opacity 0.3s; z-index: 10000;">
      <button onclick="simulateQueueRequest()" style="padding: 10px; cursor: pointer;">➕ Simular Pedido</button>
      <button onclick="simulateToggleFirst()" style="padding: 10px; cursor: pointer;">✅ Marcar como Reproducida</button>
      <button onclick="toggleDebugBorders()" style="padding: 10px; cursor: pointer;">🖼️ Ver Bordes</button>
@@ -934,8 +934,15 @@
         const id = generateSongId(toToggle);
         
         console.log("Simulando toggle para:", id);
-        playedSongIds.add(id);
-        renderQueue();
+        
+        // Actualizar Firestore para que sea persistente y real
+        db.collection('playedSongs').doc(currentDay).set({
+          songs: firebase.firestore.FieldValue.arrayUnion(id),
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true })
+        .then(() => console.log("Toggle synced to Firestore"))
+        .catch(err => console.error("Error syncing toggle:", err));
+
       } else {
         alert("No hay canciones pendientes para marcar.");
       }
