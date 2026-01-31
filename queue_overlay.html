@@ -458,9 +458,21 @@
    <div id="debug-controls" style="position: fixed; top: 20px; right: 20px; opacity: 0.2; transition: opacity 0.3s; z-index: 10000;">
      <button onclick="simulateQueueRequest()" style="padding: 10px; cursor: pointer;">➕ Simular Pedido</button>
      <button onclick="simulateToggleFirst()" style="padding: 10px; cursor: pointer;">✅ Marcar como Reproducida</button>
+     <button onclick="toggleDebugBorders()" style="padding: 10px; cursor: pointer;">🖼️ Ver Bordes</button>
    </div>
 
   <script>
+    function toggleDebugBorders() {
+      const container = document.getElementById('queue-container');
+      if (container.style.border) {
+        container.style.border = '';
+        container.style.background = '';
+      } else {
+        container.style.border = '5px solid red';
+        container.style.background = 'rgba(255, 0, 0, 0.2)';
+      }
+    }
+    
     // --- Configuración / Settings Logic ---
     const defaultSettings = {
       width: 350,
@@ -488,6 +500,11 @@
       const saved = localStorage.getItem('queue_overlay_settings');
       // Merge saved with default to ensure new keys exist
       const settings = saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+      
+      // Ensure animEntry is valid
+      if (!settings.animEntry) settings.animEntry = defaultSettings.animEntry;
+      if (!settings.animExit) settings.animExit = defaultSettings.animExit;
+      
       applySettings(settings);
       
       // Update Inputs
@@ -711,6 +728,7 @@
     }
 
     function renderQueue() {
+      console.log("renderQueue called. Pending requests:", allRequests.length);
       // 1. Filtrar solicitudes que NO están en playedSongIds
       const pendingRequests = allRequests.filter(req => {
         const id = generateSongId(req);
@@ -719,6 +737,7 @@
 
       // 2. Tomar las primeras 3 (las más antiguas, FIFO)
       const nextThree = pendingRequests.slice(0, 3);
+      console.log("Next three to show:", nextThree);
       const nextThreeIds = nextThree.map(req => generateSongId(req));
 
       // 3. Lógica de Diffing (Diferencias)
@@ -773,7 +792,10 @@
            // Forzar reflow y activar animación de entrada
            requestAnimationFrame(() => {
              newEl.classList.add('show');
+             console.log("Added .show class to new element", newEl);
            });
+           // Fallback
+           setTimeout(() => newEl.classList.add('show'), 100);
         }
       });
       
