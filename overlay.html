@@ -472,6 +472,10 @@
 
     <div class="settings-group">
       <label>Separador: Color</label>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
+        <input type="checkbox" id="inp-sepUseAccent" onchange="previewSettings()" style="width:auto; margin:0;">
+        <span style="font-size:12px; color:#aaa;">Usar Color de Acento</span>
+      </div>
       <input type="color" id="inp-sepColor" value="#ffffff" oninput="previewSettings()">
     </div>
 
@@ -537,6 +541,7 @@
       text: "#ffffff",
       duration: 10,
       sepColor: "#ffffff",
+      sepUseAccent: true,
       sepOpacity: 10,
       sepWidth: 1,
       sepStyle: "solid"
@@ -602,7 +607,9 @@
       document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
       
       document.getElementById('inp-sepColor').value = settings.sepColor || '#ffffff';
-      
+      document.getElementById('inp-sepUseAccent').checked = settings.sepUseAccent !== undefined ? settings.sepUseAccent : true;
+      toggleSepColorInput(); 
+
       const sepOpVal = settings.sepOpacity !== undefined ? settings.sepOpacity : 10;
       document.getElementById('inp-sepOpacity').value = sepOpVal;
       document.getElementById('sep-opacity-val').innerText = sepOpVal + '%';
@@ -676,16 +683,33 @@
       root.style.setProperty('--accent-color-glow', `rgba(${ar},${ag},${ab},0.4)`);
       
       // Separator
-      const sr = parseInt((s.sepColor || '#ffffff').substr(1,2), 16);
-      const sg = parseInt((s.sepColor || '#ffffff').substr(3,2), 16);
-      const sb = parseInt((s.sepColor || '#ffffff').substr(5,2), 16);
+      let finalSepColor = s.sepColor || '#ffffff';
+      if (s.sepUseAccent) {
+         finalSepColor = s.accent;
+      }
+
+      const sr = parseInt(finalSepColor.substr(1,2), 16);
+      const sg = parseInt(finalSepColor.substr(3,2), 16);
+      const sb = parseInt(finalSepColor.substr(5,2), 16);
       const sepOp = (s.sepOpacity !== undefined ? s.sepOpacity : 10) / 100;
       
       root.style.setProperty('--sep-color', `rgba(${sr},${sg},${sb},${sepOp})`);
       root.style.setProperty('--sep-width', (s.sepWidth || 1) + 'px');
       root.style.setProperty('--sep-style', s.sepStyle || 'solid');
+      
+      // UI Update for disabled state
+      toggleSepColorInput();
 
       displayDuration = (s.duration !== undefined ? s.duration : 10) * 1000;
+    }
+
+    function toggleSepColorInput() {
+       const cb = document.getElementById('inp-sepUseAccent');
+       const inp = document.getElementById('inp-sepColor');
+       if(cb && inp) {
+          inp.disabled = cb.checked;
+          inp.style.opacity = cb.checked ? '0.5' : '1';
+       }
     }
 
     function getSettingsFromInputs() {
@@ -713,6 +737,7 @@
         text: document.getElementById('inp-text').value,
         duration: document.getElementById('inp-duration').value,
         sepColor: document.getElementById('inp-sepColor').value,
+        sepUseAccent: document.getElementById('inp-sepUseAccent').checked,
         sepOpacity: document.getElementById('inp-sepOpacity').value,
         sepWidth: document.getElementById('inp-sepWidth').value,
         sepStyle: document.getElementById('inp-sepStyle').value
@@ -748,7 +773,7 @@
          'inp-font', 'inp-fontSizeSong', 'inp-fontSizeArtist', 'inp-fontSizeUser', 'inp-fontSizeHeader', 
          'inp-accent', 'inp-icon', 'inp-iconCircleSize', 'inp-iconFontSize', 'inp-iconBg', 'inp-iconOpacity',
          'inp-bg', 'inp-opacity', 'inp-text', 'inp-duration',
-         'inp-sepColor', 'inp-sepOpacity', 'inp-sepWidth', 'inp-sepStyle'].forEach(id => {
+         'inp-sepColor', 'inp-sepUseAccent', 'inp-sepOpacity', 'inp-sepWidth', 'inp-sepStyle'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('input', previewSettings);
@@ -826,12 +851,15 @@
               document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
               
               if(document.getElementById('inp-sepColor')) {
-                  document.getElementById('inp-sepColor').value = settings.sepColor || '#ffffff';
-                  document.getElementById('inp-sepOpacity').value = settings.sepOpacity !== undefined ? settings.sepOpacity : 10;
-                  document.getElementById('sep-opacity-val').innerText = (settings.sepOpacity !== undefined ? settings.sepOpacity : 10) + '%';
-                  document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
-                  document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
-              }
+                   document.getElementById('inp-sepColor').value = settings.sepColor || '#ffffff';
+                   document.getElementById('inp-sepUseAccent').checked = settings.sepUseAccent !== undefined ? settings.sepUseAccent : true;
+                   toggleSepColorInput();
+
+                   document.getElementById('inp-sepOpacity').value = settings.sepOpacity !== undefined ? settings.sepOpacity : 10;
+                   document.getElementById('sep-opacity-val').innerText = (settings.sepOpacity !== undefined ? settings.sepOpacity : 10) + '%';
+                   document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
+                   document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
+               }
           }
         }
       }, (error) => {
