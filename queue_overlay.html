@@ -315,6 +315,63 @@
     .btn-save { background: #00e5ff; color: #000; }
     .btn-reset { background: #444; color: #fff; }
 
+    /* Panel de Presets (New) */
+    #presets-btn {
+      position: fixed;
+      top: 80px;
+      left: 20px;
+      z-index: 10001;
+      background: rgba(0, 119, 255, 0.6);
+      border: 2px solid rgba(255,255,255,0.5);
+      color: white;
+      border-radius: 50%;
+      cursor: grab;
+      font-size: 20px;
+      transition: all 0.3s ease;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      user-select: none;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+    #presets-btn:active { cursor: grabbing; }
+    #presets-btn:hover { background: rgba(0, 119, 255, 1); transform: scale(1.1); box-shadow: 0 0 15px rgba(0,119,255,0.8); }
+
+    #presets-panel {
+      position: fixed;
+      top: 130px;
+      left: 20px;
+      width: 250px;
+      background: rgba(15, 15, 15, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 15px;
+      z-index: 10002;
+      color: white;
+      display: none;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    }
+    #presets-panel.open { display: block; animation: menu-pop 0.3s ease; }
+    
+    .preset-item {
+      padding: 10px;
+      background: #333;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.2s;
+    }
+    .preset-item:hover { background: #444; }
+    .preset-name { font-weight: bold; font-size: 14px; }
+    .preset-delete { color: #ff4444; font-size: 12px; padding: 4px 8px; cursor: pointer; }
+    .preset-delete:hover { background: rgba(255,0,0,0.2); border-radius: 4px; }
+
   </style>
   
   <!-- Firebase SDK -->
@@ -333,6 +390,19 @@
 
   <!-- Botón de Configuración -->
   <button id="settings-btn" title="Configurar Overlay">⚙️</button>
+
+  <!-- Botón de Presets -->
+  <button id="presets-btn" title="Presets" onclick="togglePresets()">📁</button>
+
+  <!-- Panel de Presets -->
+  <div id="presets-panel">
+    <h3 style="margin-top:0; border-bottom: 1px solid #333; padding-bottom: 10px;">Presets</h3>
+    <div id="presets-list"></div>
+    <div style="display:flex; gap:10px; margin-top:10px;">
+       <button class="btn btn-save" onclick="saveAsPreset()">Guardar Nuevo</button>
+       <button class="btn btn-reset" onclick="togglePresets()">Cerrar</button>
+    </div>
+  </div>
 
   <!-- Panel de Configuración -->
   <div id="settings-panel">
@@ -454,6 +524,10 @@
     <div class="settings-group">
       <label>Color de Texto</label>
       <input type="color" id="inp-text" value="#ffffff">
+    </div>
+
+    <div class="settings-group">
+      <button class="btn" style="background: #0077ff; color: white; width: 100%;" onclick="togglePresets()">📂 Abrir Panel de Presets</button>
     </div>
 
     <div class="settings-actions">
@@ -1062,54 +1136,177 @@
         setTimeout(simulateQueueRequest, 1000);
       }, 1000);
     }
-    // --- Drag & Drop Logic for Settings Button ---
+    // --- Drag & Drop Logic for Buttons (Generic) ---
+    function makeDraggable(el, clickCallback) {
+        let isDragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+        let hasMoved = false;
+
+        el.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            hasMoved = false;
+            const rect = el.getBoundingClientRect();
+            dragOffsetX = e.clientX - rect.left;
+            dragOffsetY = e.clientY - rect.top;
+            el.style.cursor = 'grabbing';
+            el.style.transition = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            hasMoved = true;
+            e.preventDefault();
+            const x = e.clientX - dragOffsetX;
+            const y = e.clientY - dragOffsetY;
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            el.style.cursor = 'grab';
+            el.style.transition = 'all 0.3s ease';
+        });
+
+        el.addEventListener('click', (e) => {
+            if (!hasMoved && clickCallback) {
+                clickCallback();
+            }
+        });
+    }
+
+    // Initialize Draggables
     const settingsBtn = document.getElementById('settings-btn');
-    let isDragging = false;
-    let dragOffsetX = 0;
-    let dragOffsetY = 0;
-    let hasMoved = false;
-
-    settingsBtn.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        hasMoved = false;
-        const rect = settingsBtn.getBoundingClientRect();
-        dragOffsetX = e.clientX - rect.left;
-        dragOffsetY = e.clientY - rect.top;
-        settingsBtn.style.cursor = 'grabbing';
-        
-        // Disable transitions during drag for responsiveness
-        settingsBtn.style.transition = 'none';
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        
-        hasMoved = true;
-        e.preventDefault();
-        
-        const x = e.clientX - dragOffsetX;
-        const y = e.clientY - dragOffsetY;
-        
-        settingsBtn.style.left = `${x}px`;
-        settingsBtn.style.top = `${y}px`;
-    });
-
-    document.addEventListener('mouseup', (e) => {
-        if (!isDragging) return;
-        
-        isDragging = false;
-        settingsBtn.style.cursor = 'grab';
-        
-        // Restore transitions
-        settingsBtn.style.transition = 'background 0.3s ease, transform 0.3s ease, opacity 0.3s ease';
+    const presetsBtn = document.getElementById('presets-btn');
+    const settingsPanel = document.getElementById('settings-panel');
+    
+    makeDraggable(settingsBtn, () => {
+        toggleSettings();
     });
     
-    // Handle click manually to avoid triggering when dragging
-    settingsBtn.addEventListener('click', (e) => {
-        if (!hasMoved) {
-            toggleSettings();
-        }
+    makeDraggable(presetsBtn, () => {
+        togglePresets();
     });
+
+    // --- Presets Logic ---
+    function togglePresets() {
+      const p = document.getElementById('presets-panel');
+      if (p.style.display === 'block') {
+        p.style.display = 'none';
+        p.classList.remove('open');
+      } else {
+        p.style.display = 'block';
+        p.classList.add('open');
+        loadPresetsList();
+      }
+    }
+
+    function getCurrentSettings() {
+      // Helper to gather current settings from UI/Variables
+      // We can reconstruct it from the inputs which reflect the current state
+      return {
+        width: parseInt(document.getElementById('inp-width').value),
+        minHeight: parseInt(document.getElementById('inp-minHeight').value),
+        spacing: parseInt(document.getElementById('inp-spacing').value),
+        padding: parseInt(document.getElementById('inp-padding').value),
+        textGap: parseInt(document.getElementById('inp-textGap').value),
+        borderRadius: parseInt(document.getElementById('inp-borderRadius').value),
+        showHeader: document.getElementById('inp-showHeader').checked,
+        showArtist: document.getElementById('inp-showArtist').checked,
+        showUser: document.getElementById('inp-showUser').checked,
+        showEmpty: document.getElementById('inp-showEmpty').checked,
+        animEntry: document.getElementById('inp-animEntry').value,
+        animExit: document.getElementById('inp-animExit').value,
+        font: document.getElementById('inp-font').value,
+        fontSize: parseInt(document.getElementById('inp-fontSize').value),
+        accent: document.getElementById('inp-accent').value,
+        bg: document.getElementById('inp-bg').value,
+        primaryOpacity: parseInt(document.getElementById('inp-primaryOpacity').value),
+        secondaryOpacity: parseInt(document.getElementById('inp-secondaryOpacity').value),
+        text: document.getElementById('inp-text').value
+      };
+    }
+
+    function saveAsPreset() {
+      const name = prompt("Nombre del Preset:");
+      if (!name) return;
+      
+      const current = getCurrentSettings();
+      const newPreset = { name, settings: current };
+      
+      let presets = JSON.parse(localStorage.getItem('queue_presets') || "[]");
+      presets.push(newPreset);
+      localStorage.setItem('queue_presets', JSON.stringify(presets));
+      
+      loadPresetsList();
+    }
+
+    function loadPresetsList() {
+      const list = document.getElementById('presets-list');
+      list.innerHTML = '';
+      
+      let presets = JSON.parse(localStorage.getItem('queue_presets') || "[]");
+      
+      if (presets.length === 0) {
+        list.innerHTML = '<div style="color:#aaa; font-style:italic; padding:10px;">No hay presets guardados.</div>';
+        return;
+      }
+      
+      presets.forEach((p, index) => {
+        const div = document.createElement('div');
+        div.className = 'preset-item';
+        div.innerHTML = `
+          <span class="preset-name" onclick="applyPreset(${index})">${p.name}</span>
+          <span class="preset-delete" onclick="deletePreset(${index})">🗑️</span>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    function deletePreset(index) {
+      if (!confirm("¿Borrar este preset?")) return;
+      let presets = JSON.parse(localStorage.getItem('queue_presets') || "[]");
+      presets.splice(index, 1);
+      localStorage.setItem('queue_presets', JSON.stringify(presets));
+      loadPresetsList();
+    }
+
+    function applyPreset(index) {
+      let presets = JSON.parse(localStorage.getItem('queue_presets') || "[]");
+      if (presets[index]) {
+        applySettings(presets[index].settings);
+        // Update inputs to match
+        const s = presets[index].settings;
+        document.getElementById('inp-width').value = s.width;
+        document.getElementById('inp-minHeight').value = s.minHeight;
+        document.getElementById('inp-spacing').value = s.spacing;
+        document.getElementById('inp-padding').value = s.padding;
+        document.getElementById('inp-textGap').value = s.textGap;
+        document.getElementById('inp-borderRadius').value = s.borderRadius;
+        document.getElementById('inp-showHeader').checked = s.showHeader;
+        document.getElementById('inp-showArtist').checked = s.showArtist;
+        document.getElementById('inp-showUser').checked = s.showUser;
+        document.getElementById('inp-showEmpty').checked = s.showEmpty;
+        document.getElementById('inp-animEntry').value = s.animEntry;
+        document.getElementById('inp-animExit').value = s.animExit;
+        document.getElementById('inp-font').value = s.font;
+        document.getElementById('inp-fontSize').value = s.fontSize;
+        document.getElementById('inp-accent').value = s.accent;
+        document.getElementById('inp-bg').value = s.bg;
+        document.getElementById('inp-primaryOpacity').value = s.primaryOpacity;
+        document.getElementById('inp-secondaryOpacity').value = s.secondaryOpacity;
+        document.getElementById('inp-text').value = s.text;
+        
+        // Update labels
+        document.getElementById('primary-opacity-val').innerText = s.primaryOpacity + '%';
+        document.getElementById('opacity-val').innerText = s.secondaryOpacity + '%';
+        
+        // Close panel
+        togglePresets();
+      }
+    }
   </script>
 </body>
 </html>
