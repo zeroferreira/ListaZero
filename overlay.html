@@ -691,25 +691,51 @@
     const userEl = document.getElementById('user');
 
     let hideTimeout;
-    // const DISPLAY_DURATION = 10000; // Deprecated, using dynamic variable displayDuration
+    
+    // --- Queue Logic ---
+    let notificationQueue = [];
+    let isShowing = false;
+
+    function addToQueue(data) {
+      console.log("Añadido a la cola:", data.cancion);
+      notificationQueue.push(data);
+      processQueue();
+    }
+
+    function processQueue() {
+      if (isShowing || notificationQueue.length === 0) return;
+      
+      const data = notificationQueue.shift();
+      showNotification(data);
+    }
 
     function showNotification(data) {
+      isShowing = true;
+
       // Rellenar datos
       songEl.textContent = data.cancion || 'Desconocida';
       artistEl.textContent = data.artista || 'Desconocido';
       userEl.textContent = data.usuario || 'Anónimo';
 
-      // Resetear animación
+      // Resetear animación (por si acaso, aunque processQueue espera)
       card.classList.remove('show');
       void card.offsetWidth; // Trigger reflow
       card.classList.add('show');
 
-      // Limpiar timeout anterior si existe
+      // Limpiar timeout anterior si existe (seguridad)
       if (hideTimeout) clearTimeout(hideTimeout);
 
       // Ocultar después de X segundos
       hideTimeout = setTimeout(() => {
         card.classList.remove('show');
+        
+        // Esperar a que termine la animación de salida antes de procesar el siguiente
+        // Asumimos unos 600ms de transición CSS + un pequeño buffer
+        setTimeout(() => {
+          isShowing = false;
+          processQueue();
+        }, 1000); 
+
       }, displayDuration);
     }
 
@@ -753,18 +779,14 @@
 
             if (isInitialLoad) {
                // En carga inicial, solo mostrar si es reciente (< 20 min)
-               // Nota: Si diff es negativo (futuro), lo mostramos también (asumiendo reloj desajustado pero "reciente")
-               // Si diff es muy grande (> 20 min), es viejo.
                if (diff < initialLoadThreshold) {
-                 showNotification(data);
+                 addToQueue(data);
                } else {
                  console.log('Solicitud antigua ignorada en carga inicial:', data);
                }
             } else {
                // Si NO es carga inicial, es un evento en tiempo real.
-               // Mostrar SIEMPRE, a menos que sea absurdamente viejo (ej. > 1 hora, por si acaso)
-               // Pero confiamos en que 'added' en tiempo real es nuevo.
-               showNotification(data);
+               addToQueue(data);
             }
           }
         });
@@ -811,7 +833,10 @@
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('test') === 'true') {
       setTimeout(() => {
+        console.log("Iniciando prueba de cola (3 solicitudes)...");
         simulateRequest();
+        setTimeout(simulateRequest, 2000); 
+        setTimeout(simulateRequest, 4000);
       }, 1000);
     }
    </script>
