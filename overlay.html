@@ -243,15 +243,19 @@
     }
 
     /* Panel de Configuración y Botones */
-    #controls-wrapper {
+    /* Botones independientes */
+    #preset-btn {
       position: fixed;
       top: 20px;
       left: 20px;
       z-index: 1000;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      /* Dragging logic will move this container */
+    }
+
+    #settings-btn {
+      position: fixed;
+      top: 80px;
+      left: 20px;
+      z-index: 1000;
     }
 
     .control-btn {
@@ -271,14 +275,6 @@
     }
     .control-btn:active { cursor: grabbing; }
     .control-btn:hover { background: rgba(0,0,0,0.8); transform: scale(1.1); }
-
-    #settings-btn {
-      /* Reset specific overrides if any */
-    }
-
-    #preset-btn {
-      /* Specific style for preset button */
-    }
 
     #settings-panel {
       position: fixed;
@@ -395,10 +391,8 @@
   </div>
 
   <!-- Controles (Presets + Configuración) -->
-  <div id="controls-wrapper">
-    <button id="preset-btn" class="control-btn" title="Cambiar Diseño (Preset)">🎨</button>
-    <button id="settings-btn" class="control-btn" title="Configurar Overlay">⚙️</button>
-  </div>
+  <button id="preset-btn" class="control-btn" title="Cambiar Diseño (Preset)">🎨</button>
+  <button id="settings-btn" class="control-btn" title="Configurar Overlay">⚙️</button>
 
   <!-- Panel de Configuración -->
   <div id="settings-panel">
@@ -1161,69 +1155,74 @@
         previewSettings(); // triggers applySettings
     }
 
-    // Quick toggle for the button
-    document.getElementById('preset-btn').addEventListener('click', (e) => {
-        if (!hasMoved) {
-            const current = document.getElementById('inp-preset').value;
-            const next = current === 'default' ? 'glass' : 'default';
-            document.getElementById('inp-preset').value = next;
-            applyPresetFromInput();
-        }
-        e.stopPropagation();
-    });
+    // --- Helper: Setup Draggable Button ---
+    function setupDraggable(elementId, onClick) {
+      const el = document.getElementById(elementId);
+      if(!el) return;
 
-    // --- Drag & Drop Logic for Controls Wrapper ---
-    const controlsWrapper = document.getElementById('controls-wrapper');
-    const settingsBtn = document.getElementById('settings-btn');
-    let isDragging = false;
-    let dragOffsetX = 0;
-    let dragOffsetY = 0;
-    let hasMoved = false;
+      let isDragging = false;
+      let hasMoved = false;
+      let startX, startY;
+      let initialLeft, initialTop;
 
-    // Make the whole wrapper draggable, or just the buttons?
-    // Wrapper is better for keeping them together.
-    controlsWrapper.addEventListener('mousedown', (e) => {
-        // Allow clicking buttons, but drag if holding down on background or button
+      el.addEventListener('mousedown', (e) => {
         isDragging = true;
         hasMoved = false;
-        const rect = controlsWrapper.getBoundingClientRect();
-        dragOffsetX = e.clientX - rect.left;
-        dragOffsetY = e.clientY - rect.top;
-        controlsWrapper.style.cursor = 'grabbing';
+        startX = e.clientX;
+        startY = e.clientY;
         
-        // Disable transitions during drag
-        Array.from(controlsWrapper.children).forEach(btn => btn.style.transition = 'none');
-    });
+        const rect = el.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
 
-    document.addEventListener('mousemove', (e) => {
+        el.style.cursor = 'grabbing';
+        el.style.transition = 'none'; // Disable transition during drag
+      });
+
+      window.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
         
-        hasMoved = true;
-        e.preventDefault();
-        
-        const x = e.clientX - dragOffsetX;
-        const y = e.clientY - dragOffsetY;
-        
-        controlsWrapper.style.left = `${x}px`;
-        controlsWrapper.style.top = `${y}px`;
-    });
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
 
-    document.addEventListener('mouseup', (e) => {
-        if (!isDragging) return;
-        
-        isDragging = false;
-        controlsWrapper.style.cursor = 'default';
-        
-        // Restore transitions
-        Array.from(controlsWrapper.children).forEach(btn => btn.style.transition = 'background 0.3s ease, transform 0.3s ease');
-    });
-    
-    // Handle click for settings button manually
-    settingsBtn.addEventListener('click', (e) => {
-        if (!hasMoved) {
-            toggleSettings();
+        // If moved more than a few pixels, consider it a drag
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+          hasMoved = true;
         }
-        e.stopPropagation(); // Prevent wrapper click if any
+
+        el.style.left = `${initialLeft + dx}px`;
+        el.style.top = `${initialTop + dy}px`;
+      });
+
+      window.addEventListener('mouseup', (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        el.style.cursor = 'grab';
+        el.style.transition = 'background 0.3s ease, transform 0.3s ease'; // Restore transition
+      });
+
+      // Handle Click vs Drag
+      el.addEventListener('click', (e) => {
+        if (!hasMoved && typeof onClick === 'function') {
+           onClick(e);
+        }
+        e.stopPropagation();
+      });
+    }
+
+    // --- Setup Buttons ---
+    
+    // 1. Preset Button
+    setupDraggable('preset-btn', () => {
+        const current = document.getElementById('inp-preset').value;
+        const next = current === 'default' ? 'glass' : 'default';
+        document.getElementById('inp-preset').value = next;
+        applyPresetFromInput();
+    });
+
+    // 2. Settings Button
+    setupDraggable('settings-btn', () => {
+        toggleSettings();
     });
     </script>
 </body>
