@@ -26,6 +26,9 @@
       --font-size-user: 12px;
       --card-min-height: 100px;
       --card-border-radius: 8px;
+      --sep-color: rgba(255,255,255,0.1);
+      --sep-width: 1px;
+      --sep-style: solid;
     }
 
     body {
@@ -159,7 +162,7 @@
     .requested-by {
       font-size: var(--font-size-user);
       color: rgba(255,255,255,0.7);
-      border-top: 1px solid rgba(255,255,255,0.1);
+      border-top: var(--sep-width) var(--sep-style) var(--sep-color);
       padding-top: 8px;
       display: flex;
       align-items: center;
@@ -420,6 +423,8 @@
         <option value="🔊">🔊 Altavoz</option>
         <option value="🎼">🎼 Partitura</option>
         <option value="🎶">🎶 Notas</option>
+        <option value="🥁">🥁 Tambor</option>
+
       </select>
     </div>
 
@@ -466,6 +471,32 @@
     </div>
 
     <div class="settings-group">
+      <label>Separador: Color</label>
+      <input type="color" id="inp-sepColor" value="#ffffff" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Separador: Opacidad (%)</label>
+      <input type="range" id="inp-sepOpacity" min="0" max="100" value="10" oninput="document.getElementById('sep-opacity-val').innerText = this.value + '%'; previewSettings()">
+      <span id="sep-opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">10%</span>
+    </div>
+
+    <div class="settings-group">
+      <label>Separador: Grosor (px)</label>
+      <input type="number" id="inp-sepWidth" value="1" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Separador: Estilo</label>
+      <select id="inp-sepStyle" onchange="previewSettings()">
+        <option value="solid">Sólido</option>
+        <option value="dashed">Discontinuo (Dashed)</option>
+        <option value="dotted">Puntos (Dotted)</option>
+        <option value="double">Doble</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
        <label>Simulación</label>
        <button class="btn" style="background: #333;" onclick="simulateRequest()">🔔 Simular Pedido</button>
     </div>
@@ -504,7 +535,11 @@
       bg: "#000000",
       opacity: 85,
       text: "#ffffff",
-      duration: 10
+      duration: 10,
+      sepColor: "#ffffff",
+      sepOpacity: 10,
+      sepWidth: 1,
+      sepStyle: "solid"
     };
 
     let displayDuration = 10000;
@@ -565,6 +600,15 @@
 
       document.getElementById('inp-text').value = settings.text;
       document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
+      
+      document.getElementById('inp-sepColor').value = settings.sepColor || '#ffffff';
+      
+      const sepOpVal = settings.sepOpacity !== undefined ? settings.sepOpacity : 10;
+      document.getElementById('inp-sepOpacity').value = sepOpVal;
+      document.getElementById('sep-opacity-val').innerText = sepOpVal + '%';
+
+      document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
+      document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
     }
 
     function applySettings(s) {
@@ -631,6 +675,16 @@
       root.style.setProperty('--accent-color-bg', `rgba(${ar},${ag},${ab},0.2)`);
       root.style.setProperty('--accent-color-glow', `rgba(${ar},${ag},${ab},0.4)`);
       
+      // Separator
+      const sr = parseInt((s.sepColor || '#ffffff').substr(1,2), 16);
+      const sg = parseInt((s.sepColor || '#ffffff').substr(3,2), 16);
+      const sb = parseInt((s.sepColor || '#ffffff').substr(5,2), 16);
+      const sepOp = (s.sepOpacity !== undefined ? s.sepOpacity : 10) / 100;
+      
+      root.style.setProperty('--sep-color', `rgba(${sr},${sg},${sb},${sepOp})`);
+      root.style.setProperty('--sep-width', (s.sepWidth || 1) + 'px');
+      root.style.setProperty('--sep-style', s.sepStyle || 'solid');
+
       displayDuration = (s.duration !== undefined ? s.duration : 10) * 1000;
     }
 
@@ -657,7 +711,11 @@
         bg: document.getElementById('inp-bg').value,
         opacity: document.getElementById('inp-opacity').value,
         text: document.getElementById('inp-text').value,
-        duration: document.getElementById('inp-duration').value
+        duration: document.getElementById('inp-duration').value,
+        sepColor: document.getElementById('inp-sepColor').value,
+        sepOpacity: document.getElementById('inp-sepOpacity').value,
+        sepWidth: document.getElementById('inp-sepWidth').value,
+        sepStyle: document.getElementById('inp-sepStyle').value
       };
     }
 
@@ -689,7 +747,8 @@
         ['inp-width', 'inp-minHeight', 'inp-borderRadius', 'inp-animType', 'inp-textAnim',
          'inp-font', 'inp-fontSizeSong', 'inp-fontSizeArtist', 'inp-fontSizeUser', 'inp-fontSizeHeader', 
          'inp-accent', 'inp-icon', 'inp-iconCircleSize', 'inp-iconFontSize', 'inp-iconBg', 'inp-iconOpacity',
-         'inp-bg', 'inp-opacity', 'inp-text', 'inp-duration'].forEach(id => {
+         'inp-bg', 'inp-opacity', 'inp-text', 'inp-duration',
+         'inp-sepColor', 'inp-sepOpacity', 'inp-sepWidth', 'inp-sepStyle'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('input', previewSettings);
@@ -765,6 +824,14 @@
         
               document.getElementById('inp-text').value = settings.text;
               document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
+              
+              if(document.getElementById('inp-sepColor')) {
+                  document.getElementById('inp-sepColor').value = settings.sepColor || '#ffffff';
+                  document.getElementById('inp-sepOpacity').value = settings.sepOpacity !== undefined ? settings.sepOpacity : 10;
+                  document.getElementById('sep-opacity-val').innerText = (settings.sepOpacity !== undefined ? settings.sepOpacity : 10) + '%';
+                  document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
+                  document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
+              }
           }
         }
       }, (error) => {
