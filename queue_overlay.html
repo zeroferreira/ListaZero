@@ -1288,13 +1288,24 @@
 
         if (artistMatch && songMatch) {
           console.log(`✨ Auto-marking song as played: ${req.artist} - ${req.song}`);
-          togglePlayed(req.id);
+          markSongAsPlayed(req.id);
           lastAutoMarkedSong = key;
           
           // Optional: Show visual feedback or toast?
           break; // Mark only the first match
         }
       }
+    }
+
+    function markSongAsPlayed(id) {
+      if (!id) return;
+      // Actualizar Firestore para que sea persistente y real
+      db.collection('playedSongs').doc(currentDay).set({
+        songs: firebase.firestore.FieldValue.arrayUnion(id),
+        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true })
+      .then(() => console.log("Song marked as played:", id))
+      .catch(err => console.error("Error marking song as played:", err));
     }
 
     const currentDay = getLocalDateKey();
@@ -1389,14 +1400,7 @@
         const id = generateSongId(toToggle);
         
         console.log("Simulando toggle para:", id);
-        
-        // Actualizar Firestore para que sea persistente y real
-        db.collection('playedSongs').doc(currentDay).set({
-          songs: firebase.firestore.FieldValue.arrayUnion(id),
-          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true })
-        .then(() => console.log("Toggle synced to Firestore"))
-        .catch(err => console.error("Error syncing toggle:", err));
+        markSongAsPlayed(id);
 
       } else {
         alert("No hay canciones pendientes para marcar.");
