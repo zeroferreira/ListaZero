@@ -348,6 +348,7 @@
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -560,6 +561,16 @@
              </div>
            </label>
         </div>
+
+        <div class="settings-group">
+           <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+             <input type="checkbox" id="inp-syncAppleMusic"> 
+             <div>
+               <strong>🎵 Sincronizar Apple Music</strong><br>
+               <small style="color:#aaa;">Marca canciones como reproducidas (Req. Cider/Widget)</small>
+             </div>
+           </label>
+        </div>
     </div>
 
     <div class="settings-actions">
@@ -643,7 +654,8 @@
       autocorrect: true,
       showAlbumArt: false,
       showWaitTime: true,
-      showTotalDuration: true
+      showTotalDuration: true,
+      syncAppleMusic: true
     };
 
     function loadSettings() {
@@ -693,6 +705,7 @@
       document.getElementById('inp-showAlbumArt').checked = settings.showAlbumArt !== undefined ? settings.showAlbumArt : false;
       document.getElementById('inp-showWaitTime').checked = settings.showWaitTime !== undefined ? settings.showWaitTime : false;
       document.getElementById('inp-showTotalDuration').checked = settings.showTotalDuration !== undefined ? settings.showTotalDuration : false;
+      document.getElementById('inp-syncAppleMusic').checked = settings.syncAppleMusic !== undefined ? settings.syncAppleMusic : false;
     }
 
     function applySettings(s) {
@@ -755,6 +768,11 @@
         // Debounce render if called frequently
         // renderQueue(); 
       }
+
+      // Cider Connection
+      if (s.syncAppleMusic) {
+        connectCider();
+      }
     }
 
     function getSettingsFromInputs() {
@@ -782,7 +800,8 @@
         autocorrect: document.getElementById('inp-autocorrect').checked,
         showAlbumArt: document.getElementById('inp-showAlbumArt').checked,
         showWaitTime: document.getElementById('inp-showWaitTime').checked,
-        showTotalDuration: document.getElementById('inp-showTotalDuration').checked
+        showTotalDuration: document.getElementById('inp-showTotalDuration').checked,
+        syncAppleMusic: document.getElementById('inp-syncAppleMusic').checked
       };
     }
 
@@ -827,7 +846,7 @@
         });
 
         // Checkboxes - Data/Structure (Requires Re-render)
-        ['inp-autocorrect', 'inp-showAlbumArt', 'inp-showWaitTime', 'inp-showTotalDuration'].forEach(id => {
+        ['inp-autocorrect', 'inp-showAlbumArt', 'inp-showWaitTime', 'inp-showTotalDuration', 'inp-syncAppleMusic'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('change', () => {
@@ -1192,6 +1211,81 @@
       const m = Math.round((totalMs % 3600000) / 60000);
       
       valEl.innerText = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    }
+
+    // --- Apple Music / Cider Integration ---
+    let ciderSocket = null;
+    let lastAutoMarkedSong = ""; // Prevent repeated toggles for same song
+
+    function connectCider() {
+      if (ciderSocket) return; // Already connected
+      if (!window.io) {
+        console.warn("Socket.io not loaded");
+        return;
+      }
+
+      console.log("Intentando conectar a Cider (localhost:10767)...");
+      // Cider uses port 10767 by default
+      ciderSocket = io("http://localhost:10767/", {
+        transports: ['websocket'],
+        reconnectionAttempts: 5
+      });
+
+      ciderSocket.on("connect", () => {
+        console.log("✅ Conectado a Cider/Apple Music Widget!");
+      });
+
+      ciderSocket.on("disconnect", () => {
+        console.log("❌ Desconectado de Cider");
+        ciderSocket = null;
+      });
+
+      ciderSocket.on("API:Playback", (event) => {
+        // data structure: { data: { name, artistName, ... }, type: "..." }
+        const { data, type } = event;
+        if (type === "playbackStatus.nowPlayingItemDidChange") {
+             console.log("🎵 Cider Now Playing:", data.artistName, "-", data.name);
+             autoMarkPlayed(data.artistName, data.name);
+        }
+      });
+    }
+
+    function autoMarkPlayed(artist, song) {
+      if (!artist || !song) return;
+      
+      const key = `${artist}-${song}`;
+      if (lastAutoMarkedSong === key) return; // Already handled this track
+      
+      // Normalize for comparison
+      const normalize = (str) => str ? str.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+      const targetArtist = normalize(artist);
+      const targetSong = normalize(song);
+
+      // Search in queueList (which is currently rendered/filtered)
+      // or search in allRequests (raw data)
+      // We prioritize unplayed songs in the queue
+      
+      // Filter unplayed requests
+      const candidates = allRequests.filter(req => !playedSongIds.has(req.id));
+
+      for (const req of candidates) {
+        const reqArtist = normalize(req.artist);
+        const reqSong = normalize(req.song);
+
+        // Simple fuzzy match: check if one contains the other
+        // This handles cases like "The Beatles" vs "Beatles"
+        const artistMatch = reqArtist.includes(targetArtist) || targetArtist.includes(reqArtist);
+        const songMatch = reqSong.includes(targetSong) || targetSong.includes(reqSong);
+
+        if (artistMatch && songMatch) {
+          console.log(`✨ Auto-marking song as played: ${req.artist} - ${req.song}`);
+          togglePlayed(req.id);
+          lastAutoMarkedSong = key;
+          
+          // Optional: Show visual feedback or toast?
+          break; // Mark only the first match
+        }
+      }
     }
 
     const currentDay = getLocalDateKey();
