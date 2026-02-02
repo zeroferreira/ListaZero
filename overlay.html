@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Overlay Pedidos - Zero FM</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap');
+
+    :root {
+      --card-width: 400px;
+      --card-bg-color: rgba(0, 0, 0, 0.85);
+      --accent-color: #ff0055;
+      --icon-bg-color: rgba(255, 255, 255, 0.2);
+      --icon-content: '🎵';
+      --icon-circle-size: 50px;
+      --icon-font-size: 25px;
+      --text-color: #ffffff;
+      --font-family: 'Montserrat', sans-serif;
+      --font-size-base: 16px;
+      --font-size-header: 14px;
+      --font-size-song: 24px;
+      --font-size-artist: 16px;
+      --font-size-user: 12px;
+      --card-min-height: 100px;
+      --card-border-radius: 8px;
+      --sep-color: rgba(255,255,255,0.1);
+      --sep-width: 1px;
+      --sep-style: solid;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: transparent; /* Importante para OBS */
+      overflow: hidden;
+      font-family: var(--font-family);
+      height: 100vh;
+      display: flex;
+      align-items: center; /* Centrado vertical */
+      justify-content: center; /* Centrado horizontal */
+    }
+
+    #notification-container {
+      margin: 0;
+      width: var(--card-width);
+      perspective: 1000px;
+    }
+
+    .card {
+      background: var(--card-bg-color);
+      border-left: 6px solid var(--accent-color);
+      border-radius: var(--card-border-radius);
+      min-height: var(--card-min-height);
+      padding: 20px;
+      color: var(--text-color);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      transform-origin: left center;
+      opacity: 0;
+      transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    /* Animaciones de Entrada (controladas por clase en el contenedor o tarjeta) */
+    /* Default: Flip In */
+    .anim-flip .card { transform: translateX(-50px) rotateY(90deg); }
+    .anim-flip .card.show { opacity: 1; transform: translateX(0) rotateY(0); }
+
+    /* Slide Up */
+    .anim-slide-up .card { transform: translateY(50px); }
+    .anim-slide-up .card.show { opacity: 1; transform: translateY(0); }
+
+    /* Zoom In */
+    .anim-zoom .card { transform: scale(0.5); }
+    .anim-zoom .card.show { opacity: 1; transform: scale(1); }
+
+    /* Bounce In */
+    .anim-bounce .card { transform: scale(0.8) translateY(20px); }
+    .anim-bounce .card.show { opacity: 1; transform: scale(1) translateY(0); animation: bounceEffect 0.8s; }
+
+    @keyframes bounceEffect {
+      0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
+      40% {transform: translateY(-20px);}
+      60% {transform: translateY(-10px);}
+    }
+
+
+    .header {
+      font-size: var(--font-size-header);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--accent-color);
+      font-weight: 900;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header::before {
+      content: var(--icon-content);
+      font-size: var(--icon-font-size);
+      background: var(--icon-bg-color);
+      width: var(--icon-circle-size);
+      height: var(--icon-circle-size);
+      min-width: var(--icon-circle-size); /* Asegurar que no se aplaste */
+      min-height: var(--icon-circle-size);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 15px;
+      animation: icon-pulse 2s infinite ease-in-out;
+      box-shadow: 0 0 15px var(--accent-color-glow);
+      border: 2px solid var(--accent-color);
+    }
+
+    @keyframes icon-pulse {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 var(--accent-color-bg); }
+      50% { transform: scale(1.1); box-shadow: 0 0 20px 0 var(--accent-color-glow); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 var(--accent-color-bg); }
+    }
+
+    /* Text Animations */
+    .text-anim-fade .song-title, .text-anim-fade .artist {
+       animation: text-fade 1s ease-out forwards;
+    }
+    @keyframes text-fade { from { opacity: 0; } to { opacity: 1; } }
+
+    .text-anim-slide .song-title { animation: text-slide 0.8s ease-out forwards; }
+    .text-anim-slide .artist { animation: text-slide 1s ease-out forwards; }
+    @keyframes text-slide { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+    .text-anim-scale .song-title, .text-anim-scale .artist { animation: text-scale 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+    @keyframes text-scale { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+
+    .song-title {
+      font-size: var(--font-size-song);
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 4px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+      /* Truncar si es muy largo */
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .artist {
+      font-size: var(--font-size-artist);
+      color: rgba(255,255,255,0.9); /* Usar opacidad para adaptarse */
+      margin-bottom: 12px;
+      font-weight: 400;
+    }
+
+    .requested-by {
+      font-size: var(--font-size-user);
+      color: rgba(255,255,255,0.7);
+      border-top: var(--sep-width) var(--sep-style) var(--sep-color);
+      padding-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .user-badge {
+      background: #333;
+      padding: 2px 8px;
+      border-radius: 4px;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    /* Animación de entrada */
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 0, 85, 0.4); } /* Debería usar accent color dinámico, pero keyframes son difíciles de inyectar var() en colores complejos si necesitamos opacidad. 
+      Pero podemos usar currentColor si seteamos color en el elemento, o simplemente simplificar */
+      /* Usaremos una variable para el color de sombra o lo dejamos fijo por simplicidad, o mejor: */
+      0% { box-shadow: 0 0 0 0 var(--accent-color); }
+      70% { box-shadow: 0 0 0 10px rgba(0,0,0,0); } /* Fade out to transparent */
+      100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+    }
+    
+    .card.show {
+      /* Re-habilitamos animación simple, nota: rgba dinámico en keyframes es complejo sin pre-cálculo */
+      /* Por ahora desactivamos el pulse de color específico o lo hacemos blanco sutil */
+      animation: none; /* Simplificar para evitar problemas con variables en keyframes complejos */
+      /* Opcional: Reemplazar con algo genérico */
+    }
+
+    /* --- Estilos para Layouts (Presets) --- */
+    .card-content {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    /* Layout: Glassmorphism / Album Art */
+    .card.layout-glass {
+      flex-direction: row;
+      align-items: stretch; /* Estirar para que la imagen ocupe todo el alto */
+      padding: 0 !important; /* Quitar padding del contenedor principal */
+      gap: 0;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      /* El fondo se controlará por JS, pero por defecto glass es semitransparente */
+    }
+
+    .card.layout-glass #album-art {
+      display: block !important;
+      width: auto;
+      min-width: 150px; /* Ancho mínimo para la imagen */
+      max-width: 150px;
+      height: auto;
+      object-fit: cover;
+      border-radius: var(--card-border-radius) 0 0 var(--card-border-radius);
+    }
+
+    .card.layout-glass .card-content {
+      padding: 20px;
+      justify-content: center;
+    }
+
+    .card.layout-glass .header::before {
+      display: none; /* Ocultar icono predeterminado si hay arte */
+    }
+
+    /* Ajuste para borde izquierdo de acento en Glass */
+    .card.layout-glass {
+      border-left: none; /* Quitar borde izquierdo estándar */
+    }
+    .card.layout-glass #album-art {
+      border-left: 6px solid var(--accent-color); /* Mover borde al arte */
+    }
+
+    /* Panel de Configuración y Botones */
+    #controls-wrapper {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      /* Dragging logic will move this container */
+    }
+
+    .control-btn {
+      width: 50px;
+      height: 50px;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      border-radius: 50%;
+      cursor: grab;
+      font-size: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      user-select: none;
+      transition: background 0.3s ease, transform 0.3s ease;
+    }
+    .control-btn:active { cursor: grabbing; }
+    .control-btn:hover { background: rgba(0,0,0,0.8); transform: scale(1.1); }
+
+    #settings-btn {
+      /* Reset specific overrides if any */
+    }
+
+    #preset-btn {
+      /* Specific style for preset button */
+    }
+
+    #settings-panel {
+      position: fixed;
+      top: 70px;
+      left: 20px;
+      transform: none;
+      transform-origin: top left;
+      width: 90%;
+      max-width: 400px;
+      background: rgba(15, 15, 15, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 20px;
+      z-index: 1001;
+      color: white;
+      display: none;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    #settings-panel.open { 
+      display: block; 
+      animation: menu-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes menu-pop {
+      from { opacity: 0; transform: scale(0.5); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    
+    .settings-group { margin-bottom: 15px; }
+    .settings-group label { display: block; margin-bottom: 5px; font-size: 14px; color: #ccc; }
+    .settings-group input[type="text"],
+    .settings-group input[type="number"], 
+    .settings-group select {
+      width: 100%;
+      padding: 8px;
+      background: #333;
+      border: 1px solid #444;
+      color: white;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .settings-group input[type="color"] {
+      width: 100%;
+      height: 40px;
+      border: none;
+      background: none;
+      cursor: pointer;
+    }
+    .settings-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-save { background: #ff0055; color: #fff; }
+    .btn-reset { background: #444; color: #fff; }
+
+    /* Estilos para controles de depuración */
+    #debug-controls {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10000;
+      opacity: 0.2; /* Discreto por defecto */
+      transition: opacity 0.3s;
+    }
+    #debug-controls:hover {
+      opacity: 1;
+    }
+    #debug-controls button {
+      padding: 10px 20px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      font-family: 'Montserrat', sans-serif;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    #debug-controls button:hover {
+      background: #eee;
+    }
+  </style>
+  
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+  <div id="notification-container">
+    <div id="card" class="card">
+      <img id="album-art" src="" alt="Album Art" style="display:none;">
+      <div class="card-content">
+        <div class="header">Nueva Solicitud</div>
+        <div class="song-title" id="song">Canción</div>
+        <div class="artist" id="artist">Artista</div>
+        <div class="requested-by">
+          Pedida por: <span class="user-badge" id="user">Usuario</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controles (Presets + Configuración) -->
+  <div id="controls-wrapper">
+    <button id="preset-btn" class="control-btn" title="Cambiar Diseño (Preset)">🎨</button>
+    <button id="settings-btn" class="control-btn" title="Configurar Overlay">⚙️</button>
+  </div>
+
+  <!-- Panel de Configuración -->
+  <div id="settings-panel">
+    <h3 style="margin-top:0; border-bottom: 1px solid #333; padding-bottom: 10px;">Configuración</h3>
+    
+    <div class="settings-group" style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 5px;">
+      <label style="color: #fff; font-weight: bold;">Estilo (Preset)</label>
+      <select id="inp-preset" onchange="applyPresetFromInput()">
+        <option value="default">Clásico (Icono)</option>
+        <option value="glass">Moderno (Album Art)</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Ancho de Tarjeta (px)</label>
+      <input type="number" id="inp-width" value="400" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Alto Mínimo (px)</label>
+      <input type="number" id="inp-minHeight" value="100" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Radio de Borde (px)</label>
+      <input type="number" id="inp-borderRadius" value="8" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Animación de Entrada</label>
+      <select id="inp-animType" onchange="previewSettings()">
+        <option value="anim-flip">Flip In (Default)</option>
+        <option value="anim-slide-up">Slide Up</option>
+        <option value="anim-zoom">Zoom In</option>
+        <option value="anim-bounce">Bounce In</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Animación de Texto</label>
+      <select id="inp-textAnim" onchange="previewSettings()">
+        <option value="text-anim-none">Ninguna</option>
+        <option value="text-anim-fade">Fade In</option>
+        <option value="text-anim-slide">Slide In</option>
+        <option value="text-anim-scale">Scale Up</option>
+      </select>
+    </div>
+
+
+    <div class="settings-group">
+      <label>Fuente</label>
+      <select id="inp-font" onchange="previewSettings()">
+        <option value="'Montserrat', sans-serif">Montserrat</option>
+        <option value="'Roboto', sans-serif">Roboto</option>
+        <option value="'Open Sans', sans-serif">Open Sans</option>
+        <option value="'Lato', sans-serif">Lato</option>
+        <option value="sans-serif">System Default</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Título (px)</label>
+      <input type="number" id="inp-fontSizeSong" value="42" oninput="previewSettings()">
+    </div>
+    
+    <div class="settings-group">
+      <label>Tamaño Artista (px)</label>
+      <input type="number" id="inp-fontSizeArtist" value="28" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Usuario / Pedido por (px)</label>
+      <input type="number" id="inp-fontSizeUser" value="21" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Cabecera (px)</label>
+      <input type="number" id="inp-fontSizeHeader" value="24" oninput="previewSettings()">
+    </div>
+
+    <!-- Deprecated Base Font Size hidden or removed -->
+    <!-- <div class="settings-group">
+      <label>Tamaño de Fuente Base (px)</label>
+      <input type="number" id="inp-fontSize" value="16">
+    </div> -->
+
+    <div class="settings-group">
+      <label>Color de Acento</label>
+      <input type="color" id="inp-accent" value="#ff0055" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Icono</label>
+      <select id="inp-icon" onchange="previewSettings()">
+        <option value="🎵">🎵 Nota Musical</option>
+        <option value="🎧">🎧 Auriculares</option>
+        <option value="💿">💿 CD</option>
+        <option value="📻">📻 Radio</option>
+        <option value="🎸">🎸 Guitarra</option>
+        <option value="🎹">🎹 Piano</option>
+        <option value="🎤">🎤 Micrófono</option>
+        <option value="🔊">🔊 Altavoz</option>
+        <option value="🎼">🎼 Partitura</option>
+        <option value="🎶">🎶 Notas</option>
+        <option value="🥁">🥁 Tambor</option>
+
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Círculo (px)</label>
+      <input type="number" id="inp-iconCircleSize" value="50" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Icono (Fuente px)</label>
+      <input type="number" id="inp-iconFontSize" value="25" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Color Círculo Icono</label>
+      <input type="color" id="inp-iconBg" value="#ffffff" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Opacidad Círculo (0-100%)</label>
+      <input type="range" id="inp-iconOpacity" min="0" max="100" value="20" oninput="document.getElementById('icon-opacity-val').innerText = this.value + '%'; previewSettings()">
+      <span id="icon-opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">20%</span>
+    </div>
+
+    <div class="settings-group">
+      <label>Color de Fondo</label>
+      <input type="color" id="inp-bg" value="#000000" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Opacidad Fondo (0-100%)</label>
+      <input type="range" id="inp-opacity" min="0" max="100" value="85" oninput="document.getElementById('bg-opacity-val').innerText = this.value + '%'; previewSettings()">
+      <span id="bg-opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">85%</span>
+    </div>
+
+    <div class="settings-group">
+      <label>Color de Texto</label>
+      <input type="color" id="inp-text" value="#ffffff" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Duración en Pantalla (segundos)</label>
+      <input type="number" id="inp-duration" value="10" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Separador: Color</label>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
+        <input type="checkbox" id="inp-sepUseAccent" onchange="previewSettings()" style="width:auto; margin:0;">
+        <span style="font-size:12px; color:#aaa;">Usar Color de Acento</span>
+      </div>
+      <input type="color" id="inp-sepColor" value="#ffffff" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Separador: Opacidad (%)</label>
+      <input type="range" id="inp-sepOpacity" min="0" max="100" value="10" oninput="document.getElementById('sep-opacity-val').innerText = this.value + '%'; previewSettings()">
+      <span id="sep-opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">10%</span>
+    </div>
+
+    <div class="settings-group">
+      <label>Separador: Grosor (px)</label>
+      <input type="number" id="inp-sepWidth" value="1" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Separador: Estilo</label>
+      <select id="inp-sepStyle" onchange="previewSettings()">
+        <option value="solid">Sólido</option>
+        <option value="dashed">Discontinuo (Dashed)</option>
+        <option value="dotted">Puntos (Dotted)</option>
+        <option value="double">Doble</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+       <label>Simulación</label>
+       <button class="btn" style="background: #333;" onclick="simulateRequest()">🔔 Simular Pedido</button>
+    </div>
+
+    <div class="settings-actions">
+      <button class="btn btn-reset" onclick="resetSettings()">Reset</button>
+      <button class="btn btn-save" onclick="saveSettings()">Guardar</button>
+    </div>
+  </div>
+
+  <!-- Controles de Depuración -->
+  <div id="debug-controls">
+    <button onclick="simulateRequest()">🔔 Simular Pedido</button>
+  </div>
+
+  <script>
+    // --- Configuración / Settings Logic ---
+    const defaultSettings = {
+      layoutMode: 'default', // default | glass
+      width: 400, // Ajustado para 1080p
+      minHeight: 100,
+      borderRadius: 8,
+      animType: 'anim-flip',
+      textAnim: 'text-anim-fade',
+      font: "'Montserrat', sans-serif",
+      // Default font sizes optimized for 1080p vertical
+      fontSizeSong: 24,
+      fontSizeArtist: 16,
+      fontSizeUser: 12,
+      fontSizeHeader: 14,
+      accent: "#ff0055",
+      icon: "🎵",
+      iconCircleSize: 50,
+      iconFontSize: 25,
+      iconBg: "#ffffff",
+      iconOpacity: 20,
+      bg: "#000000",
+      opacity: 85,
+      text: "#ffffff",
+      duration: 10,
+      sepColor: "#ffffff",
+      sepUseAccent: true,
+      sepOpacity: 10,
+      sepWidth: 1,
+      sepStyle: "solid"
+    };
+
+    const presetConfigs = {
+      default: {
+        layoutMode: 'default',
+        width: 400,
+        minHeight: 100,
+        borderRadius: 8,
+        opacity: 85,
+        iconCircleSize: 50,
+        iconFontSize: 25
+      },
+      glass: {
+        layoutMode: 'glass',
+        width: 550,
+        minHeight: 150,
+        borderRadius: 25,
+        opacity: 40,
+        iconCircleSize: 0, // Icon hidden in glass mode via CSS, but good to reset
+        iconFontSize: 0
+      }
+    };
+
+    let displayDuration = 10000;
+
+    function loadSettings() {
+      const saved = localStorage.getItem('overlay_settings');
+      // Merge saved with default to ensure new keys exist
+      let settings = saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+      
+      // Migration check: 
+      // 1. Old fontSize -> specific sizes
+      if(saved) {
+         const parsed = JSON.parse(saved);
+         if(!parsed.fontSizeSong && parsed.fontSize) {
+            settings.fontSizeSong = Math.round(parsed.fontSize * 1.5);
+            settings.fontSizeArtist = parsed.fontSize;
+            settings.fontSizeUser = Math.round(parsed.fontSize * 0.75);
+            settings.fontSizeHeader = Math.round(parsed.fontSize * 0.875);
+         }
+         // 2. Old iconSize -> iconCircleSize + iconFontSize
+         if (parsed.iconSize && !parsed.iconCircleSize) {
+            settings.iconCircleSize = parsed.iconSize;
+            settings.iconFontSize = Math.round(parsed.iconSize * 0.5);
+         }
+      }
+
+      applySettings(settings);
+      
+      // Update Inputs
+      document.getElementById('inp-preset').value = settings.layoutMode || 'default';
+      document.getElementById('inp-width').value = settings.width;
+      document.getElementById('inp-minHeight').value = settings.minHeight;
+      document.getElementById('inp-borderRadius').value = settings.borderRadius;
+      document.getElementById('inp-animType').value = settings.animType;
+      document.getElementById('inp-textAnim').value = settings.textAnim || 'text-anim-fade';
+      
+      document.getElementById('inp-font').value = settings.font;
+      
+      document.getElementById('inp-fontSizeSong').value = settings.fontSizeSong;
+      document.getElementById('inp-fontSizeArtist').value = settings.fontSizeArtist;
+      document.getElementById('inp-fontSizeUser').value = settings.fontSizeUser;
+      document.getElementById('inp-fontSizeHeader').value = settings.fontSizeHeader;
+
+      document.getElementById('inp-accent').value = settings.accent;
+      document.getElementById('inp-icon').value = settings.icon || '🎵';
+      document.getElementById('inp-iconCircleSize').value = settings.iconCircleSize || 50;
+      document.getElementById('inp-iconFontSize').value = settings.iconFontSize || 25;
+      document.getElementById('inp-iconBg').value = settings.iconBg || '#ffffff';
+      
+      const iconOpVal = settings.iconOpacity !== undefined ? settings.iconOpacity : 20;
+      document.getElementById('inp-iconOpacity').value = iconOpVal;
+      document.getElementById('icon-opacity-val').innerText = iconOpVal + '%';
+
+      document.getElementById('inp-bg').value = settings.bg;
+      
+      const opVal = settings.opacity !== undefined ? settings.opacity : 85;
+      document.getElementById('inp-opacity').value = opVal;
+      document.getElementById('bg-opacity-val').innerText = opVal + '%';
+
+      document.getElementById('inp-text').value = settings.text;
+      document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
+      
+      document.getElementById('inp-sepColor').value = settings.sepColor || '#ffffff';
+      document.getElementById('inp-sepUseAccent').checked = settings.sepUseAccent !== undefined ? settings.sepUseAccent : true;
+      toggleSepColorInput(); 
+
+      const sepOpVal = settings.sepOpacity !== undefined ? settings.sepOpacity : 10;
+      document.getElementById('inp-sepOpacity').value = sepOpVal;
+      document.getElementById('sep-opacity-val').innerText = sepOpVal + '%';
+
+      document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
+      document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
+    }
+
+    function applySettings(s) {
+      // Apply Layout Mode
+      const card = document.getElementById('card');
+      const art = document.getElementById('album-art');
+      if (s.layoutMode === 'glass') {
+          card.classList.add('layout-glass');
+          if (!art.src || art.src === window.location.href || art.src === '') {
+              // Placeholder simple si no hay arte real
+              // En un caso real, aquí iría la URL del álbum
+              art.src = 'https://via.placeholder.com/150/000000/FFFFFF/?text=🎵'; 
+          }
+      } else {
+          card.classList.remove('layout-glass');
+      }
+
+      const root = document.documentElement;
+      root.style.setProperty('--card-width', s.width + 'px');
+      root.style.setProperty('--card-min-height', s.minHeight + 'px');
+      root.style.setProperty('--card-border-radius', s.borderRadius + 'px');
+      
+      // Apply Animation Class to Container or Card Wrapper
+      const container = document.getElementById('notification-container');
+      // Reset animation classes
+      container.className = '';
+      container.classList.add(s.animType);
+      if (s.textAnim) container.classList.add(s.textAnim);
+
+      root.style.setProperty('--font-family', s.font);
+      
+      // Apply specific font sizes
+      root.style.setProperty('--font-size-song', s.fontSizeSong + 'px');
+      root.style.setProperty('--font-size-artist', s.fontSizeArtist + 'px');
+      root.style.setProperty('--font-size-user', s.fontSizeUser + 'px');
+      root.style.setProperty('--font-size-header', s.fontSizeHeader + 'px');
+
+      root.style.setProperty('--accent-color', s.accent);
+      root.style.setProperty('--text-color', s.text);
+      
+      // Icon Content & Size
+      // Aseguramos que el contenido tenga comillas si no es un emoji directo (aunque CSS content string requiere comillas)
+      // Pero para emojis directos en variables, funciona mejor con comillas escapadas en JS para CSS var? 
+      // En realidad, para 'content' en CSS, necesitamos que sea una cadena. 
+      // Si pasamos el emoji tal cual a la variable, luego en content: var(--icon-content) funciona si la variable tiene comillas.
+      // O podemos poner content: var(--icon-content) y que la variable sea '"🎵"'.
+      
+      const iconChar = s.icon || '🎵';
+      root.style.setProperty('--icon-content', `"${iconChar}"`);
+      root.style.setProperty('--icon-circle-size', (s.iconCircleSize || 50) + 'px');
+      root.style.setProperty('--icon-font-size', (s.iconFontSize || 25) + 'px');
+
+      // Icon Background Color
+      const ir = parseInt((s.iconBg || '#ffffff').substr(1,2), 16);
+      const ig = parseInt((s.iconBg || '#ffffff').substr(3,2), 16);
+      const ib = parseInt((s.iconBg || '#ffffff').substr(5,2), 16);
+      let iOp = s.iconOpacity;
+      if (iOp === undefined || iOp === null || iOp === "") iOp = 20;
+      root.style.setProperty('--icon-bg-color', `rgba(${ir},${ig},${ib},${parseFloat(iOp)/100})`);
+      
+      const r = parseInt(s.bg.substr(1,2), 16);
+      const g = parseInt(s.bg.substr(3,2), 16);
+      const b = parseInt(s.bg.substr(5,2), 16);
+      
+      // Asegurarse que opacity sea un número entre 0 y 1
+      let rawOpacity = s.opacity;
+      if (rawOpacity === undefined || rawOpacity === null || rawOpacity === "") {
+        rawOpacity = 85;
+      }
+      const opacity = parseFloat(rawOpacity) / 100;
+      
+      root.style.setProperty('--card-bg-color', `rgba(${r},${g},${b},${opacity})`);
+
+      // Calculate accent color rgba variants
+      const ar = parseInt(s.accent.substr(1,2), 16);
+      const ag = parseInt(s.accent.substr(3,2), 16);
+      const ab = parseInt(s.accent.substr(5,2), 16);
+      root.style.setProperty('--accent-color-bg', `rgba(${ar},${ag},${ab},0.2)`);
+      root.style.setProperty('--accent-color-glow', `rgba(${ar},${ag},${ab},0.4)`);
+      
+      // Separator
+      let finalSepColor = s.sepColor || '#ffffff';
+      if (s.sepUseAccent) {
+         finalSepColor = s.accent;
+      }
+
+      const sr = parseInt(finalSepColor.substr(1,2), 16);
+      const sg = parseInt(finalSepColor.substr(3,2), 16);
+      const sb = parseInt(finalSepColor.substr(5,2), 16);
+      const sepOp = (s.sepOpacity !== undefined ? s.sepOpacity : 10) / 100;
+      
+      root.style.setProperty('--sep-color', `rgba(${sr},${sg},${sb},${sepOp})`);
+      root.style.setProperty('--sep-width', (s.sepWidth || 1) + 'px');
+      root.style.setProperty('--sep-style', s.sepStyle || 'solid');
+      
+      // UI Update for disabled state
+      toggleSepColorInput();
+
+      displayDuration = (s.duration !== undefined ? s.duration : 10) * 1000;
+    }
+
+    function toggleSepColorInput() {
+       const cb = document.getElementById('inp-sepUseAccent');
+       const inp = document.getElementById('inp-sepColor');
+       if(cb && inp) {
+          inp.disabled = cb.checked;
+          inp.style.opacity = cb.checked ? '0.5' : '1';
+       }
+    }
+
+    function getSettingsFromInputs() {
+      return {
+        layoutMode: document.getElementById('inp-preset').value,
+        width: document.getElementById('inp-width').value,
+        minHeight: document.getElementById('inp-minHeight').value,
+        borderRadius: document.getElementById('inp-borderRadius').value,
+        animType: document.getElementById('inp-animType').value,
+        textAnim: document.getElementById('inp-textAnim').value,
+        font: document.getElementById('inp-font').value,
+        
+        fontSizeSong: document.getElementById('inp-fontSizeSong').value,
+        fontSizeArtist: document.getElementById('inp-fontSizeArtist').value,
+        fontSizeUser: document.getElementById('inp-fontSizeUser').value,
+        fontSizeHeader: document.getElementById('inp-fontSizeHeader').value,
+
+        accent: document.getElementById('inp-accent').value,
+        icon: document.getElementById('inp-icon').value,
+        iconCircleSize: document.getElementById('inp-iconCircleSize').value,
+        iconFontSize: document.getElementById('inp-iconFontSize').value,
+        iconBg: document.getElementById('inp-iconBg').value,
+        iconOpacity: document.getElementById('inp-iconOpacity').value,
+        bg: document.getElementById('inp-bg').value,
+        opacity: document.getElementById('inp-opacity').value,
+        text: document.getElementById('inp-text').value,
+        duration: document.getElementById('inp-duration').value,
+        sepColor: document.getElementById('inp-sepColor').value,
+        sepUseAccent: document.getElementById('inp-sepUseAccent').checked,
+        sepOpacity: document.getElementById('inp-sepOpacity').value,
+        sepWidth: document.getElementById('inp-sepWidth').value,
+        sepStyle: document.getElementById('inp-sepStyle').value
+      };
+    }
+
+    function previewSettings() {
+      const settings = getSettingsFromInputs();
+      console.log('Previewing settings:', settings);
+      console.log(`Applying sizes - Circle: ${settings.iconCircleSize}, Icon: ${settings.iconFontSize}`);
+      applySettings(settings);
+    }
+
+    function saveSettings() {
+      const settings = getSettingsFromInputs();
+      console.log('Saving settings:', settings);
+      localStorage.setItem('overlay_settings', JSON.stringify(settings));
+      applySettings(settings);
+      
+      // Sync to Firestore
+      if (db) {
+        db.collection('userSettings').doc('global_overlay_config').set(settings)
+          .then(() => console.log("Configuración guardada en la nube"))
+          .catch(err => console.error("Error guardando configuración:", err));
+      }
+
+      toggleSettings(); // close panel
+    }
+    
+    // Listeners para vista previa en tiempo real
+    document.addEventListener('DOMContentLoaded', () => {
+        ['inp-width', 'inp-minHeight', 'inp-borderRadius', 'inp-animType', 'inp-textAnim',
+         'inp-font', 'inp-fontSizeSong', 'inp-fontSizeArtist', 'inp-fontSizeUser', 'inp-fontSizeHeader', 
+         'inp-accent', 'inp-icon', 'inp-iconCircleSize', 'inp-iconFontSize', 'inp-iconBg', 'inp-iconOpacity',
+         'inp-bg', 'inp-opacity', 'inp-text', 'inp-duration',
+         'inp-sepColor', 'inp-sepUseAccent', 'inp-sepOpacity', 'inp-sepWidth', 'inp-sepStyle'].forEach(id => {
+           const el = document.getElementById(id);
+           if(el) {
+             el.addEventListener('input', previewSettings);
+             el.addEventListener('change', previewSettings);
+           }
+        });
+    });
+
+    function resetSettings() {
+      if(confirm('¿Restablecer valores por defecto?')) {
+        applySettings(defaultSettings);
+        localStorage.removeItem('overlay_settings');
+        loadSettings(); // reload inputs
+        toggleSettings();
+      }
+    }
+
+    function toggleSettings() {
+      const panel = document.getElementById('settings-panel');
+      panel.classList.toggle('open');
+    }
+
+    // Inicializar settings
+    loadSettings();
+
+    // Configuración de Firebase (Tomada de index.html)
+    const firebaseConfig = {
+      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+      authDomain: "zero-strom-web.firebaseapp.com",
+      projectId: "zero-strom-web",
+      storageBucket: "zero-strom-web.firebasestorage.app",
+      messagingSenderId: "758369466349",
+      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+    };
+
+    // Inicializar Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // Sincronizar configuración global desde Firestore
+    db.collection('userSettings').doc('global_overlay_config')
+      .onSnapshot((doc) => {
+        if (doc.exists) {
+          console.log("Configuración remota recibida");
+          const remoteSettings = doc.data();
+          const settings = { ...defaultSettings, ...remoteSettings };
+          
+          // Guardar localmente y aplicar
+          localStorage.setItem('overlay_settings', JSON.stringify(settings));
+          applySettings(settings);
+          
+          // Actualizar inputs si el panel está abierto (o para la próxima vez)
+          if (document.getElementById('inp-width')) {
+              document.getElementById('inp-width').value = settings.width;
+              document.getElementById('inp-minHeight').value = settings.minHeight;
+              document.getElementById('inp-borderRadius').value = settings.borderRadius;
+              document.getElementById('inp-animType').value = settings.animType;
+              document.getElementById('inp-textAnim').value = settings.textAnim || 'text-anim-fade';
+              
+              document.getElementById('inp-font').value = settings.font;
+              
+              document.getElementById('inp-fontSizeSong').value = settings.fontSizeSong;
+              document.getElementById('inp-fontSizeArtist').value = settings.fontSizeArtist;
+              document.getElementById('inp-fontSizeUser').value = settings.fontSizeUser;
+              document.getElementById('inp-fontSizeHeader').value = settings.fontSizeHeader;
+        
+              document.getElementById('inp-accent').value = settings.accent;
+              document.getElementById('inp-bg').value = settings.bg;
+              
+              const opVal = settings.opacity !== undefined ? settings.opacity : 85;
+              document.getElementById('inp-opacity').value = opVal;
+              document.getElementById('bg-opacity-val').innerText = opVal + '%';
+        
+              document.getElementById('inp-text').value = settings.text;
+              document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
+              
+              if(document.getElementById('inp-sepColor')) {
+                   document.getElementById('inp-sepColor').value = settings.sepColor || '#ffffff';
+                   document.getElementById('inp-sepUseAccent').checked = settings.sepUseAccent !== undefined ? settings.sepUseAccent : true;
+                   toggleSepColorInput();
+
+                   document.getElementById('inp-sepOpacity').value = settings.sepOpacity !== undefined ? settings.sepOpacity : 10;
+                   document.getElementById('sep-opacity-val').innerText = (settings.sepOpacity !== undefined ? settings.sepOpacity : 10) + '%';
+                   document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
+                   document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
+               }
+          }
+        }
+      }, (error) => {
+         console.warn("No se pudo sincronizar configuración remota (posiblemente offline o sin permisos):", error);
+      });
+
+    const card = document.getElementById('card');
+    const songEl = document.getElementById('song');
+    const artistEl = document.getElementById('artist');
+    const userEl = document.getElementById('user');
+
+    let hideTimeout;
+    
+    // --- Queue Logic ---
+    let notificationQueue = [];
+    let isShowing = false;
+
+    function addToQueue(data) {
+      console.log("Añadido a la cola:", data.cancion);
+      notificationQueue.push(data);
+      processQueue();
+    }
+
+    function processQueue() {
+      if (isShowing || notificationQueue.length === 0) return;
+      
+      const data = notificationQueue.shift();
+      showNotification(data);
+    }
+
+    function showNotification(data) {
+      isShowing = true;
+
+      // Rellenar datos
+      songEl.textContent = data.cancion || 'Desconocida';
+      artistEl.textContent = data.artista || 'Desconocido';
+      userEl.textContent = data.usuario || 'Anónimo';
+
+      // Resetear animación (por si acaso, aunque processQueue espera)
+      card.classList.remove('show');
+      void card.offsetWidth; // Trigger reflow
+      card.classList.add('show');
+
+      // Limpiar timeout anterior si existe (seguridad)
+      if (hideTimeout) clearTimeout(hideTimeout);
+
+      // Ocultar después de X segundos
+      hideTimeout = setTimeout(() => {
+        card.classList.remove('show');
+        
+        // Esperar a que termine la animación de salida antes de procesar el siguiente
+        // Asumimos unos 600ms de transición CSS + un pequeño buffer
+        setTimeout(() => {
+          isShowing = false;
+          processQueue();
+        }, 1000); 
+
+      }, displayDuration);
+    }
+
+    // Variable para controlar la carga inicial
+    let isInitialLoad = true;
+
+    // Escuchar la colección 'solicitudes'
+    // Ordenamos por timestamp descendente y limitamos a 1 para ver el último
+    db.collection('solicitudes')
+      .orderBy('ts', 'desc')
+      .limit(1)
+      .onSnapshot((snapshot) => {
+        if (snapshot.empty) {
+          isInitialLoad = false;
+          return;
+        }
+
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            
+            // Lógica de timestamp
+            let docTime = Date.now();
+            if (data.ts && typeof data.ts.toDate === 'function') {
+              docTime = data.ts.toDate().getTime();
+            } else if (data.ts && data.ts instanceof Date) {
+               docTime = data.ts.getTime(); // Para simulaciones locales que usan Date
+            } else if (data.ts) {
+               // Fallback si es string o número
+               docTime = new Date(data.ts).getTime();
+            }
+            
+            const now = Date.now();
+            const diff = now - docTime;
+            
+            // Umbral para carga inicial (evitar mostrar pedidos viejos al abrir OBS)
+            // 20 minutos de tolerancia
+            const initialLoadThreshold = 20 * 60 * 1000; 
+
+            console.log(`Pedido recibido: ${data.cancion}, TS: ${docTime}, Ahora: ${now}, Diff: ${diff}ms, Initial: ${isInitialLoad}`);
+
+            if (isInitialLoad) {
+               // En carga inicial, solo mostrar si es reciente (< 20 min)
+               if (diff < initialLoadThreshold) {
+                 addToQueue(data);
+               } else {
+                 console.log('Solicitud antigua ignorada en carga inicial:', data);
+               }
+            } else {
+               // Si NO es carga inicial, es un evento en tiempo real.
+               addToQueue(data);
+            }
+          }
+        });
+        
+        // Marcar carga inicial como completada después de procesar el primer snapshot
+        isInitialLoad = false;
+
+      }, (error) => {
+        console.error("Error escuchando solicitudes:", error);
+      });
+
+    // Función de simulación para pruebas manuales
+    function simulateRequest() {
+      const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
+      const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
+      
+      const randomArtist = artists[Math.floor(Math.random() * artists.length)];
+      const randomSong = songs[Math.floor(Math.random() * songs.length)];
+      const randomUser = "Prueba";
+
+      const now = new Date();
+      // Utilidad simple para fecha local YYYY-MM-DD
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      const dayKey = `${y}-${m}-${d}`;
+
+      const req = {
+        cancion: randomSong,
+        artista: randomArtist,
+        usuario: randomUser,
+        ts: now,
+        day: dayKey,
+        isSimulation: true
+      };
+
+      console.log("Enviando simulación a Firebase:", req);
+      db.collection('solicitudes').add(req)
+        .then(() => console.log("Simulación enviada con éxito"))
+        .catch(err => console.error("Error enviando simulación:", err));
+    }
+
+    // Modo de prueba automático: ?test=true
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('test') === 'true') {
+      setTimeout(() => {
+        console.log("Iniciando prueba de cola (3 solicitudes)...");
+        simulateRequest();
+        setTimeout(simulateRequest, 2000); 
+        setTimeout(simulateRequest, 4000);
+      }, 1000);
+    }
+    // --- Preset Logic ---
+    function applyPresetFromInput() {
+        const mode = document.getElementById('inp-preset').value;
+        const config = presetConfigs[mode];
+        if(!config) return;
+
+        // Apply config values to inputs (only if they differ significantly or we want to force them)
+        // For a true "Preset" feel, we should set them.
+        if(config.width) document.getElementById('inp-width').value = config.width;
+        if(config.minHeight) document.getElementById('inp-minHeight').value = config.minHeight;
+        if(config.borderRadius) document.getElementById('inp-borderRadius').value = config.borderRadius;
+        
+        if(config.opacity !== undefined) {
+            document.getElementById('inp-opacity').value = config.opacity;
+            document.getElementById('bg-opacity-val').innerText = config.opacity + '%';
+        }
+        
+        if(config.iconCircleSize !== undefined) document.getElementById('inp-iconCircleSize').value = config.iconCircleSize;
+        if(config.iconFontSize !== undefined) document.getElementById('inp-iconFontSize').value = config.iconFontSize;
+
+        previewSettings(); // triggers applySettings
+    }
+
+    // Quick toggle for the button
+    document.getElementById('preset-btn').addEventListener('click', (e) => {
+        if (!hasMoved) {
+            const current = document.getElementById('inp-preset').value;
+            const next = current === 'default' ? 'glass' : 'default';
+            document.getElementById('inp-preset').value = next;
+            applyPresetFromInput();
+        }
+        e.stopPropagation();
+    });
+
+    // --- Drag & Drop Logic for Controls Wrapper ---
+    const controlsWrapper = document.getElementById('controls-wrapper');
+    const settingsBtn = document.getElementById('settings-btn');
+    let isDragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+    let hasMoved = false;
+
+    // Make the whole wrapper draggable, or just the buttons?
+    // Wrapper is better for keeping them together.
+    controlsWrapper.addEventListener('mousedown', (e) => {
+        // Allow clicking buttons, but drag if holding down on background or button
+        isDragging = true;
+        hasMoved = false;
+        const rect = controlsWrapper.getBoundingClientRect();
+        dragOffsetX = e.clientX - rect.left;
+        dragOffsetY = e.clientY - rect.top;
+        controlsWrapper.style.cursor = 'grabbing';
+        
+        // Disable transitions during drag
+        Array.from(controlsWrapper.children).forEach(btn => btn.style.transition = 'none');
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        
+        hasMoved = true;
+        e.preventDefault();
+        
+        const x = e.clientX - dragOffsetX;
+        const y = e.clientY - dragOffsetY;
+        
+        controlsWrapper.style.left = `${x}px`;
+        controlsWrapper.style.top = `${y}px`;
+    });
+
+    document.addEventListener('mouseup', (e) => {
+        if (!isDragging) return;
+        
+        isDragging = false;
+        controlsWrapper.style.cursor = 'default';
+        
+        // Restore transitions
+        Array.from(controlsWrapper.children).forEach(btn => btn.style.transition = 'background 0.3s ease, transform 0.3s ease');
+    });
+    
+    // Handle click for settings button manually
+    settingsBtn.addEventListener('click', (e) => {
+        if (!hasMoved) {
+            toggleSettings();
+        }
+        e.stopPropagation(); // Prevent wrapper click if any
+    });
+    </script>
+</body>
+</html>

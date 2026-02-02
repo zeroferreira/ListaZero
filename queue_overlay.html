@@ -304,6 +304,34 @@
       gap: 10px;
       margin-top: 20px;
     }
+    
+    /* Tab Navigation Styles */
+    .tab-nav {
+      display: flex;
+      border-bottom: 1px solid #444;
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #aaa;
+      padding: 10px 5px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { color: #fff; }
+    .tab-btn.active {
+      color: var(--queue-accent-color, #00e5ff);
+      border-bottom-color: var(--queue-accent-color, #00e5ff);
+      font-weight: bold;
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeInTab 0.3s ease; }
+    @keyframes fadeInTab { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
     .btn {
       flex: 1;
       padding: 10px;
@@ -314,63 +342,6 @@
     }
     .btn-save { background: #00e5ff; color: #000; }
     .btn-reset { background: #444; color: #fff; }
-
-    /* Panel de Presets (New) */
-    #presets-btn {
-      position: fixed;
-      top: 80px;
-      left: 20px;
-      z-index: 10001;
-      background: rgba(0, 119, 255, 0.6);
-      border: 2px solid rgba(255,255,255,0.5);
-      color: white;
-      border-radius: 50%;
-      cursor: grab;
-      font-size: 20px;
-      transition: all 0.3s ease;
-      width: 50px;
-      height: 50px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      user-select: none;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-    }
-    #presets-btn:active { cursor: grabbing; }
-    #presets-btn:hover { background: rgba(0, 119, 255, 1); transform: scale(1.1); box-shadow: 0 0 15px rgba(0,119,255,0.8); }
-
-    #presets-panel {
-      position: fixed;
-      top: 130px;
-      left: 20px;
-      width: 250px;
-      background: rgba(15, 15, 15, 0.95);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px;
-      padding: 15px;
-      z-index: 10002;
-      color: white;
-      display: none;
-      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-    }
-    #presets-panel.open { display: block; animation: menu-pop 0.3s ease; }
-    
-    .preset-item {
-      padding: 10px;
-      background: #333;
-      border-radius: 6px;
-      margin-bottom: 8px;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      transition: background 0.2s;
-    }
-    .preset-item:hover { background: #444; }
-    .preset-name { font-weight: bold; font-size: 14px; }
-    .preset-delete { color: #ff4444; font-size: 12px; padding: 4px 8px; cursor: pointer; }
-    .preset-delete:hover { background: rgba(255,0,0,0.2); border-radius: 4px; }
 
   </style>
   
@@ -390,160 +361,205 @@
 
   <!-- Botón de Configuración -->
   <button id="settings-btn" title="Configurar Overlay">⚙️</button>
-
-  <!-- Botón de Presets -->
-  <button id="presets-btn" title="Presets" onclick="togglePresets()">📁</button>
-
-  <!-- Panel de Presets -->
-  <div id="presets-panel">
-    <h3 style="margin-top:0; border-bottom: 1px solid #333; padding-bottom: 10px;">Presets</h3>
-    <div id="presets-list"></div>
-    <div style="display:flex; gap:10px; margin-top:10px;">
-       <button class="btn btn-save" onclick="saveAsPreset()">Guardar Nuevo</button>
-       <button class="btn btn-reset" onclick="togglePresets()">Cerrar</button>
-    </div>
+  
+  <!-- Indicador de Duración Total -->
+  <div id="total-duration-indicator" style="
+      position: fixed; 
+      bottom: 20px; 
+      right: 20px; 
+      background: rgba(0,0,0,0.7); 
+      color: white; 
+      padding: 8px 15px; 
+      border-radius: 20px; 
+      font-size: 14px; 
+      font-weight: bold; 
+      border: 1px solid rgba(255,255,255,0.2);
+      backdrop-filter: blur(5px);
+      display: none;
+      z-index: 9999;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  ">
+    ⏳ Tiempo Total: <span id="total-time-val">0m</span>
   </div>
 
   <!-- Panel de Configuración -->
   <div id="settings-panel">
     <h3 style="margin-top:0; border-bottom: 1px solid #333; padding-bottom: 10px;">Configuración</h3>
     
-    <div class="settings-group">
-      <label>Ancho de Tarjeta (px)</label>
-      <input type="number" id="inp-width" value="350">
+    <div class="tab-nav">
+      <button class="tab-btn active" onclick="switchTab('general')">General</button>
+      <button class="tab-btn" onclick="switchTab('appearance')">Apariencia</button>
+      <button class="tab-btn" onclick="switchTab('animations')">Animación</button>
+      <button class="tab-btn" onclick="switchTab('data')">Datos/API</button>
     </div>
 
-    <div class="settings-group">
-      <label>Alto Mínimo de Tarjeta (px)</label>
-      <input type="number" id="inp-minHeight" value="80" min="0">
+    <!-- TAB: GENERAL -->
+    <div id="tab-general" class="tab-content active">
+        <div class="settings-group">
+          <label>Ancho de Tarjeta (px)</label>
+          <input type="number" id="inp-width" value="350">
+        </div>
+
+        <div class="settings-group">
+          <label>Alto Mínimo de Tarjeta (px)</label>
+          <input type="number" id="inp-minHeight" value="80" min="0">
+        </div>
+
+        <div class="settings-group">
+          <label>Espacio entre Tarjetas (px)</label>
+          <input type="number" id="inp-spacing" value="15" min="0">
+        </div>
+
+        <div class="settings-group">
+          <label>Radio de Borde (px)</label>
+          <input type="number" id="inp-borderRadius" value="6">
+        </div>
+
+        <div class="settings-group">
+          <label>Relleno (Padding) (px)</label>
+          <input type="number" id="inp-padding" value="15" min="0">
+        </div>
+
+        <div class="settings-group">
+          <label>Espaciado Textos (Gap) (px)</label>
+          <input type="number" id="inp-textGap" value="4" min="0">
+        </div>
+        
+        <div class="settings-group">
+          <label>Simulación</label>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn" style="background: #333;" onclick="simulateQueueRequest()">+ Pedido</button>
+            <button class="btn" style="background: #333;" onclick="simulateToggleFirst()">Next</button>
+          </div>
+        </div>
     </div>
 
-    <div class="settings-group">
-      <label>Espacio entre Tarjetas (px)</label>
-      <input type="number" id="inp-spacing" value="15" min="0">
+    <!-- TAB: APARIENCIA -->
+    <div id="tab-appearance" class="tab-content">
+        <div class="settings-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
+           <label style="width: 100%;">Visibilidad de Elementos</label>
+           <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+             <input type="checkbox" id="inp-showHeader" checked> Cabecera
+           </label>
+           <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+             <input type="checkbox" id="inp-showArtist" checked> Artista
+           </label>
+           <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+             <input type="checkbox" id="inp-showUser" checked> Usuario
+           </label>
+           <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+             <input type="checkbox" id="inp-showEmpty" checked> Mensaje Vacío
+           </label>
+        </div>
+
+        <div class="settings-group">
+          <label>Fuente</label>
+          <select id="inp-font">
+            <option value="'Montserrat', sans-serif">Montserrat</option>
+            <option value="'Roboto', sans-serif">Roboto</option>
+            <option value="'Open Sans', sans-serif">Open Sans</option>
+            <option value="'Lato', sans-serif">Lato</option>
+            <option value="sans-serif">System Default</option>
+          </select>
+        </div>
+
+        <div class="settings-group">
+          <label>Tamaño de Fuente Base (px)</label>
+          <input type="number" id="inp-fontSize" value="16">
+        </div>
+
+        <div class="settings-group">
+          <label>Color de Acento</label>
+          <input type="color" id="inp-accent" value="#00e5ff">
+        </div>
+
+        <div class="settings-group">
+          <label>Color de Fondo</label>
+          <input type="color" id="inp-bg" value="#000000">
+        </div>
+
+        <div class="settings-group">
+          <label>Color de Texto</label>
+          <input type="color" id="inp-text" value="#ffffff">
+        </div>
+
+        <div class="settings-group">
+          <label>Opacidad Tarjeta Principal</label>
+          <input type="range" id="inp-primaryOpacity" min="0" max="100" value="100" oninput="document.getElementById('primary-opacity-val').innerText = this.value + '%'">
+          <span id="primary-opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">100%</span>
+        </div>
+
+        <div class="settings-group">
+          <label>Opacidad Tarjetas Cola</label>
+          <input type="range" id="inp-secondaryOpacity" min="0" max="100" value="60" oninput="document.getElementById('opacity-val').innerText = this.value + '%'">
+          <span id="opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">60%</span>
+        </div>
     </div>
 
-    <div class="settings-group">
-      <label>Radio de Borde (px)</label>
-      <input type="number" id="inp-borderRadius" value="6">
+    <!-- TAB: ANIMACIONES -->
+    <div id="tab-animations" class="tab-content">
+        <div class="settings-group">
+          <label>Animación de Entrada</label>
+          <select id="inp-animEntry">
+            <option value="anim-entry-slide-left">Slide Left (Default)</option>
+            <option value="anim-entry-slide-up">Slide Up</option>
+            <option value="anim-entry-fade">Fade In</option>
+            <option value="anim-entry-zoom">Zoom In</option>
+          </select>
+        </div>
+
+        <div class="settings-group">
+          <label>Animación de Salida</label>
+          <select id="inp-animExit">
+            <option value="anim-exit-slide-right">Slide Right (Default)</option>
+            <option value="anim-exit-slide-down">Slide Down</option>
+            <option value="anim-exit-fade">Fade Out</option>
+            <option value="anim-exit-zoom">Zoom Out</option>
+          </select>
+        </div>
     </div>
 
-    <div class="settings-group">
-      <label>Relleno (Padding) (px)</label>
-      <input type="number" id="inp-padding" value="15" min="0">
-    </div>
+    <!-- TAB: DATA/API (NUEVO) -->
+    <div id="tab-data" class="tab-content">
+        <div class="settings-group">
+           <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+             <input type="checkbox" id="inp-autocorrect"> 
+             <div>
+               <strong>🧠 Autocorregir Nombres</strong><br>
+               <small style="color:#aaa;">Usa Apple Music para corregir títulos</small>
+             </div>
+           </label>
+        </div>
 
-    <div class="settings-group">
-      <label>Espaciado Textos (Gap) (px)</label>
-      <input type="number" id="inp-textGap" value="4" min="0">
-    </div>
+        <div class="settings-group">
+           <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+             <input type="checkbox" id="inp-showAlbumArt"> 
+             <div>
+               <strong>🎨 Portadas HQ</strong><br>
+               <small style="color:#aaa;">Muestra carátula del álbum (600x600)</small>
+             </div>
+           </label>
+        </div>
 
-    <div class="settings-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
-       <label style="width: 100%;">Funciones Inteligentes (Apple Music API)</label>
-       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer; width: 100%;">
-         <input type="checkbox" id="inp-autoCorrect"> 🧠 Autocorregir Nombres
-       </label>
-       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer; width: 100%;">
-         <input type="checkbox" id="inp-hqArt"> 🎨 Portadas HQ
-       </label>
-       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer; width: 100%;">
-         <input type="checkbox" id="inp-showTime"> ⏱️ Mostrar Tiempo Espera
-       </label>
-       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer; width: 100%;">
-         <input type="checkbox" id="inp-showTotalTime"> 📊 Mostrar Duración Total Cola
-       </label>
-    </div>
+        <div class="settings-group">
+           <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+             <input type="checkbox" id="inp-showWaitTime"> 
+             <div>
+               <strong>⏱️ Tiempo de Espera</strong><br>
+               <small style="color:#aaa;">Muestra "Siguiente" o "en X min"</small>
+             </div>
+           </label>
+        </div>
 
-    <div class="settings-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
-       <label style="width: 100%;">Visibilidad de Elementos</label>
-       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-         <input type="checkbox" id="inp-showHeader" checked> Cabecera
-       </label>
-       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-         <input type="checkbox" id="inp-showArtist" checked> Artista
-       </label>
-       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-         <input type="checkbox" id="inp-showUser" checked> Usuario
-       </label>
-       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-         <input type="checkbox" id="inp-showEmpty" checked> Mensaje Vacío
-       </label>
-    </div>
-
-    <div class="settings-group">
-      <label>Simulación</label>
-      <div style="display: flex; gap: 10px;">
-        <button class="btn" style="background: #333;" onclick="simulateQueueRequest()">+ Pedido</button>
-        <button class="btn" style="background: #333;" onclick="simulateToggleFirst()">Next</button>
-      </div>
-    </div>
-
-    <div class="settings-group">
-      <label>Animación de Entrada</label>
-      <select id="inp-animEntry">
-        <option value="anim-entry-slide-left">Slide Left (Default)</option>
-        <option value="anim-entry-slide-up">Slide Up</option>
-        <option value="anim-entry-fade">Fade In</option>
-        <option value="anim-entry-zoom">Zoom In</option>
-      </select>
-    </div>
-
-    <div class="settings-group">
-      <label>Animación de Salida</label>
-      <select id="inp-animExit">
-        <option value="anim-exit-slide-right">Slide Right (Default)</option>
-        <option value="anim-exit-slide-down">Slide Down</option>
-        <option value="anim-exit-fade">Fade Out</option>
-        <option value="anim-exit-zoom">Zoom Out</option>
-      </select>
-    </div>
-
-
-    <div class="settings-group">
-      <label>Fuente</label>
-      <select id="inp-font">
-        <option value="'Montserrat', sans-serif">Montserrat</option>
-        <option value="'Roboto', sans-serif">Roboto</option>
-        <option value="'Open Sans', sans-serif">Open Sans</option>
-        <option value="'Lato', sans-serif">Lato</option>
-        <option value="sans-serif">System Default</option>
-      </select>
-    </div>
-
-    <div class="settings-group">
-      <label>Tamaño de Fuente Base (px)</label>
-      <input type="number" id="inp-fontSize" value="16">
-    </div>
-
-    <div class="settings-group">
-      <label>Color de Acento</label>
-      <input type="color" id="inp-accent" value="#00e5ff">
-    </div>
-
-    <div class="settings-group">
-      <label>Color de Fondo (Opacidad se maneja auto)</label>
-      <input type="color" id="inp-bg" value="#000000">
-    </div>
-
-    <div class="settings-group">
-      <label>Opacidad Tarjeta Principal (0-100%)</label>
-      <input type="range" id="inp-primaryOpacity" min="0" max="100" value="100" oninput="document.getElementById('primary-opacity-val').innerText = this.value + '%'">
-      <span id="primary-opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">100%</span>
-    </div>
-
-    <div class="settings-group">
-      <label>Opacidad Tarjetas Cola (0-100%)</label>
-      <input type="range" id="inp-secondaryOpacity" min="0" max="100" value="60" oninput="document.getElementById('opacity-val').innerText = this.value + '%'">
-      <span id="opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">60%</span>
-    </div>
-
-    <div class="settings-group">
-      <label>Color de Texto</label>
-      <input type="color" id="inp-text" value="#ffffff">
-    </div>
-
-    <div class="settings-group">
-      <button class="btn" style="background: #0077ff; color: white; width: 100%;" onclick="togglePresets()">📂 Abrir Panel de Presets</button>
+        <div class="settings-group">
+           <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+             <input type="checkbox" id="inp-showTotalDuration"> 
+             <div>
+               <strong>📊 Duración Total Cola</strong><br>
+               <small style="color:#aaa;">Indicador flotante del tiempo total</small>
+             </div>
+           </label>
+        </div>
     </div>
 
     <div class="settings-actions">
@@ -572,6 +588,37 @@
     }
     
     // --- Configuración / Settings Logic ---
+    function switchTab(tabName) {
+      // Buttons
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.innerText.toLowerCase().includes(tabName) || 
+            (tabName === 'data' && btn.innerText.includes('Datos'))) {
+           // Simple check based on text or click handler
+        }
+      });
+      // But simpler: just use event.target or match logic
+      const tabs = ['general', 'appearance', 'animations', 'data'];
+      tabs.forEach(t => {
+        const content = document.getElementById('tab-' + t);
+        if (content) {
+            content.classList.toggle('active', t === tabName);
+        }
+      });
+      
+      // Update buttons visual state
+      const btns = document.querySelectorAll('.tab-btn');
+      btns.forEach(btn => {
+         // Check if this button corresponds to tabName
+         const onclick = btn.getAttribute('onclick');
+         if (onclick && onclick.includes(`'${tabName}'`)) {
+             btn.classList.add('active');
+         } else {
+             btn.classList.remove('active');
+         }
+      });
+    }
+
     const defaultSettings = {
       width: 350,
       minHeight: 80,
@@ -583,10 +630,6 @@
       showArtist: true,
       showUser: true,
       showEmpty: true,
-      autoCorrect: false,
-      hqArt: false,
-      showTime: false,
-      showTotalTime: false,
       animEntry: 'anim-entry-slide-left',
       animExit: 'anim-exit-slide-right',
       font: "'Montserrat', sans-serif",
@@ -595,7 +638,12 @@
       bg: "#000000",
       primaryOpacity: 100,
       secondaryOpacity: 60,
-      text: "#ffffff"
+      text: "#ffffff",
+      // New Data/API Settings
+      autocorrect: false,
+      showAlbumArt: false,
+      showWaitTime: false,
+      showTotalDuration: false
     };
 
     function loadSettings() {
@@ -622,11 +670,6 @@
       document.getElementById('inp-showUser').checked = settings.showUser !== undefined ? settings.showUser : true;
       document.getElementById('inp-showEmpty').checked = settings.showEmpty !== undefined ? settings.showEmpty : true;
 
-      document.getElementById('inp-autoCorrect').checked = settings.autoCorrect !== undefined ? settings.autoCorrect : false;
-      document.getElementById('inp-hqArt').checked = settings.hqArt !== undefined ? settings.hqArt : false;
-      document.getElementById('inp-showTime').checked = settings.showTime !== undefined ? settings.showTime : false;
-      document.getElementById('inp-showTotalTime').checked = settings.showTotalTime !== undefined ? settings.showTotalTime : false;
-
       document.getElementById('inp-animEntry').value = settings.animEntry;
       document.getElementById('inp-animExit').value = settings.animExit;
       
@@ -644,6 +687,12 @@
       document.getElementById('opacity-val').innerText = opacityVal + '%';
 
       document.getElementById('inp-text').value = settings.text;
+      
+      // New Inputs
+      document.getElementById('inp-autocorrect').checked = settings.autocorrect !== undefined ? settings.autocorrect : false;
+      document.getElementById('inp-showAlbumArt').checked = settings.showAlbumArt !== undefined ? settings.showAlbumArt : false;
+      document.getElementById('inp-showWaitTime').checked = settings.showWaitTime !== undefined ? settings.showWaitTime : false;
+      document.getElementById('inp-showTotalDuration').checked = settings.showTotalDuration !== undefined ? settings.showTotalDuration : false;
     }
 
     function applySettings(s) {
@@ -671,19 +720,6 @@
       // Empty State visibility logic moved to renderQueue or handled here via CSS class if needed
       // But renderQueue controls the DOM, so we store the setting in a global var or dataset
       container.dataset.showEmpty = s.showEmpty;
-      
-      // Store smart features in dataset for easy access in renderQueue
-      container.dataset.autoCorrect = s.autoCorrect;
-      container.dataset.hqArt = s.hqArt;
-      container.dataset.showTime = s.showTime;
-      container.dataset.showTotalTime = s.showTotalTime;
-
-      // Update Total Time Visibility
-      const totalTimeEl = document.getElementById('queue-total-time');
-      if (totalTimeEl) {
-        totalTimeEl.style.display = s.showTotalTime ? 'block' : 'none';
-      }
-
       const emptyState = document.getElementById('empty-state');
       if (emptyState) {
          // Si se debe mostrar el mensaje de vacío y no hay elementos visibles en la cola
@@ -733,10 +769,6 @@
         showArtist: document.getElementById('inp-showArtist').checked,
         showUser: document.getElementById('inp-showUser').checked,
         showEmpty: document.getElementById('inp-showEmpty').checked,
-        autoCorrect: document.getElementById('inp-autoCorrect').checked,
-        hqArt: document.getElementById('inp-hqArt').checked,
-        showTime: document.getElementById('inp-showTime').checked,
-        showTotalTime: document.getElementById('inp-showTotalTime').checked,
         animEntry: document.getElementById('inp-animEntry').value,
         animExit: document.getElementById('inp-animExit').value,
         font: document.getElementById('inp-font').value,
@@ -745,7 +777,12 @@
         bg: document.getElementById('inp-bg').value,
         primaryOpacity: document.getElementById('inp-primaryOpacity').value,
         secondaryOpacity: document.getElementById('inp-secondaryOpacity').value,
-        text: document.getElementById('inp-text').value
+        text: document.getElementById('inp-text').value,
+        // New inputs
+        autocorrect: document.getElementById('inp-autocorrect').checked,
+        showAlbumArt: document.getElementById('inp-showAlbumArt').checked,
+        showWaitTime: document.getElementById('inp-showWaitTime').checked,
+        showTotalDuration: document.getElementById('inp-showTotalDuration').checked
       };
     }
 
@@ -782,7 +819,8 @@
         });
         
         // Checkboxes
-        ['inp-showHeader', 'inp-showArtist', 'inp-showUser', 'inp-showEmpty', 'inp-autoCorrect', 'inp-hqArt', 'inp-showTime', 'inp-showTotalTime'].forEach(id => {
+        ['inp-showHeader', 'inp-showArtist', 'inp-showUser', 'inp-showEmpty', 
+         'inp-autocorrect', 'inp-showAlbumArt', 'inp-showWaitTime', 'inp-showTotalDuration'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('change', previewSettings);
@@ -846,11 +884,6 @@
             document.getElementById('inp-showUser').checked = settings.showUser !== undefined ? settings.showUser : true;
             document.getElementById('inp-showEmpty').checked = settings.showEmpty !== undefined ? settings.showEmpty : true;
 
-            document.getElementById('inp-autoCorrect').checked = settings.autoCorrect !== undefined ? settings.autoCorrect : false;
-            document.getElementById('inp-hqArt').checked = settings.hqArt !== undefined ? settings.hqArt : false;
-            document.getElementById('inp-showTime').checked = settings.showTime !== undefined ? settings.showTime : false;
-            document.getElementById('inp-showTotalTime').checked = settings.showTotalTime !== undefined ? settings.showTotalTime : false;
-
             document.getElementById('inp-animEntry').value = settings.animEntry;
             document.getElementById('inp-animExit').value = settings.animExit;
             
@@ -881,59 +914,6 @@
     let playedSongIds = new Set(); // IDs de canciones ya reproducidas
     let visibleQueue = []; // Las 3 canciones actualmente mostradas
     let currentManualOrder = []; // Orden manual compartido
-    
-    // --- Smart Features Cache ---
-    const metadataCache = {}; // Key: "Artist - Song" (normalized) -> { durationMs, artworkUrl, correctedSong, correctedArtist }
-    let isFetchingMetadata = false;
-
-    // Utilidad: Normalizar Strings para Key
-    function normalizeKey(artist, song) {
-        return `${artist.trim().toLowerCase()}-${song.trim().toLowerCase()}`;
-    }
-
-    async function fetchTrackMetadata(artist, song) {
-        const key = normalizeKey(artist, song);
-        if (metadataCache[key]) return metadataCache[key];
-
-        try {
-            const query = encodeURIComponent(`${artist} ${song}`);
-            const res = await fetch(`https://itunes.apple.com/search?term=${query}&media=music&limit=1`);
-            const data = await res.json();
-            
-            if (data.resultCount > 0) {
-                const track = data.results[0];
-                const meta = {
-                    durationMs: track.trackTimeMillis,
-                    artworkUrl: track.artworkUrl100.replace('100x100', '600x600'), // HQ
-                    correctedSong: track.trackName,
-                    correctedArtist: track.artistName
-                };
-                metadataCache[key] = meta;
-                return meta;
-            }
-        } catch (e) {
-            console.warn("Error fetching metadata:", e);
-        }
-        
-        // Cache failure to avoid retry loops
-        metadataCache[key] = { durationMs: 210000, artworkUrl: null, correctedSong: song, correctedArtist: artist }; // Default 3:30
-        return metadataCache[key];
-    }
-
-    // Utilidad: Formatear tiempo (ms -> MM:SS)
-    function formatDuration(ms) {
-        const totalSeconds = Math.floor(ms / 1000);
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    }
-    
-    // Utilidad: Formatear tiempo de espera (minutos)
-    function formatWaitTime(ms) {
-        const mins = Math.ceil(ms / 1000 / 60);
-        if (mins <= 1) return "En breve";
-        return `en ${mins} min`;
-    }
 
     // Utilidad: Obtener clave de fecha local (YYYY-MM-DD)
     function getLocalDateKey(ts) {
@@ -978,6 +958,54 @@
       }
     }
 
+    // --- Data & API Logic ---
+    const songDataCache = {}; // Key: "Artist - Song", Value: { artworkUrl, durationMs, correctTitle, correctArtist }
+    let isFetching = false;
+
+    async function fetchSongData(artist, song) {
+      const query = `${artist} ${song}`.trim();
+      const cacheKey = query.toLowerCase();
+      
+      if (songDataCache[cacheKey]) return songDataCache[cacheKey];
+
+      try {
+        const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=1`);
+        const data = await res.json();
+        
+        if (data.resultCount > 0) {
+          const track = data.results[0];
+          const result = {
+            artworkUrl: track.artworkUrl100.replace('100x100', '600x600'),
+            durationMs: track.trackTimeMillis,
+            correctTitle: track.trackName,
+            correctArtist: track.artistName
+          };
+          songDataCache[cacheKey] = result;
+          return result;
+        }
+      } catch (e) {
+        console.warn("iTunes API Error:", e);
+      }
+      return null;
+    }
+
+    function formatDuration(ms) {
+      if (!ms) return "";
+      const minutes = Math.floor(ms / 60000);
+      const seconds = ((ms % 60000) / 1000).toFixed(0);
+      return `${minutes}:${seconds.padStart(2, '0')}`;
+    }
+
+    function formatWaitTime(mins) {
+      if (mins === 0) return "Siguiente";
+      if (mins < 60) return `en ${Math.round(mins)} min`;
+      const h = Math.floor(mins / 60);
+      const m = Math.round(mins % 60);
+      return `en ${h}h ${m}m`;
+    }
+
+    // --- Core Render Logic ---
+
     function createQueueItem(req, index) {
       const div = document.createElement('div');
       // Wrapper con clases de posición
@@ -985,16 +1013,22 @@
       div.dataset.songId = generateSongId(req);
       if (req.id) div.dataset.docId = req.id;
       
+      // Structure for optional Album Art and Wait Time
       div.innerHTML = `
-        <div class="queue-item-inner">
-           <div class="item-header">
-              <span>#${index + 1}</span>
-              <span>En cola</span>
-           </div>
-           <div class="item-song">${req.cancion}</div>
-           <div class="item-artist">${req.artista}</div>
-           <div class="item-user">
-              Pedido por <span class="user-badge">${req.usuario}</span>
+        <div class="queue-item-inner" style="flex-direction: row; align-items: center; gap: 15px;">
+           <img class="item-art" src="" style="display:none; width: 60px; height: 60px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">
+           
+           <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+               <div class="item-header">
+                  <span>#${index + 1}</span>
+                  <span>En cola</span>
+               </div>
+               <div class="item-song">${req.cancion}</div>
+               <div class="item-artist">${req.artista}</div>
+               <div class="item-user">
+                  Pedido por <span class="user-badge">${req.usuario}</span>
+               </div>
+               <div class="item-wait" style="font-size: 11px; color: var(--queue-accent-color); margin-top: 4px; font-weight: bold; display:none;"></div>
            </div>
         </div>
       `;
@@ -1012,287 +1046,142 @@
       // 1.5 Aplicar orden manual si existe
       pendingRequests = applyOrder(pendingRequests, currentManualOrder);
 
-      // 2. Tomar las primeras 3
-      const nextThree = pendingRequests.slice(0, 3);
-      console.log("Next three to show:", nextThree);
-      const nextThreeIds = nextThree.map(req => generateSongId(req));
-
-      // 3. Lógica de Diffing (Diferencias)
+      // 2. Tomar las primeras 3 (o settings limit)
+      // Hardcoded to 3 for now based on visibleQueue logic, but could be dynamic
+      const itemsToShow = pendingRequests.slice(0, 3);
       
-      const nextThreeDocIds = nextThree.map(req => req.id).filter(Boolean);
-
-      // Pre-fetch metadata if smart features are enabled
-      const needsMeta = container.dataset.autoCorrect === 'true' || 
-                        container.dataset.hqArt === 'true' || 
-                        container.dataset.showTime === 'true' || 
-                        container.dataset.showTotalTime === 'true';
+      // 3. Diffing simple: Reconstruir todo por ahora para simplicidad con hydration
+      const container = document.getElementById('queue-container');
       
-      if (needsMeta && !isFetchingMetadata) {
-         let missingMeta = false;
-         // Check ALL pending requests for Total Time calculation, not just nextThree
-         const listToCheck = (container.dataset.showTotalTime === 'true') ? pendingRequests : nextThree;
-         
-         for (const req of listToCheck) {
-             if (!metadataCache[normalizeKey(req.artista, req.cancion)]) {
-                 missingMeta = true;
-                 break;
-             }
+      // Preservar elementos que se están eliminando (.removing)
+      const removingItems = Array.from(container.querySelectorAll('.queue-item.removing'));
+      
+      // Limpiar contenedor (excepto removing)
+      container.innerHTML = '';
+      removingItems.forEach(el => container.appendChild(el));
+
+      // Agregar Empty State si es necesario
+      if (itemsToShow.length === 0) {
+         // Create empty state dynamically if removed or ensure it exists
+         let empty = document.getElementById('empty-state');
+         if (!empty) {
+             empty = document.createElement('div');
+             empty.id = 'empty-state';
+             empty.innerHTML = `<div style="font-size: 40px; margin-bottom: 10px;">🎵</div><div>Esperando solicitudes...</div>`;
+             container.appendChild(empty);
          }
-         
-         if (missingMeta) {
-             isFetchingMetadata = true;
-             // Fetch all needed in parallel
-             Promise.all(listToCheck.map(req => fetchTrackMetadata(req.artista, req.cancion)))
-                .then(() => {
-                    isFetchingMetadata = false;
-                    renderQueue(); // Re-render once data is ready
-                });
-         }
-      }
-
-      // Calculate Times
-      let accumulatedTime = 0;
-      let totalQueueTime = 0;
-      
-      if (needsMeta) {
-          // Calculate total duration of ALL pending requests
-          pendingRequests.forEach(req => {
-              const meta = metadataCache[normalizeKey(req.artista, req.cancion)];
-              if (meta) totalQueueTime += meta.durationMs;
-          });
-          
-          // Render Total Time Widget
-          let totalTimeEl = document.getElementById('queue-total-time');
-          if (!totalTimeEl) {
-              totalTimeEl = document.createElement('div');
-              totalTimeEl.id = 'queue-total-time';
-              totalTimeEl.style.cssText = `
-                  background: rgba(0,0,0,0.7); 
-                  color: #aaa; 
-                  padding: 5px 10px; 
-                  border-radius: 12px; 
-                  font-size: 12px; 
-                  margin-bottom: 10px; 
-                  align-self: flex-end;
-                  backdrop-filter: blur(4px);
-                  border: 1px solid rgba(255,255,255,0.1);
-                  display: none;
-              `;
-              container.parentNode.insertBefore(totalTimeEl, container); // Insert before list
-          }
-          
-          if (container.dataset.showTotalTime === 'true' && totalQueueTime > 0) {
-              const hrs = Math.floor(totalQueueTime / 3600000);
-              const mins = Math.floor((totalQueueTime % 3600000) / 60000);
-              totalTimeEl.innerText = `Tiempo Total: ${hrs > 0 ? hrs + 'h ' : ''}${mins}m`;
-              totalTimeEl.style.display = 'block';
-          } else {
-              totalTimeEl.style.display = 'none';
-          }
-      }
-
-      // A. Identificar REMOVIDOS (Están en DOM pero no en nextThree)
-      const currentChildren = Array.from(container.children);
-      currentChildren.forEach(child => {
-        // Ignorar nodos que ya se están eliminando
-        if (child.classList.contains('removing')) return;
-        
-        const songId = child.dataset.songId;
-        const docId = child.dataset.docId;
-
-        // Criterio de permanencia: Coincide docId (prioridad) O coincide songId (fallback)
-        let isRemoved = true;
-        if (docId && nextThreeDocIds.length > 0) {
-            if (nextThreeDocIds.includes(docId)) isRemoved = false;
-        } else if (songId && nextThreeIds.includes(songId)) {
-            isRemoved = false;
-        }
-        
-        // Si no está en la nueva lista -> Se va
-        if (isRemoved) {
-           // Marcar como "Saliendo" (activa animaciones CSS)
-           child.classList.add('removing');
-           
-           // Eliminar del DOM después de la animación
-           setTimeout(() => {
-             if (child.parentNode) child.parentNode.removeChild(child);
-           }, 800); // 800ms coincide con la transición CSS
-        }
-      });
-
-      // B. Identificar NUEVOS y ACTUALIZAR EXISTENTES
-      nextThree.forEach((req, index) => {
-        const id = generateSongId(req);
-        
-        // Prepare Metadata Data
-        const meta = metadataCache[normalizeKey(req.artista, req.cancion)];
-        
-        // Wait Time Logic (Cumulative)
-        let waitText = "";
-        if (container.dataset.showTime === 'true') {
-            if (index === 0) {
-                waitText = "Siguiente";
-            } else {
-                waitText = formatWaitTime(accumulatedTime);
-            }
-        }
-        // Update accumulated time for NEXT item
-        if (meta) accumulatedTime += meta.durationMs;
-        else accumulatedTime += 210000; // Default fallback
-
-        // Display Strings
-        const displaySong = (container.dataset.autoCorrect === 'true' && meta?.correctedSong) ? meta.correctedSong : req.cancion;
-        const displayArtist = (container.dataset.autoCorrect === 'true' && meta?.correctedArtist) ? meta.correctedArtist : req.artista;
-        const artUrl = (container.dataset.hqArt === 'true' && meta?.artworkUrl) ? meta.artworkUrl : null;
-        
-        // Buscar si ya existe por DocID (más seguro) o SongID
-        let existingEl = null;
-        if (req.id) {
-            existingEl = container.querySelector(`.queue-item[data-doc-id="${req.id}"]`);
-        }
-        if (!existingEl) {
-            existingEl = container.querySelector(`.queue-item[data-song-id="${id}"]`);
-        }
-        
-        if (existingEl) {
-           // Si estaba marcado para borrar pero volvió (ej. toggle rápido), lo revivimos
-           if (existingEl.classList.contains('removing')) {
-             existingEl.classList.remove('removing');
-           }
-           
-           // Asegurar que docId esté actualizado si faltaba
-           if (req.id && !existingEl.dataset.docId) {
-             existingEl.dataset.docId = req.id;
-           }
-           // Actualizar songId si cambió (ej. timezone)
-           if (existingEl.dataset.songId !== id) {
-             existingEl.dataset.songId = id;
-           }
-           
-           // Actualizar posición y textos
-           // Nota: Mantenemos la clase 'show' para que no re-anime entrada
-           existingEl.className = `queue-item queue-pos-${index + 1} show`;
-           
-           const headerSpan = existingEl.querySelector('.item-header span:first-child');
-           if (headerSpan) headerSpan.textContent = `#${index + 1}`;
-
-           // --- ACTUALIZAR SMART FEATURES (Existente) ---
-           
-           // Textos
-           const sEl = existingEl.querySelector('.item-song');
-           const aEl = existingEl.querySelector('.item-artist');
-           if(sEl && sEl.innerText !== displaySong) sEl.innerText = displaySong;
-           if(aEl && aEl.innerText !== displayArtist) aEl.innerText = displayArtist;
-
-           // Time Badge
-           let tb = existingEl.querySelector('.time-badge');
-           if (waitText) {
-             if (!tb) {
-                 tb = document.createElement('span');
-                 tb.className = 'time-badge';
-                 tb.style.cssText = "font-size: 0.8em; opacity: 0.8; margin-left: 10px; color: #4facfe;";
-                 existingEl.querySelector('.item-header').appendChild(tb);
-             }
-             tb.innerText = waitText;
-           } else if (tb) {
-             tb.remove();
-           }
-
-           // Artwork
-           let artImg = existingEl.querySelector('.item-art');
-           if (artUrl) {
-               const inner = existingEl.querySelector('.queue-item-inner');
-               if (!artImg) {
-                   artImg = document.createElement('img');
-                   artImg.className = 'item-art';
-                   artImg.style.cssText = "width: 50px; height: 50px; border-radius: 4px; object-fit: cover; margin-right: 10px;";
-                   
-                   // Re-estructurar layout si es necesario
-                   if (!existingEl.querySelector('.text-wrapper')) {
-                       const wrapper = document.createElement('div');
-                       wrapper.className = 'text-wrapper';
-                       wrapper.style.flex = '1';
-                       inner.style.display = 'flex';
-                       inner.style.alignItems = 'center';
-                       // Mover elementos de texto al wrapper (header, song, artist, user)
-                       while(inner.children.length > 0) wrapper.appendChild(inner.firstChild);
-                       
-                       inner.appendChild(artImg);
-                       inner.appendChild(wrapper);
-                   } else {
-                       // Ya tiene wrapper, insertar img al principio
-                       inner.insertBefore(artImg, inner.firstChild);
-                   }
-               }
-               if (artImg.src !== artUrl) artImg.src = artUrl;
-           } else if (artImg) {
-               artImg.remove();
-               // Opcional: Deshacer wrapper, pero es complejo y no critico
-           }
-           
-           // Mover al final de la lista visual (ordenar)
-           // appendChild mueve el elemento existente
-           container.appendChild(existingEl);
-           
-        } else {
-           // Elemento NUEVO
-           const newEl = createQueueItem(req, index);
-           
-           // --- APLICAR SMART FEATURES (Nuevo) ---
-           newEl.querySelector('.item-song').innerText = displaySong;
-           newEl.querySelector('.item-artist').innerText = displayArtist;
-
-           if (waitText) {
-             const tb = document.createElement('span');
-             tb.className = 'time-badge';
-             tb.style.cssText = "font-size: 0.8em; opacity: 0.8; margin-left: 10px; color: #4facfe;";
-             tb.innerText = waitText;
-             newEl.querySelector('.item-header').appendChild(tb);
-           }
-
-           if (artUrl) {
-             const artImg = document.createElement('img');
-             artImg.className = 'item-art';
-             artImg.src = artUrl;
-             artImg.style.cssText = "width: 50px; height: 50px; border-radius: 4px; object-fit: cover; margin-right: 10px;";
-             
-             const inner = newEl.querySelector('.queue-item-inner');
-             inner.style.display = 'flex';
-             inner.style.alignItems = 'center';
-             
-             const wrapper = document.createElement('div');
-             wrapper.className = 'text-wrapper';
-             wrapper.style.flex = '1';
-             
-             // Move content to wrapper
-             while(inner.firstChild) wrapper.appendChild(inner.firstChild);
-             
-             inner.appendChild(artImg);
-             inner.appendChild(wrapper);
-           }
-
-           container.appendChild(newEl);
-           
-           // Forzar reflow y activar animación de entrada
-           requestAnimationFrame(() => {
-             newEl.classList.add('show');
-           });
-        }
-      });
-      
-      if (nextThree.length === 0) {
-        // Cola vacía
-        const emptyState = document.getElementById('empty-state');
-        const showEmpty = container.dataset.showEmpty === 'true'; // string from dataset
-        if (showEmpty && emptyState) {
-             emptyState.classList.add('visible');
-        } else if (emptyState) {
-             emptyState.classList.remove('visible');
-        }
+         const s = getSettingsFromInputs(); // Get current settings for visibility
+         if (s.showEmpty) empty.classList.add('visible');
+         else empty.classList.remove('visible');
       } else {
-        const emptyState = document.getElementById('empty-state');
-        if (emptyState) emptyState.classList.remove('visible');
+         const empty = document.getElementById('empty-state');
+         if (empty) empty.classList.remove('visible');
       }
+
+      // Renderizar items
+      itemsToShow.forEach((req, index) => {
+        const itemEl = createQueueItem(req, index);
+        // Animación de entrada: añadir clase 'show' después de un frame
+        // Pero primero ver si ya existía para evitar re-animar (TODO: Advanced Diffing)
+        // Por ahora, animamos siempre la entrada de nuevos renders
+        container.appendChild(itemEl);
+        
+        // Trigger reflow
+        void itemEl.offsetWidth; 
+        itemEl.classList.add('show');
+      });
+
+      // 4. Hydrate Data (Autocorrect, Art, Times)
+      hydrateQueueItems(itemsToShow);
+      
+      // 5. Update Total Duration
+      updateTotalDuration(pendingRequests);
+    }
+
+    async function hydrateQueueItems(items) {
+      const settings = getSettingsFromInputs();
+      if (!settings.autocorrect && !settings.showAlbumArt && !settings.showWaitTime) return;
+
+      const container = document.getElementById('queue-container');
+      const itemEls = Array.from(container.querySelectorAll('.queue-item:not(.removing)'));
+      
+      let accumulatedTime = 0; // minutes
+
+      for (let i = 0; i < itemEls.length; i++) {
+         const el = itemEls[i];
+         const req = items[i];
+         if (!req) continue;
+
+         const songEl = el.querySelector('.item-song');
+         const artistEl = el.querySelector('.item-artist');
+         const artEl = el.querySelector('.item-art');
+         const waitEl = el.querySelector('.item-wait');
+
+         // Check Cache or Fetch
+         if (settings.autocorrect || settings.showAlbumArt || settings.showWaitTime) {
+             const data = await fetchSongData(req.artista, req.cancion);
+             
+             if (data) {
+                 if (settings.autocorrect) {
+                     songEl.innerText = data.correctTitle;
+                     artistEl.innerText = data.correctArtist;
+                 }
+                 
+                 if (settings.showAlbumArt && data.artworkUrl) {
+                     artEl.src = data.artworkUrl;
+                     artEl.style.display = 'block';
+                 }
+
+                 if (settings.showWaitTime && data.durationMs) {
+                     waitEl.style.display = 'block';
+                     waitEl.innerText = formatWaitTime(accumulatedTime);
+                     accumulatedTime += (data.durationMs / 60000);
+                 }
+             } else {
+                 // Fallback for wait time if no data found (assume 3:30 min)
+                 if (settings.showWaitTime) {
+                     waitEl.style.display = 'block';
+                     waitEl.innerText = formatWaitTime(accumulatedTime);
+                     accumulatedTime += 3.5; 
+                 }
+             }
+         }
+      }
+    }
+
+    async function updateTotalDuration(allPending) {
+      const settings = getSettingsFromInputs();
+      const indicator = document.getElementById('total-duration-indicator');
+      const valEl = document.getElementById('total-time-val');
+
+      if (!settings.showTotalDuration || allPending.length === 0) {
+        indicator.style.display = 'none';
+        return;
+      }
+
+      indicator.style.display = 'block';
+      
+      let totalMs = 0;
+      let unknownCount = 0;
+
+      // Batch fetch or use cache
+      // Note: fetching all might be heavy. We'll rely on cache + defaults.
+      for (const req of allPending) {
+         const cacheKey = `${req.artista} ${req.cancion}`.trim().toLowerCase();
+         if (songDataCache[cacheKey]) {
+             totalMs += songDataCache[cacheKey].durationMs;
+         } else {
+             unknownCount++;
+         }
+      }
+
+      // Estimate unknowns as 3.5 mins
+      totalMs += (unknownCount * 3.5 * 60000);
+
+      const h = Math.floor(totalMs / 3600000);
+      const m = Math.round((totalMs % 3600000) / 60000);
+      
+      valEl.innerText = h > 0 ? `${h}h ${m}m` : `${m}m`;
     }
 
     const currentDay = getLocalDateKey();
@@ -1412,177 +1301,54 @@
         setTimeout(simulateQueueRequest, 1000);
       }, 1000);
     }
-    // --- Drag & Drop Logic for Buttons (Generic) ---
-    function makeDraggable(el, clickCallback) {
-        let isDragging = false;
-        let dragOffsetX = 0;
-        let dragOffsetY = 0;
-        let hasMoved = false;
-
-        el.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            hasMoved = false;
-            const rect = el.getBoundingClientRect();
-            dragOffsetX = e.clientX - rect.left;
-            dragOffsetY = e.clientY - rect.top;
-            el.style.cursor = 'grabbing';
-            el.style.transition = 'none';
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            hasMoved = true;
-            e.preventDefault();
-            const x = e.clientX - dragOffsetX;
-            const y = e.clientY - dragOffsetY;
-            el.style.left = `${x}px`;
-            el.style.top = `${y}px`;
-        });
-
-        document.addEventListener('mouseup', (e) => {
-            if (!isDragging) return;
-            isDragging = false;
-            el.style.cursor = 'grab';
-            el.style.transition = 'all 0.3s ease';
-        });
-
-        el.addEventListener('click', (e) => {
-            if (!hasMoved && clickCallback) {
-                clickCallback();
-            }
-        });
-    }
-
-    // Initialize Draggables
+    // --- Drag & Drop Logic for Settings Button ---
     const settingsBtn = document.getElementById('settings-btn');
-    const presetsBtn = document.getElementById('presets-btn');
-    const settingsPanel = document.getElementById('settings-panel');
-    
-    makeDraggable(settingsBtn, () => {
-        toggleSettings();
+    let isDragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+    let hasMoved = false;
+
+    settingsBtn.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        hasMoved = false;
+        const rect = settingsBtn.getBoundingClientRect();
+        dragOffsetX = e.clientX - rect.left;
+        dragOffsetY = e.clientY - rect.top;
+        settingsBtn.style.cursor = 'grabbing';
+        
+        // Disable transitions during drag for responsiveness
+        settingsBtn.style.transition = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        
+        hasMoved = true;
+        e.preventDefault();
+        
+        const x = e.clientX - dragOffsetX;
+        const y = e.clientY - dragOffsetY;
+        
+        settingsBtn.style.left = `${x}px`;
+        settingsBtn.style.top = `${y}px`;
+    });
+
+    document.addEventListener('mouseup', (e) => {
+        if (!isDragging) return;
+        
+        isDragging = false;
+        settingsBtn.style.cursor = 'grab';
+        
+        // Restore transitions
+        settingsBtn.style.transition = 'background 0.3s ease, transform 0.3s ease, opacity 0.3s ease';
     });
     
-    makeDraggable(presetsBtn, () => {
-        togglePresets();
+    // Handle click manually to avoid triggering when dragging
+    settingsBtn.addEventListener('click', (e) => {
+        if (!hasMoved) {
+            toggleSettings();
+        }
     });
-
-    // --- Presets Logic ---
-    function togglePresets() {
-      const p = document.getElementById('presets-panel');
-      if (p.style.display === 'block') {
-        p.style.display = 'none';
-        p.classList.remove('open');
-      } else {
-        p.style.display = 'block';
-        p.classList.add('open');
-        loadPresetsList();
-      }
-    }
-
-    function getCurrentSettings() {
-      // Helper to gather current settings from UI/Variables
-      // We can reconstruct it from the inputs which reflect the current state
-      return {
-        width: parseInt(document.getElementById('inp-width').value),
-        minHeight: parseInt(document.getElementById('inp-minHeight').value),
-        spacing: parseInt(document.getElementById('inp-spacing').value),
-        padding: parseInt(document.getElementById('inp-padding').value),
-        textGap: parseInt(document.getElementById('inp-textGap').value),
-        borderRadius: parseInt(document.getElementById('inp-borderRadius').value),
-        showHeader: document.getElementById('inp-showHeader').checked,
-        showArtist: document.getElementById('inp-showArtist').checked,
-        showUser: document.getElementById('inp-showUser').checked,
-        showEmpty: document.getElementById('inp-showEmpty').checked,
-        animEntry: document.getElementById('inp-animEntry').value,
-        animExit: document.getElementById('inp-animExit').value,
-        font: document.getElementById('inp-font').value,
-        fontSize: parseInt(document.getElementById('inp-fontSize').value),
-        accent: document.getElementById('inp-accent').value,
-        bg: document.getElementById('inp-bg').value,
-        primaryOpacity: parseInt(document.getElementById('inp-primaryOpacity').value),
-        secondaryOpacity: parseInt(document.getElementById('inp-secondaryOpacity').value),
-        text: document.getElementById('inp-text').value
-      };
-    }
-
-    function saveAsPreset() {
-      const name = prompt("Nombre del Preset:");
-      if (!name) return;
-      
-      const current = getCurrentSettings();
-      const newPreset = { name, settings: current };
-      
-      let presets = JSON.parse(localStorage.getItem('queue_presets') || "[]");
-      presets.push(newPreset);
-      localStorage.setItem('queue_presets', JSON.stringify(presets));
-      
-      loadPresetsList();
-    }
-
-    function loadPresetsList() {
-      const list = document.getElementById('presets-list');
-      list.innerHTML = '';
-      
-      let presets = JSON.parse(localStorage.getItem('queue_presets') || "[]");
-      
-      if (presets.length === 0) {
-        list.innerHTML = '<div style="color:#aaa; font-style:italic; padding:10px;">No hay presets guardados.</div>';
-        return;
-      }
-      
-      presets.forEach((p, index) => {
-        const div = document.createElement('div');
-        div.className = 'preset-item';
-        div.innerHTML = `
-          <span class="preset-name" onclick="applyPreset(${index})">${p.name}</span>
-          <span class="preset-delete" onclick="deletePreset(${index})">🗑️</span>
-        `;
-        list.appendChild(div);
-      });
-    }
-
-    function deletePreset(index) {
-      if (!confirm("¿Borrar este preset?")) return;
-      let presets = JSON.parse(localStorage.getItem('queue_presets') || "[]");
-      presets.splice(index, 1);
-      localStorage.setItem('queue_presets', JSON.stringify(presets));
-      loadPresetsList();
-    }
-
-    function applyPreset(index) {
-      let presets = JSON.parse(localStorage.getItem('queue_presets') || "[]");
-      if (presets[index]) {
-        applySettings(presets[index].settings);
-        // Update inputs to match
-        const s = presets[index].settings;
-        document.getElementById('inp-width').value = s.width;
-        document.getElementById('inp-minHeight').value = s.minHeight;
-        document.getElementById('inp-spacing').value = s.spacing;
-        document.getElementById('inp-padding').value = s.padding;
-        document.getElementById('inp-textGap').value = s.textGap;
-        document.getElementById('inp-borderRadius').value = s.borderRadius;
-        document.getElementById('inp-showHeader').checked = s.showHeader;
-        document.getElementById('inp-showArtist').checked = s.showArtist;
-        document.getElementById('inp-showUser').checked = s.showUser;
-        document.getElementById('inp-showEmpty').checked = s.showEmpty;
-        document.getElementById('inp-animEntry').value = s.animEntry;
-        document.getElementById('inp-animExit').value = s.animExit;
-        document.getElementById('inp-font').value = s.font;
-        document.getElementById('inp-fontSize').value = s.fontSize;
-        document.getElementById('inp-accent').value = s.accent;
-        document.getElementById('inp-bg').value = s.bg;
-        document.getElementById('inp-primaryOpacity').value = s.primaryOpacity;
-        document.getElementById('inp-secondaryOpacity').value = s.secondaryOpacity;
-        document.getElementById('inp-text').value = s.text;
-        
-        // Update labels
-        document.getElementById('primary-opacity-val').innerText = s.primaryOpacity + '%';
-        document.getElementById('opacity-val').innerText = s.secondaryOpacity + '%';
-        
-        // Close panel
-        togglePresets();
-      }
-    }
   </script>
 </body>
 </html>
