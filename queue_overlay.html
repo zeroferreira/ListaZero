@@ -791,10 +791,10 @@
           if (found) ordered.push(found);
         });
 
-        // Nuevos (no presentes en 'order') arriba en su orden natural
+        // Nuevos (no presentes en 'order') abajo (al final de la cola)
         const notInOrder = items.filter((it) => !inOrderSet.has(generateSongId(it)));
 
-        return [...notInOrder, ...ordered];
+        return [...ordered, ...notInOrder];
       } catch {
         return items;
       }
@@ -805,6 +805,7 @@
       // Wrapper con clases de posición
       div.className = `queue-item queue-pos-${index + 1}`; 
       div.dataset.songId = generateSongId(req);
+      if (req.id) div.dataset.docId = req.id;
       
       div.innerHTML = `
         <div class="queue-item-inner">
@@ -840,15 +841,27 @@
 
       // 3. Lógica de Diffing (Diferencias)
       
+      const nextThreeDocIds = nextThree.map(req => req.id).filter(Boolean);
+
       // A. Identificar REMOVIDOS (Están en DOM pero no en nextThree)
       const currentChildren = Array.from(container.children);
       currentChildren.forEach(child => {
         // Ignorar nodos que ya se están eliminando
         if (child.classList.contains('removing')) return;
         
-        const id = child.dataset.songId;
-        // Si tiene ID y NO está en la nueva lista -> Se va
-        if (id && !nextThreeIds.includes(id)) {
+        const songId = child.dataset.songId;
+        const docId = child.dataset.docId;
+
+        // Criterio de permanencia: Coincide docId (prioridad) O coincide songId (fallback)
+        let isRemoved = true;
+        if (docId && nextThreeDocIds.length > 0) {
+            if (nextThreeDocIds.includes(docId)) isRemoved = false;
+        } else if (songId && nextThreeIds.includes(songId)) {
+            isRemoved = false;
+        }
+        
+        // Si no está en la nueva lista -> Se va
+        if (isRemoved) {
            // Marcar como "Saliendo" (activa animaciones CSS)
            child.classList.add('removing');
            
@@ -862,13 +875,29 @@
       // B. Identificar NUEVOS y ACTUALIZAR EXISTENTES
       nextThree.forEach((req, index) => {
         const id = generateSongId(req);
-        // Buscar si ya existe (incluso si se estaba eliminando, lo rescatamos)
-        let existingEl = container.querySelector(`.queue-item[data-song-id="${id}"]`);
+        
+        // Buscar si ya existe por DocID (más seguro) o SongID
+        let existingEl = null;
+        if (req.id) {
+            existingEl = container.querySelector(`.queue-item[data-doc-id="${req.id}"]`);
+        }
+        if (!existingEl) {
+            existingEl = container.querySelector(`.queue-item[data-song-id="${id}"]`);
+        }
         
         if (existingEl) {
            // Si estaba marcado para borrar pero volvió (ej. toggle rápido), lo revivimos
            if (existingEl.classList.contains('removing')) {
              existingEl.classList.remove('removing');
+           }
+           
+           // Asegurar que docId esté actualizado si faltaba
+           if (req.id && !existingEl.dataset.docId) {
+             existingEl.dataset.docId = req.id;
+           }
+           // Actualizar songId si cambió (ej. timezone)
+           if (existingEl.dataset.songId !== id) {
+             existingEl.dataset.songId = id;
            }
            
            // Actualizar posición y textos
@@ -970,11 +999,10 @@
     function simulateQueueRequest() {
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
       const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
-      const users = ["UsuarioTest", "DJ_Zero", "Invitado123", "FanNumero1", "Moderador_Top"];
-
+      
       const randomArtist = artists[Math.floor(Math.random() * artists.length)];
       const randomSong = songs[Math.floor(Math.random() * songs.length)];
-      const randomUser = users[Math.floor(Math.random() * users.length)];
+      const randomUser = "Prueba";
       
       const now = new Date();
       const req = {

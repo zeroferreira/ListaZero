@@ -713,36 +713,65 @@
       }, displayDuration);
     }
 
+    // Variable para controlar la carga inicial
+    let isInitialLoad = true;
+
     // Escuchar la colección 'solicitudes'
     // Ordenamos por timestamp descendente y limitamos a 1 para ver el último
     db.collection('solicitudes')
       .orderBy('ts', 'desc')
       .limit(1)
       .onSnapshot((snapshot) => {
-        if (snapshot.empty) return;
+        if (snapshot.empty) {
+          isInitialLoad = false;
+          return;
+        }
 
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
             const data = change.doc.data();
             
-            // Validar timestamp para no mostrar solicitudes viejas al cargar
-            // Si la solicitud tiene más de 1 minuto de antigüedad, la ignoramos al inicio
-            // Si data.ts es null, es una escritura local pendiente (muy reciente), así que la mostramos.
+            // Lógica de timestamp
             let docTime = Date.now();
             if (data.ts && typeof data.ts.toDate === 'function') {
               docTime = data.ts.toDate().getTime();
+            } else if (data.ts && data.ts instanceof Date) {
+               docTime = data.ts.getTime(); // Para simulaciones locales que usan Date
+            } else if (data.ts) {
+               // Fallback si es string o número
+               docTime = new Date(data.ts).getTime();
             }
             
             const now = Date.now();
-            const oneMinute = 60 * 1000;
+            const diff = now - docTime;
+            
+            // Umbral para carga inicial (evitar mostrar pedidos viejos al abrir OBS)
+            // 20 minutos de tolerancia
+            const initialLoadThreshold = 20 * 60 * 1000; 
 
-            if (now - docTime < oneMinute) {
-              showNotification(data);
+            console.log(`Pedido recibido: ${data.cancion}, TS: ${docTime}, Ahora: ${now}, Diff: ${diff}ms, Initial: ${isInitialLoad}`);
+
+            if (isInitialLoad) {
+               // En carga inicial, solo mostrar si es reciente (< 20 min)
+               // Nota: Si diff es negativo (futuro), lo mostramos también (asumiendo reloj desajustado pero "reciente")
+               // Si diff es muy grande (> 20 min), es viejo.
+               if (diff < initialLoadThreshold) {
+                 showNotification(data);
+               } else {
+                 console.log('Solicitud antigua ignorada en carga inicial:', data);
+               }
             } else {
-              console.log('Solicitud antigua ignorada:', data);
+               // Si NO es carga inicial, es un evento en tiempo real.
+               // Mostrar SIEMPRE, a menos que sea absurdamente viejo (ej. > 1 hora, por si acaso)
+               // Pero confiamos en que 'added' en tiempo real es nuevo.
+               showNotification(data);
             }
           }
         });
+        
+        // Marcar carga inicial como completada después de procesar el primer snapshot
+        isInitialLoad = false;
+
       }, (error) => {
         console.error("Error escuchando solicitudes:", error);
       });
@@ -751,11 +780,10 @@
     function simulateRequest() {
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
       const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
-      const users = ["UsuarioTest", "DJ_Zero", "Invitado123", "FanNumero1", "Moderador_Top"];
-
+      
       const randomArtist = artists[Math.floor(Math.random() * artists.length)];
       const randomSong = songs[Math.floor(Math.random() * songs.length)];
-      const randomUser = users[Math.floor(Math.random() * users.length)];
+      const randomUser = "Prueba";
 
       const now = new Date();
       // Utilidad simple para fecha local YYYY-MM-DD
