@@ -439,6 +439,22 @@
     </div>
 
     <div class="settings-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
+       <label style="width: 100%;">Funciones Inteligentes (Apple Music API)</label>
+       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer; width: 100%;">
+         <input type="checkbox" id="inp-autoCorrect"> 🧠 Autocorregir Nombres
+       </label>
+       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer; width: 100%;">
+         <input type="checkbox" id="inp-hqArt"> 🎨 Portadas HQ
+       </label>
+       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer; width: 100%;">
+         <input type="checkbox" id="inp-showTime"> ⏱️ Mostrar Tiempo Espera
+       </label>
+       <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer; width: 100%;">
+         <input type="checkbox" id="inp-showTotalTime"> 📊 Mostrar Duración Total Cola
+       </label>
+    </div>
+
+    <div class="settings-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
        <label style="width: 100%;">Visibilidad de Elementos</label>
        <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
          <input type="checkbox" id="inp-showHeader" checked> Cabecera
@@ -567,6 +583,10 @@
       showArtist: true,
       showUser: true,
       showEmpty: true,
+      autoCorrect: false,
+      hqArt: false,
+      showTime: false,
+      showTotalTime: false,
       animEntry: 'anim-entry-slide-left',
       animExit: 'anim-exit-slide-right',
       font: "'Montserrat', sans-serif",
@@ -601,6 +621,11 @@
       document.getElementById('inp-showArtist').checked = settings.showArtist !== undefined ? settings.showArtist : true;
       document.getElementById('inp-showUser').checked = settings.showUser !== undefined ? settings.showUser : true;
       document.getElementById('inp-showEmpty').checked = settings.showEmpty !== undefined ? settings.showEmpty : true;
+
+      document.getElementById('inp-autoCorrect').checked = settings.autoCorrect !== undefined ? settings.autoCorrect : false;
+      document.getElementById('inp-hqArt').checked = settings.hqArt !== undefined ? settings.hqArt : false;
+      document.getElementById('inp-showTime').checked = settings.showTime !== undefined ? settings.showTime : false;
+      document.getElementById('inp-showTotalTime').checked = settings.showTotalTime !== undefined ? settings.showTotalTime : false;
 
       document.getElementById('inp-animEntry').value = settings.animEntry;
       document.getElementById('inp-animExit').value = settings.animExit;
@@ -646,6 +671,19 @@
       // Empty State visibility logic moved to renderQueue or handled here via CSS class if needed
       // But renderQueue controls the DOM, so we store the setting in a global var or dataset
       container.dataset.showEmpty = s.showEmpty;
+      
+      // Store smart features in dataset for easy access in renderQueue
+      container.dataset.autoCorrect = s.autoCorrect;
+      container.dataset.hqArt = s.hqArt;
+      container.dataset.showTime = s.showTime;
+      container.dataset.showTotalTime = s.showTotalTime;
+
+      // Update Total Time Visibility
+      const totalTimeEl = document.getElementById('queue-total-time');
+      if (totalTimeEl) {
+        totalTimeEl.style.display = s.showTotalTime ? 'block' : 'none';
+      }
+
       const emptyState = document.getElementById('empty-state');
       if (emptyState) {
          // Si se debe mostrar el mensaje de vacío y no hay elementos visibles en la cola
@@ -695,6 +733,10 @@
         showArtist: document.getElementById('inp-showArtist').checked,
         showUser: document.getElementById('inp-showUser').checked,
         showEmpty: document.getElementById('inp-showEmpty').checked,
+        autoCorrect: document.getElementById('inp-autoCorrect').checked,
+        hqArt: document.getElementById('inp-hqArt').checked,
+        showTime: document.getElementById('inp-showTime').checked,
+        showTotalTime: document.getElementById('inp-showTotalTime').checked,
         animEntry: document.getElementById('inp-animEntry').value,
         animExit: document.getElementById('inp-animExit').value,
         font: document.getElementById('inp-font').value,
@@ -740,7 +782,7 @@
         });
         
         // Checkboxes
-        ['inp-showHeader', 'inp-showArtist', 'inp-showUser', 'inp-showEmpty'].forEach(id => {
+        ['inp-showHeader', 'inp-showArtist', 'inp-showUser', 'inp-showEmpty', 'inp-autoCorrect', 'inp-hqArt', 'inp-showTime', 'inp-showTotalTime'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('change', previewSettings);
@@ -804,6 +846,11 @@
             document.getElementById('inp-showUser').checked = settings.showUser !== undefined ? settings.showUser : true;
             document.getElementById('inp-showEmpty').checked = settings.showEmpty !== undefined ? settings.showEmpty : true;
 
+            document.getElementById('inp-autoCorrect').checked = settings.autoCorrect !== undefined ? settings.autoCorrect : false;
+            document.getElementById('inp-hqArt').checked = settings.hqArt !== undefined ? settings.hqArt : false;
+            document.getElementById('inp-showTime').checked = settings.showTime !== undefined ? settings.showTime : false;
+            document.getElementById('inp-showTotalTime').checked = settings.showTotalTime !== undefined ? settings.showTotalTime : false;
+
             document.getElementById('inp-animEntry').value = settings.animEntry;
             document.getElementById('inp-animExit').value = settings.animExit;
             
@@ -834,6 +881,59 @@
     let playedSongIds = new Set(); // IDs de canciones ya reproducidas
     let visibleQueue = []; // Las 3 canciones actualmente mostradas
     let currentManualOrder = []; // Orden manual compartido
+    
+    // --- Smart Features Cache ---
+    const metadataCache = {}; // Key: "Artist - Song" (normalized) -> { durationMs, artworkUrl, correctedSong, correctedArtist }
+    let isFetchingMetadata = false;
+
+    // Utilidad: Normalizar Strings para Key
+    function normalizeKey(artist, song) {
+        return `${artist.trim().toLowerCase()}-${song.trim().toLowerCase()}`;
+    }
+
+    async function fetchTrackMetadata(artist, song) {
+        const key = normalizeKey(artist, song);
+        if (metadataCache[key]) return metadataCache[key];
+
+        try {
+            const query = encodeURIComponent(`${artist} ${song}`);
+            const res = await fetch(`https://itunes.apple.com/search?term=${query}&media=music&limit=1`);
+            const data = await res.json();
+            
+            if (data.resultCount > 0) {
+                const track = data.results[0];
+                const meta = {
+                    durationMs: track.trackTimeMillis,
+                    artworkUrl: track.artworkUrl100.replace('100x100', '600x600'), // HQ
+                    correctedSong: track.trackName,
+                    correctedArtist: track.artistName
+                };
+                metadataCache[key] = meta;
+                return meta;
+            }
+        } catch (e) {
+            console.warn("Error fetching metadata:", e);
+        }
+        
+        // Cache failure to avoid retry loops
+        metadataCache[key] = { durationMs: 210000, artworkUrl: null, correctedSong: song, correctedArtist: artist }; // Default 3:30
+        return metadataCache[key];
+    }
+
+    // Utilidad: Formatear tiempo (ms -> MM:SS)
+    function formatDuration(ms) {
+        const totalSeconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+    
+    // Utilidad: Formatear tiempo de espera (minutos)
+    function formatWaitTime(ms) {
+        const mins = Math.ceil(ms / 1000 / 60);
+        if (mins <= 1) return "En breve";
+        return `en ${mins} min`;
+    }
 
     // Utilidad: Obtener clave de fecha local (YYYY-MM-DD)
     function getLocalDateKey(ts) {
@@ -921,6 +1021,76 @@
       
       const nextThreeDocIds = nextThree.map(req => req.id).filter(Boolean);
 
+      // Pre-fetch metadata if smart features are enabled
+      const needsMeta = container.dataset.autoCorrect === 'true' || 
+                        container.dataset.hqArt === 'true' || 
+                        container.dataset.showTime === 'true' || 
+                        container.dataset.showTotalTime === 'true';
+      
+      if (needsMeta && !isFetchingMetadata) {
+         let missingMeta = false;
+         // Check ALL pending requests for Total Time calculation, not just nextThree
+         const listToCheck = (container.dataset.showTotalTime === 'true') ? pendingRequests : nextThree;
+         
+         for (const req of listToCheck) {
+             if (!metadataCache[normalizeKey(req.artista, req.cancion)]) {
+                 missingMeta = true;
+                 break;
+             }
+         }
+         
+         if (missingMeta) {
+             isFetchingMetadata = true;
+             // Fetch all needed in parallel
+             Promise.all(listToCheck.map(req => fetchTrackMetadata(req.artista, req.cancion)))
+                .then(() => {
+                    isFetchingMetadata = false;
+                    renderQueue(); // Re-render once data is ready
+                });
+         }
+      }
+
+      // Calculate Times
+      let accumulatedTime = 0;
+      let totalQueueTime = 0;
+      
+      if (needsMeta) {
+          // Calculate total duration of ALL pending requests
+          pendingRequests.forEach(req => {
+              const meta = metadataCache[normalizeKey(req.artista, req.cancion)];
+              if (meta) totalQueueTime += meta.durationMs;
+          });
+          
+          // Render Total Time Widget
+          let totalTimeEl = document.getElementById('queue-total-time');
+          if (!totalTimeEl) {
+              totalTimeEl = document.createElement('div');
+              totalTimeEl.id = 'queue-total-time';
+              totalTimeEl.style.cssText = `
+                  background: rgba(0,0,0,0.7); 
+                  color: #aaa; 
+                  padding: 5px 10px; 
+                  border-radius: 12px; 
+                  font-size: 12px; 
+                  margin-bottom: 10px; 
+                  align-self: flex-end;
+                  backdrop-filter: blur(4px);
+                  border: 1px solid rgba(255,255,255,0.1);
+                  display: none;
+              `;
+              container.parentNode.insertBefore(totalTimeEl, container); // Insert before list
+          }
+          
+          if (container.dataset.showTotalTime === 'true' && totalQueueTime > 0) {
+              const hrs = Math.floor(totalQueueTime / 3600000);
+              const mins = Math.floor((totalQueueTime % 3600000) / 60000);
+              totalTimeEl.innerText = `Tiempo Total: ${hrs > 0 ? hrs + 'h ' : ''}${mins}m`;
+              totalTimeEl.style.display = 'block';
+          } else {
+              totalTimeEl.style.display = 'none';
+          }
+      }
+
       // A. Identificar REMOVIDOS (Están en DOM pero no en nextThree)
       const currentChildren = Array.from(container.children);
       currentChildren.forEach(child => {
@@ -954,6 +1124,27 @@
       nextThree.forEach((req, index) => {
         const id = generateSongId(req);
         
+        // Prepare Metadata Data
+        const meta = metadataCache[normalizeKey(req.artista, req.cancion)];
+        
+        // Wait Time Logic (Cumulative)
+        let waitText = "";
+        if (container.dataset.showTime === 'true') {
+            if (index === 0) {
+                waitText = "Siguiente";
+            } else {
+                waitText = formatWaitTime(accumulatedTime);
+            }
+        }
+        // Update accumulated time for NEXT item
+        if (meta) accumulatedTime += meta.durationMs;
+        else accumulatedTime += 210000; // Default fallback
+
+        // Display Strings
+        const displaySong = (container.dataset.autoCorrect === 'true' && meta?.correctedSong) ? meta.correctedSong : req.cancion;
+        const displayArtist = (container.dataset.autoCorrect === 'true' && meta?.correctedArtist) ? meta.correctedArtist : req.artista;
+        const artUrl = (container.dataset.hqArt === 'true' && meta?.artworkUrl) ? meta.artworkUrl : null;
+        
         // Buscar si ya existe por DocID (más seguro) o SongID
         let existingEl = null;
         if (req.id) {
@@ -984,6 +1175,60 @@
            
            const headerSpan = existingEl.querySelector('.item-header span:first-child');
            if (headerSpan) headerSpan.textContent = `#${index + 1}`;
+
+           // --- ACTUALIZAR SMART FEATURES (Existente) ---
+           
+           // Textos
+           const sEl = existingEl.querySelector('.item-song');
+           const aEl = existingEl.querySelector('.item-artist');
+           if(sEl && sEl.innerText !== displaySong) sEl.innerText = displaySong;
+           if(aEl && aEl.innerText !== displayArtist) aEl.innerText = displayArtist;
+
+           // Time Badge
+           let tb = existingEl.querySelector('.time-badge');
+           if (waitText) {
+             if (!tb) {
+                 tb = document.createElement('span');
+                 tb.className = 'time-badge';
+                 tb.style.cssText = "font-size: 0.8em; opacity: 0.8; margin-left: 10px; color: #4facfe;";
+                 existingEl.querySelector('.item-header').appendChild(tb);
+             }
+             tb.innerText = waitText;
+           } else if (tb) {
+             tb.remove();
+           }
+
+           // Artwork
+           let artImg = existingEl.querySelector('.item-art');
+           if (artUrl) {
+               const inner = existingEl.querySelector('.queue-item-inner');
+               if (!artImg) {
+                   artImg = document.createElement('img');
+                   artImg.className = 'item-art';
+                   artImg.style.cssText = "width: 50px; height: 50px; border-radius: 4px; object-fit: cover; margin-right: 10px;";
+                   
+                   // Re-estructurar layout si es necesario
+                   if (!existingEl.querySelector('.text-wrapper')) {
+                       const wrapper = document.createElement('div');
+                       wrapper.className = 'text-wrapper';
+                       wrapper.style.flex = '1';
+                       inner.style.display = 'flex';
+                       inner.style.alignItems = 'center';
+                       // Mover elementos de texto al wrapper (header, song, artist, user)
+                       while(inner.children.length > 0) wrapper.appendChild(inner.firstChild);
+                       
+                       inner.appendChild(artImg);
+                       inner.appendChild(wrapper);
+                   } else {
+                       // Ya tiene wrapper, insertar img al principio
+                       inner.insertBefore(artImg, inner.firstChild);
+                   }
+               }
+               if (artImg.src !== artUrl) artImg.src = artUrl;
+           } else if (artImg) {
+               artImg.remove();
+               // Opcional: Deshacer wrapper, pero es complejo y no critico
+           }
            
            // Mover al final de la lista visual (ordenar)
            // appendChild mueve el elemento existente
@@ -992,15 +1237,46 @@
         } else {
            // Elemento NUEVO
            const newEl = createQueueItem(req, index);
+           
+           // --- APLICAR SMART FEATURES (Nuevo) ---
+           newEl.querySelector('.item-song').innerText = displaySong;
+           newEl.querySelector('.item-artist').innerText = displayArtist;
+
+           if (waitText) {
+             const tb = document.createElement('span');
+             tb.className = 'time-badge';
+             tb.style.cssText = "font-size: 0.8em; opacity: 0.8; margin-left: 10px; color: #4facfe;";
+             tb.innerText = waitText;
+             newEl.querySelector('.item-header').appendChild(tb);
+           }
+
+           if (artUrl) {
+             const artImg = document.createElement('img');
+             artImg.className = 'item-art';
+             artImg.src = artUrl;
+             artImg.style.cssText = "width: 50px; height: 50px; border-radius: 4px; object-fit: cover; margin-right: 10px;";
+             
+             const inner = newEl.querySelector('.queue-item-inner');
+             inner.style.display = 'flex';
+             inner.style.alignItems = 'center';
+             
+             const wrapper = document.createElement('div');
+             wrapper.className = 'text-wrapper';
+             wrapper.style.flex = '1';
+             
+             // Move content to wrapper
+             while(inner.firstChild) wrapper.appendChild(inner.firstChild);
+             
+             inner.appendChild(artImg);
+             inner.appendChild(wrapper);
+           }
+
            container.appendChild(newEl);
            
            // Forzar reflow y activar animación de entrada
            requestAnimationFrame(() => {
              newEl.classList.add('show');
-             console.log("Added .show class to new element", newEl);
            });
-           // Fallback
-           setTimeout(() => newEl.classList.add('show'), 100);
         }
       });
       
