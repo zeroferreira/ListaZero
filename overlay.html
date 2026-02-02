@@ -64,7 +64,117 @@
       display: flex;
       flex-direction: column;
       justify-content: center;
+      position: relative;
+      overflow: hidden; /* Para el fondo de carátula */
     }
+
+    /* Album Art Styles */
+    .album-art-bg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-size: cover;
+      background-position: center;
+      filter: blur(20px) brightness(0.4);
+      z-index: 0;
+      opacity: 0;
+      transition: opacity 1s ease;
+    }
+    .card-content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      width: 100%;
+    }
+    
+    /* Layout: Row (Apple Style) */
+    .layout-row .card-content {
+      flex-direction: row;
+      align-items: center;
+      gap: 20px;
+      text-align: left;
+    }
+    .layout-row .text-container {
+      flex: 1;
+    }
+    .layout-row .album-art-img {
+      width: 120px;
+      height: 120px;
+      border-radius: 12px;
+      background-size: cover;
+      background-position: center;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+      display: none; /* Se muestra si hay imagen */
+    }
+    .layout-row .header {
+       justify-content: flex-start;
+       margin-bottom: 4px;
+    }
+
+    /* Ajustes para layout row */
+    .layout-row .song-title { margin-bottom: 2px; }
+    .layout-row .artist { margin-bottom: 8px; }
+    
+    /* Panel de Presets */
+    #presets-btn {
+      position: fixed;
+      top: 80px;
+      left: 20px;
+      z-index: 1000;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      border-radius: 50%;
+      cursor: grab;
+      font-size: 20px;
+      transition: background 0.3s ease, transform 0.3s ease;
+      
+      width: 50px;
+      height: 50px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      user-select: none;
+    }
+    #presets-btn:active { cursor: grabbing; }
+    #presets-btn:hover { background: rgba(0,0,0,0.8); transform: scale(1.1); }
+
+    #presets-panel {
+      position: fixed;
+      top: 130px;
+      left: 20px;
+      width: 250px;
+      background: rgba(15, 15, 15, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 15px;
+      z-index: 1001;
+      color: white;
+      display: none;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    }
+    #presets-panel.open { display: block; animation: menu-pop 0.3s ease; }
+    
+    .preset-item {
+      padding: 10px;
+      background: #333;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.2s;
+    }
+    .preset-item:hover { background: #444; }
+    .preset-name { font-weight: bold; font-size: 14px; }
+    .preset-delete { color: #ff4444; font-size: 12px; padding: 4px 8px; cursor: pointer; }
+    .preset-delete:hover { background: rgba(255,0,0,0.2); border-radius: 4px; }
 
     /* Animaciones de Entrada (controladas por clase en el contenedor o tarjeta) */
     /* Default: Flip In */
@@ -100,6 +210,10 @@
       display: flex;
       align-items: center;
       gap: 10px;
+    }
+
+    .header.no-icon::before {
+      display: none;
     }
 
     .header::before {
@@ -325,17 +439,35 @@
 
   <div id="notification-container">
     <div id="card" class="card">
-      <div class="header">Nueva Solicitud</div>
-      <div class="song-title" id="song">Canción</div>
-      <div class="artist" id="artist">Artista</div>
-      <div class="requested-by">
-        Pedida por: <span class="user-badge" id="user">Usuario</span>
+      <div id="album-art-bg" class="album-art-bg"></div>
+      <div class="card-content">
+          <!-- Para modo Row -->
+          <div id="album-art-img" class="album-art-img"></div>
+          
+          <div class="text-container">
+              <div class="header">Nueva Solicitud</div>
+              <div class="song-title" id="song">Canción</div>
+              <div class="artist" id="artist">Artista</div>
+              <div class="requested-by">
+                Pedida por: <span class="user-badge" id="user">Usuario</span>
+              </div>
+          </div>
       </div>
     </div>
   </div>
 
   <!-- Botón de Configuración -->
   <button id="settings-btn" title="Configurar Overlay">⚙️</button>
+  
+  <!-- Botón de Presets -->
+  <button id="presets-btn" title="Presets">📁</button>
+
+  <!-- Panel de Presets -->
+  <div id="presets-panel">
+    <h3 style="margin-top:0; border-bottom: 1px solid #333; padding-bottom: 10px;">Presets</h3>
+    <div id="presets-list"></div>
+    <button class="btn btn-reset" onclick="togglePresets()" style="margin-top:10px;">Cerrar</button>
+  </div>
 
   <!-- Panel de Configuración -->
   <div id="settings-panel">
@@ -514,6 +646,30 @@
        <button class="btn" style="background: #333;" onclick="simulateRequest()">🔔 Simular Pedido</button>
     </div>
 
+    <div class="settings-group">
+      <label>Disposición (Layout)</label>
+      <select id="inp-layoutMode" onchange="previewSettings()">
+        <option value="default">Estándar (Columna)</option>
+        <option value="row">Horizontal (Apple Style)</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Carátula de Álbum (Album Art)</label>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <input type="checkbox" id="inp-useAlbumArt" onchange="previewSettings()" style="width:auto; margin:0;">
+        <span style="font-size:12px; color:#aaa;">Buscar y mostrar carátula</span>
+      </div>
+    </div>
+    
+    <div class="settings-group">
+      <label>Guardar como Preset</label>
+      <div style="display:flex; gap:10px;">
+        <input type="text" id="inp-newPresetName" placeholder="Nombre del Preset">
+        <button class="btn btn-save" onclick="saveAsPreset()" style="padding: 5px 10px; font-size:12px;">Guardar</button>
+      </div>
+    </div>
+
     <div class="settings-actions">
       <button class="btn btn-reset" onclick="resetSettings()">Reset</button>
       <button class="btn btn-save" onclick="saveSettings()">Guardar</button>
@@ -553,7 +709,9 @@
       sepUseAccent: true,
       sepOpacity: 10,
       sepWidth: 1,
-      sepStyle: "solid"
+      sepStyle: "solid",
+      layoutMode: 'default',
+      useAlbumArt: false
     };
 
     let displayDuration = 10000;
@@ -625,6 +783,13 @@
 
       document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
       document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
+      
+      if(document.getElementById('inp-layoutMode')) {
+         document.getElementById('inp-layoutMode').value = settings.layoutMode || 'default';
+      }
+      if(document.getElementById('inp-useAlbumArt')) {
+         document.getElementById('inp-useAlbumArt').checked = settings.useAlbumArt || false;
+      }
     }
 
     function applySettings(s) {
@@ -652,16 +817,17 @@
       root.style.setProperty('--text-color', s.text);
       
       // Icon Content & Size
-      // Aseguramos que el contenido tenga comillas si no es un emoji directo (aunque CSS content string requiere comillas)
-      // Pero para emojis directos en variables, funciona mejor con comillas escapadas en JS para CSS var? 
-      // En realidad, para 'content' en CSS, necesitamos que sea una cadena. 
-      // Si pasamos el emoji tal cual a la variable, luego en content: var(--icon-content) funciona si la variable tiene comillas.
-      // O podemos poner content: var(--icon-content) y que la variable sea '"🎵"'.
-      
       const iconChar = s.icon || '🎵';
       root.style.setProperty('--icon-content', `"${iconChar}"`);
-      root.style.setProperty('--icon-circle-size', (s.iconCircleSize || 50) + 'px');
+      const iconSize = s.iconCircleSize !== undefined ? s.iconCircleSize : 50;
+      root.style.setProperty('--icon-circle-size', iconSize + 'px');
       root.style.setProperty('--icon-font-size', (s.iconFontSize || 25) + 'px');
+      
+      const headerEl = document.querySelector('.header');
+      if(headerEl) {
+         if(iconSize <= 0) headerEl.classList.add('no-icon');
+         else headerEl.classList.remove('no-icon');
+      }
 
       // Icon Background Color
       const ir = parseInt((s.iconBg || '#ffffff').substr(1,2), 16);
@@ -710,6 +876,23 @@
       toggleSepColorInput();
 
       displayDuration = (s.duration !== undefined ? s.duration : 10) * 1000;
+      
+      // Layout Mode
+      const card = document.getElementById('card');
+      if(s.layoutMode === 'row') {
+        card.classList.add('layout-row');
+      } else {
+        card.classList.remove('layout-row');
+      }
+      
+      // Album Art Visibility (global toggle, but specific visibility depends on song)
+      // Here we just set a state or we can hide it if disabled
+      if(!s.useAlbumArt) {
+         const artBg = document.getElementById('album-art-bg');
+         const artImg = document.getElementById('album-art-img');
+         if(artBg) artBg.style.opacity = '0';
+         if(artImg) artImg.style.display = 'none';
+      }
     }
 
     function toggleSepColorInput() {
@@ -749,7 +932,10 @@
         sepUseAccent: document.getElementById('inp-sepUseAccent').checked,
         sepOpacity: document.getElementById('inp-sepOpacity').value,
         sepWidth: document.getElementById('inp-sepWidth').value,
-        sepStyle: document.getElementById('inp-sepStyle').value
+        sepStyle: document.getElementById('inp-sepStyle').value,
+        
+        layoutMode: document.getElementById('inp-layoutMode').value,
+        useAlbumArt: document.getElementById('inp-useAlbumArt').checked
       };
     }
 
@@ -907,6 +1093,18 @@
       artistEl.textContent = data.artista || 'Desconocido';
       userEl.textContent = data.usuario || 'Anónimo';
 
+      // Album Art Logic
+      const settings = getSettingsFromInputs(); // Get current settings to check if enabled
+      if (settings.useAlbumArt) {
+         fetchAlbumArt(data.artista, data.cancion);
+      } else {
+         // Reset art if disabled
+         const artBg = document.getElementById('album-art-bg');
+         const artImg = document.getElementById('album-art-img');
+         if(artBg) artBg.style.opacity = '0';
+         if(artImg) artImg.style.display = 'none';
+      }
+
       // Resetear animación (por si acaso, aunque processQueue espera)
       card.classList.remove('show');
       void card.offsetWidth; // Trigger reflow
@@ -927,6 +1125,51 @@
         }, 1000); 
 
       }, displayDuration);
+    }
+
+    // --- Album Art Logic ---
+    function fetchAlbumArt(artist, song) {
+      if(!artist || !song) return;
+      
+      const query = encodeURIComponent(`${artist} ${song}`);
+      const url = `https://itunes.apple.com/search?term=${query}&media=music&entity=song&limit=1`;
+      
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+           if(data.results && data.results.length > 0) {
+              const artUrl = data.results[0].artworkUrl100.replace('100x100', '600x600');
+              
+              const artBg = document.getElementById('album-art-bg');
+              const artImg = document.getElementById('album-art-img');
+              
+              if(artBg) {
+                 artBg.style.backgroundImage = `url('${artUrl}')`;
+                 artBg.style.opacity = '1';
+              }
+              
+              if(artImg) {
+                 artImg.style.backgroundImage = `url('${artUrl}')`;
+                 // Show image only if in row mode or configured to show
+                 const settings = getSettingsFromInputs();
+                 if(settings.layoutMode === 'row') {
+                    artImg.style.display = 'block';
+                 } else {
+                    artImg.style.display = 'none';
+                 }
+              }
+           } else {
+              console.log("No album art found for", artist, song);
+              // Hide or use placeholder? For now hide.
+              const artBg = document.getElementById('album-art-bg');
+              const artImg = document.getElementById('album-art-img');
+              if(artBg) artBg.style.opacity = '0';
+              if(artImg) artImg.style.display = 'none';
+           }
+        })
+        .catch(err => {
+           console.error("Error fetching album art:", err);
+        });
     }
 
     // Variable para controlar la carga inicial
@@ -1029,54 +1272,166 @@
         setTimeout(simulateRequest, 4000);
       }, 1000);
     }
-    // --- Drag & Drop Logic for Settings Button ---
-    const settingsBtn = document.getElementById('settings-btn');
-    let isDragging = false;
-    let dragOffsetX = 0;
-    let dragOffsetY = 0;
-    let hasMoved = false;
+    // --- Drag & Drop Logic ---
+    function makeDraggable(el, clickCallback) {
+        let isDragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+        let hasMoved = false;
 
-    settingsBtn.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        hasMoved = false;
-        const rect = settingsBtn.getBoundingClientRect();
-        dragOffsetX = e.clientX - rect.left;
-        dragOffsetY = e.clientY - rect.top;
-        settingsBtn.style.cursor = 'grabbing';
-        
-        // Disable transitions during drag for responsiveness
-        settingsBtn.style.transition = 'none';
-    });
+        el.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            hasMoved = false;
+            const rect = el.getBoundingClientRect();
+            dragOffsetX = e.clientX - rect.left;
+            dragOffsetY = e.clientY - rect.top;
+            el.style.cursor = 'grabbing';
+            el.style.transition = 'none';
+        });
 
-    document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        
-        hasMoved = true;
-        e.preventDefault();
-        
-        const x = e.clientX - dragOffsetX;
-        const y = e.clientY - dragOffsetY;
-        
-        settingsBtn.style.left = `${x}px`;
-        settingsBtn.style.top = `${y}px`;
-    });
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            hasMoved = true;
+            e.preventDefault();
+            const x = e.clientX - dragOffsetX;
+            const y = e.clientY - dragOffsetY;
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+        });
 
-    document.addEventListener('mouseup', (e) => {
-        if (!isDragging) return;
-        
-        isDragging = false;
-        settingsBtn.style.cursor = 'grab';
-        
-        // Restore transitions
-        settingsBtn.style.transition = 'background 0.3s ease, transform 0.3s ease';
-    });
-    
-    // Handle click manually to avoid triggering when dragging
-    settingsBtn.addEventListener('click', (e) => {
-        if (!hasMoved) {
-            toggleSettings();
+        document.addEventListener('mouseup', (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            el.style.cursor = 'grab';
+            el.style.transition = 'background 0.3s ease, transform 0.3s ease';
+        });
+
+        el.addEventListener('click', (e) => {
+            if (!hasMoved && clickCallback) {
+                clickCallback();
+            }
+        });
+    }
+
+    // Init Drag for Settings Button
+    makeDraggable(document.getElementById('settings-btn'), toggleSettings);
+
+    // Init Drag for Presets Button
+    makeDraggable(document.getElementById('presets-btn'), togglePresets);
+
+
+    // --- Presets Logic ---
+    function togglePresets() {
+        const panel = document.getElementById('presets-panel');
+        panel.classList.toggle('open');
+        if(panel.classList.contains('open')) {
+           loadPresetsList();
         }
-    });
+    }
+
+    function loadPresetsList() {
+        const list = document.getElementById('presets-list');
+        list.innerHTML = '';
+        
+        let presets = JSON.parse(localStorage.getItem('overlay_presets') || '[]');
+        
+        // Add Default "Apple Style" Preset if not present (optional, or just hardcode it as a button)
+        // But better to check if user has any presets. If empty, maybe add some defaults?
+        if(presets.length === 0) {
+           // Create default Apple Music style preset
+           const applePreset = {
+              name: "Apple Music Style",
+              settings: {
+                  ...defaultSettings,
+                  layoutMode: 'row',
+                  useAlbumArt: true,
+                  width: 500,
+                  minHeight: 120,
+                  borderRadius: 16,
+                  bg: "#1a1a1a",
+                  opacity: 90,
+                  icon: "🎵",
+                  iconCircleSize: 0, // Hide icon circle
+                  iconFontSize: 0,
+                  sepWidth: 0, // Hide separator
+                  animType: 'anim-slide-up',
+                  textAnim: 'text-anim-slide',
+                  fontSizeSong: 24,
+                  fontSizeArtist: 16,
+                  fontSizeUser: 12,
+                  fontSizeHeader: 14
+              }
+           };
+           // Add to list but don't save to storage automatically unless user wants? 
+           // Let's save it so they have a starting point.
+           presets.push(applePreset);
+           localStorage.setItem('overlay_presets', JSON.stringify(presets));
+        }
+
+        presets.forEach((preset, index) => {
+            const item = document.createElement('div');
+            item.className = 'preset-item';
+            item.innerHTML = `
+               <span class="preset-name">${preset.name}</span>
+               <span class="preset-delete" onclick="event.stopPropagation(); deletePreset(${index})">Eliminar</span>
+            `;
+            item.onclick = () => applyPreset(preset);
+            list.appendChild(item);
+        });
+    }
+
+    function saveAsPreset() {
+        const nameInput = document.getElementById('inp-newPresetName');
+        const name = nameInput.value.trim();
+        if(!name) {
+           alert("Por favor ingresa un nombre para el preset.");
+           return;
+        }
+
+        const currentSettings = getSettingsFromInputs();
+        const presets = JSON.parse(localStorage.getItem('overlay_presets') || '[]');
+        
+        presets.push({
+           name: name,
+           settings: currentSettings
+        });
+        
+        localStorage.setItem('overlay_presets', JSON.stringify(presets));
+        nameInput.value = '';
+        alert(`Preset "${name}" guardado!`);
+        
+        // If panel is open, refresh
+        if(document.getElementById('presets-panel').classList.contains('open')) {
+           loadPresetsList();
+        }
+    }
+
+    function deletePreset(index) {
+        if(!confirm("¿Estás seguro de eliminar este preset?")) return;
+        
+        const presets = JSON.parse(localStorage.getItem('overlay_presets') || '[]');
+        presets.splice(index, 1);
+        localStorage.setItem('overlay_presets', JSON.stringify(presets));
+        loadPresetsList();
+    }
+
+    function applyPreset(preset) {
+        if(confirm(`¿Aplicar preset "${preset.name}"?`)) {
+           // Merge with defaults to ensure completeness
+           const settings = { ...defaultSettings, ...preset.settings };
+           applySettings(settings);
+           
+           // Update inputs
+           // Reuse logic from loadSettings but with specific object
+           // Or just call loadSettings logic (refactoring loadSettings to take object would be cleaner, but for now we manually update inputs by saving and reloading or just calling apply and updating inputs manually)
+           
+           // Easy way: Save to localStorage as current settings and reload
+           localStorage.setItem('overlay_settings', JSON.stringify(settings));
+           loadSettings(); // This reloads inputs and re-applies
+           
+           console.log(`Preset ${preset.name} applied`);
+        }
+    }
    </script>
 </body>
 </html>
