@@ -1222,6 +1222,68 @@
     // --- Apple Music / Cider Integration ---
     // Variables moved to top of script to avoid ReferenceError
 
+    // Global variable to store current playback state
+    let currentCiderTrack = null;
+
+    // Function to check current playing track against the queue
+    function checkCurrentTrackAgainstQueue() {
+      if (!currentCiderTrack || !currentCiderTrack.artist || !currentCiderTrack.song) return;
+
+      const artist = currentCiderTrack.artist;
+      const song = currentCiderTrack.song;
+      
+      const key = `${artist}-${song}`;
+      if (lastAutoMarkedSong === key) return; // Already handled this track
+      
+      // Normalize for comparison: remove accents, special chars, lowercase
+      const normalize = (str) => {
+          if (!str) return "";
+          return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      };
+      
+      const targetArtist = normalize(artist);
+      const targetSong = normalize(song);
+
+      // Filter unplayed requests using generateSongId for accurate check
+      const candidates = allRequests.filter(req => {
+          const id = generateSongId(req);
+          return !playedSongIds.has(id);
+      });
+
+      for (const req of candidates) {
+        // Use correct Firestore field names: artista, cancion
+        const reqArtist = normalize(req.artista);
+        const reqSong = normalize(req.cancion);
+
+        // Robust Matching Logic:
+        // 1. Standard Match: Artist matches Artist AND Song matches Song
+        const matchStandard = 
+            (reqArtist.includes(targetArtist) || targetArtist.includes(reqArtist)) &&
+            (reqSong.includes(targetSong) || targetSong.includes(reqSong));
+
+        // 2. Swapped Match: Artist matches Song AND Song matches Artist (User swapped fields)
+        const matchSwapped = 
+            (reqArtist.includes(targetSong) || targetSong.includes(reqArtist)) &&
+            (reqSong.includes(targetArtist) || targetArtist.includes(reqSong));
+            
+        // 3. Combined Match: Song field contains BOTH Artist and Song (User put everything in Song field)
+        const matchCombined = 
+            reqSong.includes(targetArtist) && reqSong.includes(targetSong);
+
+        if (matchStandard || matchSwapped || matchCombined) {
+          console.log(`✨ Auto-marking song as played: ${req.artista} - ${req.cancion}`);
+          
+          // Use generateSongId to match the ID expected by renderQueue
+          const generatedId = generateSongId(req);
+          markSongAsPlayed(generatedId);
+          
+          lastAutoMarkedSong = key;
+          
+          break; // Mark only the first match
+        }
+      }
+    }
+
     function connectCider() {
       if (ciderSocket) return; // Already connected
       if (!window.io) {
@@ -1252,50 +1314,16 @@
         const { data, type } = event;
         if (type === "playbackStatus.nowPlayingItemDidChange") {
              console.log("🎵 Cider Now Playing:", data.artistName, "-", data.name);
-             autoMarkPlayed(data.artistName, data.name);
+             currentCiderTrack = { artist: data.artistName, song: data.name };
+             checkCurrentTrackAgainstQueue();
         }
       });
     }
 
+    // Wrapper for compatibility (redirects to new logic)
     function autoMarkPlayed(artist, song) {
-      if (!artist || !song) return;
-      
-      const key = `${artist}-${song}`;
-      if (lastAutoMarkedSong === key) return; // Already handled this track
-      
-      // Normalize for comparison: remove accents, special chars, lowercase
-      const normalize = (str) => {
-          if (!str) return "";
-          return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      };
-      
-      const targetArtist = normalize(artist);
-      const targetSong = normalize(song);
-
-      // Filter unplayed requests
-      const candidates = allRequests.filter(req => !playedSongIds.has(req.id));
-
-      for (const req of candidates) {
-        // Use correct Firestore field names: artista, cancion
-        const reqArtist = normalize(req.artista);
-        const reqSong = normalize(req.cancion);
-
-        // Simple fuzzy match: check if one contains the other
-        const artistMatch = reqArtist.includes(targetArtist) || targetArtist.includes(reqArtist);
-        const songMatch = reqSong.includes(targetSong) || targetSong.includes(reqSong);
-
-        if (artistMatch && songMatch) {
-          console.log(`✨ Auto-marking song as played: ${req.artista} - ${req.cancion}`);
-          
-          // Use generateSongId to match the ID expected by renderQueue
-          const generatedId = generateSongId(req);
-          markSongAsPlayed(generatedId);
-          
-          lastAutoMarkedSong = key;
-          
-          break; // Mark only the first match
-        }
-      }
+        currentCiderTrack = { artist, song };
+        checkCurrentTrackAgainstQueue();
     }
 
     function markSongAsPlayed(id) {
@@ -1327,6 +1355,7 @@
         // Invertir para tener orden cronológico (Oldest first)
         allRequests = temp.reverse();
         renderQueue();
+        checkCurrentTrackAgainstQueue(); // Check if any new request matches current playing song
       }, (error) => {
         console.error("Error en solicitudes:", error);
       });
