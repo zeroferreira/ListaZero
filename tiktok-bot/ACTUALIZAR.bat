@@ -28,7 +28,7 @@ if %errorlevel% neq 0 (
     echo En lugar de copiar y pegar la carpeta "tiktok-bot", haz esto en tu PC de Windows:
     echo 1. Instala Git.
     echo 2. Abre una terminal (CMD o PowerShell).
-    echo 3. Escribe: git clone <URL_DE_TU_REPO_GITHUB>
+    echo 3. Escribe: git clone URL_DE_TU_REPO_GITHUB
     echo 4. Usa la carpeta que se descargo.
 ) else (
     echo.
@@ -37,4 +37,4 @@ if %errorlevel% neq 0 (
 
 echo.
 echo Presiona cualquier tecla para cerrar...
-pause >nul
+pause

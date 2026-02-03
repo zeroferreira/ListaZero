@@ -7,24 +7,46 @@ echo.
 
 :: Comprobar si Node.js esta instalado
 node -v >nul 2>&1
-if %errorlevel% neq 0 (
-    cls
-    echo ================================================================
-    echo [ERROR] FALTA UN PROGRAMA NECESARIO (Node.js)
-    echo ================================================================
-    echo.
-    echo Para que el bot funcione, necesitas instalar "Node.js".
-    echo.
-    echo 1. Se abrira la pagina de descarga automaticamente.
-    echo 2. Descarga la version "LTS" e instalala (Siguiente, Siguiente...).
-    echo 3. Cuando termines, vuelve a abrir este archivo.
-    echo.
-    echo Presiona cualquier tecla para ir a la descarga...
-    pause >nul
-    start https://nodejs.org/
-    exit
+if %errorlevel% equ 0 goto check_modules
+
+:: Intento 2: Buscar en rutas comunes
+if exist "C:\Program Files\nodejs\node.exe" (
+    set "PATH=%PATH%;C:\Program Files\nodejs"
+    goto check_modules
+)
+if exist "C:\Program Files (x86)\nodejs\node.exe" (
+    set "PATH=%PATH%;C:\Program Files (x86)\nodejs"
+    goto check_modules
 )
 
+:: Si falla todo, preguntar al usuario
+cls
+echo ================================================================
+echo [ATENCION] No se detecta Node.js automaticamente
+echo ================================================================
+echo.
+echo Posibles causas:
+echo 1. No lo has instalado todavia.
+echo 2. Lo acabas de instalar y Windows necesita reiniciar.
+echo.
+echo OPCIONES:
+echo [1] Descargar Node.js ahora (Recomendado si no lo tienes)
+echo [2] Ya lo instale, intentar iniciar de todas formas
+echo.
+set /p opcion="Escribe 1 o 2 y presiona ENTER: "
+
+if "%opcion%"=="2" goto check_modules
+
+:: Opcion 1 o cualquier otra cosa -> Ir a descargar
+echo.
+echo Abriendo pagina de descarga...
+start https://nodejs.org/
+echo.
+echo Instala la version "LTS" y luego REINICIA TU PC si sigue fallando.
+pause
+exit
+
+:check_modules
 :: Instalar dependencias si no existen
 if not exist "node_modules" (
     echo [INFO] Primera vez iniciando. Instalando librerias necesarias...
