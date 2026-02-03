@@ -987,10 +987,10 @@
           if (found) ordered.push(found);
         });
 
-        // Nuevos (no presentes en 'order') arriba (para coincidir con lista.html)
+        // Nuevos (no presentes en 'order') abajo (para mantener FIFO)
         const notInOrder = items.filter((it) => !inOrderSet.has(generateSongId(it)));
 
-        return [...notInOrder, ...ordered];
+        return [...ordered, ...notInOrder];
       } catch {
         return items;
       }
@@ -1007,11 +1007,30 @@
       if (songDataCache[cacheKey]) return songDataCache[cacheKey];
 
       try {
-        const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=1`);
+        // Aumentamos el límite para filtrar resultados no deseados
+        const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=10`);
         const data = await res.json();
         
         if (data.resultCount > 0) {
-          const track = data.results[0];
+          // Selección inteligente (filtrar karaoke, covers, etc.)
+          let track = data.results[0];
+          const avoidKeywords = ['karaoke', 'tribute', 'cover', 'instrumental', 'remix', 'lullaby', 'rendition', 'slowed', 'reverb'];
+
+          const cleanTrack = data.results.find(t => {
+            const lowerName = (t.trackName || '').toLowerCase();
+            const lowerArtist = (t.artistName || '').toLowerCase();
+            const lowerCollection = (t.collectionName || '').toLowerCase();
+            
+            const hasBadWord = avoidKeywords.some(kw => 
+                lowerName.includes(kw) || 
+                lowerArtist.includes(kw) || 
+                lowerCollection.includes(kw)
+            );
+            return !hasBadWord;
+          });
+
+          if (cleanTrack) track = cleanTrack;
+
           const result = {
             artworkUrl: track.artworkUrl100.replace('100x100', '600x600'),
             durationMs: track.trackTimeMillis,
@@ -1368,10 +1387,10 @@
     console.log("Escuchando día:", currentDay);
 
     // 1. Suscripción a Solicitudes (Cola)
-    // Usamos 'desc' para aprovechar el índice existente de lista.html y luego invertimos el orden
+    // Usamos 'asc' para orden cronológico (Oldest first)
     db.collection('solicitudes')
       .where('day', '==', currentDay)
-      .orderBy('ts', 'desc') 
+      .orderBy('ts', 'asc') 
       .onSnapshot((snapshot) => {
         const temp = [];
         snapshot.forEach(doc => {
@@ -1379,8 +1398,8 @@
           // Añadir ID del doc por si acaso
           temp.push({ ...data, id: doc.id });
         });
-        // Invertir para tener orden cronológico (Oldest first)
-        allRequests = temp.reverse();
+        // Ya está en orden cronológico
+        allRequests = temp;
         renderQueue();
         checkCurrentTrackAgainstQueue(); // Check if any new request matches current playing song
       }, (error) => {
