@@ -693,7 +693,7 @@
       secondaryOpacity: 60,
       text: "#ffffff",
       // New Data/API Settings
-      autocorrect: true,
+      autocorrect: false,
       showAlbumArt: false,
       showWaitTime: true,
       showTotalDuration: true,
@@ -1040,7 +1040,10 @@
       // Usar hora del objeto si ya viene pre-formateada
       const finalHora = req.hora || hora;
       
-      return `${req.usuario}-${req.cancion}-${req.artista}-${finalHora}`.replace(/[^a-zA-Z0-9-]/g, '');
+      const usuario = req.usuario || req.user || req.username || '';
+      const cancion = req.cancion || req.songName || req.song || req.name || '';
+      const artista = req.artista || req.artistName || req.artist || '';
+      return `${usuario}-${cancion}-${artista}-${finalHora}`.replace(/[^a-zA-Z0-9-]/g, '');
     }
 
     // Orden manual: aplicar
@@ -1072,6 +1075,22 @@
     const songDataCache = {}; // Key: "Artist - Song", Value: { artworkUrl, durationMs, correctTitle, correctArtist }
     let isFetching = false;
 
+    function normalizeText(input) {
+      return String(input || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w\s-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function tokenizeText(input) {
+      const t = normalizeText(input);
+      if (!t) return [];
+      return t.split(' ').filter(Boolean);
+    }
+
     async function fetchSongData(artist, song) {
       const query = `${artist} ${song}`.trim();
       const cacheKey = query.toLowerCase();
@@ -1084,24 +1103,60 @@
         const data = await res.json();
         
         if (data.resultCount > 0) {
-          // Selección inteligente (filtrar karaoke, covers, etc.)
-          let track = data.results[0];
+          const reqArtist = normalizeText(artist);
+          const reqSong = normalizeText(song);
+          if (!reqArtist || !reqSong) return null;
+          const reqArtistTokens = tokenizeText(reqArtist);
+          const reqSongTokens = tokenizeText(reqSong);
           const avoidKeywords = ['karaoke', 'tribute', 'cover', 'instrumental', 'remix', 'lullaby', 'rendition', 'slowed', 'reverb'];
 
-          const cleanTrack = data.results.find(t => {
-            const lowerName = (t.trackName || '').toLowerCase();
-            const lowerArtist = (t.artistName || '').toLowerCase();
-            const lowerCollection = (t.collectionName || '').toLowerCase();
-            
-            const hasBadWord = avoidKeywords.some(kw => 
-                lowerName.includes(kw) || 
-                lowerArtist.includes(kw) || 
-                lowerCollection.includes(kw)
+          const candidates = (data.results || []).filter(t => {
+            const lowerName = normalizeText(t.trackName || '');
+            const lowerArtist = normalizeText(t.artistName || '');
+            const lowerCollection = normalizeText(t.collectionName || '');
+            const hasBadWord = avoidKeywords.some(kw =>
+              lowerName.includes(kw) ||
+              lowerArtist.includes(kw) ||
+              lowerCollection.includes(kw)
             );
             return !hasBadWord;
           });
 
-          if (cleanTrack) track = cleanTrack;
+          let best = null;
+          let bestScore = -1;
+          const scoreTrack = (t) => {
+            const trackName = normalizeText(t.trackName || '');
+            const artistName = normalizeText(t.artistName || '');
+            if (!trackName || !artistName) return -1;
+
+            let score = 0;
+            let songHits = 0;
+            let artistHits = 0;
+
+            if (trackName.includes(reqSong)) score += 3;
+            if (artistName.includes(reqArtist)) score += 3;
+
+            reqSongTokens.forEach(tok => {
+              if (tok.length < 2) return;
+              if (trackName.includes(tok)) { score += 1; songHits += 1; }
+            });
+            reqArtistTokens.forEach(tok => {
+              if (tok.length < 2) return;
+              if (artistName.includes(tok)) { score += 1; artistHits += 1; }
+            });
+
+            if (songHits === 0 || artistHits === 0) return -1;
+            return score;
+          };
+
+          candidates.forEach((t) => {
+            const s = scoreTrack(t);
+            if (s > bestScore) { bestScore = s; best = t; }
+          });
+
+          const threshold = Math.max(5, Math.ceil((reqSongTokens.length + reqArtistTokens.length) * 0.75));
+          const track = bestScore >= threshold ? best : null;
+          if (!track) return null;
 
           const result = {
             artworkUrl: track.artworkUrl100.replace('100x100', '600x600'),
@@ -1136,6 +1191,9 @@
     // --- Core Render Logic ---
 
     function createQueueItem(req, index) {
+      const cancion = req.cancion || req.songName || req.song || req.name || '';
+      const artista = req.artista || req.artistName || req.artist || '';
+      const usuario = req.usuario || req.user || req.username || '';
       const div = document.createElement('div');
       // Wrapper con clases de posición
       div.className = `queue-item queue-pos-${index + 1}`; 
@@ -1152,10 +1210,10 @@
                   <span>#${index + 1}</span>
                   <span>En cola</span>
                </div>
-               <div class="item-song">${req.cancion}</div>
-               <div class="item-artist">${req.artista}</div>
+               <div class="item-song">${cancion}</div>
+               <div class="item-artist">${artista}</div>
                <div class="item-user">
-                  Pedido por <span class="user-badge">${req.usuario}</span>
+                  Pedido por <span class="user-badge">${usuario}</span>
                </div>
                <div class="item-wait" style="font-size: 11px; color: var(--queue-accent-color); margin-top: 4px; font-weight: bold; display:none;"></div>
            </div>
@@ -1292,13 +1350,19 @@
 
       const container = document.getElementById('queue-container');
       const itemEls = Array.from(container.querySelectorAll('.queue-item:not(.removing)'));
+      const elBySongId = new Map();
+      itemEls.forEach((el) => {
+        const sid = el.dataset.songId;
+        if (sid && !elBySongId.has(sid)) elBySongId.set(sid, el);
+      });
       
       let accumulatedTime = 0; // minutes
 
-      for (let i = 0; i < itemEls.length; i++) {
-         const el = itemEls[i];
-         const req = items[i];
+      for (const req of items) {
          if (!req) continue;
+         const songId = generateSongId(req);
+         const el = elBySongId.get(songId);
+         if (!el) continue;
 
          const songEl = el.querySelector('.item-song');
          const artistEl = el.querySelector('.item-artist');
@@ -1307,7 +1371,9 @@
 
          // Check Cache or Fetch
          if (settings.autocorrect || settings.showAlbumArt || settings.showWaitTime) {
-             const data = await fetchSongData(req.artista, req.cancion);
+             const artist = String(req.artista || req.artistName || req.artist || '').trim();
+             const song = String(req.cancion || req.songName || req.song || req.name || '').trim();
+             const data = await fetchSongData(artist, song);
              
              if (data) {
                  if (settings.autocorrect) {
@@ -1318,6 +1384,8 @@
                  if (settings.showAlbumArt && data.artworkUrl) {
                      artEl.src = data.artworkUrl;
                      artEl.style.display = 'block';
+                 } else if (artEl) {
+                     artEl.style.display = 'none';
                  }
 
                  if (settings.showWaitTime && data.durationMs) {
@@ -1332,6 +1400,7 @@
                      waitEl.innerText = formatWaitTime(accumulatedTime);
                      accumulatedTime += 3.5; 
                  }
+                 if (artEl) artEl.style.display = 'none';
              }
          }
       }
@@ -1355,7 +1424,9 @@
       // Batch fetch or use cache
       // Note: fetching all might be heavy. We'll rely on cache + defaults.
       for (const req of allPending) {
-         const cacheKey = `${req.artista} ${req.cancion}`.trim().toLowerCase();
+         const artist = String(req.artista || req.artistName || req.artist || '').trim();
+         const song = String(req.cancion || req.songName || req.song || req.name || '').trim();
+         const cacheKey = `${artist} ${song}`.trim().toLowerCase();
          if (songDataCache[cacheKey]) {
              totalMs += songDataCache[cacheKey].durationMs;
          } else {
