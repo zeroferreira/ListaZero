@@ -615,6 +615,7 @@
       opacity: 85,
       text: "#ffffff",
       duration: 10,
+      autocorrect: true,
       sepColor: "#ffffff",
       sepUseAccent: true,
       sepOpacity: 10,
@@ -716,6 +717,7 @@
     }
 
     function applySettings(s) {
+      window.appliedOverlaySettings = s;
       // Apply Layout Mode
       const card = document.getElementById('card');
       const art = document.getElementById('album-art');
@@ -848,6 +850,7 @@
         opacity: document.getElementById('inp-opacity').value,
         text: document.getElementById('inp-text').value,
         duration: document.getElementById('inp-duration').value,
+        autocorrect: defaultSettings.autocorrect === true,
         sepColor: document.getElementById('inp-sepColor').value,
         sepUseAccent: document.getElementById('inp-sepUseAccent').checked,
         sepOpacity: document.getElementById('inp-sepOpacity').value,
@@ -1000,6 +1003,51 @@
     // --- Queue Logic ---
     let notificationQueue = [];
     let isShowing = false;
+    let isProcessing = false;
+
+    const songDataCache = {};
+    async function fetchSongData(artist, song) {
+      const query = `${artist || ''} ${song || ''}`.trim();
+      const cacheKey = query.toLowerCase();
+      if (!query) return null;
+      if (songDataCache[cacheKey]) return songDataCache[cacheKey];
+      try {
+        const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=10`);
+        const data = await res.json();
+        if (data && data.resultCount > 0 && Array.isArray(data.results)) {
+          let track = data.results[0];
+          const avoidKeywords = ['karaoke', 'tribute', 'cover', 'instrumental', 'remix', 'lullaby', 'rendition', 'slowed', 'reverb'];
+          const cleanTrack = data.results.find(t => {
+            const lowerName = (t.trackName || '').toLowerCase();
+            const lowerArtist = (t.artistName || '').toLowerCase();
+            const lowerCollection = (t.collectionName || '').toLowerCase();
+            const hasBadWord = avoidKeywords.some(kw =>
+              lowerName.includes(kw) ||
+              lowerArtist.includes(kw) ||
+              lowerCollection.includes(kw)
+            );
+            return !hasBadWord;
+          });
+          if (cleanTrack) track = cleanTrack;
+          const result = {
+            correctTitle: track.trackName,
+            correctArtist: track.artistName
+          };
+          songDataCache[cacheKey] = result;
+          return result;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    async function normalizeRequestForDisplay(data) {
+      const settings = window.appliedOverlaySettings || defaultSettings;
+      if (!settings || settings.autocorrect !== true) return data;
+      if (!data || !data.cancion || !data.artista) return data;
+      const info = await fetchSongData(data.artista, data.cancion);
+      if (!info) return data;
+      return { ...data, cancion: info.correctTitle || data.cancion, artista: info.correctArtist || data.artista };
+    }
 
     function addToQueue(data) {
       console.log("Añadido a la cola:", data.cancion);
@@ -1007,11 +1055,14 @@
       processQueue();
     }
 
-    function processQueue() {
-      if (isShowing || notificationQueue.length === 0) return;
+    async function processQueue() {
+      if (isShowing || isProcessing || notificationQueue.length === 0) return;
+      isProcessing = true;
       
       const data = notificationQueue.shift();
-      showNotification(data);
+      const normalized = await normalizeRequestForDisplay(data);
+      isProcessing = false;
+      showNotification(normalized);
     }
 
     function showNotification(data) {
