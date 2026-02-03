@@ -1,0 +1,22 @@
+
+const axios = require('axios');
+
+async function testSearch(query) {
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=1`;
+    try {
+        const res = await axios.get(url);
+        if (res.data.resultCount > 0) {
+            const t = res.data.results[0];
+            console.log(`Query: "${query}" -> Found: "${t.trackName}" by "${t.artistName}"`);
+        } else {
+            console.log(`Query: "${query}" -> No results`);
+        }
+    } catch (e) {
+        console.error(e.message);
+    }
+}
+
+(async () => {
+    await testSearch("Tití Me Preguntó de Bad Bunny");
+    await testSearch("Numb by Linkin Park");
+})();

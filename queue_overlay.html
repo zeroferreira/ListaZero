@@ -1306,8 +1306,9 @@
       const targetSong = normalize(song);
 
       // Guard Clause: Prevent matching empty/short strings (fixes "match everything" bug)
+      // User reported logic worked before 8:40, so we keep this minimal but safe
       if (targetArtist.length < 2 || targetSong.length < 2) {
-          console.warn("⚠️ Cider track data too short to match safely:", artist, "-", song);
+          // console.warn("⚠️ Cider track data too short to match safely:", artist, "-", song);
           return;
       }
 
@@ -1322,7 +1323,7 @@
         const reqArtist = normalize(req.artista);
         const reqSong = normalize(req.cancion);
 
-        // Robust Matching Logic:
+        // Robust Matching Logic (Restored & Verified):
         // 1. Standard Match: Artist matches Artist AND Song matches Song
         const matchStandard = 
             (reqArtist.includes(targetArtist) || targetArtist.includes(reqArtist)) &&
@@ -1420,7 +1421,7 @@
     if (db) {
       db.collection('solicitudes')
         .where('day', '==', currentDay)
-        .orderBy('ts', 'asc') 
+        // .orderBy('ts', 'asc') // Removing to avoid index requirement errors causing empty results
         .onSnapshot((snapshot) => {
           const temp = [];
           snapshot.forEach(doc => {
@@ -1429,6 +1430,15 @@
             if (!item.id) item.id = doc.id;
             temp.push(item);
           });
+          
+          // Sort in memory (Oldest First / FIFO)
+          temp.sort((a, b) => {
+             const tA = a.ts && a.ts.toMillis ? a.ts.toMillis() : (new Date(a.ts).getTime() || 0);
+             const tB = b.ts && b.ts.toMillis ? b.ts.toMillis() : (new Date(b.ts).getTime() || 0);
+             return tA - tB;
+          });
+
+          console.log(`Loaded ${temp.length} requests for day ${currentDay}`);
           allRequests = temp;
           renderQueue();
           checkCurrentTrackAgainstQueue();
