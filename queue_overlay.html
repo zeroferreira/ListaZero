@@ -1146,20 +1146,63 @@
       // Hardcoded to 3 for now based on visibleQueue logic, but could be dynamic
       const itemsToShow = pendingRequests.slice(0, 3);
       
-      // 3. Diffing simple: Reconstruir todo por ahora para simplicidad con hydration
+      // 3. Diffing Inteligente: Solo animar elementos NUEVOS
       const container = document.getElementById('queue-container');
       
-      // Preservar elementos que se están eliminando (.removing)
-      const removingItems = Array.from(container.querySelectorAll('.queue-item.removing'));
+      // Mapa de elementos actuales (que no se están eliminando)
+      const existingMap = new Map();
+      container.querySelectorAll('.queue-item:not(.removing)').forEach(el => {
+          const id = el.dataset.docId || el.dataset.songId;
+          if (id) existingMap.set(id, el);
+      });
       
-      // Limpiar contenedor (excepto removing)
-      container.innerHTML = '';
-      removingItems.forEach(el => container.appendChild(el));
+      // Procesar items a mostrar
+      itemsToShow.forEach((req, index) => {
+        const reqId = req.id || generateSongId(req);
+        let itemEl = existingMap.get(reqId);
 
-      // Agregar Empty State si es necesario
+        if (itemEl) {
+            // CASO 1: El elemento YA EXISTE
+            existingMap.delete(reqId); // Marcar como procesado (sacarlo del mapa de eliminación)
+            
+            // Actualizar clase de posición si cambió
+            const newPosClass = `queue-pos-${index + 1}`;
+            // Limpiar clases de posición antiguas
+            itemEl.className = itemEl.className.replace(/queue-pos-\d+/g, '').trim();
+            itemEl.classList.add(newPosClass);
+            
+            // Mover al final del contenedor para asegurar orden correcto en el DOM
+            // (appendChild mueve el nodo si ya existe)
+            container.appendChild(itemEl);
+            
+            // Asegurar que sea visible (sin animación de entrada)
+            if (!itemEl.classList.contains('show')) itemEl.classList.add('show');
+            
+        } else {
+            // CASO 2: El elemento es NUEVO
+            itemEl = createQueueItem(req, index);
+            container.appendChild(itemEl);
+            
+            // Animar entrada SOLO para este nuevo elemento
+            void itemEl.offsetWidth; // Trigger reflow
+            itemEl.classList.add('show');
+        }
+      });
+
+      // 4. Eliminar elementos que ya no están (los que quedaron en existingMap)
+      existingMap.forEach(el => {
+          el.classList.remove('show'); // Opcional: disparar transición de salida si hay CSS
+          el.classList.add('removing');
+          
+          // Eliminar del DOM después de la animación (500ms aprox)
+          setTimeout(() => {
+              if (el.parentNode) el.parentNode.removeChild(el);
+          }, 500);
+      });
+
+      // 5. Empty State Logic
+      let empty = document.getElementById('empty-state');
       if (itemsToShow.length === 0) {
-         // Create empty state dynamically if removed or ensure it exists
-         let empty = document.getElementById('empty-state');
          if (!empty) {
              empty = document.createElement('div');
              empty.id = 'empty-state';
@@ -1170,27 +1213,13 @@
          if (s.showEmpty) empty.classList.add('visible');
          else empty.classList.remove('visible');
       } else {
-         const empty = document.getElementById('empty-state');
          if (empty) empty.classList.remove('visible');
       }
 
-      // Renderizar items
-      itemsToShow.forEach((req, index) => {
-        const itemEl = createQueueItem(req, index);
-        // Animación de entrada: añadir clase 'show' después de un frame
-        // Pero primero ver si ya existía para evitar re-animar (TODO: Advanced Diffing)
-        // Por ahora, animamos siempre la entrada de nuevos renders
-        container.appendChild(itemEl);
-        
-        // Trigger reflow
-        void itemEl.offsetWidth; 
-        itemEl.classList.add('show');
-      });
-
-      // 4. Hydrate Data (Autocorrect, Art, Times)
+      // 6. Hydrate Data (Autocorrect, Art, Times)
       hydrateQueueItems(itemsToShow);
       
-      // 5. Update Total Duration
+      // 7. Update Total Duration
       updateTotalDuration(pendingRequests);
     }
 
