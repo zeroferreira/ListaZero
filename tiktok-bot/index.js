@@ -135,7 +135,19 @@ function startBot() {
     });
 
     // Inicializar conexión TikTok
-    tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME);
+    console.log(`🔌 Configurando conexión para @${TIKTOK_USERNAME}...`);
+    
+    tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, {
+        processInitialData: false,
+        enableExtendedGiftInfo: true,
+        enableWebsocketUpgrade: true,
+        requestPollingIntervalMs: 2000,
+        clientParams: {
+            app_language: 'es-ES', // Ajustado a español
+            device_platform: 'web_cast'
+        }
+    });
+
     setupListeners();
     
     // Iniciar búsqueda
@@ -145,12 +157,21 @@ function startBot() {
 // Configurar Listeners
 function setupListeners() {
     tiktokLiveConnection.removeAllListeners();
+    
+    // Debug: Log de conexión exitosa
+    tiktokLiveConnection.on('connected', state => {
+        console.log(`🟢 Conectado exitosamente (Room ID: ${state.roomId})`);
+    });
 
     // Manejo de desconexiones
     tiktokLiveConnection.on('disconnected', () => {
         console.log('❌ Live finalizado o desconectado.');
         console.log('🔄 Volviendo a buscar Live...');
         setTimeout(connectToLive, 10000); 
+    });
+    
+    tiktokLiveConnection.on('error', (err) => {
+        console.error('⚠️ Error de conexión TikTok:', err);
     });
 
     tiktokLiveConnection.on('streamEnd', () => {
@@ -163,17 +184,25 @@ function setupListeners() {
         const user = data.nickname;
         const userId = data.uniqueId;
         
+        // DEBUG: Ver todos los mensajes para confirmar que llegan
+        // console.log(`[CHAT] ${user}: ${msg}`); 
+
         // --- USAR CONFIGURACIÓN DINÁMICA ---
         const isSubscriber = data.isSubscriber && config.allowSubscribers;
         const isModerator = data.isModerator && config.allowModerators;
         const isSuperFanRaw = (data.followRole >= 1) || (data.memberLevel > 0);
         const isSuperFan = isSuperFanRaw && config.allowSuperFans;
         
-        const isVip = isSubscriber || isModerator || isSuperFan || userId === TIKTOK_USERNAME || tempVipUsers.has(userId);
+        // FIX: Comparación de usuario insensible a mayúsculas para el streamer
+        const isStreamer = userId.toLowerCase() === TIKTOK_USERNAME.toLowerCase();
+        
+        const isVip = isSubscriber || isModerator || isSuperFan || isStreamer || tempVipUsers.has(userId);
 
         if (msg.toLowerCase().startsWith('!sr ') || 
             msg.toLowerCase().startsWith('!pedir ') || 
             msg.toLowerCase().startsWith('!cancion ')) {
+            
+            console.log(`📝 Comando detectado de ${user} (${userId}): ${msg}`);
             
             if (!isVip) {
                 console.log(`🚫 ${user} intentó pedir, pero no tiene permiso.`);
