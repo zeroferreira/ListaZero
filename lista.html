@@ -2303,7 +2303,8 @@
             if (!solicitudesList.classList.contains('editing')) return;
             li.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', songId);
+            // Usar el mismo ID que usa idOf para consistencia
+            e.dataTransfer.setData('text/plain', it.id || it.docId || songId);
           });
           li.addEventListener('dragend', () => {
             li.classList.remove('dragging');
@@ -2317,13 +2318,17 @@
             if (!solicitudesList.classList.contains('editing')) return;
             e.preventDefault();
             const fromId = e.dataTransfer.getData('text/plain');
-            const toId = songId;
+            const toId = it.id || it.docId || songId;
             if (!fromId || !toId || fromId === toId) return;
 
             const idOf = (item) => item.id || item.docId || `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
             const fromIdx = currentDayItems.findIndex(item => idOf(item) === fromId);
             const toIdx = currentDayItems.findIndex(item => idOf(item) === toId);
-            if (fromIdx < 0 || toIdx < 0) return;
+            
+            if (fromIdx < 0 || toIdx < 0) {
+                 console.warn('Drag&Drop mismatch:', { fromId, toId, fromIdx, toIdx });
+                 return;
+            }
 
             const [moved] = currentDayItems.splice(fromIdx, 1);
             currentDayItems.splice(toIdx, 0, moved);
