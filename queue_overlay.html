@@ -137,7 +137,8 @@
     .queue-item.removing {
       max-height: 0;
       margin-bottom: 0;
-      /* opacity: 0;  <-- REMOVED: Conflict with exit animations (slide/zoom) that handle opacity themselves */
+      /* Delay layout collapse to allow exit animation to play first */
+      transition-delay: 0.6s;
     }
 
     /* 1. Slide Right (Original/Default) */
@@ -964,6 +965,7 @@
     // Estado local
     let allRequests = []; // Todas las solicitudes del día
     let playedSongIds = new Set(); // IDs de canciones ya reproducidas
+    let playedSongsLoaded = false; // Evitar "ghost cards" antes de cargar lista negra
     let visibleQueue = []; // Las 3 canciones actualmente mostradas
     let currentManualOrder = []; // Orden manual compartido
 
@@ -1126,6 +1128,12 @@
     }
 
     function renderQueue() {
+      // Evitar renderizado si no hemos cargado la lista de reproducidas (evita flash de ghost cards)
+      if (!playedSongsLoaded && db) {
+        console.log("Esperando lista de reproducidas...");
+        return;
+      }
+
       console.log("renderQueue called. Pending requests:", allRequests.length);
       const now = Date.now();
       
@@ -1496,9 +1504,13 @@
           } else {
             playedSongIds = new Set();
           }
+          playedSongsLoaded = true; // Marcar como cargado para habilitar renderizado
           renderQueue();
         }, (error) => {
           console.error("Error en playedSongs:", error);
+          // En caso de error, permitir renderizar igual para no bloquear la UI
+          playedSongsLoaded = true; 
+          renderQueue();
         });
 
       db.collection('manualOrders').doc(currentDay)
