@@ -1227,16 +1227,15 @@
             itemEl.className = itemEl.className.replace(/queue-pos-\d+/g, '').trim();
             itemEl.classList.add(newPosClass);
             
-            // Mover al final del contenedor para asegurar orden correcto en el DOM
-            container.appendChild(itemEl);
-            
             // Asegurar que sea visible (sin animación de entrada)
             if (!itemEl.classList.contains('show')) itemEl.classList.add('show');
             
         } else {
             // CASO 2: El elemento es NUEVO
             itemEl = createQueueItem(req, index);
-            container.appendChild(itemEl);
+            const emptyEl = document.getElementById('empty-state');
+            if (emptyEl && emptyEl.parentNode === container) container.insertBefore(itemEl, emptyEl);
+            else container.appendChild(itemEl);
             
             // Animar entrada SOLO para este nuevo elemento
             void itemEl.offsetWidth; // Trigger reflow
@@ -1499,13 +1498,18 @@
 
     function markSongAsPlayed(id) {
       if (!id) return;
+      try {
+        playedSongIds.add(id);
+        playedSongsLoaded = true;
+        renderQueue();
+      } catch (_) {}
       if (!db) return;
       db.collection('playedSongs').doc(currentDay).set({
-          songs: firebase.firestore.FieldValue.arrayUnion(id),
-          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true })
-        .then(() => console.log("Song marked as played:", id))
-        .catch(err => console.error("Error marking song as played:", err));
+        songs: firebase.firestore.FieldValue.arrayUnion(id),
+        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true })
+      .then(() => console.log("Song marked as played:", id))
+      .catch(err => console.error("Error marking song as played:", err));
     }
 
     const currentDay = getLocalDateKey();
