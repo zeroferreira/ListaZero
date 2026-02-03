@@ -107,6 +107,36 @@
             opacity: 0;
             transition: opacity 0.3s;
         }
+        .inline-status {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .pill {
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: #111;
+            border: 1px solid #333;
+        }
+        .pill.ok { border-color: rgba(0, 200, 120, 0.6); color: rgba(0, 220, 140, 1); }
+        .pill.bad { border-color: rgba(255, 60, 80, 0.6); color: rgba(255, 90, 110, 1); }
+        .result-box {
+            margin-top: 12px;
+            background: #0b0b10;
+            border: 1px solid #2b2b35;
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 13px;
+            line-height: 1.35;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #d7d7df;
+            min-height: 54px;
+        }
     </style>
 </head>
 <body>
@@ -159,6 +189,44 @@
             </div>
         </div>
 
+        <div class="card">
+            <h3>🧪 Prueba Offline (!sr)</h3>
+            <div class="form-group">
+                <label>Usuario (simulado)</label>
+                <input type="text" id="testUser" value="Prueba" placeholder="Nombre">
+            </div>
+            <div class="form-group">
+                <label>Mensaje o búsqueda</label>
+                <input type="text" id="testMessage" placeholder="Ej: !sr bad bunny titi me pregunto">
+            </div>
+            <div class="form-group">
+                <label>Apple Music ID (opcional)</label>
+                <input type="text" id="testAppleMusicId" placeholder="Ej: 1647492502">
+            </div>
+
+            <div class="toggle-row">
+                <span>Enviar a Cider</span>
+                <label class="switch">
+                    <input type="checkbox" id="testSendToCider" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="toggle-row">
+                <span>Guardar en Cola (Firestore)</span>
+                <label class="switch">
+                    <input type="checkbox" id="testSendToQueue">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <button class="btn" style="margin-top: 16px;" onclick="sendOfflineTest()">🚀 Enviar Prueba</button>
+            <div class="inline-status">
+                <div id="ciderPill" class="pill">Cider: ...</div>
+                <div id="tiktokPill" class="pill">TikTok: ...</div>
+            </div>
+            <div id="testResult" class="result-box"></div>
+        </div>
+
         <button class="btn" onclick="saveConfig()">💾 Guardar Cambios</button>
         <div id="status" class="status">✅ Configuración guardada correctamente</div>
     </div>
@@ -174,6 +242,27 @@
                 document.getElementById('allowModerators').checked = data.allowModerators;
                 document.getElementById('allowSuperFans').checked = data.allowSuperFans;
             });
+
+        async function refreshStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                const ciderPill = document.getElementById('ciderPill');
+                const tiktokPill = document.getElementById('tiktokPill');
+
+                const ciderOk = !!data.ciderConnected;
+                ciderPill.textContent = `Cider: ${ciderOk ? 'Conectado' : 'No conectado'}`;
+                ciderPill.className = `pill ${ciderOk ? 'ok' : 'bad'}`;
+
+                const tkState = data.tiktokState || 'unknown';
+                const connecting = !!data.isConnecting;
+                tiktokPill.textContent = `TikTok: ${connecting ? 'Conectando...' : tkState}`;
+                tiktokPill.className = `pill ${tkState === 'connected' ? 'ok' : ''}`;
+            } catch (_) {}
+        }
+
+        setInterval(refreshStatus, 1500);
+        refreshStatus();
 
         function saveConfig() {
             const config = {
@@ -197,6 +286,46 @@
                 setTimeout(() => status.style.opacity = '0', 3000);
             })
             .catch(err => alert('Error al guardar'));
+        }
+
+        async function sendOfflineTest() {
+            const resultEl = document.getElementById('testResult');
+            resultEl.textContent = 'Enviando...';
+            try {
+                const payload = {
+                    user: document.getElementById('testUser').value,
+                    message: document.getElementById('testMessage').value,
+                    appleMusicId: document.getElementById('testAppleMusicId').value,
+                    sendToCider: document.getElementById('testSendToCider').checked,
+                    sendToQueue: document.getElementById('testSendToQueue').checked
+                };
+                const res = await fetch('/api/test/sr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    resultEl.textContent = `Error: ${data.error || 'No se pudo ejecutar la prueba'}`;
+                    return;
+                }
+                const r = data.result || {};
+                const lines = [];
+                lines.push(`OK: ${r.ok ? 'sí' : 'no'}`);
+                if (r.track) {
+                    lines.push(`Track: ${r.track.songName || ''}${r.track.artistName ? ' — ' + r.track.artistName : ''}`);
+                    if (r.track.appleMusicId) lines.push(`AppleMusicId: ${r.track.appleMusicId}`);
+                }
+                lines.push(`Cider conectado: ${r.ciderConnected ? 'sí' : 'no'}`);
+                lines.push(`Cider enviado: ${r.ciderSent ? 'sí' : 'no'}`);
+                lines.push(`Guardar en cola: ${r.sendToQueue ? 'sí' : 'no'}`);
+                if (r.queueSaved) lines.push(`Cola guardada: sí${r.queueDocId ? ' (doc ' + r.queueDocId + ')' : ''}`);
+                resultEl.textContent = lines.join('\n');
+            } catch (e) {
+                resultEl.textContent = `Error: ${e && e.message ? e.message : String(e)}`;
+            } finally {
+                refreshStatus();
+            }
         }
     </script>
 </body>

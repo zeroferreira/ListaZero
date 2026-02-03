@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Dynamic import for Firebase (ESM only)
-let initializeApp, getFirestore, doc, setDoc, arrayUnion, serverTimestamp;
+let initializeApp, getFirestore, collection, addDoc, doc, setDoc, arrayUnion, serverTimestamp;
 
 (async () => {
     try {
@@ -16,6 +16,8 @@ let initializeApp, getFirestore, doc, setDoc, arrayUnion, serverTimestamp;
         
         const firebaseFirestoreLib = await import('firebase/firestore');
         getFirestore = firebaseFirestoreLib.getFirestore;
+        collection = firebaseFirestoreLib.collection;
+        addDoc = firebaseFirestoreLib.addDoc;
         doc = firebaseFirestoreLib.doc;
         setDoc = firebaseFirestoreLib.setDoc;
         arrayUnion = firebaseFirestoreLib.arrayUnion;
@@ -81,6 +83,15 @@ function startBot() {
     app.use(express.json());
     app.use(express.static('public'));
 
+    app.get('/api/status', (req, res) => {
+        res.json({
+            tiktokUsername: TIKTOK_USERNAME,
+            tiktokState: tiktokLiveConnection?.state || 'unknown',
+            isConnecting: !!isConnecting,
+            ciderConnected: !!(ciderSocket && ciderSocket.connected)
+        });
+    });
+
     // API para obtener configuración
     app.get('/api/config', (req, res) => {
         res.json(config);
@@ -114,6 +125,51 @@ function startBot() {
         } catch (e) {
             console.error("Error guardando config:", e);
             res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/test/sr', async (req, res) => {
+        try {
+            const body = req.body || {};
+            const user = String(body.user || '').trim() || 'Prueba';
+            const sendToCider = body.sendToCider !== false;
+            const sendToQueue = body.sendToQueue === true;
+            const appleMusicId = body.appleMusicId ? String(body.appleMusicId).trim() : '';
+            const songName = body.songName ? String(body.songName).trim() : '';
+            const artistName = body.artistName ? String(body.artistName).trim() : '';
+            const artworkUrl = body.artworkUrl ? String(body.artworkUrl).trim() : '';
+
+            const rawMessage = body.message ? String(body.message).trim() : '';
+            let query = body.query ? String(body.query).trim() : '';
+            if (rawMessage) {
+                const lower = rawMessage.toLowerCase();
+                if (lower.startsWith('!sr ') || lower.startsWith('!pedir ') || lower.startsWith('!cancion ')) {
+                    query = rawMessage.replace(/^!(sr|pedir|cancion)\s+/i, '').trim();
+                } else {
+                    query = rawMessage;
+                }
+            }
+            query = query.replace(/\s+-\s+/g, ' ').trim();
+            if (!query && !appleMusicId) {
+                res.status(400).json({ ok: false, error: 'Falta query o appleMusicId' });
+                return;
+            }
+
+            const result = await handleSongRequest(user, query, {
+                sendToCider,
+                sendToQueue,
+                isTest: true,
+                source: 'offlineTest',
+                appleMusicId,
+                songName,
+                artistName,
+                artworkUrl
+            });
+
+            res.json({ ok: true, result });
+        } catch (e) {
+            console.error('Error en /api/test/sr:', e);
+            res.status(500).json({ ok: false, error: e.message || String(e) });
         }
     });
 
@@ -271,53 +327,76 @@ async function connectToLive() {
 const tempVipUsers = new Set();
 
 // Manejar pedido de canción
-async function handleSongRequest(user, query) {
+async function resolveTrackFromQuery(query) {
+    const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=10`;
+    const response = await axios.get(searchUrl);
+    if (!response.data || response.data.resultCount === 0) {
+        return null;
+    }
+
+    let track = response.data.results[0];
+    const avoidKeywords = ['karaoke', 'tribute', 'cover', 'instrumental', 'remix', 'lullaby', 'rendition', 'slowed', 'reverb'];
+    const cleanTrack = response.data.results.find(t => {
+        const lowerName = (t.trackName || '').toLowerCase();
+        const lowerArtist = (t.artistName || '').toLowerCase();
+        const lowerCollection = (t.collectionName || '').toLowerCase();
+        const hasBadWord = avoidKeywords.some(kw =>
+            lowerName.includes(kw) ||
+            lowerArtist.includes(kw) ||
+            lowerCollection.includes(kw)
+        );
+        return !hasBadWord;
+    });
+
+    if (cleanTrack) {
+        track = cleanTrack;
+    }
+
+    const songName = track.trackName;
+    const artistName = track.artistName;
+    const artworkUrl = String(track.artworkUrl100 || '').replace('100x100', '600x600');
+    const appleMusicId = track.trackId;
+    const trackViewUrl = track.trackViewUrl || '';
+    if (!songName || !artistName || !appleMusicId) {
+        return null;
+    }
+    return { songName, artistName, artworkUrl, appleMusicId: String(appleMusicId), trackViewUrl };
+}
+
+async function handleSongRequest(user, query, options = {}) {
     try {
-        // 1. Buscar en Apple Music
-        // Aumentamos el límite para poder filtrar resultados malos (karaoke, covers, etc.)
-        const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=10`;
-        const response = await axios.get(searchUrl);
-        
-        if (response.data.resultCount === 0) {
-            console.log(`⚠️ No se encontró la canción: ${query}`);
-            return;
-        }
+        const sendToQueue = options.sendToQueue !== false;
+        const sendToCider = options.sendToCider !== false;
+        const isTest = !!options.isTest;
+        const source = options.source ? String(options.source) : '';
 
-        // Selección inteligente de canción
-        let track = response.data.results[0]; // Por defecto el primero
-        
-        // Palabras clave a evitar
-        const avoidKeywords = ['karaoke', 'tribute', 'cover', 'instrumental', 'remix', 'lullaby', 'rendition', 'slowed', 'reverb'];
-        
-        // Buscar el mejor resultado que NO tenga palabras prohibidas
-        const cleanTrack = response.data.results.find(t => {
-            const lowerName = (t.trackName || '').toLowerCase();
-            const lowerArtist = (t.artistName || '').toLowerCase();
-            const lowerCollection = (t.collectionName || '').toLowerCase();
-            
-            const hasBadWord = avoidKeywords.some(kw => 
-                lowerName.includes(kw) || 
-                lowerArtist.includes(kw) || 
-                lowerCollection.includes(kw)
-            );
-            
-            return !hasBadWord;
-        });
-
-        if (cleanTrack) {
-            track = cleanTrack;
+        let resolved = null;
+        const overrideId = options.appleMusicId ? String(options.appleMusicId).trim() : '';
+        if (overrideId) {
+            resolved = {
+                songName: String(options.songName || query || '').trim() || 'Sin título',
+                artistName: String(options.artistName || '').trim(),
+                artworkUrl: String(options.artworkUrl || '').trim(),
+                appleMusicId: overrideId,
+                trackViewUrl: ''
+            };
         } else {
-             console.log(`⚠️ Todos los resultados parecen ser covers/karaoke, usando el primero disponible.`);
+            resolved = await resolveTrackFromQuery(query);
         }
 
-        const songName = track.trackName;
-        const artistName = track.artistName;
-        const artworkUrl = track.artworkUrl100.replace('100x100', '600x600'); 
-        const appleMusicId = track.trackId;
+        if (!resolved) {
+            console.log(`⚠️ No se encontró la canción: ${query}`);
+            return { ok: false, error: 'No se encontró track' };
+        }
+
+        const songName = resolved.songName;
+        const artistName = resolved.artistName;
+        const artworkUrl = resolved.artworkUrl;
+        const appleMusicId = resolved.appleMusicId;
+        const trackViewUrl = resolved.trackViewUrl;
 
         console.log(`🎵 Canción encontrada: ${songName} - ${artistName}`);
 
-        // 2. Agregar a Firebase
         const now = new Date();
         const hh = String(now.getHours()).padStart(2, '0');
         const mm = String(now.getMinutes()).padStart(2, '0');
@@ -333,47 +412,57 @@ async function handleSongRequest(user, query) {
             cover: artworkUrl,
             ts: serverTimestamp(),
             status: 'pending',
-            day: currentDay // Critical for queue_overlay query
+            day: currentDay
         };
-
-        // Cambiar a colección 'solicitudes' para compatibilidad con overlay
-        // Usamos add() para crear un documento nuevo por solicitud
-        await db.collection('solicitudes').add(requestData);
-
-        /*
-        // OLD METHOD (Incompatible with current overlay)
-        await setDoc(doc(db, 'requests', currentDay), {
-            items: arrayUnion(requestData),
-            lastUpdated: serverTimestamp()
-        }, { merge: true });
-        */
-
-        console.log(`✅ Agregada a la lista visual`);
-
-        // 3. Agregar a Cider
-        if (ciderSocket && ciderSocket.connected) {
-            console.log(`🎧 Enviando a Cider (Play Next si es posible)...`);
-            
-            ciderSocket.emit('safe_pre_add_queue', {
-                artwork: { url: artworkUrl },
-                name: songName,
-                artistName: artistName,
-                playParams: { id: String(appleMusicId) },
-                url: track.trackViewUrl,
-                next: true
-            });
-            
-            ciderSocket.emit('playback:queue:add-next', {
-                 id: String(appleMusicId)
-            });
-
-            console.log(`🎧 Enviada orden a Cider (ID: ${appleMusicId})`);
-        } else {
-            console.warn(`⚠️ No se pudo enviar a Cider (No conectado)`);
+        if (isTest) {
+            requestData.isSimulation = true;
+            requestData.isTest = true;
+            if (source) requestData.source = source;
         }
 
+        let queueSaved = false;
+        let queueDocId = '';
+        if (sendToQueue) {
+            const docRef = await addDoc(collection(db, 'solicitudes'), requestData);
+            queueSaved = true;
+            queueDocId = docRef && docRef.id ? docRef.id : '';
+            console.log(`✅ Agregada a la lista visual`);
+        }
+
+        let ciderSent = false;
+        if (sendToCider) {
+            if (ciderSocket && ciderSocket.connected) {
+                ciderSocket.emit('safe_pre_add_queue', {
+                    artwork: { url: artworkUrl },
+                    name: songName,
+                    artistName: artistName,
+                    playParams: { id: String(appleMusicId) },
+                    url: trackViewUrl,
+                    next: true
+                });
+                ciderSocket.emit('playback:queue:add-next', { id: String(appleMusicId) });
+                ciderSent = true;
+                console.log(`🎧 Enviada orden a Cider (ID: ${appleMusicId})`);
+            } else {
+                console.warn(`⚠️ No se pudo enviar a Cider (No conectado)`);
+            }
+        }
+
+        return {
+            ok: true,
+            user,
+            query,
+            track: { songName, artistName, artworkUrl, appleMusicId, trackViewUrl },
+            sendToQueue,
+            queueSaved,
+            queueDocId,
+            sendToCider,
+            ciderConnected: !!(ciderSocket && ciderSocket.connected),
+            ciderSent
+        };
     } catch (error) {
         console.error("❌ Error procesando pedido:", error.message);
+        return { ok: false, error: error.message || String(error) };
     }
 }
 
