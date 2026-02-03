@@ -45,10 +45,6 @@
       display: flex;
       flex-direction: column;
       gap: var(--queue-item-spacing);
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
     }
 
     .queue-item {
@@ -628,17 +624,17 @@
      <button onclick="toggleDebugBorders()" style="padding: 10px; cursor: pointer;">🖼️ Ver Bordes</button>
      <button onclick="toggleWidgetMover()" style="padding: 10px; cursor: pointer;">🧩 Mover Widget</button>
    </div>
-   <div id="widget-mover" style="position: fixed; bottom: 80px; left: 20px; z-index: 10001; background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; padding: 10px; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; width: 220px;" hidden>
-     <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
-       <strong>Widgets</strong>
-       <button onclick="resetWidgetPosition('queue-container')" style="padding: 6px 8px; cursor:pointer; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.06); color:#fff;">Reset</button>
-     </div>
-     <div style="display:flex; gap:10px; align-items:center;">
-       <div id="widget-handle-queue" style="width: 44px; height: 44px; border-radius: 12px; background: rgba(0,229,255,0.18); border: 1px solid rgba(0,229,255,0.55); display:flex; align-items:center; justify-content:center; cursor: grab; user-select:none; touch-action:none;">🎶</div>
-       <div style="display:flex; flex-direction:column; gap:2px;">
-         <div style="font-weight:700; line-height:1.1;">Cola</div>
-         <div style="font-size:12px; opacity:0.85; line-height:1.2;">Arrastra el icono para mover</div>
+   <div id="widget-mover" style="position: fixed; bottom: 80px; left: 20px; z-index: 10001; background: rgba(0,0,0,0.80); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 10px; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; width: 320px; max-height: 50vh; overflow: auto;" hidden>
+     <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
+       <strong>Mover tarjetas (cola)</strong>
+       <div style="display:flex; gap:8px; align-items:center;">
+         <button onclick="resetManualOrder()" style="padding: 6px 8px; cursor:pointer; border-radius: 10px; border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.06); color:#fff;">Reset</button>
+         <button onclick="toggleWidgetMover()" style="padding: 6px 8px; cursor:pointer; border-radius: 10px; border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.06); color:#fff;">Cerrar</button>
        </div>
+     </div>
+     <div id="widget-mover-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+     <div style="font-size: 12px; opacity: 0.85; margin-top: 10px; line-height: 1.25;">
+       Arrastra una tarjeta para cambiar el orden. Esto escribe en manualOrders del día.
      </div>
    </div>
 
@@ -658,113 +654,155 @@
       }
     }
 
-    function getWidgetPosKey(widgetId) {
-      return `widget_pos:${location.pathname}:${widgetId}`;
-    }
-
-    function applyWidgetPosition(widgetId, pos) {
-      const el = document.getElementById(widgetId);
-      if (!el) return;
-      if (!pos || typeof pos.left !== 'number' || typeof pos.top !== 'number') {
-        el.style.left = '50%';
-        el.style.top = '20px';
-        el.style.transform = 'translateX(-50%)';
-        return;
-      }
-      el.style.left = `${pos.left}px`;
-      el.style.top = `${pos.top}px`;
-      el.style.transform = 'none';
-    }
-
-    function loadWidgetPosition(widgetId) {
-      try {
-        const raw = localStorage.getItem(getWidgetPosKey(widgetId));
-        if (!raw) return null;
-        const pos = JSON.parse(raw);
-        if (!pos || typeof pos.left !== 'number' || typeof pos.top !== 'number') return null;
-        return pos;
-      } catch (_) {
-        return null;
-      }
-    }
-
-    function saveWidgetPosition(widgetId, pos) {
-      try {
-        localStorage.setItem(getWidgetPosKey(widgetId), JSON.stringify(pos));
-      } catch (_) {}
-    }
-
-    function resetWidgetPosition(widgetId) {
-      try { localStorage.removeItem(getWidgetPosKey(widgetId)); } catch (_) {}
-      applyWidgetPosition(widgetId, null);
-    }
-
     function toggleWidgetMover() {
       const panel = document.getElementById('widget-mover');
       if (!panel) return;
       panel.hidden = !panel.hidden;
+      if (!panel.hidden) {
+        try { renderWidgetMoverList(); } catch (_) {}
+      }
     }
 
-    function setupWidgetHandle(handleId, widgetId) {
-      const handle = document.getElementById(handleId);
-      const widget = document.getElementById(widgetId);
-      if (!handle || !widget) return;
-
-      const saved = loadWidgetPosition(widgetId);
-      if (saved) applyWidgetPosition(widgetId, saved);
-
-      let dragging = false;
-      let startX = 0;
-      let startY = 0;
-      let startLeft = 0;
-      let startTop = 0;
-
-      const getWidgetRectPos = () => {
-        const rect = widget.getBoundingClientRect();
-        return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
-      };
-
-      const onMove = (clientX, clientY) => {
-        if (!dragging) return;
-        const dx = clientX - startX;
-        const dy = clientY - startY;
-        const nextLeft = startLeft + dx;
-        const nextTop = startTop + dy;
-        applyWidgetPosition(widgetId, { left: nextLeft, top: nextTop });
-      };
-
-      const onUp = () => {
-        if (!dragging) return;
-        dragging = false;
-        handle.style.cursor = 'grab';
-        const rect = getWidgetRectPos();
-        const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
-        const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
-        applyWidgetPosition(widgetId, { left, top });
-        saveWidgetPosition(widgetId, { left, top });
-        try { window.removeEventListener('pointermove', onPointerMove); } catch (_) {}
-        try { window.removeEventListener('pointerup', onPointerUp); } catch (_) {}
-      };
-
-      const onPointerMove = (e) => {
-        onMove(e.clientX, e.clientY);
-      };
-      const onPointerUp = () => onUp();
-
-      handle.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragging = true;
-        handle.style.cursor = 'grabbing';
-        const rect = getWidgetRectPos();
-        startX = e.clientX;
-        startY = e.clientY;
-        startLeft = rect.left;
-        startTop = rect.top;
-        try { handle.setPointerCapture(e.pointerId); } catch (_) {}
-        window.addEventListener('pointermove', onPointerMove);
-        window.addEventListener('pointerup', onPointerUp);
+    function getPendingRequestsForMover() {
+      let pending = allRequests.filter(req => {
+        const id = generateSongId(req);
+        return !playedSongIds.has(id);
       });
+      pending = applyOrder(pending, currentManualOrder);
+      return pending;
+    }
+
+    async function persistManualOrder(orderArr) {
+      currentManualOrder = Array.isArray(orderArr) ? orderArr : [];
+      try { localStorage.setItem(`manualOrder:${currentDay}`, JSON.stringify(currentManualOrder)); } catch (_) {}
+      if (!db || !firebase?.firestore?.FieldValue) return;
+      try {
+        await db.collection('manualOrders').doc(currentDay).set({
+          order: currentManualOrder,
+          day: currentDay,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch (_) {}
+    }
+
+    async function resetManualOrder() {
+      await persistManualOrder([]);
+      try { renderQueue(); } catch (_) {}
+      try { renderWidgetMoverList(); } catch (_) {}
+    }
+
+    function renderWidgetMoverList() {
+      const list = document.getElementById('widget-mover-list');
+      if (!list) return;
+      list.innerHTML = '';
+
+      const pending = getPendingRequestsForMover();
+      if (!pending.length) {
+        const empty = document.createElement('div');
+        empty.textContent = 'No hay canciones pendientes.';
+        empty.style.opacity = '0.85';
+        list.appendChild(empty);
+        return;
+      }
+
+      const orderKeys = pending.map(req => String(req?.docId || req?.id || generateSongId(req) || '')).filter(Boolean);
+
+      let draggingKey = null;
+
+      const render = () => {
+        list.innerHTML = '';
+        orderKeys.forEach((key, idx) => {
+          const req = pending.find(r => String(r?.docId || r?.id || generateSongId(r) || '') === key);
+          const cancion = (req?.cancion || req?.songName || req?.song || req?.name || '').trim();
+          const artista = (req?.artista || req?.artistName || req?.artist || '').trim();
+          const usuario = (req?.usuario || req?.user || req?.username || '').trim();
+
+          const row = document.createElement('div');
+          row.draggable = true;
+          row.dataset.key = key;
+          row.style.display = 'flex';
+          row.style.gap = '10px';
+          row.style.alignItems = 'center';
+          row.style.padding = '10px';
+          row.style.borderRadius = '12px';
+          row.style.border = '1px solid rgba(255,255,255,0.18)';
+          row.style.background = 'rgba(255,255,255,0.06)';
+          row.style.cursor = 'grab';
+          row.style.userSelect = 'none';
+
+          const left = document.createElement('div');
+          left.textContent = String(idx + 1);
+          left.style.width = '26px';
+          left.style.height = '26px';
+          left.style.borderRadius = '8px';
+          left.style.display = 'flex';
+          left.style.alignItems = 'center';
+          left.style.justifyContent = 'center';
+          left.style.fontWeight = '800';
+          left.style.background = 'rgba(0,229,255,0.18)';
+          left.style.border = '1px solid rgba(0,229,255,0.55)';
+
+          const mid = document.createElement('div');
+          mid.style.display = 'flex';
+          mid.style.flexDirection = 'column';
+          mid.style.gap = '2px';
+          mid.style.minWidth = '0';
+          mid.style.flex = '1';
+
+          const title = document.createElement('div');
+          title.textContent = cancion || 'Desconocida';
+          title.style.fontWeight = '800';
+          title.style.whiteSpace = 'nowrap';
+          title.style.overflow = 'hidden';
+          title.style.textOverflow = 'ellipsis';
+
+          const sub = document.createElement('div');
+          sub.textContent = `${artista || 'Desconocido'} • ${usuario || 'Anónimo'}`;
+          sub.style.fontSize = '12px';
+          sub.style.opacity = '0.85';
+          sub.style.whiteSpace = 'nowrap';
+          sub.style.overflow = 'hidden';
+          sub.style.textOverflow = 'ellipsis';
+
+          mid.appendChild(title);
+          mid.appendChild(sub);
+
+          const grip = document.createElement('div');
+          grip.textContent = '⋮⋮';
+          grip.style.opacity = '0.8';
+          grip.style.fontWeight = '900';
+          grip.style.padding = '0 4px';
+
+          row.appendChild(left);
+          row.appendChild(mid);
+          row.appendChild(grip);
+
+          row.addEventListener('dragstart', (e) => {
+            draggingKey = key;
+            try { e.dataTransfer.effectAllowed = 'move'; } catch (_) {}
+          });
+          row.addEventListener('dragover', (e) => {
+            e.preventDefault();
+          });
+          row.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            const targetKey = row.dataset.key;
+            if (!draggingKey || !targetKey || draggingKey === targetKey) return;
+            const from = orderKeys.indexOf(draggingKey);
+            const to = orderKeys.indexOf(targetKey);
+            if (from < 0 || to < 0) return;
+            orderKeys.splice(from, 1);
+            orderKeys.splice(to, 0, draggingKey);
+            await persistManualOrder(orderKeys.slice());
+            try { renderQueue(); } catch (_) {}
+            render();
+          });
+
+          list.appendChild(row);
+        });
+      };
+
+      render();
     }
     
     // --- Configuración / Settings Logic ---
@@ -1799,8 +1837,6 @@
     const debugControls = document.getElementById('debug-controls');
     debugControls.addEventListener('mouseenter', () => debugControls.style.opacity = '1');
     debugControls.addEventListener('mouseleave', () => debugControls.style.opacity = '0.2');
-    setupWidgetHandle('widget-handle-queue', 'queue-container');
-
     function simulateQueueRequest() {
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
       const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
