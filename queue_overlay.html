@@ -1072,10 +1072,24 @@
 
     function renderQueue() {
       console.log("renderQueue called. Pending requests:", allRequests.length);
+      const now = Date.now();
+      
       // 1. Filtrar solicitudes que NO están en playedSongIds
       let pendingRequests = allRequests.filter(req => {
         const id = generateSongId(req);
-        return !playedSongIds.has(id);
+        if (playedSongIds.has(id)) return false;
+
+        // Filtrar simulaciones antiguas (> 5 mins) para evitar que aparezcan al recargar
+        if (req.isSimulation) {
+            let ts = req.ts;
+            if (ts && typeof ts.toDate === 'function') ts = ts.toDate().getTime();
+            else if (ts instanceof Date) ts = ts.getTime();
+            else ts = new Date(ts || now).getTime();
+            
+            if (now - ts > 5 * 60 * 1000) return false;
+        }
+
+        return true;
       });
 
       // 1.5 Aplicar orden manual si existe
