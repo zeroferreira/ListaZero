@@ -1545,6 +1545,24 @@
       const settings = window.appliedSettings || getSettingsFromInputs();
       if (!settings.autocorrect && !settings.showAlbumArt && !settings.showWaitTime) return;
 
+      const shouldAutocorrectText = (reqArtist, reqSong, correctedArtist, correctedSong) => {
+        try {
+          const ra = normalizeText(reqArtist);
+          const rs = normalizeText(reqSong);
+          const ca = normalizeText(correctedArtist);
+          const cs = normalizeText(correctedSong);
+
+          if (!ra || !rs || !ca || !cs) return false;
+          if (ra.length < 2 || rs.length < 2 || ca.length < 2 || cs.length < 2) return false;
+
+          const artistOk = ca.includes(ra) || ra.includes(ca);
+          const songOk = cs.includes(rs) || rs.includes(cs);
+          return artistOk && songOk;
+        } catch (_) {
+          return false;
+        }
+      };
+
       const container = document.getElementById('queue-container');
       const itemEls = Array.from(container.querySelectorAll('.queue-item:not(.removing)'));
       const elBySongId = new Map();
@@ -1570,12 +1588,18 @@
          if (settings.autocorrect || settings.showAlbumArt || settings.showWaitTime) {
              const artist = String(req.artista || req.artistName || req.artist || '').trim();
              const song = String(req.cancion || req.songName || req.song || req.name || '').trim();
+
+             if (songEl) songEl.innerText = song;
+             if (artistEl) artistEl.innerText = artist;
+
              const data = await fetchSongData(artist, song);
              
              if (data) {
                  if (settings.autocorrect) {
-                     songEl.innerText = data.correctTitle;
-                     artistEl.innerText = data.correctArtist;
+                     if (shouldAutocorrectText(artist, song, data.correctArtist, data.correctTitle)) {
+                       if (songEl) songEl.innerText = data.correctTitle;
+                       if (artistEl) artistEl.innerText = data.correctArtist;
+                     }
                  }
                  
                  if (settings.showAlbumArt && data.artworkUrl) {
