@@ -576,6 +576,9 @@
     .points-panel.active { display: block; }
     .points-tab { border: none; background: var(--btn-bg,#eee); padding: 8px 10px; border-radius: 8px; margin-right: 6px; cursor: pointer; }
     .points-tab.active { background: #2563eb; color: #fff; }
+    .admin-section-tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .admin-section-tabs .points-tab { margin-right: 0; }
+    .edit-actions-bar { display: flex; gap: 8px; margin: 10px 0 6px; }
     /* Nubia mobile badge placement override (enhanced for stacked layout) */
     @media (max-width: 480px) {
       .nubia-device .usuario {
@@ -669,10 +672,11 @@
 
       <div id="admin-panel" class="admin-panel" hidden>
         
-        <!-- Selector de Sección Admin -->
-        <div class="admin-row admin-section-selector">
-          <label for="admin-section-select">Selecciona sección a administrar:</label>
-          <select id="admin-section-select" class="admin-select">
+        <div class="admin-row admin-section-tabs" role="tablist" aria-label="Secciones de administración">
+          <button type="button" class="points-tab admin-section-tab active" data-section="badges" role="tab" aria-selected="true">👑 Insignias</button>
+          <button type="button" class="points-tab admin-section-tab" data-section="rewards" role="tab" aria-selected="false">🎁 Recompensas</button>
+          <button type="button" class="points-tab admin-section-tab" data-section="maintenance" role="tab" aria-selected="false">🔧 Mantenimiento</button>
+          <select id="admin-section-select" class="admin-select" hidden aria-hidden="true" tabindex="-1">
             <option value="badges">👑 Gestión de Insignias</option>
             <option value="rewards">🎁 Administración de Recompensas</option>
             <option value="maintenance">🔧 Mantenimiento</option>
@@ -881,6 +885,49 @@
                    </div>
                    <div class="field full-width">
                      <button type="button" id="grant-comp-points-btn" class="btn btn-primary btn-block">🎁 Otorgar Puntos</button>
+                   </div>
+                 </div>
+              </div>
+            </div>
+
+            <div class="admin-card tiktok-test-card">
+              <div class="card-header">
+                <h3>🧪 Bot TikTok (Pruebas)</h3>
+              </div>
+              <div class="card-body">
+                 <div class="form-grid">
+                   <div class="field full-width">
+                     <label>Mensaje o búsqueda</label>
+                     <input type="text" id="tiktok-test-query" placeholder="!pedir Bad Bunny - Tití Me Preguntó (o texto libre)" class="admin-input">
+                   </div>
+                   <div class="field-row">
+                     <div class="field">
+                       <label>Usuario</label>
+                       <input type="text" id="tiktok-test-user" value="Prueba" class="admin-input">
+                     </div>
+                     <div class="field flex-grow">
+                       <label>Día (opcional)</label>
+                       <input type="text" id="tiktok-test-day" placeholder="YYYY-MM-DD (vacío = hoy/seleccionado)" class="admin-input">
+                     </div>
+                   </div>
+                   <div class="field full-width">
+                     <div class="action-grid">
+                       <button type="button" id="tiktok-test-search" class="btn btn-outline-primary" title="Buscar y seleccionar la mejor coincidencia">
+                         <span class="btn-icon">🔎</span>
+                         <span class="btn-text">Buscar en Apple Music</span>
+                       </button>
+                       <button type="button" id="tiktok-test-send" class="btn btn-outline-success" title="Crear solicitud simulada en la cola">
+                         <span class="btn-icon">📩</span>
+                         <span class="btn-text">Enviar a la cola</span>
+                       </button>
+                       <button type="button" id="tiktok-test-clear" class="btn btn-outline-secondary" title="Limpiar selección">
+                         <span class="btn-icon">🧹</span>
+                         <span class="btn-text">Limpiar</span>
+                       </button>
+                     </div>
+                   </div>
+                   <div class="field full-width">
+                     <div id="tiktok-test-status" class="help-text">Listo para pruebas.</div>
                    </div>
                  </div>
               </div>
@@ -1663,6 +1710,10 @@
             <span class="col col-cancion-artista">Canción / Artista</span>
             <span class="col col-action">✓</span>
           </div>
+          <div id="edit-actions-bar" class="edit-actions-bar" hidden>
+            <button type="button" id="undo-delete-btn" class="btn" disabled>↩️ Deshacer</button>
+            <button type="button" id="redo-delete-btn" class="btn" disabled>↪️ Rehacer</button>
+          </div>
           <ul id="solicitudes-list" class="items"></ul>
           <p id="empty" class="empty" hidden>Aún no hay solicitudes.</p>
         </section>
@@ -2085,6 +2136,217 @@
           document.body.removeChild(temp);
         }
       }
+
+      const editActionsBar = document.getElementById('edit-actions-bar');
+      const undoDeleteBtn = document.getElementById('undo-delete-btn');
+      const redoDeleteBtn = document.getElementById('redo-delete-btn');
+      let editUndoStack = [];
+      let editRedoStack = [];
+
+      function isEditModeActive() {
+        try {
+          return !!(solicitudesList && solicitudesList.classList.contains('editing'));
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function refreshEditActionsBar() {
+        if (!editActionsBar) return;
+        const active = isEditModeActive();
+        editActionsBar.hidden = !active;
+        if (!active) return;
+        if (undoDeleteBtn) undoDeleteBtn.disabled = editUndoStack.length === 0;
+        if (redoDeleteBtn) redoDeleteBtn.disabled = editRedoStack.length === 0;
+      }
+
+      function getLocalPlayedMap() {
+        try {
+          return JSON.parse(localStorage.getItem('playedSongs') || '{}');
+        } catch (_) {
+          return {};
+        }
+      }
+
+      function setLocalPlayedMap(map) {
+        try {
+          localStorage.setItem('playedSongs', JSON.stringify(map || {}));
+        } catch (_) {}
+      }
+
+      async function cloudAddPlayed(day, songId, it) {
+        if (!window.db || !firebase?.firestore?.FieldValue) return;
+        const playedRef = window.db.collection('playedSongs').doc(day);
+        await playedRef.set({
+          songs: firebase.firestore.FieldValue.arrayUnion(songId),
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        try {
+          const uName = (it?.usuario || '').trim();
+          if (uName) await updateUserPlayedCounter(uName, day, 1);
+          await registerToggleEvent({
+            action: 'mark',
+            usuario: uName,
+            cancion: it?.cancion,
+            artista: it?.artista,
+            day,
+            hora: it?.hora,
+            songId
+          });
+        } catch (_) {}
+      }
+
+      async function cloudRemovePlayed(day, songId, it) {
+        if (!window.db || !firebase?.firestore?.FieldValue) return;
+        const playedRef = window.db.collection('playedSongs').doc(day);
+        await playedRef.set({
+          songs: firebase.firestore.FieldValue.arrayRemove(songId),
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        try {
+          const uName = (it?.usuario || '').trim();
+          if (uName) await updateUserPlayedCounter(uName, day, -1);
+          await registerToggleEvent({
+            action: 'unmark',
+            usuario: uName,
+            cancion: it?.cancion,
+            artista: it?.artista,
+            day,
+            hora: it?.hora,
+            songId
+          });
+        } catch (_) {}
+      }
+
+      async function undoLastEditAction() {
+        if (editUndoStack.length === 0) return;
+        const action = editUndoStack.pop();
+        editRedoStack.push(action);
+        refreshEditActionsBar();
+
+        if (action?.type !== 'delete') return;
+        const day = action.day;
+        const songId = action.songId;
+
+        try {
+          if (action.docId && window.db) {
+            await window.db.collection('solicitudes').doc(action.docId).set(action.requestData || {}, { merge: false });
+          } else {
+            const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+            const arr = Array.isArray(byDay[day]) ? byDay[day] : [];
+            if (action.localEntry) {
+              const insertAt = Number.isFinite(action.localIndex) ? Math.max(0, Math.min(action.localIndex, arr.length)) : arr.length;
+              arr.splice(insertAt, 0, action.localEntry);
+              byDay[day] = arr;
+              localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+            }
+          }
+
+          if (action.wasPlayed && songId) {
+            const localPlayed = getLocalPlayedMap();
+            const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+            if (!arr.includes(songId)) {
+              arr.push(songId);
+              localPlayed[day] = arr;
+              setLocalPlayedMap(localPlayed);
+            }
+            try { if (window.playedSongsCache) window.playedSongsCache[day] = arr; } catch (_) {}
+            await cloudAddPlayed(day, songId, action.itemForLog);
+          }
+
+          if (action.docId) {
+            const existing = Array.isArray(currentManualOrder) ? currentManualOrder.slice() : [];
+            if (!existing.includes(action.docId)) {
+              const insertAt = Number.isFinite(action.orderIndex) ? Math.max(0, Math.min(action.orderIndex, existing.length)) : existing.length;
+              existing.splice(insertAt, 0, action.docId);
+              currentManualOrder = existing;
+              localStorage.setItem(`manualOrder:${day}`, JSON.stringify(existing));
+              try {
+                if (window.db) {
+                  await window.db.collection('manualOrders').doc(day).set({
+                    order: existing,
+                    day,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                  }, { merge: true });
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (err) {
+          console.error('Error al deshacer:', err);
+        }
+      }
+
+      async function redoLastEditAction() {
+        if (editRedoStack.length === 0) return;
+        const action = editRedoStack.pop();
+        editUndoStack.push(action);
+        refreshEditActionsBar();
+
+        if (action?.type !== 'delete') return;
+        const day = action.day;
+        const songId = action.songId;
+
+        try {
+          if (action.docId && window.db) {
+            await window.db.collection('solicitudes').doc(action.docId).delete();
+          } else {
+            const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+            const arr = Array.isArray(byDay[day]) ? byDay[day] : [];
+            if (action.localEntry) {
+              const idx = arr.findIndex(x =>
+                x.usuario === action.localEntry.usuario &&
+                x.cancion === action.localEntry.cancion &&
+                x.artista === action.localEntry.artista &&
+                String(x.time) === String(action.localEntry.time)
+              );
+              if (idx >= 0) arr.splice(idx, 1);
+              byDay[day] = arr;
+              localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+            }
+          }
+
+          if (action.wasPlayed && songId) {
+            const localPlayed = getLocalPlayedMap();
+            const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+            localPlayed[day] = arr.filter(id => id !== songId);
+            setLocalPlayedMap(localPlayed);
+            try { if (window.playedSongsCache) window.playedSongsCache[day] = localPlayed[day]; } catch (_) {}
+            await cloudRemovePlayed(day, songId, action.itemForLog);
+          }
+
+          if (action.docId) {
+            const existing = Array.isArray(currentManualOrder) ? currentManualOrder.slice() : [];
+            const next = existing.filter(id => id !== action.docId);
+            currentManualOrder = next;
+            localStorage.setItem(`manualOrder:${day}`, JSON.stringify(next));
+            try {
+              if (window.db) {
+                await window.db.collection('manualOrders').doc(day).set({
+                  order: next,
+                  day,
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+              }
+            } catch (_) {}
+          }
+        } catch (err) {
+          console.error('Error al rehacer:', err);
+        }
+      }
+
+      undoDeleteBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isEditModeActive()) return;
+        undoLastEditAction();
+      });
+      redoDeleteBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isEditModeActive()) return;
+        redoLastEditAction();
+      });
       
       function renderSolicitudes(items) {
         if (!solicitudesList) {
@@ -2226,6 +2488,23 @@
 
             const docId = li.dataset.docId;
             const day = currentDay;
+            const localPlayedMapBefore = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+            const dayPlayedBefore = window.playedSongsCache[day] || localPlayedMapBefore[day] || [];
+            const wasPlayed = Array.isArray(dayPlayedBefore) && dayPlayedBefore.includes(songId);
+            const orderIndex = (docId && Array.isArray(currentManualOrder)) ? currentManualOrder.indexOf(docId) : -1;
+            const requestData = {
+              id: it.requestId || songId,
+              usuario: it.usuario,
+              cancion: it.cancion,
+              artista: it.artista,
+              genero: it.genero,
+              cover: it.cover,
+              ts: it.ts || new Date(),
+              status: it.status || 'pending',
+              day
+            };
+            let localEntry = null;
+            let localIndex = null;
             try {
               if (docId && window.db) {
                 await window.db.collection('solicitudes').doc(docId).delete();
@@ -2239,11 +2518,28 @@
                   toHour(x.time) === it.hora
                 );
                 if (idx >= 0) {
+                  localEntry = arr[idx];
+                  localIndex = idx;
                   arr.splice(idx, 1);
                   byDay[day] = arr;
                   localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
                 }
               }
+
+              editUndoStack.push({
+                type: 'delete',
+                day,
+                docId: docId || null,
+                songId,
+                requestData,
+                localEntry,
+                localIndex,
+                wasPlayed,
+                orderIndex: orderIndex >= 0 ? orderIndex : null,
+                itemForLog: { usuario: it.usuario, cancion: it.cancion, artista: it.artista, hora: it.hora }
+              });
+              editRedoStack = [];
+              refreshEditActionsBar();
 
               // Limpiar estado reproducida del localStorage
               const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
@@ -2439,6 +2735,9 @@
           editToggleBtn.hidden = !isAdminOpen;
           editToggleBtn.setAttribute('aria-pressed', 'false');
           solicitudesList?.classList.remove('editing');
+          editUndoStack = [];
+          editRedoStack = [];
+          refreshEditActionsBar();
           if (currentDayItems?.length) renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
         }
 
@@ -2459,6 +2758,7 @@
           editToggleBtn.setAttribute('aria-pressed', String(next));
           solicitudesList?.classList.toggle('editing', next);
           if (currentDayItems?.length) renderSolicitudes(currentDayItems);
+          refreshEditActionsBar();
         }
 
         editToggleBtn?.addEventListener('click', (e) => {
@@ -3353,10 +3653,14 @@
             if (vipOnly.checked && !isVip) return;
             items.push({
               id: doc.id,
+              requestId: data.id,
               usuario: data.usuario,
               cancion: data.cancion,
               artista: data.artista,
               genero: data.genero,
+              cover: data.cover,
+              status: data.status,
+              ts: data.ts,
               hora: toHour(data.ts),
               day: dayValue
             });
@@ -3369,10 +3673,13 @@
               .filter(it => String(it.usuario || '').trim().toLowerCase() !== 'prueba')
               .filter(it => !vipOnly.checked || vipSet.has(it.usuario) || z0VipSet.has(it.usuario))
               .map(it => ({
+                requestId: it.id,
                 usuario: it.usuario,
                 cancion: it.cancion,
                 artista: it.artista,
                 genero: it.genero,
+                cover: it.cover,
+                status: it.status,
                 hora: it.hora || toHour(it.time),
                 time: it.time,
                 day: dayValue
@@ -4380,6 +4687,155 @@
       const wipeAllConfirmBtn = document.getElementById('wipe-all-confirm');
       const recalculateUsersBtn = document.getElementById('recalculate-users');
       const diagnoseDataBtn = document.getElementById('diagnose-data-btn');
+      const tiktokTestQueryEl = document.getElementById('tiktok-test-query');
+      const tiktokTestUserEl = document.getElementById('tiktok-test-user');
+      const tiktokTestDayEl = document.getElementById('tiktok-test-day');
+      const tiktokTestSearchBtn = document.getElementById('tiktok-test-search');
+      const tiktokTestSendBtn = document.getElementById('tiktok-test-send');
+      const tiktokTestClearBtn = document.getElementById('tiktok-test-clear');
+      const tiktokTestStatusEl = document.getElementById('tiktok-test-status');
+      let tiktokTestSelectedTrack = null;
+
+      function tiktokTestSetStatus(text) {
+        if (tiktokTestStatusEl) tiktokTestStatusEl.textContent = text;
+      }
+
+      function tiktokTestGetLocalDateKey(d) {
+        const dt = d || new Date();
+        const y = dt.getFullYear();
+        const m = String(dt.getMonth() + 1).padStart(2, '0');
+        const dd = String(dt.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+      }
+
+      function tiktokTestExtractQuery(raw) {
+        const msg = String(raw || '').trim();
+        if (!msg) return '';
+        if (msg.toLowerCase().startsWith('!sr ') || msg.toLowerCase().startsWith('!pedir ') || msg.toLowerCase().startsWith('!cancion ')) {
+          return msg.replace(/^!(sr|pedir|cancion)\s+/i, '').trim();
+        }
+        return msg;
+      }
+
+      function tiktokTestPickBestTrack(results) {
+        if (!Array.isArray(results) || results.length === 0) return null;
+        const avoid = ['karaoke', 'tribute', 'cover', 'instrumental', 'remix', 'lullaby', 'rendition', 'slowed', 'reverb'];
+        const clean = results.find(t => {
+          const lowerName = String(t.trackName || '').toLowerCase();
+          const lowerArtist = String(t.artistName || '').toLowerCase();
+          const lowerCollection = String(t.collectionName || '').toLowerCase();
+          const hasBad = avoid.some(kw => lowerName.includes(kw) || lowerArtist.includes(kw) || lowerCollection.includes(kw));
+          return !hasBad;
+        });
+        return clean || results[0];
+      }
+
+      async function tiktokTestSearchAppleMusic() {
+        const qRaw = tiktokTestExtractQuery(tiktokTestQueryEl?.value);
+        const q = qRaw.replace(/\s+-\s+/g, ' ').trim();
+        if (!q) {
+          tiktokTestSetStatus('Escribe un mensaje o búsqueda primero.');
+          return null;
+        }
+        tiktokTestSetStatus('Buscando en Apple Music...');
+        const url = `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&limit=10`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const track = tiktokTestPickBestTrack(data?.results || []);
+        if (!track) {
+          tiktokTestSelectedTrack = null;
+          tiktokTestSetStatus('No se encontró una canción para esa búsqueda.');
+          return null;
+        }
+        const artworkUrl = String(track.artworkUrl100 || '').replace('100x100', '600x600');
+        tiktokTestSelectedTrack = {
+          songName: track.trackName,
+          artistName: track.artistName,
+          artworkUrl,
+          appleMusicId: track.trackId,
+          trackViewUrl: track.trackViewUrl
+        };
+        tiktokTestSetStatus(`Seleccionado: ${tiktokTestSelectedTrack.songName} - ${tiktokTestSelectedTrack.artistName}`);
+        return tiktokTestSelectedTrack;
+      }
+
+      async function tiktokTestSendToQueue() {
+        const user = String(tiktokTestUserEl?.value || '').trim() || 'Prueba';
+        const dayOverride = String(tiktokTestDayEl?.value || '').trim();
+        const day = dayOverride || String(daySelect?.value || '').trim() || tiktokTestGetLocalDateKey(new Date());
+
+        const track = tiktokTestSelectedTrack || await tiktokTestSearchAppleMusic();
+        if (!track) return;
+
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const hora = `${hh}:${mm}`;
+        const songId = `${user}-${track.songName}-${track.artistName}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+
+        const tsValue = (typeof firebase !== 'undefined' && firebase?.firestore?.FieldValue?.serverTimestamp)
+          ? firebase.firestore.FieldValue.serverTimestamp()
+          : now;
+
+        const requestData = {
+          id: songId,
+          usuario: user,
+          cancion: track.songName,
+          artista: track.artistName,
+          cover: track.artworkUrl,
+          ts: tsValue,
+          status: 'pending',
+          day
+        };
+
+        try {
+          if (window.db) {
+            await window.db.collection('solicitudes').add(requestData);
+            tiktokTestSetStatus(`Enviado a la cola: ${track.songName} - ${track.artistName} (${user})`);
+            try { window.showNotification?.('Pedido de prueba enviado a la cola', 'success'); } catch (_) {}
+          } else {
+            const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+            const arr = Array.isArray(byDay[day]) ? byDay[day] : [];
+            arr.unshift({
+              id: songId,
+              usuario: user,
+              cancion: track.songName,
+              artista: track.artistName,
+              cover: track.artworkUrl,
+              time: now.toISOString(),
+              hora,
+              day
+            });
+            byDay[day] = arr;
+            localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+            tiktokTestSetStatus(`Guardado localmente: ${track.songName} - ${track.artistName} (${user})`);
+          }
+        } catch (err) {
+          console.error('Error enviando prueba a la cola:', err);
+          tiktokTestSetStatus('No se pudo enviar la prueba. Revisa consola/permisos.');
+        }
+      }
+
+      tiktokTestSearchBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        tiktokTestSearchAppleMusic().catch(err => {
+          console.error('Error en búsqueda Apple Music:', err);
+          tiktokTestSetStatus('Error buscando en Apple Music.');
+        });
+      });
+
+      tiktokTestSendBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        tiktokTestSendToQueue();
+      });
+
+      tiktokTestClearBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        tiktokTestSelectedTrack = null;
+        if (tiktokTestQueryEl) tiktokTestQueryEl.value = '';
+        if (tiktokTestDayEl) tiktokTestDayEl.value = '';
+        tiktokTestSetStatus('Listo para pruebas.');
+      });
 
       wipeAllBtn?.addEventListener('click', () => {
         if (!daySelect.value) return;
@@ -4881,6 +5337,14 @@
           adminPassError.hidden = true;
         });
 
+      const adminSectionTabs = Array.from(document.querySelectorAll('.admin-section-tab'));
+      adminSectionTabs.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const section = btn.getAttribute('data-section') || '';
+          if (section) showAdminSection(section);
+        });
+      });
+
       // Event listeners para el sistema de secciones
       adminSectionSelect?.addEventListener('change', (e) => {
         showAdminSection(e.target.value);
@@ -4899,6 +5363,14 @@
 
       // Función para mostrar una sección específica del admin
       function showAdminSection(section) {
+        if (adminSectionSelect) adminSectionSelect.value = section;
+        if (adminSectionTabs && adminSectionTabs.length) {
+          adminSectionTabs.forEach((btn) => {
+            const isActive = btn.getAttribute('data-section') === section;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+          });
+        }
         // Ocultar todas las secciones
         if (badgesSection) badgesSection.hidden = true;
         if (rewardsSection) rewardsSection.hidden = true;
