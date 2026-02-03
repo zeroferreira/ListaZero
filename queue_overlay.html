@@ -2,6 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Cola de Pedidos - Zero FM</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
@@ -1606,6 +1610,9 @@
     const currentDay = getLocalDateKey();
     console.log("Queue Overlay v2.2 - Fix Empty Match. Listening for day:", currentDay);
 
+    const OVERLAY_BUILD = "2026-02-03";
+    console.log("Queue Overlay build:", OVERLAY_BUILD);
+
     if (db) {
       db.collection('solicitudes')
         .where('day', '==', currentDay)
@@ -1663,6 +1670,22 @@
         }, (error) => {
           console.error("Error en manualOrders:", error);
         });
+
+      let lastPolledOrderJson = null;
+      const pollManualOrder = async () => {
+        try {
+          const snap = await db.collection('manualOrders').doc(currentDay).get();
+          const next = snap.exists ? (Array.isArray(snap.data()?.order) ? snap.data().order : []) : [];
+          const nextJson = JSON.stringify(next);
+          if (nextJson !== lastPolledOrderJson) {
+            lastPolledOrderJson = nextJson;
+            currentManualOrder = next;
+            renderQueue();
+          }
+        } catch (_) {}
+      };
+      setInterval(pollManualOrder, 1500);
+      pollManualOrder();
     } else {
       console.warn("Firestore no disponible. Cola no podrá sincronizarse.");
       renderQueue();
