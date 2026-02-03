@@ -890,57 +890,74 @@
       appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-
-    // Sincronizar configuración global desde Firestore
-    db.collection('userSettings').doc('global_queue_config')
-      .onSnapshot((doc) => {
-        if (doc.exists) {
-          console.log("Configuración remota recibida");
-          const remoteSettings = doc.data();
-          const settings = { ...defaultSettings, ...remoteSettings };
-          
-          // Guardar localmente y aplicar
-          localStorage.setItem('queue_overlay_settings', JSON.stringify(settings));
-          applySettings(settings);
-          
-          // Actualizar inputs si existen
-          if (document.getElementById('inp-width')) {
-            document.getElementById('inp-width').value = settings.width;
-            document.getElementById('inp-minHeight').value = settings.minHeight;
-            document.getElementById('inp-spacing').value = settings.spacing !== undefined ? settings.spacing : 15;
-            document.getElementById('inp-padding').value = settings.padding !== undefined ? settings.padding : 15;
-            document.getElementById('inp-textGap').value = settings.textGap !== undefined ? settings.textGap : 4;
-            document.getElementById('inp-borderRadius').value = settings.borderRadius;
-            
-            document.getElementById('inp-showHeader').checked = settings.showHeader !== undefined ? settings.showHeader : true;
-            document.getElementById('inp-showArtist').checked = settings.showArtist !== undefined ? settings.showArtist : true;
-            document.getElementById('inp-showUser').checked = settings.showUser !== undefined ? settings.showUser : true;
-            document.getElementById('inp-showEmpty').checked = settings.showEmpty !== undefined ? settings.showEmpty : true;
-
-            document.getElementById('inp-animEntry').value = settings.animEntry;
-            document.getElementById('inp-animExit').value = settings.animExit;
-            
-            document.getElementById('inp-font').value = settings.font;
-            document.getElementById('inp-fontSize').value = settings.fontSize;
-            document.getElementById('inp-accent').value = settings.accent;
-            document.getElementById('inp-bg').value = settings.bg;
-            
-            const primaryOpacityVal = settings.primaryOpacity !== undefined ? settings.primaryOpacity : 100;
-            document.getElementById('inp-primaryOpacity').value = primaryOpacityVal;
-            document.getElementById('primary-opacity-val').innerText = primaryOpacityVal + '%';
-
-            const opacityVal = settings.secondaryOpacity !== undefined ? settings.secondaryOpacity : 60;
-            document.getElementById('inp-secondaryOpacity').value = opacityVal;
-            document.getElementById('opacity-val').innerText = opacityVal + '%';
-
-            document.getElementById('inp-text').value = settings.text;
-          }
+    let db = null;
+    try {
+      if (typeof firebase !== 'undefined' && firebase.apps) {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
         }
-      }, (error) => {
-         console.warn("No se pudo sincronizar configuración remota:", error);
-      });
+        db = firebase.firestore();
+      } else {
+        console.warn('Firebase SDK not loaded');
+      }
+    } catch (e) {
+      console.error('Error initializing Firebase:', e);
+      try {
+        db = firebase.firestore();
+      } catch (_) {}
+    }
+
+    if (db) {
+      db.collection('userSettings').doc('global_queue_config')
+        .onSnapshot((doc) => {
+          if (doc.exists) {
+            console.log("Configuración remota recibida");
+            const remoteSettings = doc.data();
+            const settings = { ...defaultSettings, ...remoteSettings };
+            
+            // Guardar localmente y aplicar
+            localStorage.setItem('queue_overlay_settings', JSON.stringify(settings));
+            applySettings(settings);
+            
+            // Actualizar inputs si existen
+            if (document.getElementById('inp-width')) {
+              document.getElementById('inp-width').value = settings.width;
+              document.getElementById('inp-minHeight').value = settings.minHeight;
+              document.getElementById('inp-spacing').value = settings.spacing !== undefined ? settings.spacing : 15;
+              document.getElementById('inp-padding').value = settings.padding !== undefined ? settings.padding : 15;
+              document.getElementById('inp-textGap').value = settings.textGap !== undefined ? settings.textGap : 4;
+              document.getElementById('inp-borderRadius').value = settings.borderRadius;
+              
+              document.getElementById('inp-showHeader').checked = settings.showHeader !== undefined ? settings.showHeader : true;
+              document.getElementById('inp-showArtist').checked = settings.showArtist !== undefined ? settings.showArtist : true;
+              document.getElementById('inp-showUser').checked = settings.showUser !== undefined ? settings.showUser : true;
+              document.getElementById('inp-showEmpty').checked = settings.showEmpty !== undefined ? settings.showEmpty : true;
+
+              document.getElementById('inp-animEntry').value = settings.animEntry;
+              document.getElementById('inp-animExit').value = settings.animExit;
+              
+              document.getElementById('inp-font').value = settings.font;
+              document.getElementById('inp-fontSize').value = settings.fontSize;
+              document.getElementById('inp-accent').value = settings.accent;
+              document.getElementById('inp-bg').value = settings.bg;
+              
+              const primaryOpacityVal = settings.primaryOpacity !== undefined ? settings.primaryOpacity : 100;
+              document.getElementById('inp-primaryOpacity').value = primaryOpacityVal;
+              document.getElementById('primary-opacity-val').innerText = primaryOpacityVal + '%';
+
+              const opacityVal = settings.secondaryOpacity !== undefined ? settings.secondaryOpacity : 60;
+              document.getElementById('inp-secondaryOpacity').value = opacityVal;
+              document.getElementById('opacity-val').innerText = opacityVal + '%';
+
+              document.getElementById('inp-text').value = settings.text;
+            }
+          }
+        }, (error) => {
+           console.warn("No se pudo sincronizar configuración remota:", error);
+        });
+    } else {
+      console.warn("Firestore no inicializado. No se cargará configuración remota.");
+    }
 
     const container = document.getElementById('queue-container');
     
@@ -988,7 +1005,7 @@
     }
 
     // Orden manual: aplicar
-    console.log("Queue Overlay v2.4-order-fix loaded");
+    console.log("Queue Overlay v2.5-firebase-reload-fix loaded");
 
     function applyOrder(items, order) {
       try {
@@ -1390,67 +1407,66 @@
 
     function markSongAsPlayed(id) {
       if (!id) return;
-      // Actualizar Firestore para que sea persistente y real
+      if (!db) return;
       db.collection('playedSongs').doc(currentDay).set({
-        songs: firebase.firestore.FieldValue.arrayUnion(id),
-        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true })
-      .then(() => console.log("Song marked as played:", id))
-      .catch(err => console.error("Error marking song as played:", err));
+          songs: firebase.firestore.FieldValue.arrayUnion(id),
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true })
+        .then(() => console.log("Song marked as played:", id))
+        .catch(err => console.error("Error marking song as played:", err));
     }
 
     const currentDay = getLocalDateKey();
     console.log("Escuchando día:", currentDay);
 
-    // 1. Suscripción a Solicitudes (Cola)
-    // Usamos 'desc' para mostrar lo más reciente primero (Newest first)
-    db.collection('solicitudes')
-      .where('day', '==', currentDay)
-      .orderBy('ts', 'desc') 
-      .onSnapshot((snapshot) => {
-        const temp = [];
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          // Preservar ID de data si existe (ej. TikTok), sino usar doc ID
-          const item = { ...data };
-          if (!item.id) item.id = doc.id;
-          temp.push(item);
+    if (db) {
+      db.collection('solicitudes')
+        .where('day', '==', currentDay)
+        .orderBy('ts', 'desc') 
+        .onSnapshot((snapshot) => {
+          const temp = [];
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            const item = { ...data };
+            if (!item.id) item.id = doc.id;
+            temp.push(item);
+          });
+          allRequests = temp;
+          renderQueue();
+          checkCurrentTrackAgainstQueue();
+        }, (error) => {
+          console.error("Error en solicitudes:", error);
         });
-        // Ya está en orden cronológico
-        allRequests = temp;
-        renderQueue();
-        checkCurrentTrackAgainstQueue(); // Check if any new request matches current playing song
-      }, (error) => {
-        console.error("Error en solicitudes:", error);
-      });
 
-    // 2. Suscripción a Canciones Reproducidas (Estado Toggle)
-    db.collection('playedSongs').doc(currentDay)
-      .onSnapshot((doc) => {
-        if (doc.exists) {
-          const data = doc.data();
-          const songs = data.songs || data.list || [];
-          playedSongIds = new Set(songs);
-        } else {
-          playedSongIds = new Set();
-        }
-        renderQueue();
-      }, (error) => {
-        console.error("Error en playedSongs:", error);
-      });
+      db.collection('playedSongs').doc(currentDay)
+        .onSnapshot((doc) => {
+          if (doc.exists) {
+            const data = doc.data();
+            const songs = data.songs || data.list || [];
+            playedSongIds = new Set(songs);
+          } else {
+            playedSongIds = new Set();
+          }
+          renderQueue();
+        }, (error) => {
+          console.error("Error en playedSongs:", error);
+        });
 
-    // 3. Suscripción a Orden Manual (Mover canciones)
-    db.collection('manualOrders').doc(currentDay)
-      .onSnapshot((doc) => {
-        if (doc.exists) {
-          currentManualOrder = Array.isArray(doc.data().order) ? doc.data().order : [];
-        } else {
-          currentManualOrder = [];
-        }
-        renderQueue();
-      }, (error) => {
-        console.error("Error en manualOrders:", error);
-      });
+      db.collection('manualOrders').doc(currentDay)
+        .onSnapshot((doc) => {
+          if (doc.exists) {
+            currentManualOrder = Array.isArray(doc.data().order) ? doc.data().order : [];
+          } else {
+            currentManualOrder = [];
+          }
+          renderQueue();
+        }, (error) => {
+          console.error("Error en manualOrders:", error);
+        });
+    } else {
+      console.warn("Firestore no disponible. Cola no podrá sincronizarse.");
+      renderQueue();
+    }
 
     // --- Lógica de Simulación ---
     const debugControls = document.getElementById('debug-controls');
@@ -1458,6 +1474,7 @@
     debugControls.addEventListener('mouseleave', () => debugControls.style.opacity = '0.2');
 
     function simulateQueueRequest() {
+      if (!db) return;
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
       const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
       
