@@ -2044,6 +2044,29 @@
         } catch (err) {
           console.error('Error al deshacer:', err);
         }
+
+        try {
+          const selectedDay = String(document.getElementById('day-select')?.value || '').trim();
+          if (selectedDay === day) {
+            const restored = {
+              ...(action.requestData || {}),
+              id: action.docId || (action.requestData?.id || null),
+              requestId: action.requestData?.id,
+              day,
+              hora: action.requestData?.hora || action.itemForLog?.hora || toHour(action.requestData?.ts)
+            };
+
+            const idKey = String(action.docId || '');
+            const next = Array.isArray(currentDayItems) ? currentDayItems.slice() : [];
+            const existingIdx = idKey ? next.findIndex(x => String(x?.id || '') === idKey) : -1;
+            if (existingIdx >= 0) next[existingIdx] = restored;
+            else next.push(restored);
+
+            currentDayItems = applyOrder(next, currentManualOrder);
+            window.__dayItems = currentDayItems;
+            renderSolicitudes(currentDayItems);
+          }
+        } catch (_) {}
       }
 
       async function redoLastEditAction() {
@@ -2102,6 +2125,23 @@
         } catch (err) {
           console.error('Error al rehacer:', err);
         }
+
+        try {
+          const selectedDay = String(document.getElementById('day-select')?.value || '').trim();
+          if (selectedDay === day) {
+            const idKey = String(action.docId || '');
+            const nextItems = Array.isArray(currentDayItems) ? currentDayItems.slice() : [];
+            const filtered = nextItems.filter((x) => {
+              if (idKey && String(x?.id || '') === idKey) return false;
+              const sid = `${x?.usuario}-${x?.cancion}-${x?.artista}-${x?.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+              if (songId && sid === songId) return false;
+              return true;
+            });
+            currentDayItems = applyOrder(filtered, currentManualOrder);
+            window.__dayItems = currentDayItems;
+            renderSolicitudes(currentDayItems);
+          }
+        } catch (_) {}
       }
 
       undoDeleteBtn?.addEventListener('click', (e) => {
@@ -2270,6 +2310,7 @@
               genero: it.genero,
               cover: it.cover,
               ts: it.ts || new Date(),
+              hora: it.hora,
               status: it.status || 'pending',
               day
             };
