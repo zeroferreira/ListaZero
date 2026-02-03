@@ -1474,7 +1474,6 @@
     debugControls.addEventListener('mouseleave', () => debugControls.style.opacity = '0.2');
 
     function simulateQueueRequest() {
-      if (!db) return;
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
       const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
       
@@ -1484,20 +1483,37 @@
       const randomUser = "Prueba";
       
       const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const hora = `${hh}:${mm}`;
+      const tsValue = (typeof firebase !== 'undefined' && firebase?.firestore?.Timestamp?.fromDate)
+        ? firebase.firestore.Timestamp.fromDate(now)
+        : now;
       const req = {
+        id: `${randomUser}-${randomSong}-${randomArtist}-${hora}`.replace(/[^a-zA-Z0-9-]/g, ''),
         usuario: randomUser,
         cancion: randomSong,
         artista: randomArtist,
-        ts: now, // Objeto Date directo
+        ts: tsValue,
         day: getLocalDateKey(now),
+        hora,
+        status: 'pending',
         isSimulation: true
       };
 
       // Enviar a Firebase para que se refleje en OBS
       console.log("Enviando simulación a Firebase:", req);
+      if (!db) {
+        allRequests.push(req);
+        renderQueue();
+        return;
+      }
       db.collection('solicitudes').add(req)
         .then(() => console.log("Simulación enviada con éxito"))
-        .catch(err => console.error("Error enviando simulación:", err));
+        .catch(err => {
+          console.error("Error enviando simulación:", err);
+          try { allRequests.push(req); renderQueue(); } catch (_) {}
+        });
     }
 
     function simulateToggleFirst() {

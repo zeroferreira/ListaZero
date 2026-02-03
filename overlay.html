@@ -1182,7 +1182,6 @@
 
     // Función de simulación para pruebas manuales
     function simulateRequest() {
-      if (!db) return;
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
       const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
       
@@ -1193,20 +1192,37 @@
 
       const now = new Date();
       const dayKey = getLocalDateKey(now);
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const hora = `${hh}:${mm}`;
+      const songId = `${randomUser}-${randomSong}-${randomArtist}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+      const tsValue = (typeof firebase !== 'undefined' && firebase?.firestore?.Timestamp?.fromDate)
+        ? firebase.firestore.Timestamp.fromDate(now)
+        : now;
 
       const req = {
+        id: songId,
         cancion: randomSong,
         artista: randomArtist,
         usuario: randomUser,
-        ts: now,
+        ts: tsValue,
         day: dayKey,
+        hora,
+        status: 'pending',
         isSimulation: true
       };
 
       console.log("Enviando simulación a Firebase:", req);
+      if (!db) {
+        addToQueue(req);
+        return;
+      }
       db.collection('solicitudes').add(req)
         .then(() => console.log("Simulación enviada con éxito"))
-        .catch(err => console.error("Error enviando simulación:", err));
+        .catch(err => {
+          console.error("Error enviando simulación:", err);
+          try { addToQueue(req); } catch (_) {}
+        });
     }
 
     // Modo de prueba automático: ?test=true
