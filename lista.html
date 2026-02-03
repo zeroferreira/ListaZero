@@ -2506,19 +2506,40 @@
         function updateEditToggleVisibility() {
           if (!editToggleBtn) return;
           const isAdminOpen = !!adminPanelEl && !adminPanelEl.hidden;
-          editToggleBtn.hidden = !isAdminOpen;
-          editToggleBtn.setAttribute('aria-pressed', 'false');
-          solicitudesList?.classList.remove('editing');
-          editUndoStack = [];
-          editRedoStack = [];
-          refreshEditActionsBar();
-          if (currentDayItems?.length) renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
+          const djMode = (typeof isDJDevice === 'function') ? isDJDevice() : false;
+          editToggleBtn.hidden = djMode ? false : !isAdminOpen;
+
+          try {
+            const tools = document.querySelector('.title-tools');
+            const searchBox = tools?.querySelector('.search-box');
+            const themeBtn = document.getElementById('theme-btn');
+            const menuBtn = document.getElementById('menu-btn');
+            if (tools && editToggleBtn) {
+              if (djMode && searchBox && themeBtn) {
+                if (editToggleBtn.parentNode !== tools) tools.appendChild(editToggleBtn);
+                if (editToggleBtn.previousElementSibling !== searchBox) tools.insertBefore(editToggleBtn, themeBtn);
+              } else if (!djMode && themeBtn && menuBtn) {
+                if (editToggleBtn.parentNode !== tools) tools.appendChild(editToggleBtn);
+                if (editToggleBtn.nextElementSibling !== menuBtn) tools.insertBefore(editToggleBtn, menuBtn);
+              }
+            }
+          } catch (_) {}
+
+          if (!djMode && !isAdminOpen) {
+            editToggleBtn.setAttribute('aria-pressed', 'false');
+            solicitudesList?.classList.remove('editing');
+            editUndoStack = [];
+            editRedoStack = [];
+            refreshEditActionsBar();
+            if (currentDayItems?.length) renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
+          }
         }
 
         function toggleEditMode() {
           if (!editToggleBtn) return;
           const isAdminOpen = !!adminPanelEl && !adminPanelEl.hidden;
-          if (!isAdminOpen) {
+          const djMode = (typeof isDJDevice === 'function') ? isDJDevice() : false;
+          if (!isAdminOpen && !djMode) {
             if (adminModalEl) {
               adminModalEl.hidden = false;
               if (adminPassInputEl) adminPassInputEl.value = '';
@@ -2598,6 +2619,7 @@
             
             // Actualizar UI
             updateDJControls();
+            try { updateEditToggleVisibility(); } catch (_) {}
           } else {
              // Si no existe config en la nube, NADIE es DJ automáticamente.
              // Se requiere acción manual en el botón "Establecer como DJ".
