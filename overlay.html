@@ -921,62 +921,74 @@
       appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
     };
 
-    // Inicializar Firebase
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-
-    // Sincronizar configuración global desde Firestore
-    db.collection('userSettings').doc('global_overlay_config')
-      .onSnapshot((doc) => {
-        if (doc.exists) {
-          console.log("Configuración remota recibida");
-          const remoteSettings = doc.data();
-          const settings = { ...defaultSettings, ...remoteSettings };
-          
-          // Guardar localmente y aplicar
-          localStorage.setItem('overlay_settings', JSON.stringify(settings));
-          applySettings(settings);
-          
-          // Actualizar inputs si el panel está abierto (o para la próxima vez)
-          if (document.getElementById('inp-width')) {
-              document.getElementById('inp-width').value = settings.width;
-              document.getElementById('inp-minHeight').value = settings.minHeight;
-              document.getElementById('inp-borderRadius').value = settings.borderRadius;
-              document.getElementById('inp-animType').value = settings.animType;
-              document.getElementById('inp-textAnim').value = settings.textAnim || 'text-anim-fade';
-              
-              document.getElementById('inp-font').value = settings.font;
-              
-              document.getElementById('inp-fontSizeSong').value = settings.fontSizeSong;
-              document.getElementById('inp-fontSizeArtist').value = settings.fontSizeArtist;
-              document.getElementById('inp-fontSizeUser').value = settings.fontSizeUser;
-              document.getElementById('inp-fontSizeHeader').value = settings.fontSizeHeader;
-        
-              document.getElementById('inp-accent').value = settings.accent;
-              document.getElementById('inp-bg').value = settings.bg;
-              
-              const opVal = settings.opacity !== undefined ? settings.opacity : 85;
-              document.getElementById('inp-opacity').value = opVal;
-              document.getElementById('bg-opacity-val').innerText = opVal + '%';
-        
-              document.getElementById('inp-text').value = settings.text;
-              document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
-              
-              if(document.getElementById('inp-sepColor')) {
-                   document.getElementById('inp-sepColor').value = settings.sepColor || '#ffffff';
-                   document.getElementById('inp-sepUseAccent').checked = settings.sepUseAccent !== undefined ? settings.sepUseAccent : true;
-                   toggleSepColorInput();
-
-                   document.getElementById('inp-sepOpacity').value = settings.sepOpacity !== undefined ? settings.sepOpacity : 10;
-                   document.getElementById('sep-opacity-val').innerText = (settings.sepOpacity !== undefined ? settings.sepOpacity : 10) + '%';
-                   document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
-                   document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
-               }
-          }
+    let db = null;
+    try {
+      if (typeof firebase !== 'undefined' && firebase.apps) {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
         }
-      }, (error) => {
-         console.warn("No se pudo sincronizar configuración remota (posiblemente offline o sin permisos):", error);
-      });
+        db = firebase.firestore();
+      } else {
+        console.warn('Firebase SDK not loaded');
+      }
+    } catch (e) {
+      console.error('Error initializing Firebase:', e);
+      try {
+        db = firebase.firestore();
+      } catch (_) {}
+    }
+
+    if (db) {
+      db.collection('userSettings').doc('global_overlay_config')
+        .onSnapshot((doc) => {
+          if (doc.exists) {
+            console.log("Configuración remota recibida");
+            const remoteSettings = doc.data();
+            const settings = { ...defaultSettings, ...remoteSettings };
+            
+            localStorage.setItem('overlay_settings', JSON.stringify(settings));
+            applySettings(settings);
+            
+            if (document.getElementById('inp-width')) {
+                document.getElementById('inp-width').value = settings.width;
+                document.getElementById('inp-minHeight').value = settings.minHeight;
+                document.getElementById('inp-borderRadius').value = settings.borderRadius;
+                document.getElementById('inp-animType').value = settings.animType;
+                document.getElementById('inp-textAnim').value = settings.textAnim || 'text-anim-fade';
+                
+                document.getElementById('inp-font').value = settings.font;
+                
+                document.getElementById('inp-fontSizeSong').value = settings.fontSizeSong;
+                document.getElementById('inp-fontSizeArtist').value = settings.fontSizeArtist;
+                document.getElementById('inp-fontSizeUser').value = settings.fontSizeUser;
+                document.getElementById('inp-fontSizeHeader').value = settings.fontSizeHeader;
+          
+                document.getElementById('inp-accent').value = settings.accent;
+                document.getElementById('inp-bg').value = settings.bg;
+                
+                const opVal = settings.opacity !== undefined ? settings.opacity : 85;
+                document.getElementById('inp-opacity').value = opVal;
+                document.getElementById('bg-opacity-val').innerText = opVal + '%';
+          
+                document.getElementById('inp-text').value = settings.text;
+                document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
+                
+                if(document.getElementById('inp-sepColor')) {
+                     document.getElementById('inp-sepColor').value = settings.sepColor || '#ffffff';
+                     document.getElementById('inp-sepUseAccent').checked = settings.sepUseAccent !== undefined ? settings.sepUseAccent : true;
+                     toggleSepColorInput();
+
+                     document.getElementById('inp-sepOpacity').value = settings.sepOpacity !== undefined ? settings.sepOpacity : 10;
+                     document.getElementById('sep-opacity-val').innerText = (settings.sepOpacity !== undefined ? settings.sepOpacity : 10) + '%';
+                     document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
+                     document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
+                 }
+            }
+          }
+        }, (error) => {
+           console.warn("No se pudo sincronizar configuración remota (posiblemente offline o sin permisos):", error);
+        });
+    }
 
     const card = document.getElementById('card');
     const songEl = document.getElementById('song');
@@ -1034,13 +1046,24 @@
 
     // Variable para controlar la carga inicial
     let isInitialLoad = true;
+    const overlayStartedAt = Date.now();
 
-    // Escuchar la colección 'solicitudes'
-    // Ordenamos por timestamp descendente y limitamos a 1 para ver el último
-    db.collection('solicitudes')
-      .orderBy('ts', 'desc')
-      .limit(1)
-      .onSnapshot((snapshot) => {
+    function getLocalDateKey(ts) {
+      const dt = ts ? new Date(ts) : new Date();
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      const d = String(dt.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    const currentDay = getLocalDateKey();
+
+    if (db) {
+      db.collection('solicitudes')
+        .where('day', '==', currentDay)
+        .orderBy('ts', 'desc')
+        .limit(1)
+        .onSnapshot((snapshot) => {
         if (snapshot.empty) {
           isInitialLoad = false;
           return;
@@ -1071,11 +1094,14 @@
             console.log(`Pedido recibido: ${data.cancion}, TS: ${docTime}, Ahora: ${now}, Diff: ${diff}ms, Initial: ${isInitialLoad}`);
 
             if (isInitialLoad) {
-               // En carga inicial, NO mostrar nada para evitar popups al recargar
-               console.log('Solicitud existente ignorada en carga inicial:', data);
+              const isFreshSinceOpen = docTime >= (overlayStartedAt - 1500);
+              if (isFreshSinceOpen && diff <= initialLoadThreshold) {
+                addToQueue(data);
+              } else {
+                console.log('Solicitud existente ignorada en carga inicial:', data);
+              }
             } else {
-               // Si NO es carga inicial, es un evento en tiempo real.
-               addToQueue(data);
+              addToQueue(data);
             }
           }
         });
@@ -1083,12 +1109,17 @@
         // Marcar carga inicial como completada después de procesar el primer snapshot
         isInitialLoad = false;
 
-      }, (error) => {
-        console.error("Error escuchando solicitudes:", error);
-      });
+        }, (error) => {
+          console.error("Error escuchando solicitudes:", error);
+        });
+    } else {
+      console.warn("Firestore no disponible. Overlay no podrá escuchar solicitudes.");
+      isInitialLoad = false;
+    }
 
     // Función de simulación para pruebas manuales
     function simulateRequest() {
+      if (!db) return;
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
       const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
       
@@ -1097,11 +1128,7 @@
       const randomUser = "Prueba";
 
       const now = new Date();
-      // Utilidad simple para fecha local YYYY-MM-DD
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, '0');
-      const d = String(now.getDate()).padStart(2, '0');
-      const dayKey = `${y}-${m}-${d}`;
+      const dayKey = getLocalDateKey(now);
 
       const req = {
         cancion: randomSong,
