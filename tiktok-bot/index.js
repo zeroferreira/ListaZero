@@ -37,7 +37,8 @@ let config = {
     allowSuperFans: true,
     minCoinsForVip: 30,
     vipDurationSession: true,
-    tiktokUsername: "zeroferreira" // Default
+    tiktokUsername: "zeroferreira", // Default
+    sessionId: "" // TikTok Session ID (obligatorio si hay error 521)
 };
 
 try {
@@ -137,16 +138,25 @@ function startBot() {
     // Inicializar conexión TikTok
     console.log(`🔌 Configurando conexión para @${TIKTOK_USERNAME}...`);
     
-    tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, {
+    const connectionOptions = {
         processInitialData: false,
         enableExtendedGiftInfo: true,
         enableWebsocketUpgrade: true,
         requestPollingIntervalMs: 2000,
         clientParams: {
-            app_language: 'es-ES', // Ajustado a español
+            app_language: 'es-ES',
             device_platform: 'web_cast'
         }
-    });
+    };
+
+    if (config.sessionId) {
+        console.log("🔑 Usando Session ID configurado.");
+        connectionOptions.sessionId = config.sessionId;
+    } else {
+        console.log("⚠️ No se ha configurado Session ID. Si falla la conexión (error 521), agrégalo en config.json");
+    }
+
+    tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, connectionOptions);
 
     setupListeners();
     
@@ -264,7 +274,8 @@ const tempVipUsers = new Set();
 async function handleSongRequest(user, query) {
     try {
         // 1. Buscar en Apple Music
-        const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=1`;
+        // Aumentamos el límite para poder filtrar resultados malos (karaoke, covers, etc.)
+        const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=10`;
         const response = await axios.get(searchUrl);
         
         if (response.data.resultCount === 0) {
@@ -272,7 +283,33 @@ async function handleSongRequest(user, query) {
             return;
         }
 
-        const track = response.data.results[0];
+        // Selección inteligente de canción
+        let track = response.data.results[0]; // Por defecto el primero
+        
+        // Palabras clave a evitar
+        const avoidKeywords = ['karaoke', 'tribute', 'cover', 'instrumental', 'remix', 'lullaby', 'rendition', 'slowed', 'reverb'];
+        
+        // Buscar el mejor resultado que NO tenga palabras prohibidas
+        const cleanTrack = response.data.results.find(t => {
+            const lowerName = (t.trackName || '').toLowerCase();
+            const lowerArtist = (t.artistName || '').toLowerCase();
+            const lowerCollection = (t.collectionName || '').toLowerCase();
+            
+            const hasBadWord = avoidKeywords.some(kw => 
+                lowerName.includes(kw) || 
+                lowerArtist.includes(kw) || 
+                lowerCollection.includes(kw)
+            );
+            
+            return !hasBadWord;
+        });
+
+        if (cleanTrack) {
+            track = cleanTrack;
+        } else {
+             console.log(`⚠️ Todos los resultados parecen ser covers/karaoke, usando el primero disponible.`);
+        }
+
         const songName = track.trackName;
         const artistName = track.artistName;
         const artworkUrl = track.artworkUrl100.replace('100x100', '600x600'); 
