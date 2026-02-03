@@ -3432,10 +3432,6 @@
           unsubscribeSolicitudes();
           unsubscribeSolicitudes = null;
         }
-        if (unsubscribeManualOrder) {
-          unsubscribeManualOrder();
-          unsubscribeManualOrder = null;
-        }
         
         // Iniciar suscripción a canciones reproducidas para este día
         if (typeof subscribePlayedSongs === 'function') {
@@ -3465,9 +3461,10 @@
             const tb = getItemTimeMs(b);
             return tb - ta;
           });
-          currentDayItems = items;
-          window.__dayItems = items;
-          renderSolicitudes(items);
+          const visibleItems = applyOrder(items, currentManualOrder);
+          currentDayItems = visibleItems;
+          window.__dayItems = visibleItems;
+          renderSolicitudes(visibleItems);
           try { if (window.refreshStatsTicker) window.refreshStatsTicker(); } catch (_) {}
           return;
         }
@@ -3477,8 +3474,8 @@
         end.setDate(end.getDate() + 1);
 
         const applyItems = (items) => {
-          currentDayItems = items;
           const visibleItems = applyOrder(items, currentManualOrder);
+          currentDayItems = visibleItems;
           window.__dayItems = visibleItems;
           renderSolicitudes(visibleItems);
           try { if (window.refreshStatsTicker) window.refreshStatsTicker(); } catch (_) {}
@@ -3585,28 +3582,6 @@
         }, (err) => {
           console.error('Error suscripción solicitudes:', err);
         });
-
-        // Suscripción al orden manual compartido por día
-        unsubscribeManualOrder = db.collection('manualOrders').doc(dayValue).onSnapshot((doc) => {
-          if (doc.exists) {
-            currentManualOrder = Array.isArray(doc.data().order) ? doc.data().order : [];
-          } else {
-            currentManualOrder = [];
-          }
-          const visibleItems = applyOrder(currentDayItems, currentManualOrder);
-          window.__dayItems = visibleItems;
-          renderSolicitudes(visibleItems);
-          try { if (window.refreshStatsTicker) window.refreshStatsTicker(); } catch (_) {}
-          try {
-            if (window.__usersSelectTimer) clearTimeout(window.__usersSelectTimer);
-            window.__usersSelectTimer = setTimeout(() => {
-              try { if (typeof window.renderAllUsersSelect === 'function') window.renderAllUsersSelect(); } catch (_) {}
-              try { if (typeof window.populateUserSelectorFromLocalStorage === 'function') window.populateUserSelectorFromLocalStorage(); } catch (_) {}
-            }, 150);
-          } catch (_) {}
-        });
-
-        
       }
 
       // Hacer accesible desde el IIFE de UI
@@ -4322,15 +4297,19 @@
             }
           } catch (_) {}
 
+          try { reorderCurrentDayItemsWithManualOrder(day); } catch (_) {}
+
           if (!window.db) {
-            reorderCurrentDayItemsWithManualOrder(day);
             return;
           }
 
           unsubscribeManualOrder = window.db.collection('manualOrders').doc(day)
             .onSnapshot((doc) => {
               const data = doc.data();
-              currentManualOrder = Array.isArray(data?.order) ? data.order : [];
+              const remoteOrder = Array.isArray(data?.order) ? data.order : [];
+              if (remoteOrder.length) {
+                currentManualOrder = remoteOrder;
+              }
               reorderCurrentDayItemsWithManualOrder(day);
             }, (err) => {
               console.error('Error suscripción orden manual:', err);
@@ -4346,36 +4325,16 @@
           const currentDay = document.getElementById('day-select')?.value;
           if (currentDay !== day) return;
 
-          let savedOrder = Array.isArray(currentManualOrder) ? currentManualOrder : [];
-          if (!savedOrder.length) {
-            renderSolicitudes(currentDayItems);
-            return;
-          }
-
-          const withIds = currentDayItems.map(item => ({
-            __sid: `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, ''),
-            ...item
-          }));
-
-          const unknownFirst = withIds
-            .filter(it => !savedOrder.includes(it.__sid))
-            .map(({ __sid, ...rest }) => rest);
-
-          const knownOrdered = [];
-          savedOrder.forEach(sid => {
-            const found = withIds.find(it => it.__sid === sid);
-            if (found) {
-              const { __sid, ...rest } = found;
-              knownOrdered.push(rest);
-            }
-          });
-
-          // Mantener consistencia con applyOrder: Ordenados primero (FIFO), Nuevos al final
-          currentDayItems = [...knownOrdered, ...unknownFirst];
-          renderSolicitudes(currentDayItems);
+          const ordered = applyOrder(currentDayItems, currentManualOrder);
+          currentDayItems = ordered;
+          window.__dayItems = ordered;
+          renderSolicitudes(ordered);
         } catch (e) {
           console.error('Error reordenando items con orden manual:', e);
-          renderSolicitudes(currentDayItems);
+          const ordered = applyOrder(currentDayItems, currentManualOrder);
+          currentDayItems = ordered;
+          window.__dayItems = ordered;
+          renderSolicitudes(ordered);
         }
       }
 
@@ -4725,9 +4684,9 @@
 
       daySelect?.addEventListener('change', () => {
         if (daySelect.value) {
+          try { subscribeManualOrderForDay(daySelect.value); } catch (e) { console.warn('Falló subscribeManualOrderForDay:', e); }
           try { subscribeSolicitudesForDay(daySelect.value); } catch (e) { console.warn('Falló subscribeSolicitudesForDay:', e); }
           try { subscribePlayedSongs(daySelect.value); } catch (e) { console.warn('Falló subscribePlayedSongs:', e); }
-          try { subscribeManualOrderForDay(daySelect.value); } catch (e) { console.warn('Falló subscribeManualOrderForDay:', e); }
         }
       });
       vipOnly?.addEventListener('change', () => {
@@ -4764,9 +4723,9 @@
         console.log('✅ Suscripciones iniciadas');
         await renderAllUsersSelect();
         if (daySelect.value) {
+          subscribeManualOrderForDay(daySelect.value);
           subscribeSolicitudesForDay(daySelect.value);
           subscribePlayedSongs(daySelect.value);
-          subscribeManualOrderForDay(daySelect.value);
         }
       })();
     })();
