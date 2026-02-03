@@ -4103,11 +4103,15 @@
       // Función para calcular estadísticas del día
       function computeDayStatsFromItems(items) {
         const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
+        let totalCount = 0;
         for (let i = 0; i < items.length; i++) {
           const it = items[i] || {};
+          const uNorm = String(it.usuario || '').trim().toLowerCase();
+          if (!uNorm || uNorm === 'prueba') continue;
+          totalCount++;
           const song = String(it.cancion || '').trim().toLowerCase();
           const artist = String(it.artista || '').trim().toLowerCase();
-          const user = String(it.usuario || '').trim().toLowerCase();
+          const user = uNorm;
           const genre = String(it.genero || '').trim().toLowerCase();
           if (song) songCount[song] = (songCount[song] || 0) + 1;
           if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(it.artista || '').trim(); }
@@ -4121,6 +4125,7 @@
         let vipRequests = 0; let z0VipRequests = 0;
         for (let i = 0; i < items.length; i++) {
           const u = items[i]?.usuario;
+          if (String(u || '').trim().toLowerCase() === 'prueba') continue;
           if (window.vipSet && window.vipSet.has(u)) vipRequests++;
           if (window.z0VipSet && window.z0VipSet.has(u)) z0VipRequests++;
         }
@@ -4145,7 +4150,7 @@
           topUser: top(userCount),
           topUsers3: usersTop3,
           topGenre: top(genreCount),
-          total: items.length,
+          total: totalCount,
           played: playedCount,
           vip: vipRequests,
           z0vip: z0VipRequests
@@ -4160,7 +4165,7 @@
       function fmt(x) { return x && x.length ? x : 'N/D'; }
       const top3Txt = Array.isArray(s.topArtists3) && s.topArtists3.length ? s.topArtists3.join(', ') : 'N/D';
       const usersTop3Txt = Array.isArray(s.topUsers3) && s.topUsers3.length ? s.topUsers3.join(', ') : 'N/D';
-      const latest = Array.isArray(items) && items.length ? items[0] : null;
+      const latest = Array.isArray(items) && items.length ? items[items.length - 1] : null;
       const latestTxt = latest ? (String(latest.cancion || '').trim() + (latest.artista ? ' — ' + String(latest.artista).trim() : '')) : 'N/D';
       const dayText = '📅 <strong>HOY</strong> • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) + ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3Txt + ' • <strong>🎤 Top 3 artistas:</strong> ' + top3Txt + ' • <strong>📝 Solicitudes:</strong> ' + (s.total || 0);
       const g = window.__globalStats || computeGlobalStats();
@@ -4172,8 +4177,9 @@
         avgTxtGlobal = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
       } else {
         const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-        const usersSet = new Set(solicitudes.map(x => String(x.usuario||'').trim()).filter(Boolean));
-        avgTxtGlobal = usersSet.size ? (solicitudes.length / usersSet.size).toFixed(1) : '0.0';
+        const filtered = (solicitudes || []).filter(x => String(x?.usuario || '').trim().toLowerCase() !== 'prueba');
+        const usersSet = new Set(filtered.map(x => String(x.usuario||'').trim()).filter(Boolean));
+        avgTxtGlobal = usersSet.size ? (filtered.length / usersSet.size).toFixed(1) : '0.0';
       }
       const globalText = '<strong>HISTORIA:</strong> • <strong>🎵 Canción más pedida:</strong> ' + fmtG(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') + '  •  <strong>👥 Top 3 usuarios:</strong> ' + usersTop3TxtGlobal + '  •  <strong>🎤 Top 3 artistas:</strong> ' + top3TxtGlobal + '  •  <strong>📊 Total solicitudes:</strong> ' + (g.total || 0) + '  •  <strong>📈 Promedio por usuario:</strong> ' + avgTxtGlobal;
       const sep = '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
@@ -4903,9 +4909,11 @@
       const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
       for (let i = 0; i < solicitudes.length; i++) {
         const s = solicitudes[i] || {};
+        const uNorm = String(s.usuario || '').trim().toLowerCase();
+        if (!uNorm || uNorm === 'prueba') continue;
         const song = String(s.cancion || '').trim().toLowerCase();
         const artist = String(s.artista || '').trim().toLowerCase();
-        const user = String(s.usuario || '').trim().toLowerCase();
+        const user = uNorm;
         const genre = String(s.genero || '').trim().toLowerCase();
         if (song) songCount[song] = (songCount[song] || 0) + 1;
         if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(s.artista || '').trim(); }
@@ -4933,7 +4941,7 @@
         topUser: top(userCount),
         topUsers3: usersTop3,
         topGenre: top(genreCount),
-        total: solicitudes.length
+        total: Object.values(userCount).reduce((a, b) => a + b, 0)
       };
     }
 
@@ -4948,7 +4956,7 @@
         const ds = computeDayStatsFromItems(items);
         const top3TxtDay = Array.isArray(ds.topArtists3) && ds.topArtists3.length ? ds.topArtists3.join(', ') : 'N/D';
         const usersTop3TxtDay = Array.isArray(ds.topUsers3) && ds.topUsers3.length ? ds.topUsers3.join(', ') : 'N/D';
-        const latest = Array.isArray(items) && items.length ? items[0] : null;
+        const latest = Array.isArray(items) && items.length ? items[items.length - 1] : null;
         const latestTxt = latest ? (String(latest.cancion || '').trim() + (latest.artista ? ' — ' + String(latest.artista).trim() : '')) : 'N/D';
         dayText = '📅 <strong>HOY</strong> • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) + ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3TxtDay + ' • <strong>🎤 Top 3 artistas:</strong> ' + top3TxtDay + ' • <strong>📝 Solicitudes:</strong> ' + (ds.total || 0);
       } catch (_) {}
@@ -4965,8 +4973,9 @@
         avgTxt = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
       } else {
         const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-        const usersSet = new Set(solicitudes.map(x => String(x.usuario||'').trim()).filter(Boolean));
-        avgTxt = usersSet.size ? (solicitudes.length / usersSet.size).toFixed(1) : '0.0';
+        const filtered = (solicitudes || []).filter(x => String(x?.usuario || '').trim().toLowerCase() !== 'prueba');
+        const usersSet = new Set(filtered.map(x => String(x.usuario||'').trim()).filter(Boolean));
+        avgTxt = usersSet.size ? (filtered.length / usersSet.size).toFixed(1) : '0.0';
       }
       const globalText = '<strong>HISTORIA:</strong> • <strong>🎵 Canción más pedida:</strong> ' + fmt(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') + '  •  <strong>' + usersLabel + ':</strong> ' + usersTop3Txt + '  •  <strong>🎤 Top 3 artistas:</strong> ' + top3Txt + '  •  <strong>📊 Total solicitudes:</strong> ' + (g.total || 0) + '  •  <strong>📈 Promedio por usuario:</strong> ' + avgTxt;
       const sep2 = '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
@@ -4993,9 +5002,11 @@
         let total = 0;
         snap.forEach((doc) => {
           const d = doc.data() || {};
+          const uNorm = String(d.usuario || '').trim().toLowerCase();
+          if (!uNorm || uNorm === 'prueba') return;
           const song = String(d.cancion || '').trim().toLowerCase();
           const artist = String(d.artista || '').trim().toLowerCase();
-          const user = String(d.usuario || '').trim().toLowerCase();
+          const user = uNorm;
           const genre = String(d.genero || '').trim().toLowerCase();
           if (song) songCount[song] = (songCount[song] || 0) + 1;
           if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(d.artista || '').trim(); }
