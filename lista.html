@@ -2172,6 +2172,7 @@
           li.dataset.username = (it.usuario || '').trim().toLowerCase();
           li.dataset.day = String(it.day || (it.fecha||'').split('T')[0] || '').trim();
           if (it.id) li.dataset.docId = it.id;
+          li.dataset.isTest = isTestRequestForStats(it) ? '1' : '0';
 
           if (isZ0Vip) {
             li.className = 'item z0-vip';
@@ -2736,6 +2737,8 @@
             console.warn('No se pudo obtener el día actual');
             return;
           }
+
+          const isTestItem = String(element?.dataset?.isTest || '') === '1';
           
           // Obtener datos locales como respaldo
           const localPlayedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
@@ -2789,45 +2792,43 @@
                 lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
               }, { merge: true });
 
-          // Actualizar contador por usuario en historial (para conteo inmediato desde Firebase)
-          const userForCounter = (element.dataset.username || '').trim();
-          await updateUserPlayedCounter(userForCounter, currentDay, isPlayed ? -1 : 1);
+              if (!isTestItem) {
+                const userForCounter = (element.dataset.username || '').trim();
+                await updateUserPlayedCounter(userForCounter, currentDay, isPlayed ? -1 : 1);
 
-              // Registrar evento de toggle en la web
-              const usuarioText = (element.querySelector('.col.col-usuario, .usuario')?.textContent || userForCounter || '').trim();
-              const cancionText = (element.querySelector('.col.col-cancion')?.textContent || '').trim();
-              const artistaText = (element.querySelector('.col.col-artista')?.textContent || '').trim();
-              const horaText = (element.querySelector('.col.col-time')?.textContent || '').trim();
-              await registerToggleEvent({
-                action: isPlayed ? 'unmark' : 'mark',
-                usuario: usuarioText,
-                cancion: cancionText,
-                artista: artistaText,
-                day: currentDay,
-                hora: horaText,
-                songId: songId
-              });
+                const usuarioText = (element.querySelector('.col.col-usuario, .usuario')?.textContent || userForCounter || '').trim();
+                const cancionText = (element.querySelector('.col.col-cancion')?.textContent || '').trim();
+                const artistaText = (element.querySelector('.col.col-artista')?.textContent || '').trim();
+                const horaText = (element.querySelector('.col.col-time')?.textContent || '').trim();
+                await registerToggleEvent({
+                  action: isPlayed ? 'unmark' : 'mark',
+                  usuario: usuarioText,
+                  cancion: cancionText,
+                  artista: artistaText,
+                  day: currentDay,
+                  hora: horaText,
+                  songId: songId
+                });
 
-              // Fallback robusto: disparar un recuento consistente para este usuario
-              try {
-                window.__recountTimers = window.__recountTimers || {};
-                const key = String(userForCounter||'').toLowerCase();
-                clearTimeout(window.__recountTimers[key]);
-                window.__recountTimers[key] = setTimeout(async () => {
-                  try { await recountToggleTotalsForUser(userForCounter); } catch (_){ }
-                }, 400);
-              } catch(_){ }
+                try {
+                  window.__recountTimers = window.__recountTimers || {};
+                  const key = String(userForCounter||'').toLowerCase();
+                  clearTimeout(window.__recountTimers[key]);
+                  window.__recountTimers[key] = setTimeout(async () => {
+                    try { await recountToggleTotalsForUser(userForCounter); } catch (_){ }
+                  }, 400);
+                } catch(_){ }
 
-              // Actualización optimista inmediata del set de toggles en memoria
-              try {
-                const normUser = String(userForCounter||'').trim().replace(/^@/,'').toLowerCase();
-                const sid = String(songId||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
-                window.__userToggleSet = window.__userToggleSet || {};
-                const set = window.__userToggleSet[normUser] || (window.__userToggleSet[normUser] = new Set());
-                if (isPlayed) { set.delete(sid); } else { set.add(sid); }
-                window.__toggleReady = window.__toggleReady || {}; window.__toggleReady[normUser] = true;
-                setPlayedStat(set.size);
-              } catch(_){ }
+                try {
+                  const normUser = String(userForCounter||'').trim().replace(/^@/,'').toLowerCase();
+                  const sid = String(songId||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+                  window.__userToggleSet = window.__userToggleSet || {};
+                  const set = window.__userToggleSet[normUser] || (window.__userToggleSet[normUser] = new Set());
+                  if (isPlayed) { set.delete(sid); } else { set.add(sid); }
+                  window.__toggleReady = window.__toggleReady || {}; window.__toggleReady[normUser] = true;
+                  setPlayedStat(set.size);
+                } catch(_){ }
+              }
               
             }
           } catch (firebaseError) {
@@ -2838,6 +2839,8 @@
           setTimeout(() => {
             forcePlayedSongStyles();
           }, 50);
+
+          if (isTestItem) return;
 
           // Actualizar contadores en tiempo real para el usuario del perfil visible
           try {
@@ -4082,6 +4085,8 @@
         if (!u) return true;
         if (u === 'prueba' || u.startsWith('prueba')) return true;
         if (it && it.isSimulation === true) return true;
+        if (it && it.isTest === true) return true;
+        if (it && String(it.source || '').toLowerCase() === 'tiktoktest') return true;
         return false;
       }
 
@@ -4737,7 +4742,10 @@
           cover: track.artworkUrl,
           ts: tsValue,
           status: 'pending',
-          day
+          day,
+          isSimulation: true,
+          isTest: true,
+          source: 'tiktokTest'
         };
 
         try {
@@ -4756,7 +4764,10 @@
               cover: track.artworkUrl,
               time: now.toISOString(),
               hora,
-              day
+              day,
+              isSimulation: true,
+              isTest: true,
+              source: 'tiktokTest'
             });
             byDay[day] = arr;
             localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
@@ -5089,6 +5100,11 @@
         
         snap.forEach((doc) => {
           const d = doc.data() || {};
+          try {
+            const keyName = d.displayName || doc.id;
+            const n = (window.normalizeUserForStats ? window.normalizeUserForStats(keyName) : String(keyName || '').trim().toLowerCase());
+            if (!n || n === 'prueba' || n.startsWith('prueba')) return;
+          } catch (_) {}
           
           // Lógica de géneros existente
           if (d && typeof d.genresCount === 'object') {
@@ -11018,7 +11034,7 @@
           // Obtener datos combinados de Firebase y localStorage
           const allSolicitudes = await getAllCombinedSolicitudes();
           
-          const userSongs = allSolicitudes.filter(s => s.usuario === targetUser);
+          const userSongs = allSolicitudes.filter(s => s.usuario === targetUser && !isTestRequestForStats(s));
           console.log(`🎵 ${targetUser}: ${userSongs.length} canciones encontradas de ${allSolicitudes.length} totales`);
           
           const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
@@ -11053,7 +11069,7 @@
           
           // “Primero en pedir”: contar días donde el primer pedido del día es del usuario
           // SOLO si hubo al menos 2 solicitudes ese día
-          const allWithTime = allSolicitudes.filter(s => s.timestamp || s.ts || s.time);
+          const allWithTime = allSolicitudes.filter(s => (s.timestamp || s.ts || s.time) && !isTestRequestForStats(s));
           const earliestByDay = new Map();
           const countsByDay = new Map();
           
