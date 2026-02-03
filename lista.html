@@ -379,6 +379,10 @@
     .admin-section-tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
     .admin-section-tabs .points-tab { margin-right: 0; }
     .edit-actions-bar { display: flex; gap: 8px; margin: 10px 0 6px; }
+    .badge-selector { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+    .badge-selector-title { text-align: center; font-weight: 700; font-size: 18px; }
+    .badge-tabs { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; }
+    .badge-tabs .points-tab { margin-right: 0; }
 
   </style>
 </head>
@@ -469,8 +473,15 @@
         <div id="badges-section" class="admin-section">
           <!-- Selector de Insignia -->
           <div class="admin-row badge-selector">
-            <label for="badge-type-select">Selecciona tipo de insignia:</label>
-            <select id="badge-type-select" class="admin-select">
+            <div class="badge-selector-title">Selecciona tipo de insignia</div>
+            <div class="badge-tabs" role="tablist" aria-label="Tipos de insignia">
+              <button type="button" class="points-tab badge-tab active" data-badge="vip" role="tab" aria-selected="true">👑 VIP</button>
+              <button type="button" class="points-tab badge-tab" data-badge="z0-vip" role="tab" aria-selected="false">⭐ Z0-VIP</button>
+              <button type="button" class="points-tab badge-tab" data-badge="donador" role="tab" aria-selected="false">💎 Donador</button>
+              <button type="button" class="points-tab badge-tab" data-badge="z0-fan" role="tab" aria-selected="false">🤍 z0-Fan</button>
+              <button type="button" class="points-tab badge-tab" data-badge="z0-platino" role="tab" aria-selected="false">🥈 z0-Platino</button>
+            </div>
+            <select id="badge-type-select" class="admin-select" hidden aria-hidden="true" tabindex="-1">
               <option value="vip">👑 VIP</option>
               <option value="z0-vip">⭐ Z0-VIP</option>
               <option value="donador">💎 Donador</option>
@@ -5054,6 +5065,7 @@
       const vipManagement = document.getElementById('vip-management');
       const z0VipManagement = document.getElementById('z0-vip-management');
       const donadorManagement = document.getElementById('donador-management');
+      const badgeTabs = Array.from(document.querySelectorAll('.badge-tab[data-badge]'));
 
       const userDeleteBtn = document.getElementById('user-delete');
       const userDeleteModal = document.getElementById('user-delete-modal');
@@ -5123,6 +5135,16 @@
 
       badgeTypeSelect?.addEventListener('change', (e) => {
         showBadgeManagement(e.target.value);
+        syncBadgeTabs(e.target.value);
+      });
+
+      badgeTabs.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const badgeType = btn.getAttribute('data-badge') || 'vip';
+          if (badgeTypeSelect) badgeTypeSelect.value = badgeType;
+          showBadgeManagement(badgeType);
+          syncBadgeTabs(badgeType);
+        });
       });
 
       // Función para mostrar el panel de administración
@@ -5151,7 +5173,9 @@
         switch(section) {
           case 'badges':
             if (badgesSection) badgesSection.hidden = false;
+            if (badgeTypeSelect) badgeTypeSelect.value = 'vip';
             showBadgeManagement('vip'); // Mostrar VIP por defecto
+            syncBadgeTabs('vip');
             break;
           case 'rewards':
             if (rewardsSection) rewardsSection.hidden = false;
@@ -5194,6 +5218,15 @@
             if (z0PlatinoManagement) z0PlatinoManagement.hidden = false;
             break;
         }
+      }
+
+      function syncBadgeTabs(badgeType) {
+        if (!badgeTabs || !badgeTabs.length) return;
+        badgeTabs.forEach((btn) => {
+          const isActive = btn.getAttribute('data-badge') === badgeType;
+          btn.classList.toggle('active', isActive);
+          btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
       }
 
       userDeleteBtn?.addEventListener('click', () => {
