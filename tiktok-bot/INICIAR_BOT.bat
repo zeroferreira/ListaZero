@@ -38,7 +38,7 @@ start http://localhost:3000/
 :: Iniciar el bot con reconexion automatica
 :loop
 echo [INFO] Iniciando Bot...
-node index.mjs
+node index.js
 echo.
 echo [ALERTA] El bot se cerro inesperadamente.
 echo [INFO] Reiniciando en 5 segundos...

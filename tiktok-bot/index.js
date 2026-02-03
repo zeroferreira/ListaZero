@@ -1,17 +1,33 @@
 
-import { WebcastPushConnection } from 'tiktok-live-connector';
-import axios from 'axios';
-import { io } from 'socket.io-client';
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
-import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+const { WebcastPushConnection } = require('tiktok-live-connector');
+const axios = require('axios');
+const { io } = require('socket.io-client');
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+
+// Dynamic import for Firebase (ESM only)
+let initializeApp, getFirestore, doc, setDoc, arrayUnion, serverTimestamp;
+
+(async () => {
+    try {
+        const firebaseAppLib = await import('firebase/app');
+        initializeApp = firebaseAppLib.initializeApp;
+        
+        const firebaseFirestoreLib = await import('firebase/firestore');
+        getFirestore = firebaseFirestoreLib.getFirestore;
+        doc = firebaseFirestoreLib.doc;
+        setDoc = firebaseFirestoreLib.setDoc;
+        arrayUnion = firebaseFirestoreLib.arrayUnion;
+        serverTimestamp = firebaseFirestoreLib.serverTimestamp;
+        
+        startBot();
+    } catch (e) {
+        console.error("Critical Error loading Firebase libraries:", e);
+    }
+})();
 
 // --- CONFIGURACIÓN ESTATICA ---
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const CONFIG_FILE = path.join(__dirname, 'config.json');
 
 // Cargar Configuración Inicial
@@ -36,98 +52,100 @@ try {
 
 // Variables Globales
 let TIKTOK_USERNAME = config.tiktokUsername;
+let tiktokLiveConnection;
+let isConnecting = false;
+let ciderSocket;
+let db; // Firebase DB reference
 
-// --- SERVIDOR WEB (DASHBOARD) ---
-const app = express();
-const PORT = 3000;
+// --- FUNCION PRINCIPAL ---
+function startBot() {
+    // Configuración de Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+      authDomain: "zero-strom-web.firebaseapp.com",
+      projectId: "zero-strom-web",
+      storageBucket: "zero-strom-web.firebasestorage.app",
+      messagingSenderId: "758369466349",
+      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+    };
 
-app.use(express.json());
-app.use(express.static('public'));
+    // Inicializar Firebase
+    const firebaseApp = initializeApp(firebaseConfig);
+    db = getFirestore(firebaseApp);
 
-// API para obtener configuración
-app.get('/api/config', (req, res) => {
-    res.json(config);
-});
+    // --- SERVIDOR WEB (DASHBOARD) ---
+    const app = express();
+    const PORT = 3000;
 
-// API para guardar configuración
-app.post('/api/config', (req, res) => {
-    try {
-        const newConfig = req.body;
-        // Validar datos básicos
-        if (newConfig.tiktokUsername) {
-            const oldUser = config.tiktokUsername;
-            config = { ...config, ...newConfig };
-            
-            // Guardar en disco
-            fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-            console.log("💾 Configuración actualizada desde el Dashboard.");
+    app.use(express.json());
+    app.use(express.static('public'));
 
-            // Si cambió el usuario, reiniciar conexión
-            if (oldUser !== config.tiktokUsername) {
-                console.log("🔄 Cambio de usuario detectado. Reiniciando conexión...");
-                TIKTOK_USERNAME = config.tiktokUsername;
-                isConnecting = false;
-                tiktokLiveConnection.disconnect();
-                // connectToLive() se llamará por el loop de reintento o manualmente
-                setTimeout(connectToLive, 1000);
+    // API para obtener configuración
+    app.get('/api/config', (req, res) => {
+        res.json(config);
+    });
+
+    // API para guardar configuración
+    app.post('/api/config', (req, res) => {
+        try {
+            const newConfig = req.body;
+            // Validar datos básicos
+            if (newConfig.tiktokUsername) {
+                const oldUser = config.tiktokUsername;
+                config = { ...config, ...newConfig };
+                
+                // Guardar en disco
+                fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+                console.log("💾 Configuración actualizada desde el Dashboard.");
+
+                // Si cambió el usuario, reiniciar conexión
+                if (oldUser !== config.tiktokUsername) {
+                    console.log("🔄 Cambio de usuario detectado. Reiniciando conexión...");
+                    TIKTOK_USERNAME = config.tiktokUsername;
+                    isConnecting = false;
+                    if (tiktokLiveConnection) {
+                        tiktokLiveConnection.disconnect();
+                    }
+                    setTimeout(connectToLive, 1000);
+                }
             }
+            res.json({ success: true, config });
+        } catch (e) {
+            console.error("Error guardando config:", e);
+            res.status(500).json({ error: e.message });
         }
-        res.json({ success: true, config });
-    } catch (e) {
-        console.error("Error guardando config:", e);
-        res.status(500).json({ error: e.message });
-    }
-});
+    });
 
-app.listen(PORT, () => {
-    console.log(`🎛️  Dashboard de Configuración: http://localhost:${PORT}`);
-});
+    app.listen(PORT, () => {
+        console.log(`🎛️  Dashboard de Configuración: http://localhost:${PORT}`);
+    });
 
-// Configuración de Firebase (Copiada de tu overlay)
+    // Conexión a Cider (Reproductor)
+    ciderSocket = io("http://localhost:10767/", {
+      transports: ['websocket'],
+      reconnectionAttempts: 5
+    });
 
-// Configuración de Firebase (Copiada de tu overlay)
-const firebaseConfig = {
-  apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-  authDomain: "zero-strom-web.firebaseapp.com",
-  projectId: "zero-strom-web",
-  storageBucket: "zero-strom-web.firebasestorage.app",
-  messagingSenderId: "758369466349",
-  appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
-};
+    ciderSocket.on("connect", () => {
+      console.log("✅ Conectado a Cider (Reproductor)");
+    });
 
-// Inicializar Firebase
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
+    ciderSocket.on("disconnect", () => {
+      console.log("❌ Desconectado de Cider");
+    });
 
-// Conexión a Cider (Reproductor)
-const ciderSocket = io("http://localhost:10767/", {
-  transports: ['websocket'],
-  reconnectionAttempts: 5
-});
-
-ciderSocket.on("connect", () => {
-  console.log("✅ Conectado a Cider (Reproductor)");
-});
-
-ciderSocket.on("disconnect", () => {
-  console.log("❌ Desconectado de Cider");
-});
-
-// Conexión a TikTok (Variable Global)
-let tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME);
-
-// Helper para reiniciar conexión
-function resetConnection() {
-    if (tiktokLiveConnection) {
-        tiktokLiveConnection.removeAllListeners();
-        tiktokLiveConnection.disconnect();
-    }
+    // Inicializar conexión TikTok
     tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME);
     setupListeners();
+    
+    // Iniciar búsqueda
+    connectToLive();
 }
 
-// Configurar Listeners (se llama al inicio y al cambiar usuario)
+// Configurar Listeners
 function setupListeners() {
+    tiktokLiveConnection.removeAllListeners();
+
     // Manejo de desconexiones
     tiktokLiveConnection.on('disconnected', () => {
         console.log('❌ Live finalizado o desconectado.');
@@ -182,19 +200,11 @@ function setupListeners() {
     });
 }
 
-// Llamada inicial
-setupListeners();
-
-// --- LÓGICA DE CONEXIÓN AUTOMÁTICA ---
-
-// --- LÓGICA DE CONEXIÓN AUTOMÁTICA ---
-let isConnecting = false;
-
+// Conectar al Live
 async function connectToLive() {
     if (isConnecting) return;
     isConnecting = true;
 
-    // Asegurar que la conexión está limpia
     if (tiktokLiveConnection.state === 'connected') {
          isConnecting = false;
          return;
@@ -210,31 +220,17 @@ async function connectToLive() {
         .catch(err => {
             console.error('❌ Error al conectar:', err.message || err);
             isConnecting = false;
-            // Reintentar en 10s
             setTimeout(connectToLive, 10000);
         });
 }
 
-// Iniciar búsqueda (primera vez)
-connectToLive();
-
-// Mantenemos el proceso vivo
-setInterval(() => {
-    // Heartbeat
-}, 60000);
-
-// --- FUNCIONES ---
-
-// Lista de usuarios temporales (donadores recientes)
+// Lista de usuarios temporales
 const tempVipUsers = new Set();
 
-// Modificar la lógica del chat para incluir tempVipUsers
-/* REEMPLAZANDO EL EVENTO CHAT ANTERIOR CON ESTE NUEVO MÁS COMPLETO */
-
-
+// Manejar pedido de canción
 async function handleSongRequest(user, query) {
     try {
-        // 1. Buscar en Apple Music (iTunes API)
+        // 1. Buscar en Apple Music
         const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=1`;
         const response = await axios.get(searchUrl);
         
@@ -246,13 +242,12 @@ async function handleSongRequest(user, query) {
         const track = response.data.results[0];
         const songName = track.trackName;
         const artistName = track.artistName;
-        const artworkUrl = track.artworkUrl100.replace('100x100', '600x600'); // Mejor calidad
-        const appleMusicId = track.trackId; // ID numérico
+        const artworkUrl = track.artworkUrl100.replace('100x100', '600x600'); 
+        const appleMusicId = track.trackId;
 
         console.log(`🎵 Canción encontrada: ${songName} - ${artistName}`);
 
-        // 2. Agregar a la Lista Visual (Firestore)
-        // Usamos el mismo formato de ID que el overlay: usuario-cancion-artista-hora
+        // 2. Agregar a Firebase
         const now = new Date();
         const hh = String(now.getHours()).padStart(2, '0');
         const mm = String(now.getMinutes()).padStart(2, '0');
@@ -266,11 +261,10 @@ async function handleSongRequest(user, query) {
             cancion: songName,
             artista: artistName,
             cover: artworkUrl,
-            ts: serverTimestamp(), // Timestamp del servidor
+            ts: serverTimestamp(),
             status: 'pending'
         };
 
-        // Agregar a la lista del día
         await setDoc(doc(db, 'requests', currentDay), {
             items: arrayUnion(requestData),
             lastUpdated: serverTimestamp()
@@ -278,30 +272,8 @@ async function handleSongRequest(user, query) {
 
         console.log(`✅ Agregada a la lista visual`);
 
-        // 3. Agregar a Cider (Reproductor)
-        if (ciderSocket.connected) {
-            // Cider usa diferentes eventos dependiendo de la versión y plugins.
-            // Intentamos el método estándar de la API de Cider.
-            // Referencia: Cider API suele aceptar trackId de Apple Music
-            
-            // Método 1: Evento 'queue-track' (común en algunas versiones)
-            ciderSocket.emit('queue-track', appleMusicId);
-            
-            // Método 2: Payload más complejo para versiones nuevas
-            // Intentamos usar 'play-next' para ponerla como siguiente
-            
-            // Cider API v2 (algunos plugins) usa 'queue-track' con opcion 'next'
-            // O podemos usar 'am-api-playback-queue-insert' si está disponible.
-            
-            // INTENTO 1: Usar 'safe_pre_add_queue' (que suele agregar al final)
-            // INTENTO 2: Usar 'play-next' si existe (algunos forks de Cider lo tienen)
-            
-            // Para asegurar que sea la SIGUIENTE, usamos un truco:
-            // Cider suele tener un endpoint /api/v1/playback/queue/next pero via socket es distinto.
-            
-            // Enviaremos una señal genérica que Cider suele interpretar como "Play Next" si el plugin lo soporta.
-            // Si no, usaremos el estándar que agrega al final.
-            
+        // 3. Agregar a Cider
+        if (ciderSocket && ciderSocket.connected) {
             console.log(`🎧 Enviando a Cider (Play Next si es posible)...`);
             
             ciderSocket.emit('safe_pre_add_queue', {
@@ -310,10 +282,9 @@ async function handleSongRequest(user, query) {
                 artistName: artistName,
                 playParams: { id: String(appleMusicId) },
                 url: track.trackViewUrl,
-                next: true // Flag experimental para algunos plugins
+                next: true
             });
             
-            // También probamos emitir el evento específico de "Play Next" de algunos plugins
             ciderSocket.emit('playback:queue:add-next', {
                  id: String(appleMusicId)
             });
