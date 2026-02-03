@@ -1448,6 +1448,7 @@
       });
       
       // Procesar items a mostrar
+      const desiredEls = [];
       itemsToShow.forEach((req, index) => {
         const reqId = req.docId || req.id || generateSongId(req);
         let itemEl = null;
@@ -1469,21 +1470,32 @@
             // Limpiar clases de posición antiguas
             itemEl.className = itemEl.className.replace(/queue-pos-\d+/g, '').trim();
             itemEl.classList.add(newPosClass);
+
+            try {
+              const numEl = itemEl.querySelector('.item-header span');
+              if (numEl) numEl.textContent = `#${index + 1}`;
+            } catch (_) {}
             
             // Asegurar que sea visible (sin animación de entrada)
             if (!itemEl.classList.contains('show')) itemEl.classList.add('show');
-            
+            desiredEls.push(itemEl);
         } else {
             // CASO 2: El elemento es NUEVO
             itemEl = createQueueItem(req, index);
-            const emptyEl = document.getElementById('empty-state');
-            if (emptyEl && emptyEl.parentNode === container) container.insertBefore(itemEl, emptyEl);
-            else container.appendChild(itemEl);
+            desiredEls.push(itemEl);
             
             // Animar entrada SOLO para este nuevo elemento
             void itemEl.offsetWidth; // Trigger reflow
             itemEl.classList.add('show');
         }
+      });
+
+      // Reordenar/insertar elementos para que el DOM refleje el nuevo orden
+      const emptyEl = document.getElementById('empty-state');
+      desiredEls.forEach((el) => {
+        if (!el) return;
+        if (emptyEl && emptyEl.parentNode === container) container.insertBefore(el, emptyEl);
+        else container.appendChild(el);
       });
 
       // 4. Eliminar elementos que ya no están (los que quedaron en existingMap)
