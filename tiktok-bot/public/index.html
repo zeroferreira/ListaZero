@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero FM Bot Dashboard</title>
+    <style>
+        :root {
+            --bg: #0f0f13;
+            --card: #1a1a23;
+            --primary: #ff0050; /* TikTok color */
+            --text: #ffffff;
+            --text-secondary: #a0a0a0;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 { margin-bottom: 5px; }
+        .subtitle { color: var(--text-secondary); margin-bottom: 30px; }
+        
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 500; }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            background: #000;
+            border: 1px solid #333;
+            color: white;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        input:focus { border-color: var(--primary); outline: none; }
+        
+        .toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #333;
+        }
+        .toggle-row:last-child { border-bottom: none; }
+        
+        /* Toggle Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #333;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px; width: 16px;
+            left: 4px; bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(26px); }
+        
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.98); }
+        .status {
+            margin-top: 15px;
+            text-align: center;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🎛️ Zero FM Bot Control</h1>
+        <div class="subtitle">Configura tu bot de pedidos en tiempo real</div>
+
+        <div class="card">
+            <div class="form-group">
+                <label>Usuario de TikTok (Live)</label>
+                <input type="text" id="tiktokUsername" placeholder="@usuario">
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Permisos de Pedido</h3>
+            
+            <div class="toggle-row">
+                <span>Permitir Suscriptores</span>
+                <label class="switch">
+                    <input type="checkbox" id="allowSubscribers">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-row">
+                <span>Permitir Moderadores</span>
+                <label class="switch">
+                    <input type="checkbox" id="allowModerators">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-row">
+                <span>Permitir Super Fans (Nivel > 0)</span>
+                <label class="switch">
+                    <input type="checkbox" id="allowSuperFans">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Regalos VIP</h3>
+            <div class="form-group">
+                <label>Monedas mínimas para VIP (Sesión completa)</label>
+                <input type="number" id="minCoinsForVip" value="30">
+                <small style="color: #666; display: block; margin-top: 5px;">Cualquier regalo con este valor o superior otorgará permisos VIP hasta reiniciar el bot.</small>
+            </div>
+        </div>
+
+        <button class="btn" onclick="saveConfig()">💾 Guardar Cambios</button>
+        <div id="status" class="status">✅ Configuración guardada correctamente</div>
+    </div>
+
+    <script>
+        // Cargar configuración al iniciar
+        fetch('/api/config')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('tiktokUsername').value = data.tiktokUsername;
+                document.getElementById('minCoinsForVip').value = data.minCoinsForVip;
+                document.getElementById('allowSubscribers').checked = data.allowSubscribers;
+                document.getElementById('allowModerators').checked = data.allowModerators;
+                document.getElementById('allowSuperFans').checked = data.allowSuperFans;
+            });
+
+        function saveConfig() {
+            const config = {
+                tiktokUsername: document.getElementById('tiktokUsername').value,
+                minCoinsForVip: parseInt(document.getElementById('minCoinsForVip').value),
+                allowSubscribers: document.getElementById('allowSubscribers').checked,
+                allowModerators: document.getElementById('allowModerators').checked,
+                allowSuperFans: document.getElementById('allowSuperFans').checked,
+                ciderUrl: "http://localhost:10767" // Mantener default
+            };
+
+            fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            })
+            .then(res => res.json())
+            .then(data => {
+                const status = document.getElementById('status');
+                status.style.opacity = '1';
+                setTimeout(() => status.style.opacity = '0', 3000);
+            })
+            .catch(err => alert('Error al guardar'));
+        }
+    </script>
+</body>
+</html>
