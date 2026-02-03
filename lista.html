@@ -482,10 +482,10 @@
 
       <div id="admin-panel" class="admin-panel" hidden>
         
-        <div class="admin-row admin-section-tabs" role="tablist" aria-label="Secciones de administración">
-          <button type="button" class="points-tab admin-section-tab active" data-section="badges" role="tab" aria-selected="true">👑 Insignias</button>
-          <button type="button" class="points-tab admin-section-tab" data-section="rewards" role="tab" aria-selected="false">🎁 Recompensas</button>
-          <button type="button" class="points-tab admin-section-tab" data-section="maintenance" role="tab" aria-selected="false">🔧 Mantenimiento</button>
+        <div class="admin-row admin-sections-tabs" role="tablist" aria-label="Secciones de administración">
+          <button type="button" class="admin-menu-tab admin-section-tab active" data-section="badges" role="tab" aria-selected="true">👑 Insignias</button>
+          <button type="button" class="admin-menu-tab admin-section-tab" data-section="rewards" role="tab" aria-selected="false">🎁 Recompensas</button>
+          <button type="button" class="admin-menu-tab admin-section-tab" data-section="maintenance" role="tab" aria-selected="false">🔧 Mantenimiento</button>
           <select id="admin-section-select" class="admin-select" hidden aria-hidden="true" tabindex="-1">
             <option value="badges">👑 Gestión de Insignias</option>
             <option value="rewards">🎁 Administración de Recompensas</option>
@@ -3472,7 +3472,7 @@
         if (!db) {
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
           const arr = Array.isArray(byDay[dayValue]) ? byDay[dayValue] : [];
-          const items = arr
+          let items = arr
             .filter(it => String(it.usuario || '').trim().toLowerCase() !== 'prueba')
             .filter(it => !vipOnly.checked || vipSet.has(it.usuario) || z0VipSet.has(it.usuario))
             .map(it => ({
@@ -3487,6 +3487,11 @@
               time: it.time,
               day: dayValue
             }));
+          items.sort((a, b) => {
+            const ta = typeof a.time === 'number' ? a.time : (a.time ? new Date(a.time).getTime() : 0);
+            const tb = typeof b.time === 'number' ? b.time : (b.time ? new Date(b.time).getTime() : 0);
+            return ta - tb;
+          });
           currentDayItems = items;
           window.__dayItems = items;
           renderSolicitudes(items);
@@ -3536,7 +3541,7 @@
           items.sort((a, b) => {
             const ta = a.ts && a.ts.toMillis ? a.ts.toMillis() : (a.ts || 0);
             const tb = b.ts && b.ts.toMillis ? b.ts.toMillis() : (b.ts || 0);
-            return tb - ta;
+            return ta - tb;
           });
           if (items.length === 0) {
             const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
@@ -3556,12 +3561,17 @@
                 time: it.time,
                 day: dayValue
               }));
+            items.sort((a, b) => {
+              const ta = typeof a.time === 'number' ? a.time : (a.time ? new Date(a.time).getTime() : 0);
+              const tb = typeof b.time === 'number' ? b.time : (b.time ? new Date(b.time).getTime() : 0);
+              return ta - tb;
+            });
           }
           return items;
         };
 
         let didFallbackToTs = false;
-        const qDay = db.collection('solicitudes').where('day', '==', dayValue);
+        const qDay = db.collection('solicitudes').where('day', '==', dayValue).orderBy('ts', 'asc');
 
         unsubscribeSolicitudes = qDay.onSnapshot((snap) => {
           console.log(`📥 Recibidos ${snap.size} documentos para el día ${dayValue}`);
@@ -3571,7 +3581,7 @@
             db.collection('solicitudes')
               .where('ts', '>=', start)
               .where('ts', '<', end)
-              .orderBy('ts', 'desc')
+              .orderBy('ts', 'asc')
               .limit(1)
               .get()
               .then((testSnap) => {
@@ -3580,7 +3590,7 @@
                   const qTs = db.collection('solicitudes')
                     .where('ts', '>=', start)
                     .where('ts', '<', end)
-                    .orderBy('ts', 'desc');
+                    .orderBy('ts', 'asc');
                   unsubscribeSolicitudes = qTs.onSnapshot((s2) => {
                     console.log(`📥 (ts) Recibidos ${s2.size} documentos para el día ${dayValue}`);
                     applyItems(itemsFromSnap(s2));
