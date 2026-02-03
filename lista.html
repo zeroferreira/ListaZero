@@ -3488,9 +3488,9 @@
               day: dayValue
             }));
           items.sort((a, b) => {
-            const ta = typeof a.time === 'number' ? a.time : (a.time ? new Date(a.time).getTime() : 0);
-            const tb = typeof b.time === 'number' ? b.time : (b.time ? new Date(b.time).getTime() : 0);
-            return ta - tb;
+            const ta = getItemTimeMs(a);
+            const tb = getItemTimeMs(b);
+            return tb - ta;
           });
           currentDayItems = items;
           window.__dayItems = items;
@@ -3539,9 +3539,9 @@
             });
           });
           items.sort((a, b) => {
-            const ta = a.ts && a.ts.toMillis ? a.ts.toMillis() : (a.ts || 0);
-            const tb = b.ts && b.ts.toMillis ? b.ts.toMillis() : (b.ts || 0);
-            return ta - tb;
+            const ta = getItemTimeMs(a);
+            const tb = getItemTimeMs(b);
+            return tb - ta;
           });
           if (items.length === 0) {
             const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
@@ -3562,9 +3562,9 @@
                 day: dayValue
               }));
             items.sort((a, b) => {
-              const ta = typeof a.time === 'number' ? a.time : (a.time ? new Date(a.time).getTime() : 0);
-              const tb = typeof b.time === 'number' ? b.time : (b.time ? new Date(b.time).getTime() : 0);
-              return ta - tb;
+              const ta = getItemTimeMs(a);
+              const tb = getItemTimeMs(b);
+              return tb - ta;
             });
           }
           return items;
@@ -3618,9 +3618,9 @@
           } else {
             currentManualOrder = [];
           }
-          const ordered = applyOrder(currentDayItems, currentManualOrder);
-          window.__dayItems = ordered;
-          renderSolicitudes(ordered);
+          const visibleItems = isEditModeActive() ? applyOrder(currentDayItems, currentManualOrder) : currentDayItems;
+          window.__dayItems = visibleItems;
+          renderSolicitudes(visibleItems);
           try { if (window.refreshStatsTicker) window.refreshStatsTicker(); } catch (_) {}
           try {
             if (window.__usersSelectTimer) clearTimeout(window.__usersSelectTimer);
@@ -4112,12 +4112,44 @@
         return false;
       }
 
+      function getItemTimeMs(it) {
+        try {
+          if (!it) return 0;
+          if (it.ts && typeof it.ts.toMillis === 'function') return it.ts.toMillis();
+          if (it.ts instanceof Date) return it.ts.getTime();
+          if (it.ts) {
+            const t = new Date(it.ts).getTime();
+            if (!Number.isNaN(t)) return t;
+          }
+          if (it.time) {
+            if (typeof it.time === 'number') return it.time;
+            const t = new Date(it.time).getTime();
+            if (!Number.isNaN(t)) return t;
+          }
+          const h = String(it.hora || '').trim();
+          const day = String(it.day || document.getElementById('day-select')?.value || '').trim();
+          if (day && /^\d{4}-\d{2}-\d{2}$/.test(day) && /^\d{2}:\d{2}$/.test(h)) {
+            const t = new Date(`${day}T${h}:00`).getTime();
+            if (!Number.isNaN(t)) return t;
+          }
+        } catch (_) {}
+        return 0;
+      }
+
       function getLatestNonTestItem(items) {
         if (!Array.isArray(items) || !items.length) return null;
-        for (let i = items.length - 1; i >= 0; i--) {
+        let best = null;
+        let bestTime = -Infinity;
+        for (let i = 0; i < items.length; i++) {
           const it = items[i];
-          if (!isTestRequestForStats(it)) return it;
+          if (isTestRequestForStats(it)) continue;
+          const t = getItemTimeMs(it);
+          if (t > bestTime) {
+            bestTime = t;
+            best = it;
+          }
         }
+        return best;
         return null;
       }
 
