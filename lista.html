@@ -2404,7 +2404,11 @@
             window.__dayItems = currentDayItems;
 
             // Persistir orden manual por día (Firestore + localStorage)
-            persistManualOrder(currentDayItems, currentDay);
+            const selectedDay =
+              (document.getElementById('day-select')?.value || '').trim() ||
+              String(it.day || '').trim() ||
+              String((currentDayItems && currentDayItems[0] && currentDayItems[0].day) || '').trim();
+            persistManualOrder(currentDayItems, selectedDay);
 
             // Render con orden actualizado
             renderSolicitudes(currentDayItems);
@@ -2527,7 +2531,7 @@
           const next = !isEditing;
           editToggleBtn.setAttribute('aria-pressed', String(next));
           solicitudesList?.classList.toggle('editing', next);
-          if (currentDayItems?.length) renderSolicitudes(currentDayItems);
+          if (currentDayItems?.length) renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
           refreshEditActionsBar();
         }
 
@@ -3452,8 +3456,9 @@
 
         const applyItems = (items) => {
           currentDayItems = items;
-          window.__dayItems = items;
-          renderSolicitudes(items);
+          const visibleItems = applyOrder(items, currentManualOrder);
+          window.__dayItems = visibleItems;
+          renderSolicitudes(visibleItems);
           try { if (window.refreshStatsTicker) window.refreshStatsTicker(); } catch (_) {}
           try {
             if (window.__usersSelectTimer) clearTimeout(window.__usersSelectTimer);
@@ -3566,7 +3571,7 @@
           } else {
             currentManualOrder = [];
           }
-          const visibleItems = isEditModeActive() ? applyOrder(currentDayItems, currentManualOrder) : currentDayItems;
+          const visibleItems = applyOrder(currentDayItems, currentManualOrder);
           window.__dayItems = visibleItems;
           renderSolicitudes(visibleItems);
           try { if (window.refreshStatsTicker) window.refreshStatsTicker(); } catch (_) {}
