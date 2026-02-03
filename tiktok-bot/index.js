@@ -182,8 +182,12 @@ function setupListeners() {
 
             const query = msg.replace(/^!(sr|pedir|cancion)\s+/i, '').trim();
             if (query.length > 0) {
-                console.log(`📩 Pedido de ${user}: ${query}`);
-                await handleSongRequest(user, query);
+                // Optimización: Reemplazar guiones con espacios para mejorar la búsqueda
+                // Esto permite "Artista - Cancion" o "Cancion - Artista" sin problemas
+                const cleanQuery = query.replace(/\s+-\s+/g, ' ').trim();
+                
+                console.log(`📩 Pedido de ${user}: ${query} (Buscando: ${cleanQuery})`);
+                await handleSongRequest(user, cleanQuery);
             }
         }
     });
