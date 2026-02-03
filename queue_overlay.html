@@ -961,16 +961,30 @@
 
     // Utilidad: Generar ID de canción (debe coincidir con lista.html)
     function generateSongId(req) {
-      // Preferir ID de documento de Firestore si existe
-      if (req.id) return req.id;
+      // 1. Preferir ID compuesto ya existente (generado por el bot/lista)
+      if (req.id && req.id.includes && req.id.includes('-') && req.id.split('-').length >= 3) {
+        return req.id;
+      }
 
+      // 2. Fallback: Reconstruir ID si falta (lógica legacy)
       // Necesitamos recrear el formato HH:MM desde el timestamp
-      const d = req.ts && req.ts.toDate ? req.ts.toDate() : new Date(req.ts || Date.now());
+      let d;
+      if (req.ts && typeof req.ts.toDate === 'function') {
+        d = req.ts.toDate();
+      } else if (req.ts) {
+        d = new Date(req.ts);
+      } else {
+        d = new Date();
+      }
+      
       const hh = String(d.getHours()).padStart(2, '0');
       const mm = String(d.getMinutes()).padStart(2, '0');
       const hora = `${hh}:${mm}`;
       
-      return `${req.usuario}-${req.cancion}-${req.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+      // Usar hora del objeto si ya viene pre-formateada
+      const finalHora = req.hora || hora;
+      
+      return `${req.usuario}-${req.cancion}-${req.artista}-${finalHora}`.replace(/[^a-zA-Z0-9-]/g, '');
     }
 
     // Orden manual: aplicar
