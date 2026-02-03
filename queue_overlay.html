@@ -141,25 +141,53 @@
       transition-delay: 0.5s;
     }
 
-    /* Fix: Disable transition on inner element to avoid conflict with entry transition */
-    .queue-item.removing .queue-item-inner {
-      transition: none !important;
-    }
+    /* FIX: Usar transiciones en lugar de animaciones para asegurar consistencia con la entrada */
+    /* La clase .queue-item-inner ya tiene transition: all 0.5s cubic-bezier(...) definida arriba */
 
     /* 1. Slide Right (Original/Default) */
-    .anim-exit-slide-right .queue-item.removing .queue-item-inner { animation: slideOutRight 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+    .anim-exit-slide-right .queue-item.removing .queue-item-inner { 
+      transform: translateX(0) !important;
+      opacity: 1 !important;
+    }
+    .anim-exit-slide-right .queue-item.removing.removing-active .queue-item-inner { 
+      transform: translateX(100%) !important;
+      opacity: 0 !important;
+      transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    }
 
     /* 2. Slide Down */
-    .anim-exit-slide-down .queue-item.removing .queue-item-inner { animation: slideOutDown 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+    .anim-exit-slide-down .queue-item.removing .queue-item-inner { 
+      transform: translateY(0) !important;
+      opacity: 1 !important;
+    }
+    .anim-exit-slide-down .queue-item.removing.removing-active .queue-item-inner { 
+      transform: translateY(50px) !important;
+      opacity: 0 !important;
+      transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    }
 
     /* 3. Fade Out */
-    .anim-exit-fade .queue-item.removing .queue-item-inner { animation: fadeOut 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+    .anim-exit-fade .queue-item.removing .queue-item-inner { 
+      opacity: 1 !important;
+    }
+    .anim-exit-fade .queue-item.removing.removing-active .queue-item-inner { 
+      opacity: 0 !important;
+      transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    }
 
     /* 4. Zoom Out */
-    .anim-exit-zoom .queue-item.removing .queue-item-inner { animation: zoomOut 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+    .anim-exit-zoom .queue-item.removing .queue-item-inner { 
+      transform: scale(1) !important;
+      opacity: 1 !important;
+    }
+    .anim-exit-zoom .queue-item.removing.removing-active .queue-item-inner { 
+      transform: scale(0.5) !important;
+      opacity: 0 !important;
+      transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    }
 
 
-    /* Keyframes */
+    /* Keyframes - Ya no se usan para salida, pero se mantienen por si acaso se reusan para otra cosa */
     @keyframes slideOutRight {
       from { opacity: 1; transform: translateX(0); }
       to { opacity: 0; transform: translateX(100%); }
@@ -1219,8 +1247,13 @@
       // 4. Eliminar elementos que ya no están (los que quedaron en existingMap)
       existingMap.forEach((list) => {
           list.forEach(el => {
-            el.classList.remove('show'); 
+            // el.classList.remove('show'); // Mantener .show para evitar parpadeo o desaparición inmediata
             el.classList.add('removing');
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                if (el && el.isConnected) el.classList.add('removing-active');
+              });
+            });
             
             // Eliminar del DOM después de la animación y el colapso
             // Animación: 0.8s | Delay colapso: 0.6s | Colapso: 0.8s 
