@@ -2,10 +2,6 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
   <title>Cola de Pedidos - Zero FM</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
@@ -49,6 +45,10 @@
       display: flex;
       flex-direction: column;
       gap: var(--queue-item-spacing);
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
     }
 
     .queue-item {
@@ -626,6 +626,20 @@
      <button onclick="simulateQueueRequest()" style="padding: 10px; cursor: pointer;">➕ Simular Pedido</button>
      <button onclick="simulateToggleFirst()" style="padding: 10px; cursor: pointer;">✅ Marcar como Reproducida</button>
      <button onclick="toggleDebugBorders()" style="padding: 10px; cursor: pointer;">🖼️ Ver Bordes</button>
+     <button onclick="toggleWidgetMover()" style="padding: 10px; cursor: pointer;">🧩 Mover Widget</button>
+   </div>
+   <div id="widget-mover" style="position: fixed; bottom: 80px; left: 20px; z-index: 10001; background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; padding: 10px; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; width: 220px;" hidden>
+     <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+       <strong>Widgets</strong>
+       <button onclick="resetWidgetPosition('queue-container')" style="padding: 6px 8px; cursor:pointer; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.06); color:#fff;">Reset</button>
+     </div>
+     <div style="display:flex; gap:10px; align-items:center;">
+       <div id="widget-handle-queue" style="width: 44px; height: 44px; border-radius: 12px; background: rgba(0,229,255,0.18); border: 1px solid rgba(0,229,255,0.55); display:flex; align-items:center; justify-content:center; cursor: grab; user-select:none; touch-action:none;">🎶</div>
+       <div style="display:flex; flex-direction:column; gap:2px;">
+         <div style="font-weight:700; line-height:1.1;">Cola</div>
+         <div style="font-size:12px; opacity:0.85; line-height:1.2;">Arrastra el icono para mover</div>
+       </div>
+     </div>
    </div>
 
   <script>
@@ -642,6 +656,115 @@
         container.style.border = '5px solid red';
         container.style.background = 'rgba(255, 0, 0, 0.2)';
       }
+    }
+
+    function getWidgetPosKey(widgetId) {
+      return `widget_pos:${location.pathname}:${widgetId}`;
+    }
+
+    function applyWidgetPosition(widgetId, pos) {
+      const el = document.getElementById(widgetId);
+      if (!el) return;
+      if (!pos || typeof pos.left !== 'number' || typeof pos.top !== 'number') {
+        el.style.left = '50%';
+        el.style.top = '20px';
+        el.style.transform = 'translateX(-50%)';
+        return;
+      }
+      el.style.left = `${pos.left}px`;
+      el.style.top = `${pos.top}px`;
+      el.style.transform = 'none';
+    }
+
+    function loadWidgetPosition(widgetId) {
+      try {
+        const raw = localStorage.getItem(getWidgetPosKey(widgetId));
+        if (!raw) return null;
+        const pos = JSON.parse(raw);
+        if (!pos || typeof pos.left !== 'number' || typeof pos.top !== 'number') return null;
+        return pos;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function saveWidgetPosition(widgetId, pos) {
+      try {
+        localStorage.setItem(getWidgetPosKey(widgetId), JSON.stringify(pos));
+      } catch (_) {}
+    }
+
+    function resetWidgetPosition(widgetId) {
+      try { localStorage.removeItem(getWidgetPosKey(widgetId)); } catch (_) {}
+      applyWidgetPosition(widgetId, null);
+    }
+
+    function toggleWidgetMover() {
+      const panel = document.getElementById('widget-mover');
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
+    }
+
+    function setupWidgetHandle(handleId, widgetId) {
+      const handle = document.getElementById(handleId);
+      const widget = document.getElementById(widgetId);
+      if (!handle || !widget) return;
+
+      const saved = loadWidgetPosition(widgetId);
+      if (saved) applyWidgetPosition(widgetId, saved);
+
+      let dragging = false;
+      let startX = 0;
+      let startY = 0;
+      let startLeft = 0;
+      let startTop = 0;
+
+      const getWidgetRectPos = () => {
+        const rect = widget.getBoundingClientRect();
+        return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+      };
+
+      const onMove = (clientX, clientY) => {
+        if (!dragging) return;
+        const dx = clientX - startX;
+        const dy = clientY - startY;
+        const nextLeft = startLeft + dx;
+        const nextTop = startTop + dy;
+        applyWidgetPosition(widgetId, { left: nextLeft, top: nextTop });
+      };
+
+      const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.style.cursor = 'grab';
+        const rect = getWidgetRectPos();
+        const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
+        const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
+        applyWidgetPosition(widgetId, { left, top });
+        saveWidgetPosition(widgetId, { left, top });
+        try { window.removeEventListener('pointermove', onPointerMove); } catch (_) {}
+        try { window.removeEventListener('pointerup', onPointerUp); } catch (_) {}
+      };
+
+      const onPointerMove = (e) => {
+        onMove(e.clientX, e.clientY);
+      };
+      const onPointerUp = () => onUp();
+
+      handle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragging = true;
+        handle.style.cursor = 'grabbing';
+        const rect = getWidgetRectPos();
+        startX = e.clientX;
+        startY = e.clientY;
+        startLeft = rect.left;
+        startTop = rect.top;
+        try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+      });
     }
     
     // --- Configuración / Settings Logic ---
@@ -1610,9 +1733,6 @@
     const currentDay = getLocalDateKey();
     console.log("Queue Overlay v2.2 - Fix Empty Match. Listening for day:", currentDay);
 
-    const OVERLAY_BUILD = "2026-02-03";
-    console.log("Queue Overlay build:", OVERLAY_BUILD);
-
     if (db) {
       db.collection('solicitudes')
         .where('day', '==', currentDay)
@@ -1670,22 +1790,6 @@
         }, (error) => {
           console.error("Error en manualOrders:", error);
         });
-
-      let lastPolledOrderJson = null;
-      const pollManualOrder = async () => {
-        try {
-          const snap = await db.collection('manualOrders').doc(currentDay).get();
-          const next = snap.exists ? (Array.isArray(snap.data()?.order) ? snap.data().order : []) : [];
-          const nextJson = JSON.stringify(next);
-          if (nextJson !== lastPolledOrderJson) {
-            lastPolledOrderJson = nextJson;
-            currentManualOrder = next;
-            renderQueue();
-          }
-        } catch (_) {}
-      };
-      setInterval(pollManualOrder, 1500);
-      pollManualOrder();
     } else {
       console.warn("Firestore no disponible. Cola no podrá sincronizarse.");
       renderQueue();
@@ -1695,6 +1799,7 @@
     const debugControls = document.getElementById('debug-controls');
     debugControls.addEventListener('mouseenter', () => debugControls.style.opacity = '1');
     debugControls.addEventListener('mouseleave', () => debugControls.style.opacity = '0.2');
+    setupWidgetHandle('widget-handle-queue', 'queue-container');
 
     function simulateQueueRequest() {
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
