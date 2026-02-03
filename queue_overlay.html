@@ -1132,20 +1132,10 @@
       // 1. Filtrar solicitudes que NO están en playedSongIds
       let pendingRequests = allRequests.filter(req => {
         const id = generateSongId(req);
-        if (playedSongIds.has(id)) return false;
-
-        // Filtrar simulaciones antiguas (> 5 mins) - DESACTIVADO para permitir ver tests antiguos
-        /*
-        if (req.isSimulation) {
-            let ts = req.ts;
-            if (ts && typeof ts.toDate === 'function') ts = ts.toDate().getTime();
-            else if (ts instanceof Date) ts = ts.getTime();
-            else ts = new Date(ts || now).getTime();
-            
-            if (now - ts > 5 * 60 * 1000) return false;
+        if (playedSongIds.has(id)) {
+            // console.log("Filtered played:", id); // Debug
+            return false;
         }
-        */
-
         return true;
       });
 
@@ -1315,6 +1305,12 @@
       const targetArtist = normalize(artist);
       const targetSong = normalize(song);
 
+      // Guard Clause: Prevent matching empty/short strings (fixes "match everything" bug)
+      if (targetArtist.length < 2 || targetSong.length < 2) {
+          console.warn("⚠️ Cider track data too short to match safely:", artist, "-", song);
+          return;
+      }
+
       // Filter unplayed requests using generateSongId for accurate check
       const candidates = allRequests.filter(req => {
           const id = generateSongId(req);
@@ -1419,7 +1415,7 @@
     }
 
     const currentDay = getLocalDateKey();
-    console.log("Queue Overlay v2.1 - Filter Removed. Listening for day:", currentDay);
+    console.log("Queue Overlay v2.2 - Fix Empty Match. Listening for day:", currentDay);
 
     if (db) {
       db.collection('solicitudes')
