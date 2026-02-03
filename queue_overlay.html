@@ -1660,10 +1660,22 @@
     
     // --- Drag & Drop Logic for Settings Button ---
     const settingsBtn = document.getElementById('settings-btn');
+    const settingsBtnPosKey = `widget_btn_pos:${location.pathname}:settings-btn`;
     let isDragging = false;
     let dragOffsetX = 0;
     let dragOffsetY = 0;
     let hasMoved = false;
+
+    try {
+      const saved = localStorage.getItem(settingsBtnPosKey);
+      if (saved) {
+        const pos = JSON.parse(saved);
+        if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
+          settingsBtn.style.left = `${pos.left}px`;
+          settingsBtn.style.top = `${pos.top}px`;
+        }
+      }
+    } catch (_) {}
 
     settingsBtn.addEventListener('mousedown', (e) => {
         isDragging = true;
@@ -1698,6 +1710,17 @@
         
         // Restore transitions
         settingsBtn.style.transition = 'background 0.3s ease, transform 0.3s ease, opacity 0.3s ease';
+
+        if (hasMoved) {
+          const rect = settingsBtn.getBoundingClientRect();
+          const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
+          const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
+          settingsBtn.style.left = `${left}px`;
+          settingsBtn.style.top = `${top}px`;
+          try {
+            localStorage.setItem(settingsBtnPosKey, JSON.stringify({ left, top }));
+          } catch (_) {}
+        }
     });
     
     // Handle click manually to avoid triggering when dragging

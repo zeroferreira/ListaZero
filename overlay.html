@@ -1283,6 +1283,18 @@
       const el = document.getElementById(elementId);
       if(!el) return;
 
+      const storageKey = `widget_btn_pos:${location.pathname}:${elementId}`;
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const pos = JSON.parse(saved);
+          if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
+            el.style.left = `${pos.left}px`;
+            el.style.top = `${pos.top}px`;
+          }
+        }
+      } catch (_) {}
+
       let isDragging = false;
       let hasMoved = false;
       let startX, startY;
@@ -1322,6 +1334,17 @@
         isDragging = false;
         el.style.cursor = 'grab';
         el.style.transition = 'background 0.3s ease, transform 0.3s ease'; // Restore transition
+
+        if (hasMoved) {
+          const rect = el.getBoundingClientRect();
+          const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
+          const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
+          el.style.left = `${left}px`;
+          el.style.top = `${top}px`;
+          try {
+            localStorage.setItem(storageKey, JSON.stringify({ left, top }));
+          } catch (_) {}
+        }
       });
 
       // Handle Click vs Drag

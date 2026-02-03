@@ -6123,11 +6123,85 @@
       });
 
       // Abrir modal de temas
-      themeBtn?.addEventListener('click', () => {
-        hideSearchResults();
-        themeModal.hidden = false;
-        updateActiveStates(); // Asegurar que el slider esté sincronizado al abrir
-      });
+      (function setupThemeBtnDraggable() {
+        if (!themeBtn) return;
+        const storageKey = `widget_btn_pos:${location.pathname}:theme-btn`;
+        let isDragging = false;
+        let hasMoved = false;
+        let startX = 0;
+        let startY = 0;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        try {
+          const saved = localStorage.getItem(storageKey);
+          if (saved) {
+            const pos = JSON.parse(saved);
+            if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
+              themeBtn.style.position = 'fixed';
+              themeBtn.style.left = `${pos.left}px`;
+              themeBtn.style.top = `${pos.top}px`;
+              themeBtn.style.marginLeft = '0';
+              themeBtn.style.zIndex = '10000';
+              themeBtn.style.cursor = 'grab';
+            }
+          }
+        } catch (_) {}
+
+        themeBtn.addEventListener('mousedown', (e) => {
+          isDragging = true;
+          hasMoved = false;
+          startX = e.clientX;
+          startY = e.clientY;
+          const rect = themeBtn.getBoundingClientRect();
+          dragOffsetX = e.clientX - rect.left;
+          dragOffsetY = e.clientY - rect.top;
+          themeBtn.style.cursor = 'grabbing';
+          themeBtn.style.transition = 'none';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+          if (!isDragging) return;
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
+
+          const left = e.clientX - dragOffsetX;
+          const top = e.clientY - dragOffsetY;
+
+          themeBtn.style.position = 'fixed';
+          themeBtn.style.left = `${left}px`;
+          themeBtn.style.top = `${top}px`;
+          themeBtn.style.marginLeft = '0';
+          themeBtn.style.zIndex = '10000';
+        });
+
+        window.addEventListener('mouseup', () => {
+          if (!isDragging) return;
+          isDragging = false;
+          themeBtn.style.cursor = 'grab';
+          themeBtn.style.transition = '';
+
+          if (hasMoved) {
+            const rect = themeBtn.getBoundingClientRect();
+            const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
+            const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
+            themeBtn.style.left = `${left}px`;
+            themeBtn.style.top = `${top}px`;
+            try {
+              localStorage.setItem(storageKey, JSON.stringify({ left, top }));
+            } catch (_) {}
+          }
+        });
+
+        themeBtn.addEventListener('click', (e) => {
+          if (hasMoved) return;
+          hideSearchResults();
+          themeModal.hidden = false;
+          updateActiveStates();
+          e.stopPropagation();
+        });
+      })();
 
       // Lógica de Acordeón para el modal de temas
       const accordionHeaders = themeModal?.querySelectorAll('.accordion-header');
