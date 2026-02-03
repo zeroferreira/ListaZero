@@ -1047,6 +1047,7 @@
     // Variable para controlar la carga inicial
     let isInitialLoad = true;
     const overlayStartedAt = Date.now();
+    const processedIds = new Set(); // Evitar duplicados
 
     function getLocalDateKey(ts) {
       const dt = ts ? new Date(ts) : new Date();
@@ -1062,7 +1063,7 @@
       db.collection('solicitudes')
         .where('day', '==', currentDay)
         .orderBy('ts', 'desc')
-        .limit(1)
+        .limit(10)
         .onSnapshot((snapshot) => {
         if (snapshot.empty) {
           isInitialLoad = false;
@@ -1071,6 +1072,11 @@
 
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
+            const docId = change.doc.id;
+            // Evitar duplicados (especialmente por escrituras locales vs servidor)
+            if (processedIds.has(docId)) return;
+            processedIds.add(docId);
+
             const data = change.doc.data();
             
             // Lógica de timestamp
@@ -1101,7 +1107,13 @@
                 console.log('Solicitud existente ignorada en carga inicial:', data);
               }
             } else {
-              addToQueue(data);
+              // Safety check: ensure we don't show very old requests that somehow entered the view
+              // e.g. if a newer request was deleted and an old one shifted in.
+              if (diff <= 60000) { // 1 minute
+                 addToQueue(data);
+              } else {
+                 console.log('Solicitud antigua ignorada en tiempo real:', data);
+              }
             }
           }
         });
@@ -1123,8 +1135,9 @@
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
       const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
       
-      const randomArtist = artists[Math.floor(Math.random() * artists.length)];
-      const randomSong = songs[Math.floor(Math.random() * songs.length)];
+      const randomIndex = Math.floor(Math.random() * artists.length);
+      const randomArtist = artists[randomIndex];
+      const randomSong = songs[randomIndex];
       const randomUser = "Prueba";
 
       const now = new Date();
