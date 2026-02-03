@@ -1149,21 +1149,32 @@
       // 3. Diffing Inteligente: Solo animar elementos NUEVOS
       const container = document.getElementById('queue-container');
       
-      // Mapa de elementos actuales (que no se están eliminando)
+      // Mapa de elementos actuales (Array para manejar duplicados de ID)
       const existingMap = new Map();
       container.querySelectorAll('.queue-item:not(.removing)').forEach(el => {
           const id = el.dataset.docId || el.dataset.songId;
-          if (id) existingMap.set(id, el);
+          if (id) {
+             if (!existingMap.has(id)) existingMap.set(id, []);
+             existingMap.get(id).push(el);
+          }
       });
       
       // Procesar items a mostrar
       itemsToShow.forEach((req, index) => {
         const reqId = req.id || generateSongId(req);
-        let itemEl = existingMap.get(reqId);
+        let itemEl = null;
+
+        // Intentar recuperar un elemento existente
+        if (existingMap.has(reqId)) {
+            const list = existingMap.get(reqId);
+            if (list.length > 0) {
+                itemEl = list.shift(); // Tomar el primero disponible
+            }
+        }
 
         if (itemEl) {
             // CASO 1: El elemento YA EXISTE
-            existingMap.delete(reqId); // Marcar como procesado (sacarlo del mapa de eliminación)
+            // Ya lo sacamos de la lista, si la lista queda vacía, el map se limpia solo al final
             
             // Actualizar clase de posición si cambió
             const newPosClass = `queue-pos-${index + 1}`;
@@ -1172,7 +1183,6 @@
             itemEl.classList.add(newPosClass);
             
             // Mover al final del contenedor para asegurar orden correcto en el DOM
-            // (appendChild mueve el nodo si ya existe)
             container.appendChild(itemEl);
             
             // Asegurar que sea visible (sin animación de entrada)
@@ -1190,14 +1200,16 @@
       });
 
       // 4. Eliminar elementos que ya no están (los que quedaron en existingMap)
-      existingMap.forEach(el => {
-          el.classList.remove('show'); // Opcional: disparar transición de salida si hay CSS
-          el.classList.add('removing');
-          
-          // Eliminar del DOM después de la animación (500ms aprox)
-          setTimeout(() => {
-              if (el.parentNode) el.parentNode.removeChild(el);
-          }, 500);
+      existingMap.forEach((list) => {
+          list.forEach(el => {
+            el.classList.remove('show'); 
+            el.classList.add('removing');
+            
+            // Eliminar del DOM después de la animación (Sincronizado con CSS 0.8s)
+            setTimeout(() => {
+                if (el.parentNode) el.parentNode.removeChild(el);
+            }, 900); // 900ms para asegurar que termine la animación de 800ms
+          });
       });
 
       // 5. Empty State Logic
@@ -1523,11 +1535,12 @@
       const hh = String(now.getHours()).padStart(2, '0');
       const mm = String(now.getMinutes()).padStart(2, '0');
       const hora = `${hh}:${mm}`;
+      const uniqueId = Date.now().toString(36); // Timestamp base36 para unicidad
       const tsValue = (typeof firebase !== 'undefined' && firebase?.firestore?.Timestamp?.fromDate)
         ? firebase.firestore.Timestamp.fromDate(now)
         : now;
       const req = {
-        id: `${randomUser}-${randomSong}-${randomArtist}-${hora}`.replace(/[^a-zA-Z0-9-]/g, ''),
+        id: `${randomUser}-${randomSong}-${randomArtist}-${hora}-${uniqueId}`.replace(/[^a-zA-Z0-9-]/g, ''),
         usuario: randomUser,
         cancion: randomSong,
         artista: randomArtist,
