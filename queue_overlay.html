@@ -1238,6 +1238,8 @@
 
       ciderSocket.on("connect", () => {
         console.log("✅ Conectado a Cider/Apple Music Widget!");
+        // Request current playback status immediately
+        ciderSocket.emit("get-playback");
       });
 
       ciderSocket.on("disconnect", () => {
@@ -1261,15 +1263,15 @@
       const key = `${artist}-${song}`;
       if (lastAutoMarkedSong === key) return; // Already handled this track
       
-      // Normalize for comparison
-      const normalize = (str) => str ? str.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+      // Normalize for comparison: remove accents, special chars, lowercase
+      const normalize = (str) => {
+          if (!str) return "";
+          return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      };
+      
       const targetArtist = normalize(artist);
       const targetSong = normalize(song);
 
-      // Search in queueList (which is currently rendered/filtered)
-      // or search in allRequests (raw data)
-      // We prioritize unplayed songs in the queue
-      
       // Filter unplayed requests
       const candidates = allRequests.filter(req => !playedSongIds.has(req.id));
 
@@ -1279,7 +1281,6 @@
         const reqSong = normalize(req.cancion);
 
         // Simple fuzzy match: check if one contains the other
-        // This handles cases like "The Beatles" vs "Beatles"
         const artistMatch = reqArtist.includes(targetArtist) || targetArtist.includes(reqArtist);
         const songMatch = reqSong.includes(targetSong) || targetSong.includes(reqSong);
 
@@ -1288,7 +1289,6 @@
           markSongAsPlayed(req.id);
           lastAutoMarkedSong = key;
           
-          // Optional: Show visual feedback or toast?
           break; // Mark only the first match
         }
       }
@@ -1415,6 +1415,9 @@
         setTimeout(simulateQueueRequest, 1000);
       }, 1000);
     }
+    // Start Cider connection immediately
+    setTimeout(connectCider, 2000);
+    
     // --- Drag & Drop Logic for Settings Button ---
     const settingsBtn = document.getElementById('settings-btn');
     let isDragging = false;
