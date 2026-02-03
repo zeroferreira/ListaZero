@@ -1054,16 +1054,36 @@
         if (!Array.isArray(order) || !order.length) return items;
 
         const inOrderSet = new Set(order);
+        const byDocId = new Map();
+        const bySongId = new Map();
+
+        items.forEach((it) => {
+          if (it && it.docId) byDocId.set(String(it.docId), it);
+          const sid = generateSongId(it);
+          if (sid) bySongId.set(String(sid), it);
+          if (it && it.id) bySongId.set(String(it.id), it);
+        });
 
         // Elementos presentes en 'order' respetando ese orden
         const ordered = [];
+        const seen = new Set();
         order.forEach((sid) => {
-          const found = items.find((it) => generateSongId(it) === sid);
-          if (found) ordered.push(found);
+          const key = String(sid || '');
+          if (!key) return;
+          const found = byDocId.get(key) || bySongId.get(key);
+          if (!found) return;
+          if (seen.has(found)) return;
+          seen.add(found);
+          ordered.push(found);
         });
 
         // Nuevos (no presentes en 'order') abajo (para mantener FIFO)
-        const notInOrder = items.filter((it) => !inOrderSet.has(generateSongId(it)));
+        const notInOrder = items.filter((it) => {
+          const docId = it && it.docId ? String(it.docId) : '';
+          const sid = String(generateSongId(it) || '');
+          const rawId = it && it.id ? String(it.id) : '';
+          return !(inOrderSet.has(docId) || inOrderSet.has(sid) || inOrderSet.has(rawId));
+        });
 
         return [...ordered, ...notInOrder];
       } catch {
@@ -1198,7 +1218,7 @@
       // Wrapper con clases de posición
       div.className = `queue-item queue-pos-${index + 1}`; 
       div.dataset.songId = generateSongId(req);
-      if (req.id) div.dataset.docId = req.id;
+      if (req.docId) div.dataset.docId = req.docId;
       
       // Structure for optional Album Art and Wait Time
       div.innerHTML = `
@@ -1264,7 +1284,7 @@
       
       // Procesar items a mostrar
       itemsToShow.forEach((req, index) => {
-        const reqId = req.id || generateSongId(req);
+        const reqId = req.docId || req.id || generateSongId(req);
         let itemEl = null;
 
         // Intentar recuperar un elemento existente
@@ -1594,7 +1614,7 @@
           const temp = [];
           snapshot.forEach(doc => {
             const data = doc.data();
-            const item = { ...data };
+            const item = { ...data, docId: doc.id };
             if (!item.id) item.id = doc.id;
             temp.push(item);
           });
