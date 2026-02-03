@@ -266,13 +266,21 @@ async function handleSongRequest(user, query) {
             artista: artistName,
             cover: artworkUrl,
             ts: serverTimestamp(),
-            status: 'pending'
+            status: 'pending',
+            day: currentDay // Critical for queue_overlay query
         };
 
+        // Cambiar a colección 'solicitudes' para compatibilidad con overlay
+        // Usamos add() para crear un documento nuevo por solicitud
+        await db.collection('solicitudes').add(requestData);
+
+        /*
+        // OLD METHOD (Incompatible with current overlay)
         await setDoc(doc(db, 'requests', currentDay), {
             items: arrayUnion(requestData),
             lastUpdated: serverTimestamp()
         }, { merge: true });
+        */
 
         console.log(`✅ Agregada a la lista visual`);
 
