@@ -1170,6 +1170,8 @@
     let playedSongsLoaded = false; // Evitar "ghost cards" antes de cargar lista negra
     let visibleQueue = []; // Las 3 canciones actualmente mostradas
     let currentManualOrder = []; // Orden manual compartido
+    const firstSeenOrder = new Map(); // docId -> incremental order (para estabilizar renders)
+    let firstSeenCounter = 0;
 
     // Utilidad: Obtener clave de fecha local (YYYY-MM-DD)
     function getLocalDateKey(ts) {
@@ -1815,7 +1817,8 @@
           const temp = [];
           snapshot.forEach(doc => {
             const data = doc.data();
-            const item = { ...data, docId: doc.id };
+            if (!firstSeenOrder.has(doc.id)) firstSeenOrder.set(doc.id, ++firstSeenCounter);
+            const item = { ...data, docId: doc.id, _seen: firstSeenOrder.get(doc.id) };
             if (!item.id) item.id = doc.id;
             temp.push(item);
           });
@@ -1824,7 +1827,21 @@
           temp.sort((a, b) => {
              const tA = a.ts && a.ts.toMillis ? a.ts.toMillis() : (new Date(a.ts).getTime() || 0);
              const tB = b.ts && b.ts.toMillis ? b.ts.toMillis() : (new Date(b.ts).getTime() || 0);
-             return tA - tB;
+
+             const aHasTime = Number.isFinite(tA) && tA > 0;
+             const bHasTime = Number.isFinite(tB) && tB > 0;
+             if (aHasTime && bHasTime && tA !== tB) return tA - tB;
+             if (aHasTime && !bHasTime) return -1;
+             if (!aHasTime && bHasTime) return 1;
+
+             const sA = Number(a?._seen || 0);
+             const sB = Number(b?._seen || 0);
+             if (sA !== sB) return sA - sB;
+
+             const idA = String(a?.docId || a?.id || generateSongId(a) || '');
+             const idB = String(b?.docId || b?.id || generateSongId(b) || '');
+             if (idA && idB && idA !== idB) return idA.localeCompare(idB);
+             return 0;
           });
 
           console.log(`Loaded ${temp.length} requests for day ${currentDay}`);
