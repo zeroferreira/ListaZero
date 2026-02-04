@@ -441,6 +441,15 @@
           <label for="day-select" style="margin-right: 8px;">Ver día:</label>
           <select id="day-select"></select>
         </div>
+        <div class="day-filter">
+          <label for="sort-select" style="margin-right: 8px;">Orden:</label>
+          <select id="sort-select">
+            <option value="recent">Más recientes arriba</option>
+            <option value="oldest">Más antiguas arriba</option>
+            <option value="manual_recent">Manual + recientes</option>
+            <option value="manual_fifo">Manual (FIFO)</option>
+          </select>
+        </div>
         <div class="vip-filter">
           <label><input type="checkbox" id="vip-only" /> Ver solo VIP</label>
         </div>
@@ -1797,6 +1806,7 @@
       const emptyEl = document.getElementById('empty');
       const vipOnly = document.getElementById('vip-only');
       const daySelect = document.getElementById('day-select');
+      const sortSelect = document.getElementById('sort-select');
 
       const allUsersSelect = document.getElementById('all-users-select');
       const vipAddBtn = document.getElementById('vip-add');
@@ -1827,6 +1837,54 @@
       // Orden manual (compartido): suscripción y estado actual
       let unsubscribeManualOrder = null;
       let currentManualOrder = [];
+
+      const SORT_MODE_KEY = 'lista_sort_mode';
+      const allowedSortModes = new Set(['recent', 'oldest', 'manual_recent', 'manual_fifo']);
+
+      function getSortMode() {
+        try {
+          const vSel = String(sortSelect?.value || '').trim();
+          const vStore = String(localStorage.getItem(SORT_MODE_KEY) || '').trim();
+          const mode = vSel || vStore || 'recent';
+          if (allowedSortModes.has(mode)) return mode;
+        } catch (_) {}
+        return 'recent';
+      }
+
+      function isManualSortMode(mode) {
+        const m = String(mode || getSortMode() || '').trim();
+        return m === 'manual_recent' || m === 'manual_fifo';
+      }
+
+      function compareItemsByTime(a, b, dir) {
+        const ta = getItemTimeMs(a);
+        const tb = getItemTimeMs(b);
+        if (ta !== tb) return dir === 'desc' ? (tb - ta) : (ta - tb);
+
+        const ha = String(a?.hora || '').trim();
+        const hb = String(b?.hora || '').trim();
+        if (ha && hb && ha !== hb) return dir === 'desc' ? hb.localeCompare(ha) : ha.localeCompare(hb);
+
+        const ida = String(a?.id || a?.docId || a?.requestId || '').trim();
+        const idb = String(b?.id || b?.docId || b?.requestId || '').trim();
+        if (ida && idb && ida !== idb) return dir === 'desc' ? idb.localeCompare(ida) : ida.localeCompare(idb);
+        return 0;
+      }
+
+      function sortItemsStable(items, dir) {
+        const arr = Array.isArray(items) ? items.slice() : [];
+        arr.sort((a, b) => compareItemsByTime(a, b, dir));
+        return arr;
+      }
+
+      function applyDisplayOrder(items) {
+        const mode = getSortMode();
+        if (mode === 'oldest') return sortItemsStable(items, 'asc');
+        if (mode === 'recent') return sortItemsStable(items, 'desc');
+        if (mode === 'manual_fifo') return applyOrder(sortItemsStable(items, 'asc'), currentManualOrder);
+        if (mode === 'manual_recent') return applyOrder(sortItemsStable(items, 'desc'), currentManualOrder);
+        return sortItemsStable(items, 'desc');
+      }
 
       function showCopyNotification(anchor) {
         try {
@@ -3497,19 +3555,7 @@
               time: it.time,
               day: dayValue
             }));
-          items.sort((a, b) => {
-            const ta = getItemTimeMs(a);
-            const tb = getItemTimeMs(b);
-            if (ta !== tb) return ta - tb;
-            const ha = String(a?.hora || '').trim();
-            const hb = String(b?.hora || '').trim();
-            if (ha && hb && ha !== hb) return ha.localeCompare(hb);
-            const ida = String(a?.id || a?.docId || a?.requestId || '').trim();
-            const idb = String(b?.id || b?.docId || b?.requestId || '').trim();
-            if (ida && idb && ida !== idb) return ida.localeCompare(idb);
-            return 0;
-          });
-          const visibleItems = applyOrder(items, currentManualOrder);
+          const visibleItems = applyDisplayOrder(items);
           currentDayItems = visibleItems;
           window.__dayItems = visibleItems;
           renderSolicitudes(visibleItems);
@@ -3522,7 +3568,7 @@
         end.setDate(end.getDate() + 1);
 
         const applyItems = (items) => {
-          const visibleItems = applyOrder(items, currentManualOrder);
+          const visibleItems = applyDisplayOrder(items);
           currentDayItems = visibleItems;
           window.__dayItems = visibleItems;
           renderSolicitudes(visibleItems);
@@ -3557,18 +3603,6 @@
               day: dayValue
             });
           });
-          items.sort((a, b) => {
-            const ta = getItemTimeMs(a);
-            const tb = getItemTimeMs(b);
-            if (ta !== tb) return ta - tb;
-            const ha = String(a?.hora || '').trim();
-            const hb = String(b?.hora || '').trim();
-            if (ha && hb && ha !== hb) return ha.localeCompare(hb);
-            const ida = String(a?.id || a?.docId || a?.requestId || '').trim();
-            const idb = String(b?.id || b?.docId || b?.requestId || '').trim();
-            if (ida && idb && ida !== idb) return ida.localeCompare(idb);
-            return 0;
-          });
           if (items.length === 0) {
             const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
             const arr = Array.isArray(byDay[dayValue]) ? byDay[dayValue] : [];
@@ -3587,11 +3621,6 @@
                 time: it.time,
                 day: dayValue
               }));
-            items.sort((a, b) => {
-              const ta = getItemTimeMs(a);
-              const tb = getItemTimeMs(b);
-              return ta - tb; // Oldest First (Chronological)
-            });
           }
           return items;
         };
@@ -4366,9 +4395,8 @@
             .onSnapshot((doc) => {
               const data = doc.data();
               const remoteOrder = Array.isArray(data?.order) ? data.order : [];
-              if (remoteOrder.length) {
-                currentManualOrder = remoteOrder;
-              }
+              currentManualOrder = remoteOrder;
+              try { localStorage.setItem(`manualOrder:${day}`, JSON.stringify(currentManualOrder)); } catch (_) {}
               reorderCurrentDayItemsWithManualOrder(day);
             }, (err) => {
               console.error('Error suscripción orden manual:', err);
@@ -4383,14 +4411,15 @@
         try {
           const currentDay = document.getElementById('day-select')?.value;
           if (currentDay !== day) return;
-
-          const ordered = applyOrder(currentDayItems, currentManualOrder);
+          if (!isManualSortMode()) return;
+          const ordered = applyDisplayOrder(currentDayItems);
           currentDayItems = ordered;
           window.__dayItems = ordered;
           renderSolicitudes(ordered);
         } catch (e) {
           console.error('Error reordenando items con orden manual:', e);
-          const ordered = applyOrder(currentDayItems, currentManualOrder);
+          if (!isManualSortMode()) return;
+          const ordered = applyDisplayOrder(currentDayItems);
           currentDayItems = ordered;
           window.__dayItems = ordered;
           renderSolicitudes(ordered);
@@ -4751,9 +4780,19 @@
       vipOnly?.addEventListener('change', () => {
         if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
       });
+      sortSelect?.addEventListener('change', () => {
+        try { localStorage.setItem(SORT_MODE_KEY, String(sortSelect.value || '').trim()); } catch (_) {}
+        if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+      });
 
       (async function init() {
         console.log('🚀 Iniciando aplicación...');
+        try {
+          const saved = String(localStorage.getItem(SORT_MODE_KEY) || '').trim();
+          const initial = allowedSortModes.has(saved) ? saved : 'recent';
+          if (sortSelect) sortSelect.value = initial;
+          localStorage.setItem(SORT_MODE_KEY, initial);
+        } catch (_) {}
         await loadDays();
         // Mostrar estado inicial aunque no haya datos todavía
         try { renderSolicitudes([]); } catch (_) {}
