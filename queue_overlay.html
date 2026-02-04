@@ -620,9 +620,22 @@
   <!-- Controles de Depuración -->
    <div id="debug-controls" style="position: fixed; bottom: 20px; left: 20px; opacity: 0.2; transition: opacity 0.3s; z-index: 10000;">
      <button onclick="simulateQueueRequest()" style="padding: 10px; cursor: pointer;">➕ Simular Pedido</button>
-     <button onclick="simulateToggleFirst(event)" style="padding: 10px; cursor: pointer;" title="Shift+click = skip (sin puntos)">✅ Marcar como Reproducida</button>
+     <button onclick="toggleMarkPanel()" style="padding: 10px; cursor: pointer;" title="Abrir acciones de marcado">✅ Marcar</button>
      <button onclick="toggleDebugBorders()" style="padding: 10px; cursor: pointer;">🖼️ Ver Bordes</button>
      <button onclick="toggleWidgetMover()" style="padding: 10px; cursor: pointer;">🧩 Mover Widget</button>
+   </div>
+   <div id="mark-panel" style="position: fixed; bottom: 80px; left: 20px; z-index: 10001; background: rgba(0,0,0,0.80); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 10px; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; width: 220px;" hidden>
+     <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
+       <strong>Marcar canción</strong>
+       <button onclick="toggleMarkPanel()" style="padding: 6px 8px; cursor:pointer; border-radius: 10px; border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.06); color:#fff;">Cerrar</button>
+     </div>
+     <div style="display:flex; gap:8px;">
+       <button onclick="markFirstPendingFromPanel(true)" style="flex:1; padding: 10px; cursor:pointer; border-radius: 12px; border: 1px solid rgba(255,255,255,0.25); background: rgba(251,191,36,0.15); color:#fff; font-weight: 700;">⏭️ Skip</button>
+       <button onclick="markFirstPendingFromPanel(false)" style="flex:1; padding: 10px; cursor:pointer; border-radius: 12px; border: 1px solid rgba(255,255,255,0.25); background: rgba(34,197,94,0.15); color:#fff; font-weight: 700;">✅ Reproducida</button>
+     </div>
+     <div style="font-size: 12px; opacity: 0.85; margin-top: 10px; line-height: 1.25;">
+       Skip marca sin puntos. Reproducida marca y suma puntos.
+     </div>
    </div>
    <div id="widget-mover" style="position: fixed; bottom: 80px; left: 20px; z-index: 10001; background: rgba(0,0,0,0.80); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 10px; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; width: 320px; max-height: 50vh; overflow: auto;" hidden>
      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
@@ -661,6 +674,12 @@
       if (!panel.hidden) {
         try { renderWidgetMoverList(); } catch (_) {}
       }
+    }
+
+    function toggleMarkPanel() {
+      const panel = document.getElementById('mark-panel');
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
     }
 
     function getPendingRequestsForMover() {
@@ -1973,8 +1992,7 @@
         });
     }
 
-    function simulateToggleFirst(e) {
-      // Identificar el primer elemento PENDIENTE (no el primero de allRequests, sino el primero visible)
+    function markFirstPending(skip) {
       const pendingRequests = allRequests.filter(req => {
         const id = generateSongId(req);
         return !playedSongIds.has(id);
@@ -1983,14 +2001,21 @@
       if (pendingRequests.length > 0) {
         const toToggle = pendingRequests[0];
         const id = generateSongId(toToggle);
-        
-        console.log("Simulando toggle para:", id);
-        const doSkip = !!(e && e.shiftKey === true);
-        markSongAsPlayed(id, { skip: doSkip });
 
+        console.log("Marcando primera pendiente:", id, { skip: !!skip });
+        markSongAsPlayed(id, { skip: !!skip });
       } else {
         alert("No hay canciones pendientes para marcar.");
       }
+    }
+
+    function markFirstPendingFromPanel(skip) {
+      markFirstPending(!!skip);
+      try { toggleMarkPanel(); } catch (_) {}
+    }
+
+    function simulateToggleFirst(e) {
+      markFirstPending(!!(e && e.shiftKey === true));
     }
 
     // Modo de prueba automático: ?test=true
