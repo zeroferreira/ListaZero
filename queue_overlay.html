@@ -468,7 +468,7 @@
           <label>Simulación</label>
           <div style="display: flex; gap: 10px;">
             <button class="btn" style="background: #333;" onclick="simulateQueueRequest()">+ Pedido</button>
-            <button class="btn" style="background: #333;" onclick="simulateToggleFirst()">Next</button>
+            <button class="btn" style="background: #333;" onclick="simulateToggleFirst(event)" title="Shift+click = skip (sin puntos)">Next</button>
           </div>
         </div>
     </div>
@@ -620,7 +620,7 @@
   <!-- Controles de Depuración -->
    <div id="debug-controls" style="position: fixed; bottom: 20px; left: 20px; opacity: 0.2; transition: opacity 0.3s; z-index: 10000;">
      <button onclick="simulateQueueRequest()" style="padding: 10px; cursor: pointer;">➕ Simular Pedido</button>
-     <button onclick="simulateToggleFirst()" style="padding: 10px; cursor: pointer;">✅ Marcar como Reproducida</button>
+     <button onclick="simulateToggleFirst(event)" style="padding: 10px; cursor: pointer;" title="Shift+click = skip (sin puntos)">✅ Marcar como Reproducida</button>
      <button onclick="toggleDebugBorders()" style="padding: 10px; cursor: pointer;">🖼️ Ver Bordes</button>
      <button onclick="toggleWidgetMover()" style="padding: 10px; cursor: pointer;">🧩 Mover Widget</button>
    </div>
@@ -1167,6 +1167,7 @@
     // Estado local
     let allRequests = []; // Todas las solicitudes del día
     let playedSongIds = new Set(); // IDs de canciones ya reproducidas
+    let skippedSongIds = new Set(); // IDs reproducidas pero skip (no cuentan puntos)
     let playedSongsLoaded = false; // Evitar "ghost cards" antes de cargar lista negra
     let visibleQueue = []; // Las 3 canciones actualmente mostradas
     let currentManualOrder = []; // Orden manual compartido
@@ -1211,6 +1212,14 @@
       const cancion = req.cancion || req.songName || req.song || req.name || '';
       const artista = req.artista || req.artistName || req.artist || '';
       return `${usuario}-${cancion}-${artista}-${finalHora}`.replace(/[^a-zA-Z0-9-]/g, '');
+    }
+
+    function getLocalSkippedMap() {
+      try { return JSON.parse(localStorage.getItem('skippedSongs') || '{}'); } catch (_) { return {}; }
+    }
+
+    function setLocalSkippedMap(map) {
+      try { localStorage.setItem('skippedSongs', JSON.stringify(map || {})); } catch (_) {}
     }
 
     // Orden manual: aplicar
@@ -1790,18 +1799,35 @@
         checkCurrentTrackAgainstQueue();
     }
 
-    function markSongAsPlayed(id) {
+    function markSongAsPlayed(id, options) {
       if (!id) return;
+      const doSkip = !!(options && options.skip === true);
       try {
         playedSongIds.add(id);
+        if (doSkip) skippedSongIds.add(id);
+        else skippedSongIds.delete(id);
         playedSongsLoaded = true;
         renderQueue();
       } catch (_) {}
+      try {
+        const localSkipped = getLocalSkippedMap();
+        const arr = Array.isArray(localSkipped[currentDay]) ? localSkipped[currentDay] : [];
+        if (doSkip) {
+          if (!arr.includes(id)) arr.push(id);
+        } else {
+          localSkipped[currentDay] = arr.filter(x => x !== id);
+        }
+        localSkipped[currentDay] = Array.isArray(localSkipped[currentDay]) ? localSkipped[currentDay] : arr;
+        setLocalSkippedMap(localSkipped);
+      } catch (_) {}
       if (!db) return;
-      db.collection('playedSongs').doc(currentDay).set({
+      const payload = {
         songs: firebase.firestore.FieldValue.arrayUnion(id),
         lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true })
+      };
+      if (doSkip) payload.skipped = firebase.firestore.FieldValue.arrayUnion(id);
+      else payload.skipped = firebase.firestore.FieldValue.arrayRemove(id);
+      db.collection('playedSongs').doc(currentDay).set(payload, { merge: true })
       .then(() => console.log("Song marked as played:", id))
       .catch(err => console.error("Error marking song as played:", err));
     }
@@ -1858,8 +1884,21 @@
             const data = doc.data();
             const songs = data.songs || data.list || [];
             playedSongIds = new Set(songs);
+            const skipped = Array.isArray(data.skipped) ? data.skipped : [];
+            skippedSongIds = new Set(skipped);
+            try {
+              const localSkipped = getLocalSkippedMap();
+              localSkipped[currentDay] = skipped;
+              setLocalSkippedMap(localSkipped);
+            } catch (_) {}
           } else {
             playedSongIds = new Set();
+            skippedSongIds = new Set();
+            try {
+              const localSkipped = getLocalSkippedMap();
+              localSkipped[currentDay] = [];
+              setLocalSkippedMap(localSkipped);
+            } catch (_) {}
           }
           playedSongsLoaded = true; // Marcar como cargado para habilitar renderizado
           renderQueue();
@@ -1934,7 +1973,7 @@
         });
     }
 
-    function simulateToggleFirst() {
+    function simulateToggleFirst(e) {
       // Identificar el primer elemento PENDIENTE (no el primero de allRequests, sino el primero visible)
       const pendingRequests = allRequests.filter(req => {
         const id = generateSongId(req);
@@ -1946,7 +1985,8 @@
         const id = generateSongId(toToggle);
         
         console.log("Simulando toggle para:", id);
-        markSongAsPlayed(id);
+        const doSkip = !!(e && e.shiftKey === true);
+        markSongAsPlayed(id, { skip: doSkip });
 
       } else {
         alert("No hay canciones pendientes para marcar.");
