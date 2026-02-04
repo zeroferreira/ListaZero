@@ -2001,47 +2001,71 @@
         } catch (_) {}
       }
 
-      async function cloudAddPlayed(day, songId, it) {
-        if (!window.db || !firebase?.firestore?.FieldValue) return;
-        const playedRef = window.db.collection('playedSongs').doc(day);
-        await playedRef.set({
-          songs: firebase.firestore.FieldValue.arrayUnion(songId),
-          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+      function getLocalSkippedMap() {
         try {
-          const uName = (it?.usuario || '').trim();
-          if (uName) await updateUserPlayedCounter(uName, day, 1);
-          await registerToggleEvent({
-            action: 'mark',
-            usuario: uName,
-            cancion: it?.cancion,
-            artista: it?.artista,
-            day,
-            hora: it?.hora,
-            songId
-          });
+          return JSON.parse(localStorage.getItem('skippedSongs') || '{}');
+        } catch (_) {
+          return {};
+        }
+      }
+
+      function setLocalSkippedMap(map) {
+        try {
+          localStorage.setItem('skippedSongs', JSON.stringify(map || {}));
         } catch (_) {}
       }
 
-      async function cloudRemovePlayed(day, songId, it) {
+      async function cloudAddPlayed(day, songId, it, options) {
         if (!window.db || !firebase?.firestore?.FieldValue) return;
         const playedRef = window.db.collection('playedSongs').doc(day);
-        await playedRef.set({
-          songs: firebase.firestore.FieldValue.arrayRemove(songId),
+        const skipped = !!(options && options.skipped === true);
+        const payload = {
+          songs: firebase.firestore.FieldValue.arrayUnion(songId),
           lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        };
+        if (skipped) payload.skipped = firebase.firestore.FieldValue.arrayUnion(songId);
+        await playedRef.set(payload, { merge: true });
         try {
           const uName = (it?.usuario || '').trim();
-          if (uName) await updateUserPlayedCounter(uName, day, -1);
-          await registerToggleEvent({
-            action: 'unmark',
-            usuario: uName,
-            cancion: it?.cancion,
-            artista: it?.artista,
-            day,
-            hora: it?.hora,
-            songId
-          });
+          if (!skipped) {
+            if (uName) await updateUserPlayedCounter(uName, day, 1);
+            await registerToggleEvent({
+              action: 'mark',
+              usuario: uName,
+              cancion: it?.cancion,
+              artista: it?.artista,
+              day,
+              hora: it?.hora,
+              songId
+            });
+          }
+        } catch (_) {}
+      }
+
+      async function cloudRemovePlayed(day, songId, it, options) {
+        if (!window.db || !firebase?.firestore?.FieldValue) return;
+        const playedRef = window.db.collection('playedSongs').doc(day);
+        const skipped = !!(options && options.skipped === true);
+        const payload = {
+          songs: firebase.firestore.FieldValue.arrayRemove(songId),
+          skipped: firebase.firestore.FieldValue.arrayRemove(songId),
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        await playedRef.set(payload, { merge: true });
+        try {
+          const uName = (it?.usuario || '').trim();
+          if (!skipped) {
+            if (uName) await updateUserPlayedCounter(uName, day, -1);
+            await registerToggleEvent({
+              action: 'unmark',
+              usuario: uName,
+              cancion: it?.cancion,
+              artista: it?.artista,
+              day,
+              hora: it?.hora,
+              songId
+            });
+          }
         } catch (_) {}
       }
 
@@ -2078,7 +2102,16 @@
               setLocalPlayedMap(localPlayed);
             }
             try { if (window.playedSongsCache) window.playedSongsCache[day] = arr; } catch (_) {}
-            await cloudAddPlayed(day, songId, action.itemForLog);
+            if (action.wasSkipped) {
+              const localSkipped = getLocalSkippedMap();
+              const sArr = Array.isArray(localSkipped[day]) ? localSkipped[day] : [];
+              if (!sArr.includes(songId)) {
+                sArr.push(songId);
+                localSkipped[day] = sArr;
+                setLocalSkippedMap(localSkipped);
+              }
+            }
+            await cloudAddPlayed(day, songId, action.itemForLog, { skipped: !!action.wasSkipped });
           }
 
           if (action.docId) {
@@ -2162,7 +2195,11 @@
             localPlayed[day] = arr.filter(id => id !== songId);
             setLocalPlayedMap(localPlayed);
             try { if (window.playedSongsCache) window.playedSongsCache[day] = localPlayed[day]; } catch (_) {}
-            await cloudRemovePlayed(day, songId, action.itemForLog);
+            const localSkipped = getLocalSkippedMap();
+            const sArr = Array.isArray(localSkipped[day]) ? localSkipped[day] : [];
+            localSkipped[day] = sArr.filter(id => id !== songId);
+            setLocalSkippedMap(localSkipped);
+            await cloudRemovePlayed(day, songId, action.itemForLog, { skipped: !!action.wasSkipped });
           }
 
           if (action.docId) {
@@ -2270,11 +2307,15 @@
 
           // Verificar si la canción está marcada como reproducida
           const currentDay = document.getElementById('day-select')?.value || '';
-          const localPlayedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+          const localPlayedMap = getLocalPlayedMap();
+          const localSkippedMap = getLocalSkippedMap();
           const dayPlayedSongs = window.playedSongsCache[currentDay] || localPlayedMap[currentDay] || [];
+          const daySkippedSongs = localSkippedMap[currentDay] || [];
+          const skippedSet = new Set((Array.isArray(daySkippedSongs) ? daySkippedSongs : []).map(x => String(x || '')));
           
           if (dayPlayedSongs.includes(songId)) {
             li.classList.add('played');
+            if (skippedSet.has(String(songId || ''))) li.classList.add('skipped');
           }
 
           // Modo edición: draggable
@@ -2310,7 +2351,7 @@
                 <button class="copy-chip" type="button" title="Copiar artista" data-copy="${it.artista}">⧉</button>
               </div>
             </span>
-            <button class="play-toggle-btn" title="Marcar como reproducida/no reproducida">
+            <button class="play-toggle-btn" title="Marcar como reproducida (Shift=skip / sin puntos)">
               <span class="play-icon">▶️</span>
             </button>
             <button class="delete-btn" title="Eliminar canción" aria-label="Eliminar">🗑️</button>
@@ -2343,9 +2384,14 @@
             toggleBtn.addEventListener('click', (e) => {
               e.preventDefault();
               e.stopPropagation();
-              toggleSongPlayed(li, songId, currentDay);
+              toggleSongPlayed(li, songId, currentDay, { skip: e.shiftKey === true });
             });
           }
+
+          try {
+            const iconEl = li.querySelector('.play-icon');
+            if (iconEl) iconEl.textContent = li.classList.contains('played') ? (li.classList.contains('skipped') ? '⏭️' : '▶️') : '▶️';
+          } catch (_) {}
 
           // Eliminar canción (solo en modo edición)
           const deleteBtn = li.querySelector('.delete-btn');
@@ -2356,9 +2402,12 @@
 
             const docId = li.dataset.docId;
             const day = currentDay;
-            const localPlayedMapBefore = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+            const localPlayedMapBefore = getLocalPlayedMap();
+            const localSkippedMapBefore = getLocalSkippedMap();
             const dayPlayedBefore = window.playedSongsCache[day] || localPlayedMapBefore[day] || [];
+            const daySkippedBefore = localSkippedMapBefore[day] || [];
             const wasPlayed = Array.isArray(dayPlayedBefore) && dayPlayedBefore.includes(songId);
+            const wasSkipped = Array.isArray(daySkippedBefore) && daySkippedBefore.includes(songId);
             const orderIndex = (docId && Array.isArray(currentManualOrder)) ? currentManualOrder.indexOf(docId) : -1;
             const requestData = {
               id: it.requestId || songId,
@@ -2404,6 +2453,7 @@
                 localEntry,
                 localIndex,
                 wasPlayed,
+                wasSkipped,
                 orderIndex: orderIndex >= 0 ? orderIndex : null,
                 itemForLog: { usuario: it.usuario, cancion: it.cancion, artista: it.artista, hora: it.hora }
               });
@@ -2411,10 +2461,15 @@
               refreshEditActionsBar();
 
               // Limpiar estado reproducida del localStorage
-              const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+              const localPlayed = getLocalPlayedMap();
               if (localPlayed[day]) {
                 localPlayed[day] = localPlayed[day].filter(id => id !== songId);
-                localStorage.setItem('playedSongs', JSON.stringify(localPlayed));
+                setLocalPlayedMap(localPlayed);
+              }
+              const localSkipped = getLocalSkippedMap();
+              if (localSkipped[day]) {
+                localSkipped[day] = localSkipped[day].filter(id => id !== songId);
+                setLocalSkippedMap(localSkipped);
               }
 
               // NEW: Limpiar estado reproducida de Firebase (asegurar consistencia)
@@ -2427,21 +2482,25 @@
                      const pSongs = Array.isArray(pData.songs) ? pData.songs : (Array.isArray(pData.list) ? pData.list : []);
                      if (pSongs.includes(songId)) {
                        // Estaba marcada en la nube, borrarla y descontar
-                       await playedRef.update({
+                       const upd = {
                          songs: firebase.firestore.FieldValue.arrayRemove(songId),
+                         skipped: firebase.firestore.FieldValue.arrayRemove(songId),
                          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                       });
+                       };
+                       await playedRef.update(upd);
                        const uName = (it.usuario || '').trim();
-                       await updateUserPlayedCounter(uName, day, -1);
-                       await registerToggleEvent({
-                         action: 'unmark',
-                         usuario: uName,
-                         cancion: it.cancion,
-                         artista: it.artista,
-                         day: day,
-                         hora: it.hora,
-                         songId: songId
-                       });
+                       if (!wasSkipped) {
+                         await updateUserPlayedCounter(uName, day, -1);
+                         await registerToggleEvent({
+                           action: 'unmark',
+                           usuario: uName,
+                           cancion: it.cancion,
+                           artista: it.artista,
+                           day: day,
+                           hora: it.hora,
+                           songId: songId
+                         });
+                       }
                      }
                    }
                 } catch(cloudErr) {
@@ -2813,7 +2872,7 @@
       }
       window.generateDeviceFingerprint = generateDeviceFingerprint;
 
-      async function toggleSongPlayed(element, songId, passedDay) {
+      async function toggleSongPlayed(element, songId, passedDay, options) {
         try {
           if (!isDJDevice()) { 
              // Feedback visual para no-DJs (Petición: que se pueda presionar pero sin cambiar estado)
@@ -2836,39 +2895,59 @@
           }
 
           const isTestItem = String(element?.dataset?.isTest || '') === '1';
+          const wantsSkip = !!(options && options.skip === true);
           
           // Obtener datos locales como respaldo
-          const localPlayedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-          if (!localPlayedSongs[currentDay]) {
-            localPlayedSongs[currentDay] = [];
-          }
-          
-          const isPlayed = localPlayedSongs[currentDay].includes(songId);
+          const localPlayedSongs = getLocalPlayedMap();
+          if (!localPlayedSongs[currentDay]) localPlayedSongs[currentDay] = [];
+
+          const localSkippedSongs = getLocalSkippedMap();
+          if (!localSkippedSongs[currentDay]) localSkippedSongs[currentDay] = [];
+
+          const wasPlayed = localPlayedSongs[currentDay].includes(songId);
+          const wasSkipped = localSkippedSongs[currentDay].includes(songId);
+          const iconEl = element.querySelector('.play-icon');
           
           // Actualizar estado local inmediatamente para UX responsiva
-          if (isPlayed) {
-            // Desmarcar como reproducida
-            localPlayedSongs[currentDay] = localPlayedSongs[currentDay].filter(id => id !== songId);
-            element.classList.remove('played');
-            
-            // Remover indicador visual si existe
-            const indicator = element.querySelector('.played-indicator');
-            if (indicator) {
-              indicator.remove();
-            }
-            
-            // Restaurar estilos originales
-            element.style.backgroundColor = '';
-            element.style.color = '';
-            element.style.opacity = '';
-          } else {
-            // Marcar como reproducida
+          let nextPlayed = wasPlayed;
+          let nextSkipped = wasSkipped;
+
+          if (!wasPlayed) {
+            nextPlayed = true;
+            nextSkipped = wantsSkip === true;
             localPlayedSongs[currentDay].push(songId);
+            if (nextSkipped) localSkippedSongs[currentDay].push(songId);
             element.classList.add('played');
+            element.classList.toggle('skipped', nextSkipped);
+          } else {
+            if (wantsSkip) {
+              nextPlayed = true;
+              nextSkipped = !wasSkipped;
+              if (nextSkipped) localSkippedSongs[currentDay].push(songId);
+              else localSkippedSongs[currentDay] = localSkippedSongs[currentDay].filter(id => id !== songId);
+              element.classList.add('played');
+              element.classList.toggle('skipped', nextSkipped);
+            } else {
+              nextPlayed = false;
+              nextSkipped = false;
+              localPlayedSongs[currentDay] = localPlayedSongs[currentDay].filter(id => id !== songId);
+              localSkippedSongs[currentDay] = localSkippedSongs[currentDay].filter(id => id !== songId);
+              element.classList.remove('played');
+              element.classList.remove('skipped');
+
+              const indicator = element.querySelector('.played-indicator');
+              if (indicator) indicator.remove();
+              element.style.backgroundColor = '';
+              element.style.color = '';
+              element.style.opacity = '';
+            }
           }
+
+          if (iconEl) iconEl.textContent = nextPlayed ? (nextSkipped ? '⏭️' : '▶️') : '▶️';
           
           // Guardar en localStorage como respaldo
-          localStorage.setItem('playedSongs', JSON.stringify(localPlayedSongs));
+          setLocalPlayedMap(localPlayedSongs);
+          setLocalSkippedMap(localSkippedSongs);
           
            if (typeof window.playedSongsCache === 'object') {
               window.playedSongsCache[currentDay] = localPlayedSongs[currentDay];
@@ -2883,22 +2962,38 @@
               await playedSongsRef.set({ day: currentDay }, { merge: true });
               
               // Aplicar operación de agregado/eliminado con merge para evitar fallos si no existe
-              await playedSongsRef.set({
-                songs: isPlayed ? firebase.firestore.FieldValue.arrayRemove(songId)
+              const updatePayload = {
+                songs: wasPlayed ? firebase.firestore.FieldValue.arrayRemove(songId)
                                 : firebase.firestore.FieldValue.arrayUnion(songId),
                 lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-              }, { merge: true });
+              };
+              if (!wasPlayed && nextSkipped) updatePayload.skipped = firebase.firestore.FieldValue.arrayUnion(songId);
+              else if (wasPlayed && !nextPlayed) updatePayload.skipped = firebase.firestore.FieldValue.arrayRemove(songId);
+              else if (wasPlayed && wasSkipped !== nextSkipped) updatePayload.skipped = nextSkipped ? firebase.firestore.FieldValue.arrayUnion(songId) : firebase.firestore.FieldValue.arrayRemove(songId);
+              await playedSongsRef.set(updatePayload, { merge: true });
 
               if (!isTestItem) {
                 const userForCounter = (element.dataset.username || '').trim();
-                await updateUserPlayedCounter(userForCounter, currentDay, isPlayed ? -1 : 1);
+                const delta =
+                  (!wasPlayed && nextPlayed && !nextSkipped) ? 1 :
+                  (wasPlayed && !nextPlayed && !wasSkipped) ? -1 :
+                  (wasPlayed && nextPlayed && wasSkipped && !nextSkipped) ? 1 :
+                  (wasPlayed && nextPlayed && !wasSkipped && nextSkipped) ? -1 :
+                  0;
+                if (delta) await updateUserPlayedCounter(userForCounter, currentDay, delta);
 
                 const usuarioText = (element.querySelector('.col.col-usuario, .usuario')?.textContent || userForCounter || '').trim();
                 const cancionText = (element.querySelector('.col.col-cancion')?.textContent || '').trim();
                 const artistaText = (element.querySelector('.col.col-artista')?.textContent || '').trim();
                 const horaText = (element.querySelector('.col.col-time')?.textContent || '').trim();
                 await registerToggleEvent({
-                  action: isPlayed ? 'unmark' : 'mark',
+                  action: (!wasPlayed && nextPlayed && !nextSkipped) ? 'mark'
+                         : (wasPlayed && !nextPlayed && !wasSkipped) ? 'unmark'
+                         : (wasPlayed && nextPlayed && wasSkipped && !nextSkipped) ? 'mark'
+                         : (wasPlayed && nextPlayed && !wasSkipped && nextSkipped) ? 'unmark'
+                         : (wasPlayed && nextPlayed && wasSkipped && nextSkipped) ? 'skip'
+                         : (!wasPlayed && nextPlayed && nextSkipped) ? 'skip'
+                         : 'noop',
                   usuario: usuarioText,
                   cancion: cancionText,
                   artista: artistaText,
@@ -2921,7 +3016,9 @@
                   const sid = String(songId||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
                   window.__userToggleSet = window.__userToggleSet || {};
                   const set = window.__userToggleSet[normUser] || (window.__userToggleSet[normUser] = new Set());
-                  if (isPlayed) { set.delete(sid); } else { set.add(sid); }
+                  const shouldCountNow = nextPlayed && !nextSkipped;
+                  if (shouldCountNow) set.add(sid);
+                  else set.delete(sid);
                   window.__toggleReady = window.__toggleReady || {}; window.__toggleReady[normUser] = true;
                   setPlayedStat(set.size);
                 } catch(_){ }
@@ -3037,8 +3134,11 @@
             const dayId = String(doc.id||'');
             const d = doc.data()||{};
             const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : (Array.isArray(d.songIds) ? d.songIds : []));
+            const skippedArr = Array.isArray(d.skipped) ? d.skipped : [];
+            const skippedSet = new Set((skippedArr || []).map(x => String(x || '').toLowerCase().replace(/[^a-z0-9-]/g,'')));
             for (let i=0;i<arr.length;i++){
               const id = String(arr[i]||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+              if (skippedSet.has(id)) continue;
               if (id.startsWith(`${key}-`)) {
                 await registerToggleEvent({
                   action: 'mark',
@@ -3060,13 +3160,17 @@
           // Segunda pasada: backfill desde localStorage (solo por usuario)
           try {
             const localMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+            const localSkippedMap = JSON.parse(localStorage.getItem('skippedSongs') || '{}');
             const days = Object.keys(localMap||{});
             for (let di=0; di<days.length; di++) {
               const dayId = String(days[di]||'').trim();
               if (!dayId) continue;
               const arr = Array.isArray(localMap[dayId]) ? localMap[dayId] : [];
+              const skippedArr = Array.isArray(localSkippedMap[dayId]) ? localSkippedMap[dayId] : [];
+              const skippedSet = new Set((skippedArr || []).map(x => String(x || '').toLowerCase().replace(/[^a-z0-9-]/g,'')));
               for (let i=0;i<arr.length;i++) {
                 const id = String(arr[i]||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+                if (skippedSet.has(id)) continue;
                 if (!id.startsWith(`${key}-`)) continue;
                 await registerToggleEvent({
                   action: 'mark',
@@ -3298,10 +3402,11 @@
           }
           
           // Agregar indicador ✓ si no existe
+          const isSkipped = item.classList.contains('skipped');
           if (!item.querySelector('.played-indicator')) {
             const indicator = document.createElement('span');
             indicator.className = 'played-indicator';
-            indicator.textContent = '✓';
+            indicator.textContent = isSkipped ? '⏭' : '✓';
             indicator.style.cssText = `
               position: absolute;
               left: 4px;
@@ -3309,10 +3414,16 @@
               transform: translateY(-50%);
               font-size: 12px;
               font-weight: bold;
-              color: ${isDark ? '#34d399' : '#10b981'};
+              color: ${isSkipped ? (isDark ? '#fbbf24' : '#d97706') : (isDark ? '#34d399' : '#10b981')};
               z-index: 1;
             `;
             item.insertBefore(indicator, item.firstChild);
+          } else {
+            const indicator = item.querySelector('.played-indicator');
+            if (indicator) {
+              indicator.textContent = isSkipped ? '⏭' : '✓';
+              indicator.style.color = isSkipped ? (isDark ? '#fbbf24' : '#d97706') : (isDark ? '#34d399' : '#10b981');
+            }
           }
         });
       }
@@ -4109,6 +4220,7 @@
             try {
               const data = doc.data();
               const firebaseSongs = data?.songs || [];
+              const firebaseSkipped = Array.isArray(data?.skipped) ? data.skipped : [];
               
               console.log('🔄 Actualización de Firebase para canciones reproducidas:', {
                 day,
@@ -4117,14 +4229,18 @@
               });
               
               // Actualizar localStorage con datos de Firebase
-              const localPlayedSongs = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+              const localPlayedSongs = getLocalPlayedMap();
               localPlayedSongs[day] = firebaseSongs;
-              localStorage.setItem('playedSongs', JSON.stringify(localPlayedSongs));
+              setLocalPlayedMap(localPlayedSongs);
+
+              const localSkippedSongs = getLocalSkippedMap();
+              localSkippedSongs[day] = firebaseSkipped;
+              setLocalSkippedMap(localSkippedSongs);
               
                window.playedSongsCache[day] = firebaseSongs;
               
               // Actualizar interfaz visual
-          updatePlayedSongsUI(day, firebaseSongs);
+          updatePlayedSongsUI(day, firebaseSongs, firebaseSkipped);
 
           } catch (error) {
             console.error('Error procesando actualización de canciones reproducidas:', error);
@@ -4220,8 +4336,12 @@
         }
         function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } else if (val === v && (!k || key.localeCompare(k) < 0)) { k = key; } } return k; }
         const day = document.getElementById('day-select')?.value || '';
-        const played = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-        const playedCount = Array.isArray(played[day]) ? played[day].length : 0;
+        const played = getLocalPlayedMap();
+        const skipped = getLocalSkippedMap();
+        const playedArr = Array.isArray(played[day]) ? played[day] : [];
+        const skippedArr = Array.isArray(skipped[day]) ? skipped[day] : [];
+        const skippedSet = new Set(skippedArr.map(x => String(x || '')));
+        const playedCount = playedArr.filter(x => !skippedSet.has(String(x || ''))).length;
         let vipRequests = 0; let z0VipRequests = 0;
         for (let i = 0; i < items.length; i++) {
           const it = items[i] || {};
@@ -4316,7 +4436,7 @@
       }
 
       // Función para actualizar la interfaz visual de canciones reproducidas
-      function updatePlayedSongsUI(day, playedSongIds) {
+      function updatePlayedSongsUI(day, playedSongIds, skippedSongIds) {
         try {
           const currentDay = document.getElementById('day-select')?.value;
           
@@ -4334,17 +4454,24 @@
           
           // Obtener todos los elementos de canciones
           const songItems = document.querySelectorAll('.item[data-song-id]');
+          const skippedSet = new Set((Array.isArray(skippedSongIds) ? skippedSongIds : []).map(x => String(x || '')));
           
           songItems.forEach(item => {
             const songId = item.getAttribute('data-song-id');
             const isPlayed = playedSongIds.includes(songId);
+            const isSkipped = skippedSet.has(String(songId || ''));
+            const iconEl = item.querySelector('.play-icon');
             
             if (isPlayed) {
               // Marcar como reproducida
               item.classList.add('played');
+              item.classList.toggle('skipped', isSkipped);
+              if (iconEl) iconEl.textContent = isSkipped ? '⏭️' : '▶️';
             } else {
               // Desmarcar como reproducida
               item.classList.remove('played');
+              item.classList.remove('skipped');
+              if (iconEl) iconEl.textContent = '▶️';
               
               // Remover indicador visual si existe
               const indicator = item.querySelector('.played-indicator');
@@ -9422,10 +9549,13 @@
               if (hi && dayId && dayId > hi) return;
               const d = doc.data()||{};
               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : (Array.isArray(d.songIds) ? d.songIds : []));
+              const skippedArr = Array.isArray(d.skipped) ? d.skipped : [];
+              const skippedSet = new Set((skippedArr || []).map(x => String(x || '').toLowerCase().replace(/[^a-z0-9-]/g,'')));
               (arr||[]).forEach(x => {
                 const id = String(x||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
                 if (id.startsWith(`${user}-`)) set.add(id);
               });
+              skippedSet.forEach((sid) => { if (sid && sid.startsWith(`${user}-`)) set.delete(sid); });
             });
           } catch(_){ }
           const total = set.size;
@@ -9474,12 +9604,14 @@
               if (hi && dayId && dayId > hi) return;
               const d = doc.data()||{};
               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : (Array.isArray(d.songIds) ? d.songIds : []));
+              const skippedArr = Array.isArray(d.skipped) ? d.skipped : [];
+              const skippedSet = new Set((skippedArr || []).map(x => String(x || '').toLowerCase().replace(/[^a-z0-9-]/g,'')));
               (arr||[]).forEach(x => {
                 const id = String(x||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
                 const u = id.split('-')[0] || '';
                 if (!u) return;
                 sets[u] = sets[u] || new Set();
-                sets[u].add(id);
+                if (!skippedSet.has(id)) sets[u].add(id);
               });
             });
           } catch(_){ }
@@ -10945,9 +11077,12 @@
             // Usar la hora almacenada si existe, sino calcularla de forma segura (HH:MM)
             const hour = s.hora || (window.toHourKey ? window.toHourKey(s.ts || s.timestamp || s.time) : toHour(s.ts || s.timestamp || s.time));
             const sid = `${s.usuario}-${s.cancion}-${s.artista}-${hour}`.replace(/[^a-zA-Z0-9-]/g, '');
-            const playedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+            const playedMap = getLocalPlayedMap();
+            const skippedMap = getLocalSkippedMap();
             const dayArr = Array.isArray(playedMap[day]) ? playedMap[day] : [];
-            return sid && dayArr.includes(sid);
+            const skippedArr = Array.isArray(skippedMap[day]) ? skippedMap[day] : [];
+            const skippedSet = new Set(skippedArr.map(x => String(x || '')));
+            return sid && dayArr.includes(sid) && !skippedSet.has(String(sid || ''));
           } catch (_) {
             return false;
           }
