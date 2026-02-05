@@ -1421,7 +1421,7 @@
     }
 
     function formatWaitTime(mins) {
-      if (mins === 0) return "Siguiente";
+      if (mins <= 0.4) return "Siguiente";
       if (mins < 60) return `en ${Math.round(mins)} min`;
       const h = Math.floor(mins / 60);
       const m = Math.round(mins % 60);
@@ -1600,6 +1600,21 @@
       const settings = window.appliedSettings || getSettingsFromInputs();
       if (!settings.autocorrect && !settings.showAlbumArt && !settings.showWaitTime) return;
 
+      const getCurrentPlaybackRemainingMinutes = () => {
+        try {
+          if (!settings || settings.syncAppleMusic !== true) return 0;
+          const ms = Number(currentCiderPlayback?.remainingMs || 0);
+          const updatedAt = Number(currentCiderPlayback?.updatedAt || 0);
+          if (!Number.isFinite(ms) || ms <= 0) return 0;
+          const age = Date.now() - updatedAt;
+          if (!Number.isFinite(age) || age > 120000) return 0;
+          if (ms < 5000) return 0;
+          return ms / 60000;
+        } catch (_) {
+          return 0;
+        }
+      };
+
       const shouldAutocorrectText = (reqArtist, reqSong, correctedArtist, correctedSong) => {
         try {
           const ra = normalizeText(reqArtist);
@@ -1626,7 +1641,7 @@
         if (sid && !elBySongId.has(sid)) elBySongId.set(sid, el);
       });
       
-      let accumulatedTime = 0; // minutes
+      let accumulatedTime = getCurrentPlaybackRemainingMinutes(); // minutes (incluye canción actual si hay Cider)
 
       for (const req of items) {
          if (!req) continue;
@@ -1724,6 +1739,51 @@
 
     // Global variable to store current playback state
     let currentCiderTrack = null;
+    let currentCiderPlayback = { remainingMs: 0, updatedAt: 0 };
+
+    function normalizeMaybeSecondsToMs(v) {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n <= 0) return 0;
+      if (n < 1000) return Math.round(n * 1000);
+      if (n < 1000 * 60 * 20) return Math.round(n * 1000);
+      return Math.round(n);
+    }
+
+    function updateCiderPlaybackTiming(data) {
+      try {
+        if (!data) return;
+
+        const remainingCandidates = [
+          data.timeRemaining,
+          data.remainingTime,
+          data.remainingTimeMs,
+          data.remainingMs,
+          data.timeRemainingMs
+        ];
+
+        let remainingMs = 0;
+        for (let i = 0; i < remainingCandidates.length; i++) {
+          const ms = normalizeMaybeSecondsToMs(remainingCandidates[i]);
+          if (ms > 0) { remainingMs = ms; break; }
+        }
+
+        if (!remainingMs) {
+          const durationMs = normalizeMaybeSecondsToMs(
+            data.durationInMillis || data.durationMs || data.trackTimeMillis || data.duration || data.playbackDuration
+          );
+          const positionMs = normalizeMaybeSecondsToMs(
+            data.playbackTime || data.currentPlaybackTime || data.position || data.elapsedTime || data.elapsedTimeMs
+          );
+          if (durationMs > 0 && positionMs >= 0 && positionMs <= durationMs + 15000) {
+            remainingMs = Math.max(0, durationMs - positionMs);
+          }
+        }
+
+        if (remainingMs > 0) {
+          currentCiderPlayback = { remainingMs, updatedAt: Date.now() };
+        }
+      } catch (_) {}
+    }
 
     // Function to check current playing track against the queue
     function checkCurrentTrackAgainstQueue() {
@@ -1822,6 +1882,7 @@
         
         // Log para depuración
         console.log("🎵 Cider Event:", type, data?.name);
+        try { updateCiderPlaybackTiming(data); } catch (_) {}
 
         // Aceptar cambio de canción O cambio de estado (play/pause) O respuesta inicial
         if (type === "playbackStatus.nowPlayingItemDidChange" || type === "playbackStatus.playbackStateDidChange") {
