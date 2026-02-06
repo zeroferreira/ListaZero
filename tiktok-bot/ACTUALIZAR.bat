@@ -1,6 +1,7 @@
 @echo off
 title Actualizar Bot Zero FM
 cd /d "%~dp0"
+set "DEST=%CD%"
 echo ==========================================
 echo    Actualizando Bot de Pedidos Zero FM
 echo ==========================================
@@ -40,8 +41,8 @@ if not exist "%TMP%\tiktok-bot\index.js" (
 )
 
 echo [INFO] Copiando archivos al bot local...
-attrib -R "%~dp0*.*" /S /D >nul 2>&1
-robocopy "%TMP%\tiktok-bot" "%~dp0" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json"
+attrib -R "%DEST%\*.*" /S /D >nul 2>&1
+robocopy "%TMP%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json"
 set "RC=%errorlevel%"
 if %RC% geq 8 (
     echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
