@@ -76,6 +76,8 @@ const badgeSets = {
     z0Platinum: new Set(),
     selected: new Map()
 };
+let badgeSetsUpdatedAt = 0;
+let badgeSetsRefreshing = false;
 
 function normalizeUserKeyForBadges(v) {
     try {
@@ -114,6 +116,8 @@ function getBadgeForUser(userKey, userId, displayName) {
 async function refreshBadgeSets() {
     try {
         if (!db || typeof getDocs !== 'function' || typeof collection !== 'function') return;
+        if (badgeSetsRefreshing) return;
+        badgeSetsRefreshing = true;
         const targets = [
             { col: 'vipUsers', set: badgeSets.vip, field: 'name' },
             { col: 'z0VipUsers', set: badgeSets.z0Vip, field: 'name' },
@@ -145,9 +149,26 @@ async function refreshBadgeSets() {
             if (key && badge) nextMap.set(key, badge);
         });
         badgeSets.selected = nextMap;
+        badgeSetsUpdatedAt = Date.now();
+        console.log(`🏷️ Insignias sincronizadas: vip=${badgeSets.vip.size} z0Vip=${badgeSets.z0Vip.size} donador=${badgeSets.donador.size} z0Fan=${badgeSets.z0Fan.size} z0Platino=${badgeSets.z0Platinum.size} selected=${badgeSets.selected.size}`);
     } catch (e) {
         console.warn('⚠️ No se pudieron actualizar insignias (vip/z0/donador):', e && e.message ? e.message : String(e));
+    } finally {
+        badgeSetsRefreshing = false;
     }
+}
+
+async function ensureBadgeSetsFresh() {
+    try {
+        if (!db) return;
+        const now = Date.now();
+        const age = badgeSetsUpdatedAt ? (now - badgeSetsUpdatedAt) : Infinity;
+        if (age > 15 * 60 * 1000) {
+            await refreshBadgeSets();
+        } else if (!badgeSetsUpdatedAt) {
+            await refreshBadgeSets();
+        }
+    } catch (_) {}
 }
 
 function normalizeUserKeyText(v) {
@@ -842,6 +863,7 @@ async function handleSongRequest(user, query, options = {}) {
         const userId = options.userId ? String(options.userId).trim() : '';
         const displayName = options.displayName ? String(options.displayName).trim() : '';
         const rawQuery = options.rawQuery ? String(options.rawQuery).trim() : '';
+        try { await ensureBadgeSetsFresh(); } catch (_) {}
 
         let resolved = null;
         const overrideSong = String(options.songName || '').trim();
@@ -934,6 +956,7 @@ async function handleSongRequest(user, query, options = {}) {
         if (userId) requestData.userId = userId;
         const badge = getBadgeForUser(user, userId, displayName);
         if (badge) requestData.badge = badge;
+        console.log(`🏷️ Badge para ${displayName || user} -> ${badge || 'ninguna'}`);
         if (isTest) {
             requestData.isSimulation = true;
             requestData.isTest = true;
