@@ -1097,6 +1097,7 @@
 
     function showNotification(data) {
       isShowing = true;
+      currentCardData = data;
 
       // Rellenar datos
       songEl.textContent = data.cancion || 'Desconocida';
@@ -1147,6 +1148,7 @@
     const z0FanSet = new Set();
     const z0PlatinumSet = new Set();
     let selectedBadgeMap = {};
+    let currentCardData = null;
 
     function normalizeUserKey(v) {
       try {
@@ -1157,17 +1159,27 @@
     }
 
     function getBadgeForUser(data) {
-      const u = normalizeUserKey((data && (data.usuario || data.userId)) || '');
+      const u = normalizeUserKey((data && data.usuario) || '');
+      const uid = normalizeUserKey((data && data.userId) || '');
       const d = normalizeUserKey((data && data.displayName) || '');
-      const key = u || d;
-      if (!key) return '';
-      const selected = selectedBadgeMap && selectedBadgeMap[key] ? String(selectedBadgeMap[key]) : '';
-      if (selected) return selected;
-      if (z0PlatinumSet.has(key)) return 'z0-platino';
-      if (z0VipSet.has(key)) return 'z0-vip';
-      if (vipSet.has(key)) return 'vip';
-      if (donadorSet.has(key)) return 'donador';
-      if (z0FanSet.has(key)) return 'z0-fan';
+      const candidates = [];
+      if (u) candidates.push(u);
+      if (uid && uid !== u) candidates.push(uid);
+      if (d && d !== u && d !== uid) candidates.push(d);
+      if (!candidates.length) return '';
+      for (let i = 0; i < candidates.length; i++) {
+        const key = candidates[i];
+        const selected = selectedBadgeMap && selectedBadgeMap[key] ? String(selectedBadgeMap[key]) : '';
+        if (selected) return selected;
+      }
+      for (let i = 0; i < candidates.length; i++) {
+        const key = candidates[i];
+        if (z0PlatinumSet.has(key)) return 'z0-platino';
+        if (z0VipSet.has(key)) return 'z0-vip';
+        if (vipSet.has(key)) return 'vip';
+        if (donadorSet.has(key)) return 'donador';
+        if (z0FanSet.has(key)) return 'z0-fan';
+      }
       return '';
     }
 
@@ -1193,6 +1205,7 @@
           const name = normalizeUserKey(d.name || doc.id || '');
           if (name) vipSet.add(name);
         });
+        if (currentCardData) applyBadgeToCard(currentCardData);
       });
       db.collection('z0VipUsers').onSnapshot((snap) => {
         z0VipSet.clear();
@@ -1201,6 +1214,7 @@
           const name = normalizeUserKey(d.name || doc.id || '');
           if (name) z0VipSet.add(name);
         });
+        if (currentCardData) applyBadgeToCard(currentCardData);
       });
       db.collection('donadorUsers').onSnapshot((snap) => {
         donadorSet.clear();
@@ -1209,6 +1223,7 @@
           const name = normalizeUserKey(d.name || doc.id || '');
           if (name) donadorSet.add(name);
         });
+        if (currentCardData) applyBadgeToCard(currentCardData);
       });
       db.collection('z0FanUsers').onSnapshot((snap) => {
         z0FanSet.clear();
@@ -1217,6 +1232,7 @@
           const name = normalizeUserKey(d.name || doc.id || '');
           if (name) z0FanSet.add(name);
         });
+        if (currentCardData) applyBadgeToCard(currentCardData);
       });
       db.collection('z0PlatinumUsers').onSnapshot((snap) => {
         z0PlatinumSet.clear();
@@ -1225,6 +1241,7 @@
           const name = normalizeUserKey(d.name || doc.id || '');
           if (name) z0PlatinumSet.add(name);
         });
+        if (currentCardData) applyBadgeToCard(currentCardData);
       });
       db.collection('selectedBadges').onSnapshot((snap) => {
         const m = {};
@@ -1235,6 +1252,7 @@
           if (name) m[name] = badge;
         });
         selectedBadgeMap = m;
+        if (currentCardData) applyBadgeToCard(currentCardData);
       });
 
       db.collection('solicitudes')
