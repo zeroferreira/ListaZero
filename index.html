@@ -717,6 +717,43 @@
           const ts = Date.now();
           const dayKey = getLocalDateKey(ts);
 
+          async function resolveBadgeForUserKey(userKey) {
+            try {
+              if (!db || !userKey) return '';
+              const key = String(userKey || '').trim().replace(/^@/, '').toLowerCase();
+              if (!key) return '';
+
+              try {
+                const sel = await db.collection('selectedBadges').doc(key).get();
+                if (sel && sel.exists) {
+                  const d = sel.data() || {};
+                  const b = String(d.badge || '').trim();
+                  if (b) return b;
+                }
+              } catch (_) {}
+
+              const order = [
+                ['z0PlatinumUsers', 'z0-platino'],
+                ['z0VipUsers', 'z0-vip'],
+                ['vipUsers', 'vip'],
+                ['donadorUsers', 'donador'],
+                ['z0FanUsers', 'z0-fan']
+              ];
+              for (let i = 0; i < order.length; i++) {
+                const col = order[i][0];
+                const badge = order[i][1];
+                try {
+                  const docSnap = await db.collection(col).doc(key).get();
+                  if (docSnap && docSnap.exists) return badge;
+                } catch (_) {}
+              }
+            } catch (_) {}
+            return '';
+          }
+
+          const usuarioKey = usuario.toLowerCase();
+          const badge = await resolveBadgeForUserKey(usuarioKey);
+
           // Guardar en localStorage (compatibilidad/local)
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
           (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
@@ -731,6 +768,8 @@
             if (db) {
               await db.collection('solicitudes').add({
                 usuario,
+                displayName: usuario,
+                badge: badge || '',
                 cancion,
                 artista,
                 day: dayKey,
