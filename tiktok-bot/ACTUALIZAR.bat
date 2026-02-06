@@ -25,7 +25,7 @@ if exist "config.json" copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
 
 set "TMP=%TEMP%\zero_fm_update_git_%RANDOM%"
 echo [INFO] Descargando ultima version (Git clone)...
-git clone --depth 1 %REPO_URL% "%TMP%" >nul 2>&1
+git clone --depth 1 %REPO_URL% "%TMP%"
 if errorlevel 1 (
     echo [ERROR] No se pudo clonar el repositorio.
     echo Verifica internet / antivirus / permisos.
@@ -39,9 +39,12 @@ if not exist "%TMP%\tiktok-bot\index.js" (
     exit /b 1
 )
 
-robocopy "%TMP%\tiktok-bot" "%~dp0" /E /XD "node_modules" "logs" ".git" /XF "config.json" >nul
-if %errorlevel% geq 8 (
-    echo [ERROR] No se pudo copiar la actualizacion.
+echo [INFO] Copiando archivos al bot local...
+attrib -R "%~dp0*.*" /S /D >nul 2>&1
+robocopy "%TMP%\tiktok-bot" "%~dp0" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json"
+set "RC=%errorlevel%"
+if %RC% geq 8 (
+    echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
     if "%SILENT%"=="0" pause
     exit /b 1
 )
