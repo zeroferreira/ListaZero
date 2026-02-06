@@ -524,7 +524,7 @@ function setupListeners() {
     // CHAT
     tiktokLiveConnection.on('chat', async (data) => {
         const msg = data.comment;
-        const user = data.nickname;
+        const displayName = data.nickname;
         const userId = data.uniqueId;
         
         // DEBUG: Ver todos los mensajes para confirmar que llegan
@@ -546,23 +546,23 @@ function setupListeners() {
             msg.toLowerCase().startsWith('!pedir ') || 
             msg.toLowerCase().startsWith('!cancion ')) {
             
-            console.log(`📝 Comando detectado de ${user} (${userId}): ${msg}`);
+            console.log(`📝 Comando detectado de ${displayName} (${userId}): ${msg}`);
             
             if (requireVip && !isVip) {
-                console.log(`🚫 ${user} intentó pedir, pero no tiene permiso.`);
-                pushSrEvent({ source: 'chat', user, userId, query: msg, isVip, accepted: false, denied: 'notVip' });
+                console.log(`🚫 ${displayName} intentó pedir, pero no tiene permiso.`);
+                pushSrEvent({ source: 'chat', user: userId, displayName, userId, query: msg, isVip, accepted: false, denied: 'notVip' });
                 return;
             }
 
-            const query = msg.replace(/^!(sr|pedir|cancion)\s+/i, '').trim();
-            if (query.length > 0) {
+            const rawQuery = msg.replace(/^!(sr|pedir|cancion)\s+/i, '').trim();
+            if (rawQuery.length > 0) {
                 // Optimización: Reemplazar guiones con espacios para mejorar la búsqueda
                 // Esto permite "Artista - Cancion" o "Cancion - Artista" sin problemas
-                const cleanQuery = query.replace(/\s+-\s+/g, ' ').trim();
+                const cleanQuery = rawQuery.replace(/\s+-\s+/g, ' ').trim();
                 
-                console.log(`📩 Pedido de ${user}: ${query} (Buscando: ${cleanQuery})`);
-                const result = await handleSongRequest(user, cleanQuery, { userId, source: 'tiktokChat' });
-                pushSrEvent({ source: 'chat', user, userId, query: cleanQuery, isVip, accepted: !!result?.ok, queueSaved: !!result?.queueSaved, ciderSent: !!result?.ciderSent, ciderQueued: !!result?.ciderQueued, error: result?.ok ? '' : (result?.error || '') });
+                console.log(`📩 Pedido de ${displayName}: ${rawQuery} (Buscando: ${cleanQuery})`);
+                const result = await handleSongRequest(String(userId || '').trim(), cleanQuery, { userId, displayName, rawQuery, source: 'tiktokChat' });
+                pushSrEvent({ source: 'chat', user: String(userId || '').trim(), displayName, userId, query: rawQuery, isVip, accepted: !!result?.ok, queueSaved: !!result?.queueSaved, ciderSent: !!result?.ciderSent, ciderQueued: !!result?.ciderQueued, error: result?.ok ? '' : (result?.error || '') });
             }
         }
     });
@@ -643,6 +643,31 @@ async function resolveTrackFromQuery(query) {
     return { songName, artistName, artworkUrl, appleMusicId: String(appleMusicId), trackViewUrl };
 }
 
+function parseRawQueryToTrack(rawQuery) {
+    const raw = String(rawQuery || '').trim();
+    if (!raw) return null;
+    const candidates = [
+        ' - ',
+        ' — ',
+        ' – ',
+        ' —',
+        '–',
+        '—'
+    ];
+    let parts = null;
+    for (let i = 0; i < candidates.length; i++) {
+        const sep = candidates[i];
+        if (raw.includes(sep)) {
+            const p = raw.split(sep).map(s => String(s || '').trim()).filter(Boolean);
+            if (p.length >= 2) { parts = p; break; }
+        }
+    }
+    if (!parts) return { songName: raw, artistName: '', artworkUrl: '', appleMusicId: '', trackViewUrl: '' };
+    const artistName = parts[0] || '';
+    const songName = parts.slice(1).join(' - ').trim();
+    return { songName: songName || raw, artistName, artworkUrl: '', appleMusicId: '', trackViewUrl: '' };
+}
+
 async function handleSongRequest(user, query, options = {}) {
     try {
         const sendToQueue = options.sendToQueue !== false;
@@ -650,6 +675,8 @@ async function handleSongRequest(user, query, options = {}) {
         const isTest = !!options.isTest;
         const source = options.source ? String(options.source) : '';
         const userId = options.userId ? String(options.userId).trim() : '';
+        const displayName = options.displayName ? String(options.displayName).trim() : '';
+        const rawQuery = options.rawQuery ? String(options.rawQuery).trim() : '';
 
         let resolved = null;
         const overrideSong = String(options.songName || '').trim();
@@ -684,12 +711,24 @@ async function handleSongRequest(user, query, options = {}) {
                 trackViewUrl: ''
             };
         } else {
-            resolved = await resolveTrackFromQuery(query);
+            try {
+                resolved = await resolveTrackFromQuery(query);
+            } catch (_) {
+                resolved = null;
+            }
         }
 
+        let usedFallback = false;
         if (!resolved) {
-            console.log(`⚠️ No se encontró la canción: ${query}`);
-            return { ok: false, error: 'No se encontró track' };
+            const fallback = parseRawQueryToTrack(rawQuery || query);
+            if (fallback) {
+                resolved = fallback;
+                usedFallback = true;
+                console.log(`⚠️ Track no encontrado por búsqueda. Guardando pedido raw: ${rawQuery || query}`);
+            } else {
+                console.log(`⚠️ No se encontró la canción: ${query}`);
+                return { ok: false, error: 'No se encontró track' };
+            }
         }
 
         const songName = resolved.songName;
@@ -710,6 +749,7 @@ async function handleSongRequest(user, query, options = {}) {
         const requestData = {
             id: songId,
             usuario: user,
+            displayName: displayName || '',
             cancion: songName,
             artista: artistName,
             cover: artworkUrl,
@@ -724,6 +764,7 @@ async function handleSongRequest(user, query, options = {}) {
             requestData.isTest = true;
             if (source) requestData.source = source;
         }
+        if (usedFallback) requestData.unresolved = true;
 
         let queueSaved = false;
         let queueDocId = '';
@@ -741,19 +782,23 @@ async function handleSongRequest(user, query, options = {}) {
                 if (!appleMusicId) {
                     console.warn('⚠️ No se pudo enviar a Cider: falta AppleMusicId (activa búsqueda o provee el ID).');
                 } else {
-                ciderSocket.emit('safe_pre_add_queue', {
-                    artwork: { url: artworkUrl },
-                    name: songName,
-                    artistName: artistName,
-                    requester: user,
-                    requesterId: userId || '',
-                    playParams: { id: String(appleMusicId) },
-                    url: trackViewUrl,
-                    next: true
-                });
-                ciderSocket.emit('playback:queue:add-next', { id: String(appleMusicId) });
-                ciderSent = true;
-                console.log(`🎧 Enviada orden a Cider (ID: ${appleMusicId})`);
+                    try {
+                        ciderSocket.emit('safe_pre_add_queue', {
+                            artwork: { url: artworkUrl },
+                            name: songName,
+                            artistName: artistName,
+                            requester: user,
+                            requesterId: userId || '',
+                            playParams: { id: String(appleMusicId) },
+                            url: trackViewUrl,
+                            next: true
+                        });
+                        ciderSocket.emit('playback:queue:add-next', { id: String(appleMusicId) });
+                        ciderSent = true;
+                        console.log(`🎧 Enviada orden a Cider (ID: ${appleMusicId})`);
+                    } catch (e) {
+                        console.warn(`⚠️ Error enviando a Cider. Pedido se mantiene en lista.`, e && e.message ? e.message : String(e));
+                    }
                 }
             } else {
                 ciderQueued = true;

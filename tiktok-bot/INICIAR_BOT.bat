@@ -32,6 +32,16 @@ if not exist "node_modules" (
     echo.
 )
 
+:: Auto-reparar dependencias si faltan (por updates)
+if not exist "node_modules\socket.io\package.json" (
+    echo [INFO] Actualizando librerias (socket.io faltante)...
+    call npm install
+)
+if not exist "node_modules\firebase\package.json" (
+    echo [INFO] Actualizando librerias (firebase faltante)...
+    call npm install
+)
+
 :: Abrir Dashboard
 echo Abriendo panel de configuracion...
 set "DASH_PORT=3000"
