@@ -62,7 +62,9 @@ if not exist "%CACHE%\tiktok-bot\index.js" (
 
 echo [INFO] Copiando archivos al bot local...
 attrib -R "%DEST%\*.*" /S /D >nul 2>&1
-robocopy "%CACHE%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json"
+echo [INFO] Verificando y reemplazando solo lo desactualizado...
+echo (Si no hay cambios, robocopy copiara 0 archivos.)
+robocopy "%CACHE%\tiktok-bot" "%DEST%" /MIR /COPY:DAT /DCOPY:DAT /R:3 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json"
 set "RC=%errorlevel%"
 if %RC% geq 8 (
     echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
