@@ -1071,7 +1071,7 @@
       // Rellenar datos
       songEl.textContent = data.cancion || 'Desconocida';
       artistEl.textContent = data.artista || 'Desconocido';
-      userEl.textContent = data.usuario || 'Anónimo';
+      userEl.textContent = data.displayName || data.usuario || 'Anónimo';
 
       // Resetear animación (por si acaso, aunque processQueue espera)
       card.classList.remove('show');
@@ -1141,6 +1141,7 @@
                docTime = new Date(data.ts).getTime();
             }
             
+            if (!Number.isFinite(docTime) || docTime <= 0) docTime = Date.now();
             const now = Date.now();
             const diff = now - docTime;
             
@@ -1158,13 +1159,11 @@
                 console.log('Solicitud existente ignorada en carga inicial:', data);
               }
             } else {
-              // Safety check: ensure we don't show very old requests that somehow entered the view
-              // e.g. if a newer request was deleted and an old one shifted in.
-              if (diff <= 60000) { // 1 minute
-                 addToQueue(data);
-              } else {
-                 console.log('Solicitud antigua ignorada en tiempo real:', data);
-              }
+              // Evitar "shift-in" de solicitudes viejas por el límite 10 cuando se borran/reordenan docs,
+              // pero NO bloquear solicitudes nuevas que lleguen con delay.
+              const isFreshSinceOpen = docTime >= (overlayStartedAt - 1500);
+              if (isFreshSinceOpen) addToQueue(data);
+              else console.log('Solicitud anterior al inicio ignorada:', data);
             }
           }
         });
