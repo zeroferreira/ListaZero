@@ -759,7 +759,7 @@
           const req = pending.find(r => String(r?.docId || r?.id || generateSongId(r) || '') === key);
           const cancion = (req?.cancion || req?.songName || req?.song || req?.name || '').trim();
           const artista = (req?.artista || req?.artistName || req?.artist || '').trim();
-          const usuario = (req?.usuario || req?.user || req?.username || '').trim();
+          const usuario = (req?.displayName || req?.usuario || req?.user || req?.username || '').trim();
 
           const row = document.createElement('div');
           row.draggable = true;
@@ -1964,10 +1964,26 @@
     const currentDay = getLocalDateKey();
     console.log("Queue Overlay v2.2 - Fix Empty Match. Listening for day:", currentDay);
 
+    function getDayRangeFromKey(dayKey) {
+      try {
+        const parts = String(dayKey || '').split('-').map(x => Number(x));
+        if (parts.length !== 3) return { start: null, end: null };
+        const y = parts[0], m = parts[1], d = parts[2];
+        if (!y || !m || !d) return { start: null, end: null };
+        const start = new Date(y, m - 1, d, 0, 0, 0, 0);
+        const end = new Date(y, m - 1, d, 23, 59, 59, 999);
+        return { start, end };
+      } catch (_) {
+        return { start: null, end: null };
+      }
+    }
+
     if (db) {
+      const dayRange = getDayRangeFromKey(currentDay);
       db.collection('solicitudes')
-        .where('day', '==', currentDay)
-        // .orderBy('ts', 'asc') // Removing to avoid index requirement errors causing empty results
+        .where('ts', '>=', dayRange.start || new Date(0))
+        .where('ts', '<=', dayRange.end || new Date())
+        .orderBy('ts', 'asc')
         .onSnapshot((snapshot) => {
           const temp = [];
           snapshot.forEach(doc => {
