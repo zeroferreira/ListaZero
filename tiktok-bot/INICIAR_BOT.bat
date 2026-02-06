@@ -28,6 +28,24 @@ if %errorlevel% neq 0 (
     if exist "C:\Program Files (x86)\nodejs\node.exe" set "PATH=%PATH%;C:\Program Files (x86)\nodejs"
 )
 
+node -v >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] No se pudo ejecutar Node.js. Instala Node.js LTS (incluye npm).>> "%LOGFILE%"
+    echo [ERROR] No se pudo ejecutar Node.js. Instala Node.js (incluye npm).
+    echo Log: %LOGFILE%
+    pause
+    exit /b 1
+)
+
+npm -v >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] No se pudo ejecutar npm. Reinstala Node.js (con npm).>> "%LOGFILE%"
+    echo [ERROR] No se pudo ejecutar npm. Reinstala Node.js (con npm).
+    echo Log: %LOGFILE%
+    pause
+    exit /b 1
+)
+
 node -v >> "%LOGFILE%" 2>&1
 npm -v >> "%LOGFILE%" 2>&1
 
