@@ -1,5 +1,6 @@
 @echo off
 title Reparar Bot Zero FM
+cd /d "%~dp0"
 echo ==========================================
 echo    REPARANDO SINCRONIZACION DEL BOT
 echo ==========================================

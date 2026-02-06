@@ -1,5 +1,6 @@
 @echo off
 title Actualizar Bot Zero FM
+cd /d "%~dp0"
 echo ==========================================
 echo    Actualizando Bot de Pedidos Zero FM
 echo ==========================================

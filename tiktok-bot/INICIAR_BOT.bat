@@ -1,5 +1,6 @@
 @echo off
 title Zero FM TikTok Bot
+cd /d "%~dp0"
 echo ==========================================
 echo    Iniciando Bot de Pedidos Zero FM
 echo ==========================================
@@ -33,6 +34,7 @@ if not exist "node_modules" (
 
 :: Abrir Dashboard
 echo Abriendo panel de configuracion...
+timeout /t 1 >nul
 start http://localhost:3000/
 
 :: Iniciar el bot con reconexion automatica

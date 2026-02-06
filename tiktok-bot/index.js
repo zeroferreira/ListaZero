@@ -40,7 +40,8 @@ let config = {
     minCoinsForVip: 30,
     vipDurationSession: true,
     tiktokUsername: "zeroferreira", // Default
-    sessionId: "" // TikTok Session ID (obligatorio si hay error 521)
+    sessionId: "", // TikTok Session ID (obligatorio si hay error 521)
+    dashboardPort: 3000
 };
 
 try {
@@ -78,10 +79,10 @@ function startBot() {
 
     // --- SERVIDOR WEB (DASHBOARD) ---
     const app = express();
-    const PORT = 3000;
+    const PORT = Number(process.env.PORT || config.dashboardPort || 3000) || 3000;
 
     app.use(express.json());
-    app.use(express.static('public'));
+    app.use(express.static(path.join(__dirname, 'public')));
 
     app.get('/api/status', (req, res) => {
         res.json({
@@ -173,8 +174,17 @@ function startBot() {
         }
     });
 
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
         console.log(`🎛️  Dashboard de Configuración: http://localhost:${PORT}`);
+        console.log(`🧪 Prueba offline: POST http://localhost:${PORT}/api/test/sr`);
+    });
+    server.on('error', (err) => {
+        if (err && err.code === 'EADDRINUSE') {
+            console.error(`❌ No se pudo iniciar el dashboard: el puerto ${PORT} ya está en uso.`);
+            console.error(`   Cierra el proceso que usa el puerto ${PORT} o cambia dashboardPort en config.json.`);
+            return;
+        }
+        console.error('❌ Error iniciando dashboard:', err && err.message ? err.message : String(err));
     });
 
     // Conexión a Cider (Reproductor)
