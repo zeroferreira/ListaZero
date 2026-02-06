@@ -29,7 +29,7 @@ if errorlevel 1 (
 
 echo [INFO] Mostrando salida y guardando log...
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$log='%LOG%'; cmd /d /c '""%~f0"" __run' 2>&1 | Tee-Object -FilePath $log -Append"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$log='%LOG%'; $bat='%~f0'; $q=[char]34; $cmd=$q+$bat+$q+' __run'; & cmd /d /c $cmd 2>&1 | Tee-Object -FilePath $log -Append"
 
 echo.
 echo [FIN] El proceso termino. Log:
