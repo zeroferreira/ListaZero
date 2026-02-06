@@ -12,6 +12,7 @@ set "SILENT=0"
 if /I "%~1"=="/silent" set "SILENT=1"
 set "REPO_URL=https://github.com/zeroferreira/ListaZero.git"
 set "ZIP_URL=https://github.com/zeroferreira/ListaZero/archive/refs/heads/main.zip"
+set "ZIP="
 
 for %%F in ("%DEST%") do set "FOLDER=%%~nxF"
 if /I "%FOLDER%"=="Downloads" (
@@ -53,10 +54,15 @@ if not exist "%TMP%\tiktok-bot\index.js" (
     if "%SILENT%"=="0" pause
     exit /b 1
 )
+if not exist "%TMP%\tiktok-bot\package.json" (
+    echo [ERROR] La descarga no contiene tiktok-bot\package.json
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
 
 echo [INFO] Copiando archivos al bot local (descarga completa)...
 attrib -R "%DEST%\*.*" /S /D >nul 2>&1
-robocopy "%TMP%\tiktok-bot" "%DEST%" /MIR /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
+robocopy "%TMP%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
   /XD "node_modules" "logs" ".git" ^
   /XF "config.json" "node.exe" "npm.cmd" "npx.cmd"
 set "RC=%errorlevel%"
@@ -105,10 +111,15 @@ if not exist "%TMP%\ListaZero-main\tiktok-bot\index.js" (
     if "%SILENT%"=="0" pause
     exit /b 1
 )
+if not exist "%TMP%\ListaZero-main\tiktok-bot\package.json" (
+    echo [ERROR] La descarga no contiene tiktok-bot\package.json
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
 
 echo [INFO] Copiando archivos al bot local...
 attrib -R "%DEST%\*.*" /S /D >nul 2>&1
-robocopy "%TMP%\ListaZero-main\tiktok-bot" "%DEST%" /MIR /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
+robocopy "%TMP%\ListaZero-main\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
   /XD "node_modules" "logs" ".git" ^
   /XF "config.json" "node.exe" "npm.cmd" "npx.cmd"
 set "RC=%errorlevel%"
