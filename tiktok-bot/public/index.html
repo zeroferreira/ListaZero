@@ -304,6 +304,60 @@
 
                 <button class="btn" style="margin-top: 16px;" onclick="sendOfflineTest()">🚀 Enviar Prueba</button>
                 <div id="testResult" class="result-box"></div>
+
+                <div style="margin-top: 18px; border-top: 1px solid #333; padding-top: 16px;">
+                    <h3>🧪 Mock Cider (Offline)</h3>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>Cider URL</label>
+                            <input type="text" id="ciderUrl" placeholder="http://localhost:10767">
+                        </div>
+                        <div class="form-group">
+                            <label>Estado</label>
+                            <div class="inline-status" style="margin-top: 0;">
+                                <div id="mockCiderPill" class="pill">Mock: ...</div>
+                                <div id="mockQueuePill" class="pill">Cola: ...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="toggle-row">
+                        <span>Iniciar/Detener Mock Cider</span>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn" type="button" onclick="startMockCider()" style="width:auto; padding: 10px 14px;">Iniciar</button>
+                            <button class="btn" type="button" onclick="stopMockCider()" style="width:auto; padding: 10px 14px; background:#222; border:1px solid #333;">Detener</button>
+                        </div>
+                    </div>
+
+                    <div class="grid-2" style="margin-top: 10px;">
+                        <div class="form-group">
+                            <label>Usuario (requester)</label>
+                            <input type="text" id="mockRequester" placeholder="Ej: Zero">
+                        </div>
+                        <div class="form-group">
+                            <label>Apple Music ID (opcional)</label>
+                            <input type="text" id="mockAppleMusicId" placeholder="Ej: 1647492502">
+                        </div>
+                    </div>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>Artista</label>
+                            <input type="text" id="mockArtist" placeholder="Ej: Bad Bunny">
+                        </div>
+                        <div class="form-group">
+                            <label>Canción</label>
+                            <input type="text" id="mockSong" placeholder="Ej: MONACO">
+                        </div>
+                    </div>
+
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn" type="button" onclick="emitMockNowPlaying()" style="width:auto; padding: 12px 14px;">🎵 Emitir Now Playing</button>
+                        <button class="btn" type="button" onclick="playMockNext()" style="width:auto; padding: 12px 14px; background:#222; border:1px solid #333;">⏭️ Play Next (de la cola)</button>
+                        <button class="btn" type="button" onclick="clearMockQueue()" style="width:auto; padding: 12px 14px; background:#222; border:1px solid #333;">🧹 Limpiar</button>
+                    </div>
+
+                    <div id="mockResult" class="result-box"></div>
+                </div>
             </div>
         </div>
 
@@ -351,6 +405,7 @@
                 document.getElementById('tiktokUsername').value = data.tiktokUsername;
                 document.getElementById('minCoinsForVip').value = data.minCoinsForVip;
                 document.getElementById('requireVipForSr').checked = data.requireVipForSr !== false;
+                document.getElementById('ciderUrl').value = data.ciderUrl || 'http://localhost:10767';
                 document.getElementById('allowSubscribers').checked = data.allowSubscribers;
                 document.getElementById('allowModerators').checked = data.allowModerators;
                 document.getElementById('allowSuperFans').checked = data.allowSuperFans;
@@ -362,6 +417,8 @@
                 const data = await res.json();
                 const ciderPill = document.getElementById('ciderPill');
                 const tiktokPill = document.getElementById('tiktokPill');
+                const mockCiderPill = document.getElementById('mockCiderPill');
+                const mockQueuePill = document.getElementById('mockQueuePill');
 
                 const ciderOk = !!data.ciderConnected;
                 ciderPill.textContent = `Cider: ${ciderOk ? 'Conectado' : 'No conectado'}`;
@@ -371,6 +428,22 @@
                 const connecting = !!data.isConnecting;
                 tiktokPill.textContent = `TikTok: ${connecting ? 'Conectando...' : tkState}`;
                 tiktokPill.className = `pill ${tkState === 'connected' ? 'ok' : ''}`;
+
+                if (mockCiderPill) {
+                    const mockOk = !!data.mockCiderActive;
+                    mockCiderPill.textContent = `Mock: ${mockOk ? ('Activo :' + (data.mockCiderPort || '')) : 'Inactivo'}`;
+                    mockCiderPill.className = `pill ${mockOk ? 'ok' : 'bad'}`;
+                }
+                if (mockQueuePill) {
+                    try {
+                        const r2 = await fetch('/api/mockcider/status');
+                        const d2 = await r2.json();
+                        const n = Number(d2.queueLength || 0) || 0;
+                        mockQueuePill.textContent = `Cola: ${n}`;
+                    } catch (_) {
+                        mockQueuePill.textContent = `Cola: ?`;
+                    }
+                }
             } catch (_) {}
         }
 
@@ -385,7 +458,7 @@
                 allowSubscribers: document.getElementById('allowSubscribers').checked,
                 allowModerators: document.getElementById('allowModerators').checked,
                 allowSuperFans: document.getElementById('allowSuperFans').checked,
-                ciderUrl: "http://localhost:10767" // Mantener default
+                ciderUrl: document.getElementById('ciderUrl')?.value || "http://localhost:10767"
             };
 
             fetch('/api/config', {
@@ -440,6 +513,111 @@
                 resultEl.textContent = lines.join('\n');
             } catch (e) {
                 resultEl.textContent = `Error: ${e && e.message ? e.message : String(e)}`;
+            } finally {
+                refreshStatus();
+            }
+        }
+
+        async function startMockCider() {
+            const out = document.getElementById('mockResult');
+            if (out) out.textContent = 'Iniciando Mock Cider...';
+            try {
+                const res = await fetch('/api/mockcider/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    if (out) out.textContent = `Error: ${data.error || 'No se pudo iniciar'}`;
+                    return;
+                }
+                if (out) out.textContent = `OK: Mock Cider iniciado en puerto ${data.port}`;
+            } catch (e) {
+                if (out) out.textContent = `Error: ${e && e.message ? e.message : String(e)}`;
+            } finally {
+                refreshStatus();
+            }
+        }
+
+        async function stopMockCider() {
+            const out = document.getElementById('mockResult');
+            if (out) out.textContent = 'Deteniendo Mock Cider...';
+            try {
+                const res = await fetch('/api/mockcider/stop', { method: 'POST' });
+                const data = await res.json();
+                if (out) out.textContent = data && data.ok ? 'OK: Mock detenido' : 'Error al detener';
+            } catch (e) {
+                if (out) out.textContent = `Error: ${e && e.message ? e.message : String(e)}`;
+            } finally {
+                refreshStatus();
+            }
+        }
+
+        function getOrFallback(id, fallbackId) {
+            const v = document.getElementById(id)?.value;
+            if (v && String(v).trim()) return String(v).trim();
+            const f = document.getElementById(fallbackId)?.value;
+            if (f && String(f).trim()) return String(f).trim();
+            return '';
+        }
+
+        async function emitMockNowPlaying() {
+            const out = document.getElementById('mockResult');
+            if (out) out.textContent = 'Emitiendo Now Playing...';
+            try {
+                const payload = {
+                    requester: getOrFallback('mockRequester', 'testUser'),
+                    artistName: getOrFallback('mockArtist', 'testArtist'),
+                    songName: getOrFallback('mockSong', 'testSong'),
+                    appleMusicId: getOrFallback('mockAppleMusicId', 'testAppleMusicId')
+                };
+                const res = await fetch('/api/mockcider/emit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    if (out) out.textContent = `Error: ${data.error || 'No se pudo emitir'}`;
+                    return;
+                }
+                if (out) out.textContent = `OK: Now Playing emitido\n${payload.songName} — ${payload.artistName}\nRequester: ${payload.requester || 'N/D'}`;
+            } catch (e) {
+                if (out) out.textContent = `Error: ${e && e.message ? e.message : String(e)}`;
+            } finally {
+                refreshStatus();
+            }
+        }
+
+        async function playMockNext() {
+            const out = document.getElementById('mockResult');
+            if (out) out.textContent = 'Reproduciendo next...';
+            try {
+                const res = await fetch('/api/mockcider/play-next', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    if (out) out.textContent = `Error: ${data.error || 'No hay next'}`;
+                    return;
+                }
+                const p = data.played || {};
+                if (out) out.textContent = `OK: Reproduciendo\n${p.name || ''} — ${p.artistName || ''}\nRequester: ${p.requester || 'N/D'}`;
+            } catch (e) {
+                if (out) out.textContent = `Error: ${e && e.message ? e.message : String(e)}`;
+            } finally {
+                refreshStatus();
+            }
+        }
+
+        async function clearMockQueue() {
+            const out = document.getElementById('mockResult');
+            if (out) out.textContent = 'Limpiando...';
+            try {
+                const res = await fetch('/api/mockcider/clear', { method: 'POST' });
+                const data = await res.json();
+                if (out) out.textContent = data && data.ok ? 'OK: Cola limpiada' : 'Error al limpiar';
+            } catch (e) {
+                if (out) out.textContent = `Error: ${e && e.message ? e.message : String(e)}`;
             } finally {
                 refreshStatus();
             }

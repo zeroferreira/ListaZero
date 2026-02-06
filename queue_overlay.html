@@ -1791,8 +1791,10 @@
 
       const artist = currentCiderTrack.artist;
       const song = currentCiderTrack.song;
+      const requester = currentCiderTrack.user ? String(currentCiderTrack.user).trim() : '';
+      const playingAppleMusicId = currentCiderTrack.appleMusicId ? String(currentCiderTrack.appleMusicId).trim() : '';
       
-      const key = `${artist}-${song}`;
+      const key = `${artist}-${song}-${requester}`;
       if (lastAutoMarkedSong === key) return; // Already handled this track
       
       // Normalize for comparison: remove accents, special chars, lowercase
@@ -1811,44 +1813,64 @@
           return;
       }
 
+      const targetRequester = normalize(requester);
+
       // Filter unplayed requests using generateSongId for accurate check
       const candidates = allRequests.filter(req => {
           const id = generateSongId(req);
           return !playedSongIds.has(id);
       });
 
-      for (const req of candidates) {
-        // Use correct Firestore field names: artista, cancion
-        const reqArtist = normalize(req.artista);
-        const reqSong = normalize(req.cancion);
-
-        // Robust Matching Logic (Restored & Verified):
-        // 1. Standard Match: Artist matches Artist AND Song matches Song
-        const matchStandard = 
-            (reqArtist.includes(targetArtist) || targetArtist.includes(reqArtist)) &&
-            (reqSong.includes(targetSong) || targetSong.includes(reqSong));
-
-        // 2. Swapped Match: Artist matches Song AND Song matches Artist (User swapped fields)
-        const matchSwapped = 
-            (reqArtist.includes(targetSong) || targetSong.includes(reqArtist)) &&
-            (reqSong.includes(targetArtist) || targetArtist.includes(reqSong));
-            
-        // 3. Combined Match: Song field contains BOTH Artist and Song (User put everything in Song field)
-        const matchCombined = 
-            reqSong.includes(targetArtist) && reqSong.includes(targetSong);
-
-        if (matchStandard || matchSwapped || matchCombined) {
-          console.log(`✨ Auto-marking song as played: ${req.artista} - ${req.cancion}`);
-          
-          // Use generateSongId to match the ID expected by renderQueue
-          const generatedId = generateSongId(req);
-          markSongAsPlayed(generatedId);
-          
-          lastAutoMarkedSong = key;
-          
-          break; // Mark only the first match
+      const pick = (reqList) => {
+        if (!Array.isArray(reqList) || !reqList.length) return null;
+        if (playingAppleMusicId) {
+          for (const req of reqList) {
+            const reqAm = req && req.appleMusicId ? String(req.appleMusicId).trim() : '';
+            if (reqAm && reqAm === playingAppleMusicId) return req;
+          }
         }
+        for (const req of reqList) {
+          const reqArtist = normalize(req.artista);
+          const reqSong = normalize(req.cancion);
+          const matchStandard = 
+              (reqArtist.includes(targetArtist) || targetArtist.includes(reqArtist)) &&
+              (reqSong.includes(targetSong) || targetSong.includes(reqSong));
+          const matchSwapped = 
+              (reqArtist.includes(targetSong) || targetSong.includes(reqArtist)) &&
+              (reqSong.includes(targetArtist) || targetArtist.includes(reqSong));
+          const matchCombined = 
+              reqSong.includes(targetArtist) && reqSong.includes(targetSong);
+          if (matchStandard || matchSwapped || matchCombined) return req;
+        }
+        return null;
+      };
+
+      let primary = candidates;
+      if (targetRequester && targetRequester.length >= 2) {
+        const filtered = candidates.filter(req => normalize(req.usuario) === targetRequester);
+        if (filtered.length) primary = filtered;
       }
+
+      const match = pick(primary) || pick(candidates);
+      if (match) {
+        console.log(`✨ Auto-marking song as played: ${match.artista} - ${match.cancion}`);
+        const generatedId = generateSongId(match);
+        markSongAsPlayed(generatedId);
+        lastAutoMarkedSong = key;
+      }
+    }
+
+    function getCiderSocketUrl() {
+      try {
+        const params = new URLSearchParams(window.location.search || '');
+        const fromQuery = String(params.get('ciderUrl') || '').trim();
+        if (fromQuery) return fromQuery;
+      } catch (_) {}
+      try {
+        const fromLocal = String(localStorage.getItem('ciderUrl') || '').trim();
+        if (fromLocal) return fromLocal;
+      } catch (_) {}
+      return "http://localhost:10767/";
     }
 
     function connectCider() {
@@ -1858,9 +1880,9 @@
         return;
       }
 
-      console.log("Intentando conectar a Cider (localhost:10767)...");
-      // Cider uses port 10767 by default
-      ciderSocket = io("http://localhost:10767/", {
+      const url = getCiderSocketUrl();
+      console.log("Intentando conectar a Cider:", url);
+      ciderSocket = io(url, {
         transports: ['websocket'],
         reconnectionAttempts: 5
       });
@@ -1888,10 +1910,12 @@
         if (type === "playbackStatus.nowPlayingItemDidChange" || type === "playbackStatus.playbackStateDidChange") {
              // Soportar artistName (Cider) o artist (iTunes)
              const artist = data.artistName || data.artist;
+             const requester = data.requester || data.requestedBy || data.user || '';
+             const appleMusicId = (data.playParams && data.playParams.id) ? data.playParams.id : (data.appleMusicId || data.id || '');
              
              if (data && data.name && artist) {
                  console.log("🎵 Cider Now Playing:", artist, "-", data.name);
-                 currentCiderTrack = { artist: artist, song: data.name };
+                 currentCiderTrack = { artist: artist, song: data.name, user: requester, appleMusicId: appleMusicId };
                  checkCurrentTrackAgainstQueue();
              }
         }
@@ -1900,7 +1924,7 @@
 
     // Wrapper for compatibility (redirects to new logic)
     function autoMarkPlayed(artist, song) {
-        currentCiderTrack = { artist, song };
+        currentCiderTrack = { artist, song, user: '', appleMusicId: '' };
         checkCurrentTrackAgainstQueue();
     }
 

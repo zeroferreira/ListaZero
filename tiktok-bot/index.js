@@ -5,6 +5,14 @@ const { io } = require('socket.io-client');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+
+let SocketIOServer = null;
+try {
+    ({ Server: SocketIOServer } = require('socket.io'));
+} catch (_) {
+    SocketIOServer = null;
+}
 
 let initializeApp, getFirestore, collection, addDoc, serverTimestamp;
 try {
@@ -28,7 +36,10 @@ let config = {
     vipDurationSession: true,
     tiktokUsername: "zeroferreira", // Default
     sessionId: "", // TikTok Session ID (obligatorio si hay error 521)
-    dashboardPort: 3000
+    dashboardPort: 3000,
+    ciderUrl: "http://localhost:10767",
+    mockCider: false,
+    requireVipForSr: true
 };
 
 try {
@@ -50,6 +61,117 @@ let db; // Firebase DB reference
 const recentSrEvents = [];
 const pendingCiderQueue = [];
 let ciderFlushInProgress = false;
+
+let mockCiderHttpServer = null;
+let mockCiderIo = null;
+let mockCiderPort = 0;
+let mockCiderQueue = [];
+let mockCiderNowPlaying = null;
+
+function getCiderUrl() {
+    try {
+        const u = String(config.ciderUrl || '').trim();
+        return u || 'http://localhost:10767';
+    } catch (_) {
+        return 'http://localhost:10767';
+    }
+}
+
+function getPortFromUrl(urlStr, fallback) {
+    try {
+        const u = new URL(String(urlStr || ''));
+        const p = Number(u.port || '') || fallback;
+        return Number.isFinite(p) ? p : fallback;
+    } catch (_) {
+        return fallback;
+    }
+}
+
+function startMockCiderServer(port) {
+    const p = Number(port) || 10767;
+    if (mockCiderHttpServer || mockCiderIo) return { ok: true, port: mockCiderPort || p };
+    if (!SocketIOServer) return { ok: false, error: 'Falta dependencia socket.io (ejecuta npm install).' };
+
+    const server = http.createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('Zero FM Mock Cider');
+    });
+
+    const ioSrv = new SocketIOServer(server, { cors: { origin: '*' } });
+    ioSrv.on('connection', (socket) => {
+        try {
+            socket.emit('mock:status', {
+                ok: true,
+                queueLength: mockCiderQueue.length,
+                nowPlaying: mockCiderNowPlaying
+            });
+        } catch (_) {}
+
+        socket.on('safe_pre_add_queue', (payload) => {
+            try {
+                const name = String(payload?.name || '').trim();
+                const artistName = String(payload?.artistName || '').trim();
+                const appleMusicId = payload?.playParams?.id ? String(payload.playParams.id).trim() : '';
+                const artworkUrl = payload?.artwork?.url ? String(payload.artwork.url).trim() : '';
+                const requester = String(payload?.requester || '').trim();
+                if (!name && !artistName && !appleMusicId) return;
+                mockCiderQueue.push({ name, artistName, appleMusicId, artworkUrl, requester, enqueuedAt: Date.now() });
+                while (mockCiderQueue.length > 100) mockCiderQueue.shift();
+                ioSrv.emit('mock:queue', { queue: mockCiderQueue.slice(-50) });
+            } catch (_) {}
+        });
+
+        socket.on('playback:queue:add-next', (payload) => {
+            try {
+                ioSrv.emit('mock:queue:add-next', payload || {});
+            } catch (_) {}
+        });
+    });
+
+    server.on('error', (err) => {
+        console.error(`❌ Mock Cider no pudo iniciar en puerto ${p}:`, err && err.message ? err.message : String(err));
+    });
+
+    server.listen(p, () => {
+        mockCiderHttpServer = server;
+        mockCiderIo = ioSrv;
+        mockCiderPort = p;
+        console.log(`🧪 Mock Cider activo: http://localhost:${p}`);
+    });
+
+    return { ok: true, port: p };
+}
+
+function stopMockCiderServer() {
+    try { if (mockCiderIo) { mockCiderIo.removeAllListeners(); mockCiderIo.close(); } } catch (_) {}
+    try { if (mockCiderHttpServer) mockCiderHttpServer.close(); } catch (_) {}
+    mockCiderIo = null;
+    mockCiderHttpServer = null;
+    mockCiderPort = 0;
+    mockCiderQueue = [];
+    mockCiderNowPlaying = null;
+    return { ok: true };
+}
+
+function emitMockPlayback(evt = {}) {
+    if (!mockCiderIo) return { ok: false, error: 'Mock Cider no está activo.' };
+    const songName = String(evt.songName || evt.name || '').trim();
+    const artistName = String(evt.artistName || evt.artist || '').trim();
+    const requester = String(evt.requester || evt.user || '').trim();
+    const appleMusicId = evt.appleMusicId ? String(evt.appleMusicId).trim() : '';
+    const remainingMs = Number(evt.remainingMs || 0) || 0;
+    const data = {
+        name: songName,
+        artistName,
+        requester,
+        timeRemaining: remainingMs > 0 ? Math.round(remainingMs / 1000) : undefined,
+        remainingMs: remainingMs > 0 ? remainingMs : undefined
+    };
+    if (appleMusicId) data.playParams = { id: appleMusicId };
+    mockCiderNowPlaying = { ...data, updatedAt: Date.now() };
+    mockCiderIo.emit('API:Playback', { type: 'playbackStatus.nowPlayingItemDidChange', data });
+    return { ok: true };
+}
 
 function pushSrEvent(evt) {
     try {
@@ -105,6 +227,8 @@ async function flushCiderQueue() {
                     artwork: { url: artworkUrl },
                     name: songName,
                     artistName: artistName,
+                    requester: it.user ? String(it.user) : '',
+                    requesterId: it.userId ? String(it.userId) : '',
                     playParams: { id: String(appleMusicId) },
                     url: trackViewUrl,
                     next: true
@@ -152,7 +276,9 @@ function startBot() {
             tiktokState: tiktokLiveConnection?.state || 'unknown',
             isConnecting: !!isConnecting,
             ciderConnected: !!(ciderSocket && ciderSocket.connected),
-            pendingCider: pendingCiderQueue.length
+            pendingCider: pendingCiderQueue.length,
+            mockCiderActive: !!mockCiderIo,
+            mockCiderPort: mockCiderPort || null
         });
     });
 
@@ -160,6 +286,55 @@ function startBot() {
         const limit = Math.max(1, Math.min(100, Number(req.query.limit || 30) || 30));
         const out = recentSrEvents.slice(-limit).reverse();
         res.json({ ok: true, events: out });
+    });
+
+    app.get('/api/mockcider/status', (req, res) => {
+        res.json({
+            ok: true,
+            active: !!mockCiderIo,
+            port: mockCiderPort || null,
+            queueLength: mockCiderQueue.length,
+            nowPlaying: mockCiderNowPlaying
+        });
+    });
+
+    app.post('/api/mockcider/start', (req, res) => {
+        const body = req.body || {};
+        const port = Number(body.port || 0) || getPortFromUrl(getCiderUrl(), 10767);
+        const r = startMockCiderServer(port);
+        if (!r.ok) { res.status(400).json(r); return; }
+        res.json(r);
+    });
+
+    app.post('/api/mockcider/stop', (req, res) => {
+        res.json(stopMockCiderServer());
+    });
+
+    app.post('/api/mockcider/emit', (req, res) => {
+        const body = req.body || {};
+        const r = emitMockPlayback(body);
+        if (!r.ok) { res.status(400).json(r); return; }
+        res.json(r);
+    });
+
+    app.post('/api/mockcider/play-next', (req, res) => {
+        if (!mockCiderIo) { res.status(400).json({ ok: false, error: 'Mock Cider no está activo.' }); return; }
+        const next = mockCiderQueue.shift();
+        if (!next) { res.json({ ok: false, error: 'Cola vacía.' }); return; }
+        const r = emitMockPlayback({
+            songName: next.name,
+            artistName: next.artistName,
+            requester: next.requester,
+            appleMusicId: next.appleMusicId
+        });
+        res.json({ ok: true, played: next, emit: r });
+    });
+
+    app.post('/api/mockcider/clear', (req, res) => {
+        mockCiderQueue = [];
+        mockCiderNowPlaying = null;
+        try { if (mockCiderIo) mockCiderIo.emit('mock:queue', { queue: [] }); } catch (_) {}
+        res.json({ ok: true });
     });
 
     // API para obtener configuración
@@ -268,8 +443,16 @@ function startBot() {
 
     startDashboard(PORT);
 
+    if (config.mockCider === true) {
+        const mockPort = getPortFromUrl(getCiderUrl(), 10767);
+        const r = startMockCiderServer(mockPort);
+        if (!r.ok) {
+            console.warn('⚠️ No se pudo iniciar Mock Cider:', r.error || 'desconocido');
+        }
+    }
+
     // Conexión a Cider (Reproductor)
-    ciderSocket = io("http://localhost:10767/", {
+    ciderSocket = io(getCiderUrl(), {
       transports: ['websocket'],
       reconnectionAttempts: 5
     });
@@ -530,6 +713,7 @@ async function handleSongRequest(user, query, options = {}) {
             cancion: songName,
             artista: artistName,
             cover: artworkUrl,
+            appleMusicId: appleMusicId || '',
             ts: serverTimestamp(),
             status: 'pending',
             day: currentDay
@@ -561,6 +745,8 @@ async function handleSongRequest(user, query, options = {}) {
                     artwork: { url: artworkUrl },
                     name: songName,
                     artistName: artistName,
+                    requester: user,
+                    requesterId: userId || '',
                     playParams: { id: String(appleMusicId) },
                     url: trackViewUrl,
                     next: true
