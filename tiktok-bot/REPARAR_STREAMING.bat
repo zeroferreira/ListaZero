@@ -1,6 +1,7 @@
 @echo off
 title Reparar Streaming (Renombrado)
 cd /d "%~dp0"
+setlocal EnableExtensions
 echo ==========================================
 echo    ESTE ARCHIVO FUE RENOMBRADO
 echo ==========================================
@@ -10,3 +11,4 @@ echo.
 echo Ejecutando DESCARGAR.bat %*
 echo.
 call "%~dp0DESCARGAR.bat" %*
+endlocal
