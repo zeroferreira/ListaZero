@@ -1,10 +1,11 @@
 @echo off
 title Actualizar Bot Zero FM
-if /I "%~1" NEQ "/child" (
-  start "Actualizar Bot Zero FM" cmd /k ""%~f0" /child %*"
-  exit /b
-)
+setlocal EnableExtensions
+if /I "%~1"=="__child" goto child
+start "Actualizar Bot Zero FM" cmd /k ""%~f0" __child %*"
+exit /b
 
+:child
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 set "DEST=%CD%"
@@ -15,6 +16,7 @@ echo.
 
 set "SILENT=0"
 if /I "%~2"=="/silent" set "SILENT=1"
+if /I "%~3"=="/silent" set "SILENT=1"
 set "REPO_URL=https://github.com/zeroferreira/ListaZero.git"
 
 git --version >nul 2>&1
