@@ -14,10 +14,10 @@ try {
     SocketIOServer = null;
 }
 
-let initializeApp, getFirestore, collection, addDoc, serverTimestamp, doc, getDoc;
+let initializeApp, getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs;
 try {
     ({ initializeApp } = require('firebase/app'));
-    ({ getFirestore, collection, addDoc, serverTimestamp, doc, getDoc } = require('firebase/firestore'));
+    ({ getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs } = require('firebase/firestore'));
 } catch (e) {
     console.error('Critical Error loading Firebase libraries:', e);
     console.error('Solución: ejecuta "npm install" dentro de la carpeta tiktok-bot y usa Node 18+.');
@@ -67,6 +67,88 @@ let mockCiderIo = null;
 let mockCiderPort = 0;
 let mockCiderQueue = [];
 let mockCiderNowPlaying = null;
+
+const badgeSets = {
+    vip: new Set(),
+    z0Vip: new Set(),
+    donador: new Set(),
+    z0Fan: new Set(),
+    z0Platinum: new Set(),
+    selected: new Map()
+};
+
+function normalizeUserKeyForBadges(v) {
+    try {
+        return String(v || '').trim().replace(/^@/, '').toLowerCase();
+    } catch (_) {
+        return '';
+    }
+}
+
+function getBadgeForUser(userKey, userId, displayName) {
+    const candidates = [];
+    const u = normalizeUserKeyForBadges(userKey);
+    const uid = normalizeUserKeyForBadges(userId);
+    const dn = normalizeUserKeyForBadges(displayName);
+    if (u) candidates.push(u);
+    if (uid && uid !== u) candidates.push(uid);
+    if (dn && dn !== u && dn !== uid) candidates.push(dn);
+    if (!candidates.length) return '';
+
+    for (let i = 0; i < candidates.length; i++) {
+        const k = candidates[i];
+        const selected = badgeSets.selected.get(k);
+        if (selected) return selected;
+    }
+    for (let i = 0; i < candidates.length; i++) {
+        const k = candidates[i];
+        if (badgeSets.z0Platinum.has(k)) return 'z0-platino';
+        if (badgeSets.z0Vip.has(k)) return 'z0-vip';
+        if (badgeSets.vip.has(k)) return 'vip';
+        if (badgeSets.donador.has(k)) return 'donador';
+        if (badgeSets.z0Fan.has(k)) return 'z0-fan';
+    }
+    return '';
+}
+
+async function refreshBadgeSets() {
+    try {
+        if (!db || typeof getDocs !== 'function' || typeof collection !== 'function') return;
+        const targets = [
+            { col: 'vipUsers', set: badgeSets.vip, field: 'name' },
+            { col: 'z0VipUsers', set: badgeSets.z0Vip, field: 'name' },
+            { col: 'donadorUsers', set: badgeSets.donador, field: 'name' },
+            { col: 'z0FanUsers', set: badgeSets.z0Fan, field: 'name' },
+            { col: 'z0PlatinumUsers', set: badgeSets.z0Platinum, field: 'name' }
+        ];
+        for (let i = 0; i < targets.length; i++) {
+            const t = targets[i];
+            const snap = await getDocs(collection(db, t.col));
+            const next = new Set();
+            snap.forEach((docSnap) => {
+                const d = docSnap.data ? (docSnap.data() || {}) : {};
+                const raw = d[t.field] || docSnap.id || '';
+                const name = normalizeUserKeyForBadges(raw);
+                if (name) next.add(name);
+            });
+            t.set.clear();
+            next.forEach((v) => t.set.add(v));
+        }
+
+        const selSnap = await getDocs(collection(db, 'selectedBadges'));
+        const nextMap = new Map();
+        selSnap.forEach((docSnap) => {
+            const d = docSnap.data ? (docSnap.data() || {}) : {};
+            const rawName = d.name || docSnap.id || '';
+            const key = normalizeUserKeyForBadges(rawName);
+            const badge = String(d.badge || '').trim();
+            if (key && badge) nextMap.set(key, badge);
+        });
+        badgeSets.selected = nextMap;
+    } catch (e) {
+        console.warn('⚠️ No se pudieron actualizar insignias (vip/z0/donador):', e && e.message ? e.message : String(e));
+    }
+}
 
 function normalizeUserKeyText(v) {
     try {
@@ -313,6 +395,8 @@ function startBot() {
     // Inicializar Firebase
     const firebaseApp = initializeApp(firebaseConfig);
     db = getFirestore(firebaseApp);
+    try { refreshBadgeSets(); } catch (_) {}
+    try { setInterval(() => { refreshBadgeSets().catch(() => {}); }, 5 * 60 * 1000); } catch (_) {}
 
     // --- SERVIDOR WEB (DASHBOARD) ---
     const app = express();
@@ -848,6 +932,8 @@ async function handleSongRequest(user, query, options = {}) {
             day: currentDay
         };
         if (userId) requestData.userId = userId;
+        const badge = getBadgeForUser(user, userId, displayName);
+        if (badge) requestData.badge = badge;
         if (isTest) {
             requestData.isSimulation = true;
             requestData.isTest = true;
