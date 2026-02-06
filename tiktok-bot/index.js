@@ -174,18 +174,33 @@ function startBot() {
         }
     });
 
-    const server = app.listen(PORT, () => {
-        console.log(`🎛️  Dashboard de Configuración: http://localhost:${PORT}`);
-        console.log(`🧪 Prueba offline: POST http://localhost:${PORT}/api/test/sr`);
-    });
-    server.on('error', (err) => {
-        if (err && err.code === 'EADDRINUSE') {
-            console.error(`❌ No se pudo iniciar el dashboard: el puerto ${PORT} ya está en uso.`);
-            console.error(`   Cierra el proceso que usa el puerto ${PORT} o cambia dashboardPort en config.json.`);
-            return;
-        }
-        console.error('❌ Error iniciando dashboard:', err && err.message ? err.message : String(err));
-    });
+    function persistConfigSafe(next = {}) {
+        try {
+            config = { ...config, ...(next || {}) };
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+        } catch (_) {}
+    }
+
+    function startDashboard(preferredPort) {
+        const port = Number(preferredPort || 3000) || 3000;
+        const server = app.listen(port, () => {
+            if (config.dashboardPort !== port) persistConfigSafe({ dashboardPort: port });
+            console.log(`🎛️  Dashboard de Configuración: http://localhost:${port}`);
+            console.log(`🧪 Prueba offline: POST http://localhost:${port}/api/test/sr`);
+        });
+        server.on('error', (err) => {
+            if (err && err.code === 'EADDRINUSE') {
+                console.error(`❌ No se pudo iniciar el dashboard: el puerto ${port} ya está en uso.`);
+                console.error(`   Cierra el proceso que usa el puerto ${port} o cambia dashboardPort en config.json (ej: 3001).`);
+                process.exit(1);
+                return;
+            }
+            console.error('❌ Error iniciando dashboard:', err && err.message ? err.message : String(err));
+            process.exit(1);
+        });
+    }
+
+    startDashboard(PORT);
 
     // Conexión a Cider (Reproductor)
     ciderSocket = io("http://localhost:10767/", {

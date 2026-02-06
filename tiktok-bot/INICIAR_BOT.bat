@@ -34,8 +34,13 @@ if not exist "node_modules" (
 
 :: Abrir Dashboard
 echo Abriendo panel de configuracion...
+set "DASH_PORT=3000"
+if exist "config.json" (
+  for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "try { $j=(Get-Content 'config.json' -Raw | ConvertFrom-Json); if($j.dashboardPort){$j.dashboardPort}else{3000} } catch { 3000 }"`) do set "DASH_PORT=%%p"
+)
+if "%DASH_PORT%"=="" set "DASH_PORT=3000"
 timeout /t 1 >nul
-start http://localhost:3000/
+start http://localhost:%DASH_PORT%/
 
 :: Iniciar el bot con reconexion automatica
 :loop
