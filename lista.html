@@ -4824,11 +4824,10 @@
       const now = new Date();
       const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const dayLabel = daySel ? (daySel === todayKey ? 'HOY' : daySel) : 'HOY';
-      const dayText = '📅 <strong>' + dayLabel + '</strong>' +
+        const dayText = '📅 <strong>' + dayLabel + '</strong>' +
         ' • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) +
         ' • <strong>🎵 Canción más pedida:</strong> ' + fmt(s.topSong) + ' (' + (s.topSongCount || 0) + ')' +
         ' • <strong>🎤 Artista más pedido:</strong> ' + fmt(s.topArtist) + ' (' + (s.topArtistCount || 0) + ')' +
-        ' • <strong>🏷️ Género top:</strong> ' + fmt(s.topGenre) +
         ' • <strong>▶️ Reproducidas:</strong> ' + (s.played || 0) +
         ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3Txt +
         ' • <strong>🎤 Top 3 artistas:</strong> ' + top3Txt +
@@ -4851,7 +4850,6 @@
       const globalText = '<strong>HISTORIA:</strong>' +
         ' • <strong>🎵 Canción más pedida:</strong> ' + fmtG(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') +
         ' • <strong>🎤 Artista más pedido:</strong> ' + fmtG(g.topArtist) + (typeof g.topArtistCount === 'number' ? ' (' + g.topArtistCount + ')' : '') +
-        ' • <strong>🏷️ Género top:</strong> ' + fmtG(g.topGenre) + (typeof g.topGenreCount === 'number' ? ' (' + g.topGenreCount + ')' : '') +
         ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3TxtGlobal +
         ' • <strong>🎤 Top 3 artistas:</strong> ' + top3TxtGlobal +
         ' • <strong>📊 Total solicitudes:</strong> ' + (g.total || 0) +
@@ -5653,7 +5651,6 @@
           ' • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) +
           ' • <strong>🎵 Canción más pedida:</strong> ' + fmt(ds.topSong) + ' (' + (ds.topSongCount || 0) + ')' +
           ' • <strong>🎤 Artista más pedido:</strong> ' + fmt(ds.topArtist) + ' (' + (ds.topArtistCount || 0) + ')' +
-          ' • <strong>🏷️ Género top:</strong> ' + fmt(ds.topGenre) +
           ' • <strong>▶️ Reproducidas:</strong> ' + (ds.played || 0) +
           ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3TxtDay +
           ' • <strong>🎤 Top 3 artistas:</strong> ' + top3TxtDay +
@@ -5677,7 +5674,6 @@
       const globalText = '<strong>HISTORIA:</strong>' +
         ' • <strong>🎵 Canción más pedida:</strong> ' + fmt(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') +
         ' • <strong>🎤 Artista más pedido:</strong> ' + fmt(g.topArtist) + (typeof g.topArtistCount === 'number' ? ' (' + g.topArtistCount + ')' : '') +
-        ' • <strong>🏷️ Género top:</strong> ' + fmt(g.topGenre) + (typeof g.topGenreCount === 'number' ? ' (' + g.topGenreCount + ')' : '') +
         ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3Txt +
         ' • <strong>🎤 Top 3 artistas:</strong> ' + top3Txt +
         ' • <strong>📊 Total solicitudes:</strong> ' + (g.total || 0) +
@@ -6615,17 +6611,23 @@
           
           const allSolicitudesRaw = Array.from(allSolicitudesMap.values());
           const allSolicitudes = allSolicitudesRaw.filter(s => !isTestRequestForStats(s));
+
+          const norm = (v) => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+          const normUser = (v) => norm(v);
+          const normSong = (v) => norm(v);
+          const normArtist = (v) => norm(v);
+          const disp = (v, fallback) => String(v || '').trim() || (fallback || '');
           
           // Estadísticas generales
           const totalSongs = allSolicitudes.length;
-          const uniqueUsers = new Set(allSolicitudes.map(s => s.usuario)).size;
-          const uniqueArtists = new Set(allSolicitudes.map(s => s.artista)).size;
+          const uniqueUsers = new Set(allSolicitudes.map(s => normUser(s.usuario)).filter(Boolean)).size;
+          const uniqueArtists = new Set(allSolicitudes.map(s => normArtist(s.artista)).filter(Boolean)).size;
           
           // Canciones de hoy
           const today = new Date();
           const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
           const todaySongs = allSolicitudes.filter(s => {
-            const date = new Date(s.ts);
+            const date = new Date(Number(s.ts) || 0);
             const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
             return dateKey === todayKey;
           }).length;
@@ -6638,12 +6640,22 @@
           
           // Top canciones
           const songCounts = {};
+          const songNameMap = {};
           allSolicitudes.forEach(s => {
-            const key = `${s.cancion} - ${s.artista}`;
+            const songKey = normSong(s.cancion);
+            const artistKey = normArtist(s.artista);
+            if (!songKey && !artistKey) return;
+            const key = `${songKey}||${artistKey}`;
             songCounts[key] = (songCounts[key] || 0) + 1;
+            if (!songNameMap[key]) {
+              const songTxt = disp(s.cancion, 'Desconocida');
+              const artistTxt = disp(s.artista, 'Desconocido');
+              songNameMap[key] = `${songTxt} - ${artistTxt}`;
+            }
           });
-          
+
           const topSongs = Object.entries(songCounts)
+            .map(([k, c]) => [songNameMap[k] || k, c])
             .sort(([,a], [,b]) => b - a)
             .slice(0, 10);
           
@@ -6651,11 +6663,16 @@
           
           // Top artistas
           const artistCounts = {};
+          const artistNameMap = {};
           allSolicitudes.forEach(s => {
-            artistCounts[s.artista] = (artistCounts[s.artista] || 0) + 1;
+            const k = normArtist(s.artista);
+            if (!k) return;
+            artistCounts[k] = (artistCounts[k] || 0) + 1;
+            if (!artistNameMap[k]) artistNameMap[k] = disp(s.artista, k);
           });
-          
+
           const topArtists = Object.entries(artistCounts)
+            .map(([k, c]) => [artistNameMap[k] || k, c])
             .sort(([,a], [,b]) => b - a)
             .slice(0, 10);
           
@@ -6663,11 +6680,16 @@
           
           // Top usuarios
           const userCounts = {};
+          const userNameMap = {};
           allSolicitudes.forEach(s => {
-            userCounts[s.usuario] = (userCounts[s.usuario] || 0) + 1;
+            const k = normUser(s.usuario);
+            if (!k) return;
+            userCounts[k] = (userCounts[k] || 0) + 1;
+            if (!userNameMap[k]) userNameMap[k] = disp(s.usuario, k);
           });
-          
+
           const topUsers = Object.entries(userCounts)
+            .map(([k, c]) => [userNameMap[k] || k, c])
             .sort(([,a], [,b]) => b - a)
             .slice(0, 10);
           
