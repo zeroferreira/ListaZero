@@ -1,46 +1,11 @@
 @echo off
 title Zero FM TikTok Bot
 setlocal EnableExtensions EnableDelayedExpansion
-if /I "%~1"=="__run" goto run
-if /I "%~1"=="__child" goto child
-start "" cmd /k "call ""%~f0"" __child"
-exit /b
-
-:child
 cd /d "%~dp0"
-set "LOG=%TEMP%\zero_fm_tiktok_bot_%RANDOM%.log"
 echo ==========================================
 echo    Iniciando Bot de Pedidos Zero FM
 echo ==========================================
 echo.
-echo Log: "%LOG%"
-echo.
-
-where powershell >nul 2>&1
-if errorlevel 1 (
-  echo [ALERTA] PowerShell no esta disponible. Se mostrara salida sin log.
-  echo.
-  call :main
-  echo.
-  echo [FIN] El proceso termino.
-  pause
-  exit /b 1
-)
-
-echo [INFO] Mostrando salida y guardando log...
-echo.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$log='%LOG%'; $bat='%~f0'; $q=[char]34; $cmd=$q+$bat+$q+' __run'; & cmd /d /c $cmd 2>&1 | Tee-Object -FilePath $log -Append"
-
-echo.
-echo [FIN] El proceso termino. Log:
-echo "%LOG%"
-echo.
-pause
-exit /b 1
-
-:run
-call :main
-exit /b %ERRORLEVEL%
 
 :main
 echo === INICIO ===
@@ -64,7 +29,7 @@ echo.
 if not exist "node_modules" (
   if exist "node_modules.zip" (
     echo [INFO] node_modules no existe. Extrayendo node_modules.zip...
-    where powershell
+    where powershell >nul 2>&1
     if errorlevel 1 (
       echo [ERROR] Falta PowerShell para extraer node_modules.zip.
       exit /b 4
