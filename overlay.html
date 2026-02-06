@@ -402,6 +402,7 @@
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 </head>
 <body>
 
@@ -970,58 +971,6 @@
       } catch (_) {}
     }
 
-    if (db) {
-      db.collection('userSettings').doc('global_overlay_config')
-        .onSnapshot((doc) => {
-          if (doc.exists) {
-            console.log("Configuración remota recibida");
-            const remoteSettings = doc.data();
-            const settings = { ...defaultSettings, ...remoteSettings };
-            
-            localStorage.setItem('overlay_settings', JSON.stringify(settings));
-            applySettings(settings);
-            
-            if (document.getElementById('inp-width')) {
-                document.getElementById('inp-width').value = settings.width;
-                document.getElementById('inp-minHeight').value = settings.minHeight;
-                document.getElementById('inp-borderRadius').value = settings.borderRadius;
-                document.getElementById('inp-animType').value = settings.animType;
-                document.getElementById('inp-textAnim').value = settings.textAnim || 'text-anim-fade';
-                
-                document.getElementById('inp-font').value = settings.font;
-                
-                document.getElementById('inp-fontSizeSong').value = settings.fontSizeSong;
-                document.getElementById('inp-fontSizeArtist').value = settings.fontSizeArtist;
-                document.getElementById('inp-fontSizeUser').value = settings.fontSizeUser;
-                document.getElementById('inp-fontSizeHeader').value = settings.fontSizeHeader;
-          
-                document.getElementById('inp-accent').value = settings.accent;
-                document.getElementById('inp-bg').value = settings.bg;
-                
-                const opVal = settings.opacity !== undefined ? settings.opacity : 85;
-                document.getElementById('inp-opacity').value = opVal;
-                document.getElementById('bg-opacity-val').innerText = opVal + '%';
-          
-                document.getElementById('inp-text').value = settings.text;
-                document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
-                
-                if(document.getElementById('inp-sepColor')) {
-                     document.getElementById('inp-sepColor').value = settings.sepColor || '#ffffff';
-                     document.getElementById('inp-sepUseAccent').checked = settings.sepUseAccent !== undefined ? settings.sepUseAccent : true;
-                     toggleSepColorInput();
-
-                     document.getElementById('inp-sepOpacity').value = settings.sepOpacity !== undefined ? settings.sepOpacity : 10;
-                     document.getElementById('sep-opacity-val').innerText = (settings.sepOpacity !== undefined ? settings.sepOpacity : 10) + '%';
-                     document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
-                     document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
-                 }
-            }
-          }
-        }, (error) => {
-           console.warn("No se pudo sincronizar configuración remota (posiblemente offline o sin permisos):", error);
-        });
-    }
-
     const card = document.getElementById('card');
     const songEl = document.getElementById('song');
     const artistEl = document.getElementById('artist');
@@ -1197,7 +1146,61 @@
       else userInsigniaEl.textContent = badge;
     }
 
-    if (db) {
+    let overlayRealtimeStarted = false;
+    function startOverlayRealtime() {
+      if (!db || overlayRealtimeStarted) return;
+      overlayRealtimeStarted = true;
+
+      db.collection('userSettings').doc('global_overlay_config')
+        .onSnapshot((doc) => {
+          if (doc.exists) {
+            console.log("Configuración remota recibida");
+            const remoteSettings = doc.data();
+            const settings = { ...defaultSettings, ...remoteSettings };
+            
+            localStorage.setItem('overlay_settings', JSON.stringify(settings));
+            applySettings(settings);
+            
+            if (document.getElementById('inp-width')) {
+                document.getElementById('inp-width').value = settings.width;
+                document.getElementById('inp-minHeight').value = settings.minHeight;
+                document.getElementById('inp-borderRadius').value = settings.borderRadius;
+                document.getElementById('inp-animType').value = settings.animType;
+                document.getElementById('inp-textAnim').value = settings.textAnim || 'text-anim-fade';
+                
+                document.getElementById('inp-font').value = settings.font;
+                
+                document.getElementById('inp-fontSizeSong').value = settings.fontSizeSong;
+                document.getElementById('inp-fontSizeArtist').value = settings.fontSizeArtist;
+                document.getElementById('inp-fontSizeUser').value = settings.fontSizeUser;
+                document.getElementById('inp-fontSizeHeader').value = settings.fontSizeHeader;
+          
+                document.getElementById('inp-accent').value = settings.accent;
+                document.getElementById('inp-bg').value = settings.bg;
+                
+                const opVal = settings.opacity !== undefined ? settings.opacity : 85;
+                document.getElementById('inp-opacity').value = opVal;
+                document.getElementById('bg-opacity-val').innerText = opVal + '%';
+          
+                document.getElementById('inp-text').value = settings.text;
+                document.getElementById('inp-duration').value = settings.duration !== undefined ? settings.duration : 10;
+                
+                if(document.getElementById('inp-sepColor')) {
+                     document.getElementById('inp-sepColor').value = settings.sepColor || '#ffffff';
+                     document.getElementById('inp-sepUseAccent').checked = settings.sepUseAccent !== undefined ? settings.sepUseAccent : true;
+                     toggleSepColorInput();
+
+                     document.getElementById('inp-sepOpacity').value = settings.sepOpacity !== undefined ? settings.sepOpacity : 10;
+                     document.getElementById('sep-opacity-val').innerText = (settings.sepOpacity !== undefined ? settings.sepOpacity : 10) + '%';
+                     document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
+                     document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
+                 }
+            }
+          }
+        }, (error) => {
+           console.warn("No se pudo sincronizar configuración remota (posiblemente offline o sin permisos):", error);
+        });
+
       db.collection('vipUsers').onSnapshot((snap) => {
         vipSet.clear();
         snap.forEach((doc) => {
@@ -1206,7 +1209,8 @@
           if (name) vipSet.add(name);
         });
         if (currentCardData) applyBadgeToCard(currentCardData);
-      });
+      }, (err) => console.warn('Overlay: error leyendo vipUsers:', err));
+
       db.collection('z0VipUsers').onSnapshot((snap) => {
         z0VipSet.clear();
         snap.forEach((doc) => {
@@ -1215,7 +1219,8 @@
           if (name) z0VipSet.add(name);
         });
         if (currentCardData) applyBadgeToCard(currentCardData);
-      });
+      }, (err) => console.warn('Overlay: error leyendo z0VipUsers:', err));
+
       db.collection('donadorUsers').onSnapshot((snap) => {
         donadorSet.clear();
         snap.forEach((doc) => {
@@ -1224,7 +1229,8 @@
           if (name) donadorSet.add(name);
         });
         if (currentCardData) applyBadgeToCard(currentCardData);
-      });
+      }, (err) => console.warn('Overlay: error leyendo donadorUsers:', err));
+
       db.collection('z0FanUsers').onSnapshot((snap) => {
         z0FanSet.clear();
         snap.forEach((doc) => {
@@ -1233,7 +1239,8 @@
           if (name) z0FanSet.add(name);
         });
         if (currentCardData) applyBadgeToCard(currentCardData);
-      });
+      }, (err) => console.warn('Overlay: error leyendo z0FanUsers:', err));
+
       db.collection('z0PlatinumUsers').onSnapshot((snap) => {
         z0PlatinumSet.clear();
         snap.forEach((doc) => {
@@ -1242,7 +1249,8 @@
           if (name) z0PlatinumSet.add(name);
         });
         if (currentCardData) applyBadgeToCard(currentCardData);
-      });
+      }, (err) => console.warn('Overlay: error leyendo z0PlatinumUsers:', err));
+
       db.collection('selectedBadges').onSnapshot((snap) => {
         const m = {};
         snap.forEach((doc) => {
@@ -1253,7 +1261,7 @@
         });
         selectedBadgeMap = m;
         if (currentCardData) applyBadgeToCard(currentCardData);
-      });
+      }, (err) => console.warn('Overlay: error leyendo selectedBadges:', err));
 
       db.collection('solicitudes')
         .where('day', '==', currentDay)
@@ -1318,9 +1326,24 @@
         }, (error) => {
           console.error("Error escuchando solicitudes:", error);
         });
-    } else {
+    }
+
+    if (!db) {
       console.warn("Firestore no disponible. Overlay no podrá escuchar solicitudes.");
       isInitialLoad = false;
+    } else if (typeof firebase !== 'undefined' && firebase.auth) {
+      firebase.auth().onAuthStateChanged((user) => {
+        if (!user) {
+          firebase.auth().signInAnonymously().catch((err) => {
+            console.warn('Overlay: error al iniciar sesión anónima:', err);
+            startOverlayRealtime();
+          });
+          return;
+        }
+        startOverlayRealtime();
+      });
+    } else {
+      startOverlayRealtime();
     }
 
     // Función de simulación para pruebas manuales
