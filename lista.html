@@ -4820,7 +4820,11 @@
       const usersTop3Txt = Array.isArray(s.topUsers3) && s.topUsers3.length ? s.topUsers3.join(', ') : 'N/D';
       const latest = getLatestNonTestItem(items);
       const latestTxt = latest ? (String(latest.cancion || '').trim() + (latest.artista ? ' — ' + String(latest.artista).trim() : '')) : 'N/D';
-      const dayText = '📅 <strong>HOY</strong> • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) + ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3Txt + ' • <strong>🎤 Top 3 artistas:</strong> ' + top3Txt + ' • <strong>📝 Solicitudes:</strong> ' + (s.total || 0);
+      const daySel = String(document.getElementById('day-select')?.value || '').trim();
+      const now = new Date();
+      const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const dayLabel = daySel ? (daySel === todayKey ? 'HOY' : daySel) : 'HOY';
+      const dayText = '📅 <strong>' + dayLabel + '</strong> • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) + ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3Txt + ' • <strong>🎤 Top 3 artistas:</strong> ' + top3Txt + ' • <strong>📝 Solicitudes:</strong> ' + (s.total || 0);
       const g = window.__globalStats || computeGlobalStats();
       function fmtG(x) { return x && x.length ? x : 'N/D'; }
       const top3TxtGlobal = Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D';
@@ -5412,6 +5416,32 @@
           (arr || []).forEach(it => { if (it) solicitudes.push(it); });
         });
       } catch (_) {}
+
+      const unique = new Map();
+      const getTsMs = (s) => {
+        try {
+          if (window.getItemTimeMs) return window.getItemTimeMs(s);
+          if (s && s.ts && typeof s.ts.toMillis === 'function') return s.ts.toMillis();
+          if (s && typeof s.ts === 'number') return s.ts;
+          if (s && s.time && typeof s.time === 'number') return s.time;
+          const t = new Date(s?.ts || s?.time || 0).getTime();
+          return Number.isFinite(t) ? t : 0;
+        } catch (_) { return 0; }
+      };
+      const keyOf = (s) => {
+        const u = String(s?.usuario || '').trim();
+        const c = String(s?.cancion || '').trim();
+        const a = String(s?.artista || '').trim();
+        const ts = String(getTsMs(s) || '');
+        return `${u}|${c}|${a}|${ts}`;
+      };
+      for (let i = 0; i < solicitudes.length; i++) {
+        const s = solicitudes[i] || {};
+        const k = keyOf(s);
+        if (!k) continue;
+        if (!unique.has(k)) unique.set(k, s);
+      }
+      solicitudes = Array.from(unique.values());
       const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
       for (let i = 0; i < solicitudes.length; i++) {
         const s = solicitudes[i] || {};
@@ -5459,20 +5489,20 @@
       const items = window.__dayItems || [];
       let dayText = '';
       try {
+        const daySel = String(document.getElementById('day-select')?.value || '').trim();
+        const now = new Date();
+        const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const dayLabel = daySel ? (daySel === todayKey ? 'HOY' : daySel) : 'HOY';
         const ds = computeDayStatsFromItems(items);
         const top3TxtDay = Array.isArray(ds.topArtists3) && ds.topArtists3.length ? ds.topArtists3.join(', ') : 'N/D';
         const usersTop3TxtDay = Array.isArray(ds.topUsers3) && ds.topUsers3.length ? ds.topUsers3.join(', ') : 'N/D';
         const latest = window.getLatestNonTestItem ? window.getLatestNonTestItem(items) : (Array.isArray(items) && items.length ? items[items.length - 1] : null);
         const latestTxt = latest ? (String(latest.cancion || '').trim() + (latest.artista ? ' — ' + String(latest.artista).trim() : '')) : 'N/D';
-        dayText = '📅 <strong>HOY</strong> • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) + ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3TxtDay + ' • <strong>🎤 Top 3 artistas:</strong> ' + top3TxtDay + ' • <strong>📝 Solicitudes:</strong> ' + (ds.total || 0);
+        dayText = '📅 <strong>' + dayLabel + '</strong> • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) + ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3TxtDay + ' • <strong>🎤 Top 3 artistas:</strong> ' + top3TxtDay + ' • <strong>📝 Solicitudes:</strong> ' + (ds.total || 0);
       } catch (_) {}
       const g = window.__globalStats || computeGlobalStats();
       const top3Txt = Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D';
-      
-      // Usar Top Puntos (Gamificación) si está disponible, si no fallback a Top Solicitudes
-      const pointsTop3 = window.__globalTopPointsUsers;
-      const usersTop3Txt = Array.isArray(pointsTop3) && pointsTop3.length ? pointsTop3.join(', ') : (Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D');
-      const usersLabel = (Array.isArray(pointsTop3) && pointsTop3.length) ? '🏆 Top 3 Puntuación' : '👥 Top 3 usuarios';
+      const usersTop3Txt = Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D';
       
       let avgTxt = 'N/D';
       if (typeof window.__globalTotalSolicitudes === 'number' && typeof window.__globalDistinctUsers === 'number' && window.__globalDistinctUsers > 0) {
@@ -5483,7 +5513,7 @@
         const usersSet = new Set(filtered.map(x => String(x.usuario||'').trim()).filter(Boolean));
         avgTxt = usersSet.size ? (filtered.length / usersSet.size).toFixed(1) : '0.0';
       }
-      const globalText = '<strong>HISTORIA:</strong> • <strong>🎵 Canción más pedida:</strong> ' + fmt(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') + '  •  <strong>' + usersLabel + ':</strong> ' + usersTop3Txt + '  •  <strong>🎤 Top 3 artistas:</strong> ' + top3Txt + '  •  <strong>📊 Total solicitudes:</strong> ' + (g.total || 0) + '  •  <strong>📈 Promedio por usuario:</strong> ' + avgTxt;
+      const globalText = '<strong>HISTORIA:</strong> • <strong>🎵 Canción más pedida:</strong> ' + fmt(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') + '  •  <strong>👥 Top 3 usuarios:</strong> ' + usersTop3Txt + '  •  <strong>🎤 Top 3 artistas:</strong> ' + top3Txt + '  •  <strong>📊 Total solicitudes:</strong> ' + (g.total || 0) + '  •  <strong>📈 Promedio por usuario:</strong> ' + avgTxt;
       const sep2 = '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
       el.innerHTML = (dayText ? (dayText + sep2) : '') + globalText;
     }
