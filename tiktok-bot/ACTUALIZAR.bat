@@ -19,6 +19,24 @@ if /I "%~2"=="/silent" set "SILENT=1"
 if /I "%~3"=="/silent" set "SILENT=1"
 set "REPO_URL=https://github.com/zeroferreira/ListaZero.git"
 
+for %%F in ("%DEST%") do set "FOLDER=%%~nxF"
+if /I "%FOLDER%"=="Downloads" (
+    echo [ERROR] Estas ejecutando ACTUALIZAR.bat dentro de la carpeta Downloads.
+    echo Eso puede mezclar el bot con tus descargas.
+    echo Crea una carpeta dedicada, por ejemplo: C:\ZeroFM\tiktok-bot
+    echo y mueve ahi estos archivos .bat antes de ejecutar.
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
+if /I "%FOLDER%"=="Descargas" (
+    echo [ERROR] Estas ejecutando ACTUALIZAR.bat dentro de la carpeta Descargas.
+    echo Eso puede mezclar el bot con tus descargas.
+    echo Crea una carpeta dedicada, por ejemplo: C:\ZeroFM\tiktok-bot
+    echo y mueve ahi estos archivos .bat antes de ejecutar.
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
+
 git --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Git no esta instalado.
@@ -50,7 +68,9 @@ if not exist "%TMP%\tiktok-bot\index.js" (
 
 echo [INFO] Copiando archivos al bot local...
 attrib -R "%DEST%\*.*" /S /D >nul 2>&1
-robocopy "%TMP%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json"
+robocopy "%TMP%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
+  /XD "node_modules" "logs" ".git" ^
+  /XF "config.json"
 set "RC=%errorlevel%"
 if %RC% geq 8 (
     echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
