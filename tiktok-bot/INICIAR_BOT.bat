@@ -1,9 +1,9 @@
 @echo off
 title Zero FM TikTok Bot
-echo %CMDCMDLINE% | findstr /I "/c" >nul 2>&1
-if %errorlevel% equ 0 (
-    if /I not "%~1"=="_keep" (
-        start "" cmd /k "\"%~f0\" _keep"
+if /I not "%~1"=="_keep" (
+    echo %CMDCMDLINE% | findstr /I "/c" >nul 2>&1
+    if %errorlevel% equ 0 (
+        cmd /k ""%~f0" _keep"
         exit /b 0
     )
 )
