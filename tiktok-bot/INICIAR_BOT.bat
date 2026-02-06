@@ -1,7 +1,7 @@
 @echo off
 title Zero FM TikTok Bot
 if /I not "%~1"=="_keep" (
-    cmd /k ""%~f0" _keep"
+    cmd /k call "%~f0" _keep
     exit /b 0
 )
 setlocal EnableExtensions
