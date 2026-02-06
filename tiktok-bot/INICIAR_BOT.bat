@@ -15,9 +15,23 @@ echo.
 echo Log: "%LOG%"
 echo.
 
-call :main >> "%LOG%" 2>&1
+where powershell >nul 2>&1
+if errorlevel 1 (
+  echo [ALERTA] PowerShell no esta disponible. Se mostrara salida sin log.
+  echo.
+  call :main
+  echo.
+  echo [FIN] El proceso termino.
+  pause
+  exit /b 1
+)
+
+echo [INFO] Mostrando salida y guardando log...
 echo.
-echo [ERROR] El proceso termino. Revisa el log:
+call :main 2>&1 | powershell -NoProfile -ExecutionPolicy Bypass -Command "$log='%LOG%'; $input | Tee-Object -FilePath $log -Append"
+
+echo.
+echo [FIN] El proceso termino. Log:
 echo "%LOG%"
 echo.
 pause
