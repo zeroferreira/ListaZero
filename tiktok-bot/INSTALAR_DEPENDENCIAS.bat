@@ -41,11 +41,7 @@ echo [INFO] Instalando dependencias...
 echo Si falla con "No se esperaba .", npm esta roto en Windows y debes reinstalar Node.js LTS.
 echo.
 
-if exist "package-lock.json" (
-  call npm ci
-) else (
-  call npm install
-)
+call npm install --no-audit --no-fund
 
 if errorlevel 1 (
   echo.

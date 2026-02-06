@@ -25,14 +25,27 @@ if errorlevel 1 (
 node -v
 
 if not exist "node_modules" (
-    echo [ERROR] Falta la carpeta node_modules (dependencias).
-    echo.
-    echo Solucion:
-    echo 1) Abre INSTALAR_DEPENDENCIAS.bat
-    echo 2) Cuando termine, vuelve a abrir INICIAR_BOT.bat
-    echo.
-    pause
-    exit /b 1
+    if exist "node_modules.zip" (
+        echo [INFO] node_modules no existe. Extrayendo node_modules.zip...
+        where powershell >nul 2>&1
+        if errorlevel 1 (
+            echo [ERROR] Falta PowerShell para extraer node_modules.zip.
+            echo Solucion: ejecuta INSTALAR_DEPENDENCIAS.bat o habilita PowerShell.
+            pause
+            exit /b 1
+        )
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Expand-Archive -Force -Path 'node_modules.zip' -DestinationPath '.'"
+        if errorlevel 1 (
+            echo [ERROR] No se pudo extraer node_modules.zip.
+            pause
+            exit /b 1
+        )
+    ) else (
+        echo [ERROR] Falta la carpeta node_modules (dependencias).
+        echo Solucion: ejecuta INSTALAR_DEPENDENCIAS.bat
+        pause
+        exit /b 1
+    )
 )
 
 :: Abrir Dashboard
