@@ -1792,9 +1792,10 @@
       const artist = currentCiderTrack.artist;
       const song = currentCiderTrack.song;
       const requester = currentCiderTrack.user ? String(currentCiderTrack.user).trim() : '';
+      const requesterId = currentCiderTrack.requesterId ? String(currentCiderTrack.requesterId).trim() : '';
       const playingAppleMusicId = currentCiderTrack.appleMusicId ? String(currentCiderTrack.appleMusicId).trim() : '';
       
-      const key = `${artist}-${song}-${requester}`;
+      const key = `${playingAppleMusicId}|${artist}|${song}|${requesterId || requester}`;
       if (lastAutoMarkedSong === key) return; // Already handled this track
       
       // Normalize for comparison: remove accents, special chars, lowercase
@@ -1813,7 +1814,7 @@
           return;
       }
 
-      const targetRequester = normalize(requester);
+      const targetRequester = normalize(requesterId || requester);
 
       // Filter unplayed requests using generateSongId for accurate check
       const candidates = allRequests.filter(req => {
@@ -1847,7 +1848,11 @@
 
       let primary = candidates;
       if (targetRequester && targetRequester.length >= 2) {
-        const filtered = candidates.filter(req => normalize(req.usuario) === targetRequester);
+        const filtered = candidates.filter(req =>
+          normalize(req?.usuario) === targetRequester ||
+          normalize(req?.userId) === targetRequester ||
+          normalize(req?.requesterId) === targetRequester
+        );
         if (filtered.length) primary = filtered;
       }
 
@@ -1883,14 +1888,21 @@
       const url = getCiderSocketUrl();
       console.log("Intentando conectar a Cider:", url);
       ciderSocket = io(url, {
-        transports: ['websocket'],
-        reconnectionAttempts: 5
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 500,
+        timeout: 8000
       });
 
       ciderSocket.on("connect", () => {
         console.log("✅ Conectado a Cider/Apple Music Widget!");
         // Request current playback status immediately
         ciderSocket.emit("get-playback");
+      });
+
+      ciderSocket.on("connect_error", (err) => {
+        console.warn("❌ Error conectando a Cider:", err && err.message ? err.message : err);
       });
 
       ciderSocket.on("disconnect", () => {
@@ -1906,18 +1918,20 @@
         console.log("🎵 Cider Event:", type, data?.name);
         try { updateCiderPlaybackTiming(data); } catch (_) {}
 
-        // Aceptar cambio de canción O cambio de estado (play/pause) O respuesta inicial
-        if (type === "playbackStatus.nowPlayingItemDidChange" || type === "playbackStatus.playbackStateDidChange") {
-             // Soportar artistName (Cider) o artist (iTunes)
-             const artist = data.artistName || data.artist;
-             const requester = data.requester || data.requestedBy || data.user || '';
-             const appleMusicId = (data.playParams && data.playParams.id) ? data.playParams.id : (data.appleMusicId || data.id || '');
-             
-             if (data && data.name && artist) {
-                 console.log("🎵 Cider Now Playing:", artist, "-", data.name);
-                 currentCiderTrack = { artist: artist, song: data.name, user: requester, appleMusicId: appleMusicId };
-                 checkCurrentTrackAgainstQueue();
-             }
+        const artist = data && (data.artistName || data.artist);
+        const name = data && (data.name || data.songName || data.title);
+        const requester = data && (data.requester || data.requestedBy || data.user || data.username || '');
+        const requesterId = data && (data.requesterId || data.requesterUserId || data.userId || '');
+        const appleMusicId = data
+          ? ((data.playParams && data.playParams.id) ? data.playParams.id : (data.appleMusicId || data.id || ''))
+          : '';
+
+        if (artist && name) {
+          currentCiderTrack = { artist: String(artist), song: String(name), user: String(requester || ''), requesterId: String(requesterId || ''), appleMusicId: String(appleMusicId || '') };
+          if (type === "playbackStatus.nowPlayingItemDidChange" || type === "playbackStatus.playbackStateDidChange" || type === "playbackStatus.nowPlayingItemDidChangeV2" || type === "get-playback") {
+            console.log("🎵 Cider Now Playing:", artist, "-", name);
+          }
+          checkCurrentTrackAgainstQueue();
         }
       });
     }
