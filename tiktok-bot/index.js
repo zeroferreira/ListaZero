@@ -6,28 +6,15 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 
-// Dynamic import for Firebase (ESM only)
-let initializeApp, getFirestore, collection, addDoc, doc, setDoc, arrayUnion, serverTimestamp;
-
-(async () => {
-    try {
-        const firebaseAppLib = await import('firebase/app');
-        initializeApp = firebaseAppLib.initializeApp;
-        
-        const firebaseFirestoreLib = await import('firebase/firestore');
-        getFirestore = firebaseFirestoreLib.getFirestore;
-        collection = firebaseFirestoreLib.collection;
-        addDoc = firebaseFirestoreLib.addDoc;
-        doc = firebaseFirestoreLib.doc;
-        setDoc = firebaseFirestoreLib.setDoc;
-        arrayUnion = firebaseFirestoreLib.arrayUnion;
-        serverTimestamp = firebaseFirestoreLib.serverTimestamp;
-        
-        startBot();
-    } catch (e) {
-        console.error("Critical Error loading Firebase libraries:", e);
-    }
-})();
+let initializeApp, getFirestore, collection, addDoc, serverTimestamp;
+try {
+    ({ initializeApp } = require('firebase/app'));
+    ({ getFirestore, collection, addDoc, serverTimestamp } = require('firebase/firestore'));
+} catch (e) {
+    console.error('Critical Error loading Firebase libraries:', e);
+    console.error('Solución: ejecuta "npm install" dentro de la carpeta tiktok-bot y usa Node 18+.');
+    process.exit(1);
+}
 
 // --- CONFIGURACIÓN ESTATICA ---
 const CONFIG_FILE = path.join(__dirname, 'config.json');
@@ -151,8 +138,8 @@ function startBot() {
                 }
             }
             query = query.replace(/\s+-\s+/g, ' ').trim();
-            if (!query && !appleMusicId) {
-                res.status(400).json({ ok: false, error: 'Falta query o appleMusicId' });
+            if (!query && !appleMusicId && !(songName && artistName)) {
+                res.status(400).json({ ok: false, error: 'Falta query (búsqueda) o artista+canción' });
                 return;
             }
 
@@ -244,6 +231,8 @@ function startBot() {
     // Iniciar búsqueda
     connectToLive();
 }
+
+startBot();
 
 // Configurar Listeners
 function setupListeners() {
@@ -396,12 +385,34 @@ async function handleSongRequest(user, query, options = {}) {
         const source = options.source ? String(options.source) : '';
 
         let resolved = null;
+        const overrideSong = String(options.songName || '').trim();
+        const overrideArtist = String(options.artistName || '').trim();
+        const overrideArtwork = String(options.artworkUrl || '').trim();
         const overrideId = options.appleMusicId ? String(options.appleMusicId).trim() : '';
-        if (overrideId) {
+        const hasManualTrack = !!(overrideSong && overrideArtist);
+        if (hasManualTrack) {
             resolved = {
-                songName: String(options.songName || query || '').trim() || 'Sin título',
-                artistName: String(options.artistName || '').trim(),
-                artworkUrl: String(options.artworkUrl || '').trim(),
+                songName: overrideSong,
+                artistName: overrideArtist,
+                artworkUrl: overrideArtwork,
+                appleMusicId: overrideId,
+                trackViewUrl: ''
+            };
+            if (sendToCider && !resolved.appleMusicId) {
+                try {
+                    const idLookup = await resolveTrackFromQuery(`${overrideSong} ${overrideArtist}`);
+                    if (idLookup && idLookup.appleMusicId) {
+                        resolved.appleMusicId = idLookup.appleMusicId;
+                        resolved.trackViewUrl = idLookup.trackViewUrl || '';
+                        if (!resolved.artworkUrl) resolved.artworkUrl = idLookup.artworkUrl || '';
+                    }
+                } catch (_) {}
+            }
+        } else if (overrideId) {
+            resolved = {
+                songName: String(query || '').trim() || 'Sin título',
+                artistName: overrideArtist,
+                artworkUrl: overrideArtwork,
                 appleMusicId: overrideId,
                 trackViewUrl: ''
             };
@@ -457,6 +468,9 @@ async function handleSongRequest(user, query, options = {}) {
         let ciderSent = false;
         if (sendToCider) {
             if (ciderSocket && ciderSocket.connected) {
+                if (!appleMusicId) {
+                    console.warn('⚠️ No se pudo enviar a Cider: falta AppleMusicId (activa búsqueda o provee el ID).');
+                } else {
                 ciderSocket.emit('safe_pre_add_queue', {
                     artwork: { url: artworkUrl },
                     name: songName,
@@ -468,6 +482,7 @@ async function handleSongRequest(user, query, options = {}) {
                 ciderSocket.emit('playback:queue:add-next', { id: String(appleMusicId) });
                 ciderSent = true;
                 console.log(`🎧 Enviada orden a Cider (ID: ${appleMusicId})`);
+                }
             } else {
                 console.warn(`⚠️ No se pudo enviar a Cider (No conectado)`);
             }
