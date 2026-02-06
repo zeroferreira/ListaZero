@@ -5430,22 +5430,33 @@
       try { return JSON.parse(localStorage.getItem('skippedSongs') || '{}'); } catch (_) { return {}; }
     }
 
-    function normalizeUserForTicker(u) {
+    function normalizeKeyTextForTicker(v) {
       try {
-        if (typeof window.normalizeUserForStats === 'function') return window.normalizeUserForStats(u);
-      } catch (_) {}
-      return String(u || '').trim().toLowerCase();
+        const raw = String(v || '').trim();
+        if (!raw) return '';
+        return raw
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\s+/g, ' ')
+          .toLowerCase();
+      } catch (_) {
+        return String(v || '').trim().toLowerCase();
+      }
+    }
+
+    function normalizeUserForTicker(u) {
+      return normalizeKeyTextForTicker(u);
     }
 
     function isTestRequestForTicker(it) {
       try {
         if (typeof window.isTestRequestForStats === 'function') return window.isTestRequestForStats(it);
       } catch (_) {}
-      const u = String(it?.usuario || '').trim().toLowerCase();
+      const u = normalizeKeyTextForTicker(it?.usuario);
       if (!u) return true;
       if (u === 'prueba' || u.startsWith('prueba')) return true;
-      const s = String(it?.cancion || '').trim().toLowerCase();
-      const a = String(it?.artista || '').trim().toLowerCase();
+      const s = normalizeKeyTextForTicker(it?.cancion);
+      const a = normalizeKeyTextForTicker(it?.artista);
       if (s === 'prueba' || s.startsWith('prueba')) return true;
       if (a === 'prueba' || a.startsWith('prueba')) return true;
       if (it && it.isSimulation === true) return true;
@@ -5500,10 +5511,10 @@
         if (isTestRequestForTicker(it)) continue;
         const uNorm = normalizeUserForTicker(it.usuario);
         totalCount++;
-        const song = String(it.cancion || '').trim().toLowerCase();
-        const artist = String(it.artista || '').trim().toLowerCase();
+        const song = normalizeKeyTextForTicker(it.cancion);
+        const artist = normalizeKeyTextForTicker(it.artista);
         const user = uNorm;
-        const genre = String(it.genero || '').trim().toLowerCase();
+        const genre = normalizeKeyTextForTicker(it.genero);
         if (song) songCount[song] = (songCount[song] || 0) + 1;
         if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(it.artista || '').trim(); }
         if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(it.usuario || '').trim(); }
@@ -5575,9 +5586,9 @@
         } catch (_) { return 0; }
       };
       const keyOf = (s) => {
-        const u = String(s?.usuario || '').trim();
-        const c = String(s?.cancion || '').trim();
-        const a = String(s?.artista || '').trim();
+        const u = normalizeKeyTextForTicker(s?.usuario);
+        const c = normalizeKeyTextForTicker(s?.cancion);
+        const a = normalizeKeyTextForTicker(s?.artista);
         const ts = String(getTsMs(s) || '');
         return `${u}|${c}|${a}|${ts}`;
       };
@@ -5592,11 +5603,11 @@
       for (let i = 0; i < solicitudes.length; i++) {
         const s = solicitudes[i] || {};
         if (window.isTestRequestForStats ? window.isTestRequestForStats(s) : (String(s.usuario || '').trim().toLowerCase() === 'prueba')) continue;
-        const uNorm = window.normalizeUserForStats ? window.normalizeUserForStats(s.usuario) : String(s.usuario || '').trim().toLowerCase();
-        const song = String(s.cancion || '').trim().toLowerCase();
-        const artist = String(s.artista || '').trim().toLowerCase();
+        const uNorm = normalizeKeyTextForTicker(s.usuario);
+        const song = normalizeKeyTextForTicker(s.cancion);
+        const artist = normalizeKeyTextForTicker(s.artista);
         const user = uNorm;
-        const genre = String(s.genero || '').trim().toLowerCase();
+        const genre = normalizeKeyTextForTicker(s.genero);
         if (song) songCount[song] = (songCount[song] || 0) + 1;
         if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(s.artista || '').trim(); }
         if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(s.usuario || '').trim(); }
@@ -5698,11 +5709,11 @@
         snap.forEach((doc) => {
           const d = doc.data() || {};
           if (window.isTestRequestForStats ? window.isTestRequestForStats(d) : (String(d.usuario || '').trim().toLowerCase() === 'prueba')) return;
-          const uNorm = window.normalizeUserForStats ? window.normalizeUserForStats(d.usuario) : String(d.usuario || '').trim().toLowerCase();
-          const song = String(d.cancion || '').trim().toLowerCase();
-          const artist = String(d.artista || '').trim().toLowerCase();
+          const uNorm = normalizeKeyTextForTicker(d.usuario);
+          const song = normalizeKeyTextForTicker(d.cancion);
+          const artist = normalizeKeyTextForTicker(d.artista);
           const user = uNorm;
-          const genre = String(d.genero || '').trim().toLowerCase();
+          const genre = normalizeKeyTextForTicker(d.genero);
           if (song) songCount[song] = (songCount[song] || 0) + 1;
           if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(d.artista || '').trim(); }
           if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(d.usuario || '').trim(); }
@@ -6612,7 +6623,7 @@
           const allSolicitudesRaw = Array.from(allSolicitudesMap.values());
           const allSolicitudes = allSolicitudesRaw.filter(s => !isTestRequestForStats(s));
 
-          const norm = (v) => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+          const norm = (v) => String(v || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ');
           const normUser = (v) => norm(v);
           const normSong = (v) => norm(v);
           const normArtist = (v) => norm(v);
