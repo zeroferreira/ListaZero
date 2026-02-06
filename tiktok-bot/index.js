@@ -47,6 +47,81 @@ let tiktokLiveConnection;
 let isConnecting = false;
 let ciderSocket;
 let db; // Firebase DB reference
+const recentSrEvents = [];
+const pendingCiderQueue = [];
+let ciderFlushInProgress = false;
+
+function pushSrEvent(evt) {
+    try {
+        recentSrEvents.push({ ...(evt || {}), ts: Date.now() });
+        while (recentSrEvents.length > 100) recentSrEvents.shift();
+    } catch (_) {}
+}
+
+function enqueueCider(item) {
+    try {
+        pendingCiderQueue.push({ ...(item || {}), enqueuedAt: Date.now(), tries: (item && item.tries) ? item.tries : 0 });
+        while (pendingCiderQueue.length > 50) pendingCiderQueue.shift();
+    } catch (_) {}
+}
+
+async function flushCiderQueue() {
+    if (ciderFlushInProgress) return;
+    if (!ciderSocket || !ciderSocket.connected) return;
+    ciderFlushInProgress = true;
+    try {
+        for (let i = 0; i < pendingCiderQueue.length; ) {
+            const it = pendingCiderQueue[i];
+            const tries = Number(it.tries || 0);
+            if (tries >= 3) { pendingCiderQueue.splice(i, 1); continue; }
+
+            let appleMusicId = it.appleMusicId ? String(it.appleMusicId).trim() : '';
+            let songName = it.songName ? String(it.songName).trim() : '';
+            let artistName = it.artistName ? String(it.artistName).trim() : '';
+            let artworkUrl = it.artworkUrl ? String(it.artworkUrl).trim() : '';
+            let trackViewUrl = it.trackViewUrl ? String(it.trackViewUrl).trim() : '';
+
+            if (!appleMusicId && (songName || artistName)) {
+                try {
+                    const idLookup = await resolveTrackFromQuery(`${songName} ${artistName}`.trim());
+                    if (idLookup && idLookup.appleMusicId) {
+                        appleMusicId = idLookup.appleMusicId;
+                        trackViewUrl = idLookup.trackViewUrl || '';
+                        if (!artworkUrl) artworkUrl = idLookup.artworkUrl || '';
+                        if (!songName) songName = idLookup.songName || songName;
+                        if (!artistName) artistName = idLookup.artistName || artistName;
+                    }
+                } catch (_) {}
+            }
+
+            if (!appleMusicId) {
+                it.tries = tries + 1;
+                i += 1;
+                continue;
+            }
+
+            try {
+                ciderSocket.emit('safe_pre_add_queue', {
+                    artwork: { url: artworkUrl },
+                    name: songName,
+                    artistName: artistName,
+                    playParams: { id: String(appleMusicId) },
+                    url: trackViewUrl,
+                    next: true
+                });
+                ciderSocket.emit('playback:queue:add-next', { id: String(appleMusicId) });
+                pushSrEvent({ source: it.source || 'ciderFlush', user: it.user, userId: it.userId, query: it.query, accepted: true, queueSaved: !!it.queueSaved, ciderSent: true, ciderQueued: false });
+                pendingCiderQueue.splice(i, 1);
+            } catch (e) {
+                it.tries = tries + 1;
+                pushSrEvent({ source: it.source || 'ciderFlush', user: it.user, userId: it.userId, query: it.query, accepted: true, queueSaved: !!it.queueSaved, ciderSent: false, ciderQueued: true, error: e && e.message ? e.message : String(e) });
+                i += 1;
+            }
+        }
+    } finally {
+        ciderFlushInProgress = false;
+    }
+}
 
 // --- FUNCION PRINCIPAL ---
 function startBot() {
@@ -76,8 +151,15 @@ function startBot() {
             tiktokUsername: TIKTOK_USERNAME,
             tiktokState: tiktokLiveConnection?.state || 'unknown',
             isConnecting: !!isConnecting,
-            ciderConnected: !!(ciderSocket && ciderSocket.connected)
+            ciderConnected: !!(ciderSocket && ciderSocket.connected),
+            pendingCider: pendingCiderQueue.length
         });
+    });
+
+    app.get('/api/events', (req, res) => {
+        const limit = Math.max(1, Math.min(100, Number(req.query.limit || 30) || 30));
+        const out = recentSrEvents.slice(-limit).reverse();
+        res.json({ ok: true, events: out });
     });
 
     // API para obtener configuración
@@ -88,26 +170,23 @@ function startBot() {
     // API para guardar configuración
     app.post('/api/config', (req, res) => {
         try {
-            const newConfig = req.body;
-            // Validar datos básicos
-            if (newConfig.tiktokUsername) {
-                const oldUser = config.tiktokUsername;
-                config = { ...config, ...newConfig };
-                
-                // Guardar en disco
-                fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-                console.log("💾 Configuración actualizada desde el Dashboard.");
+            const newConfig = req.body || {};
+            const oldUser = config.tiktokUsername;
+            const next = { ...config, ...newConfig };
+            if (!next.tiktokUsername) next.tiktokUsername = oldUser;
+            config = next;
 
-                // Si cambió el usuario, reiniciar conexión
-                if (oldUser !== config.tiktokUsername) {
-                    console.log("🔄 Cambio de usuario detectado. Reiniciando conexión...");
-                    TIKTOK_USERNAME = config.tiktokUsername;
-                    isConnecting = false;
-                    if (tiktokLiveConnection) {
-                        tiktokLiveConnection.disconnect();
-                    }
-                    setTimeout(connectToLive, 1000);
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+            console.log("💾 Configuración actualizada desde el Dashboard.");
+
+            if (oldUser !== config.tiktokUsername) {
+                console.log("🔄 Cambio de usuario detectado. Reiniciando conexión...");
+                TIKTOK_USERNAME = config.tiktokUsername;
+                isConnecting = false;
+                if (tiktokLiveConnection) {
+                    tiktokLiveConnection.disconnect();
                 }
+                setTimeout(connectToLive, 1000);
             }
             res.json({ success: true, config });
         } catch (e) {
@@ -197,6 +276,7 @@ function startBot() {
 
     ciderSocket.on("connect", () => {
       console.log("✅ Conectado a Cider (Reproductor)");
+      try { flushCiderQueue(); } catch (_) {}
     });
 
     ciderSocket.on("disconnect", () => {
@@ -277,6 +357,7 @@ function setupListeners() {
         const isStreamer = userId.toLowerCase() === TIKTOK_USERNAME.toLowerCase();
         
         const isVip = isSubscriber || isModerator || isSuperFan || isStreamer || tempVipUsers.has(userId);
+        const requireVip = config.requireVipForSr !== false;
 
         if (msg.toLowerCase().startsWith('!sr ') || 
             msg.toLowerCase().startsWith('!pedir ') || 
@@ -284,8 +365,9 @@ function setupListeners() {
             
             console.log(`📝 Comando detectado de ${user} (${userId}): ${msg}`);
             
-            if (!isVip) {
+            if (requireVip && !isVip) {
                 console.log(`🚫 ${user} intentó pedir, pero no tiene permiso.`);
+                pushSrEvent({ source: 'chat', user, userId, query: msg, isVip, accepted: false, denied: 'notVip' });
                 return;
             }
 
@@ -296,7 +378,8 @@ function setupListeners() {
                 const cleanQuery = query.replace(/\s+-\s+/g, ' ').trim();
                 
                 console.log(`📩 Pedido de ${user}: ${query} (Buscando: ${cleanQuery})`);
-                await handleSongRequest(user, cleanQuery);
+                const result = await handleSongRequest(user, cleanQuery, { userId, source: 'tiktokChat' });
+                pushSrEvent({ source: 'chat', user, userId, query: cleanQuery, isVip, accepted: !!result?.ok, queueSaved: !!result?.queueSaved, ciderSent: !!result?.ciderSent, ciderQueued: !!result?.ciderQueued, error: result?.ok ? '' : (result?.error || '') });
             }
         }
     });
@@ -383,6 +466,7 @@ async function handleSongRequest(user, query, options = {}) {
         const sendToCider = options.sendToCider !== false;
         const isTest = !!options.isTest;
         const source = options.source ? String(options.source) : '';
+        const userId = options.userId ? String(options.userId).trim() : '';
 
         let resolved = null;
         const overrideSong = String(options.songName || '').trim();
@@ -450,6 +534,7 @@ async function handleSongRequest(user, query, options = {}) {
             status: 'pending',
             day: currentDay
         };
+        if (userId) requestData.userId = userId;
         if (isTest) {
             requestData.isSimulation = true;
             requestData.isTest = true;
@@ -466,6 +551,7 @@ async function handleSongRequest(user, query, options = {}) {
         }
 
         let ciderSent = false;
+        let ciderQueued = false;
         if (sendToCider) {
             if (ciderSocket && ciderSocket.connected) {
                 if (!appleMusicId) {
@@ -484,7 +570,9 @@ async function handleSongRequest(user, query, options = {}) {
                 console.log(`🎧 Enviada orden a Cider (ID: ${appleMusicId})`);
                 }
             } else {
-                console.warn(`⚠️ No se pudo enviar a Cider (No conectado)`);
+                ciderQueued = true;
+                enqueueCider({ source: source || 'request', user, userId, query, songName, artistName, artworkUrl, appleMusicId, trackViewUrl, queueSaved });
+                console.warn(`⚠️ Cider no conectado. Pedido en cola para reintento.`);
             }
         }
 
@@ -498,7 +586,8 @@ async function handleSongRequest(user, query, options = {}) {
             queueDocId,
             sendToCider,
             ciderConnected: !!(ciderSocket && ciderSocket.connected),
-            ciderSent
+            ciderSent,
+            ciderQueued
         };
     } catch (error) {
         console.error("❌ Error procesando pedido:", error.message);
