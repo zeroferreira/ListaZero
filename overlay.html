@@ -177,6 +177,35 @@
       font-weight: 700;
     }
 
+    .user-insignia {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 14px;
+      line-height: 1;
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+    }
+
+    .user-insignia.vip { background: #000; color: #fff; }
+    .user-insignia.z0-vip { background: #e91e63; color: #fff; }
+    .user-insignia.donador { background: #ffa500; color: #fff; }
+    .user-insignia.z0-fan {
+      background: #ffffff;
+      color: #000000;
+      border: 1px solid rgba(0,0,0,0.12);
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.08);
+    }
+    .user-insignia.z0-platino {
+      background: linear-gradient(135deg, #c0c0c0, #e6e6e6 50%, #b3b3b3);
+      color: #333333;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+      background-size: 200% 200%;
+    }
+
     /* Animación de entrada */
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(255, 0, 85, 0.4); } /* Debería usar accent color dinámico, pero keyframes son difíciles de inyectar var() en colores complejos si necesitamos opacidad. 
@@ -384,7 +413,7 @@
         <div class="song-title" id="song">Canción</div>
         <div class="artist" id="artist">Artista</div>
         <div class="requested-by">
-          Pedida por: <span class="user-badge" id="user">Usuario</span>
+          Pedida por: <span class="user-badge" id="user">Usuario</span><span class="user-insignia" id="user-insignia" hidden></span>
         </div>
       </div>
     </div>
@@ -997,6 +1026,7 @@
     const songEl = document.getElementById('song');
     const artistEl = document.getElementById('artist');
     const userEl = document.getElementById('user');
+    const userInsigniaEl = document.getElementById('user-insignia');
 
     let hideTimeout;
     
@@ -1072,6 +1102,7 @@
       songEl.textContent = data.cancion || 'Desconocida';
       artistEl.textContent = data.artista || 'Desconocido';
       userEl.textContent = data.displayName || data.usuario || 'Anónimo';
+      applyBadgeToCard(data);
 
       // Resetear animación (por si acaso, aunque processQueue espera)
       card.classList.remove('show');
@@ -1110,7 +1141,102 @@
 
     const currentDay = getLocalDateKey();
 
+    const vipSet = new Set();
+    const z0VipSet = new Set();
+    const donadorSet = new Set();
+    const z0FanSet = new Set();
+    const z0PlatinumSet = new Set();
+    let selectedBadgeMap = {};
+
+    function normalizeUserKey(v) {
+      try {
+        return String(v || '').trim().replace(/^@/, '').toLowerCase();
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function getBadgeForUser(data) {
+      const u = normalizeUserKey((data && (data.usuario || data.userId)) || '');
+      const d = normalizeUserKey((data && data.displayName) || '');
+      const key = u || d;
+      if (!key) return '';
+      const selected = selectedBadgeMap && selectedBadgeMap[key] ? String(selectedBadgeMap[key]) : '';
+      if (selected) return selected;
+      if (z0PlatinumSet.has(key)) return 'z0-platino';
+      if (z0VipSet.has(key)) return 'z0-vip';
+      if (vipSet.has(key)) return 'vip';
+      if (donadorSet.has(key)) return 'donador';
+      if (z0FanSet.has(key)) return 'z0-fan';
+      return '';
+    }
+
+    function applyBadgeToCard(data) {
+      if (!userInsigniaEl) return;
+      const badge = getBadgeForUser(data);
+      userInsigniaEl.hidden = !badge;
+      userInsigniaEl.className = 'user-insignia' + (badge ? ` ${badge}` : '');
+      if (!badge) { userInsigniaEl.textContent = ''; return; }
+      if (badge === 'vip') userInsigniaEl.textContent = 'VIP';
+      else if (badge === 'z0-vip') userInsigniaEl.textContent = 'z0Vip';
+      else if (badge === 'donador') userInsigniaEl.textContent = '🪙';
+      else if (badge === 'z0-fan') userInsigniaEl.textContent = 'z0';
+      else if (badge === 'z0-platino') userInsigniaEl.textContent = 'VIP';
+      else userInsigniaEl.textContent = badge;
+    }
+
     if (db) {
+      db.collection('vipUsers').onSnapshot((snap) => {
+        vipSet.clear();
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          const name = normalizeUserKey(d.name || doc.id || '');
+          if (name) vipSet.add(name);
+        });
+      });
+      db.collection('z0VipUsers').onSnapshot((snap) => {
+        z0VipSet.clear();
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          const name = normalizeUserKey(d.name || doc.id || '');
+          if (name) z0VipSet.add(name);
+        });
+      });
+      db.collection('donadorUsers').onSnapshot((snap) => {
+        donadorSet.clear();
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          const name = normalizeUserKey(d.name || doc.id || '');
+          if (name) donadorSet.add(name);
+        });
+      });
+      db.collection('z0FanUsers').onSnapshot((snap) => {
+        z0FanSet.clear();
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          const name = normalizeUserKey(d.name || doc.id || '');
+          if (name) z0FanSet.add(name);
+        });
+      });
+      db.collection('z0PlatinumUsers').onSnapshot((snap) => {
+        z0PlatinumSet.clear();
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          const name = normalizeUserKey(d.name || doc.id || '');
+          if (name) z0PlatinumSet.add(name);
+        });
+      });
+      db.collection('selectedBadges').onSnapshot((snap) => {
+        const m = {};
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          const name = normalizeUserKey(d.name || doc.id || '');
+          const badge = String(d.badge || '').trim();
+          if (name) m[name] = badge;
+        });
+        selectedBadgeMap = m;
+      });
+
       db.collection('solicitudes')
         .where('day', '==', currentDay)
         .orderBy('ts', 'desc')
