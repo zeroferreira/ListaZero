@@ -1,6 +1,11 @@
 @echo off
 title Zero FM TikTok Bot
-setlocal EnableExtensions
+if /I "%~1" NEQ "/child" (
+    start "Zero FM TikTok Bot" cmd /k ""%~f0" /child"
+    exit /b
+)
+
+setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 echo ==========================================
 echo    Iniciando Bot de Pedidos Zero FM
