@@ -252,6 +252,46 @@
       border-radius: 3px;
       color: #fff;
       font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+    }
+
+    .user-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .user-insignia {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1px 6px;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 10px;
+      line-height: 1;
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      flex: 0 0 auto;
+    }
+    .user-insignia.vip { background: #000; color: #fff; }
+    .user-insignia.z0-vip { background: #e91e63; color: #fff; }
+    .user-insignia.donador { background: #ffa500; color: #fff; }
+    .user-insignia.z0-fan {
+      background: #ffffff;
+      color: #000000;
+      border: 1px solid rgba(0,0,0,0.12);
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.08);
+    }
+    .user-insignia.z0-platino {
+      background: linear-gradient(135deg, #c0c0c0, #e6e6e6 50%, #b3b3b3);
+      color: #333333;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+      background-size: 200% 200%;
     }
 
     /* Animación de posición */
@@ -1430,10 +1470,37 @@
 
     // --- Core Render Logic ---
 
+    const queueUrlParams = new URLSearchParams(window.location.search);
+    const forcedBadgeParam = String(queueUrlParams.get('badge') || '').trim();
+    const forcedUserParam = String(queueUrlParams.get('user') || '').trim();
+    function normalizeUserForOverride(v) {
+      try { return String(v || '').trim().replace(/^@/, '').toLowerCase(); } catch (_) { return ''; }
+    }
+    const forcedUserKey = normalizeUserForOverride(forcedUserParam);
+    function getForcedBadgeForUser(username) {
+      if (!forcedBadgeParam) return '';
+      if (!forcedUserKey) return forcedBadgeParam;
+      const u = normalizeUserForOverride(username);
+      return (u && u === forcedUserKey) ? forcedBadgeParam : '';
+    }
+    function badgeLabel(badge) {
+      const b = String(badge || '').trim();
+      if (!b) return '';
+      if (b === 'vip') return 'VIP';
+      if (b === 'z0-vip') return 'z0Vip';
+      if (b === 'donador') return '🪙';
+      if (b === 'z0-fan') return 'z0';
+      if (b === 'z0-platino') return 'VIP';
+      return b;
+    }
+
     function createQueueItem(req, index) {
       const cancion = req.cancion || req.songName || req.song || req.name || '';
       const artista = req.artista || req.artistName || req.artist || '';
       const usuario = req.displayName || req.usuario || req.user || req.username || '';
+      const rawBadge = String((req && req.badge) || '').trim();
+      const badge = rawBadge || getForcedBadgeForUser(usuario);
+      const badgeHtml = badge ? `<span class="user-insignia ${badge}">${badgeLabel(badge)}</span>` : '';
       const div = document.createElement('div');
       // Wrapper con clases de posición
       div.className = `queue-item queue-pos-${index + 1}`; 
@@ -1453,7 +1520,7 @@
                <div class="item-song">${cancion}</div>
                <div class="item-artist">${artista}</div>
                <div class="item-user">
-                  Pedido por <span class="user-badge">${usuario}</span>
+                  Pedido por <span class="user-badge"><span class="user-name">${usuario}</span>${badgeHtml}</span>
                </div>
                <div class="item-wait" style="font-size: 11px; color: var(--queue-accent-color); margin-top: 4px; font-weight: bold; display:none;"></div>
            </div>
@@ -2083,13 +2150,15 @@
     debugControls.addEventListener('mouseenter', () => debugControls.style.opacity = '1');
     debugControls.addEventListener('mouseleave', () => debugControls.style.opacity = '0.2');
     function simulateQueueRequest() {
+      const qs = new URLSearchParams(window.location.search);
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
       const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
       
       const randomIndex = Math.floor(Math.random() * artists.length);
       const randomArtist = artists[randomIndex];
       const randomSong = songs[randomIndex];
-      const randomUser = "Prueba";
+      const randomUser = String(qs.get('user') || "Prueba").trim() || "Prueba";
+      const forcedBadge = String(qs.get('badge') || '').trim();
       
       const now = new Date();
       const hh = String(now.getHours()).padStart(2, '0');
@@ -2102,13 +2171,15 @@
       const req = {
         id: `${randomUser}-${randomSong}-${randomArtist}-${hora}-${uniqueId}`.replace(/[^a-zA-Z0-9-]/g, ''),
         usuario: randomUser,
+        displayName: randomUser,
         cancion: randomSong,
         artista: randomArtist,
         ts: tsValue,
         day: getLocalDateKey(now),
         hora,
         status: 'pending',
-        isSimulation: true
+        isSimulation: true,
+        badge: forcedBadge
       };
 
       // Enviar a Firebase para que se refleje en OBS
