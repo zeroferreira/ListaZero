@@ -392,6 +392,117 @@
       .badge-tabs { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
     }
 
+    #edit-actions-bar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 8px;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    #edit-actions-bar .btn {
+      flex: 0 0 auto;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-weight: 800;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #fff;
+    }
+    #edit-actions-bar .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    #edit-actions-bar .btn-primary {
+      background: rgba(37,99,235,0.20);
+      border-color: rgba(37,99,235,0.55);
+    }
+    #edit-actions-bar .btn-warn {
+      background: rgba(251,191,36,0.16);
+      border-color: rgba(251,191,36,0.55);
+    }
+    #edit-actions-bar .edit-spacer {
+      flex: 1 1 auto;
+      min-width: 8px;
+    }
+    #deleted-count-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: rgba(251,191,36,0.22);
+      border: 1px solid rgba(251,191,36,0.6);
+      font-size: 12px;
+      font-weight: 900;
+      margin-left: 8px;
+    }
+    #deleted-modal .modal {
+      max-width: 720px;
+    }
+    .deleted-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 10px;
+      max-height: 55vh;
+      overflow: auto;
+      padding-right: 6px;
+    }
+    .deleted-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      padding: 12px;
+    }
+    .deleted-row .meta {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .deleted-row .meta .title {
+      font-weight: 900;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .deleted-row .meta .sub {
+      font-size: 12px;
+      opacity: 0.85;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .deleted-row .meta .fine {
+      font-size: 12px;
+      opacity: 0.75;
+    }
+    .deleted-row .restore-btn {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(34,197,94,0.55);
+      background: rgba(34,197,94,0.16);
+      color: #fff;
+      font-weight: 900;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .deleted-row .restore-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
   </style>
 </head>
 <body>
@@ -1488,8 +1599,13 @@
             <span class="col col-action">✓</span>
           </div>
           <div id="edit-actions-bar" class="edit-actions-bar" hidden>
-            <button type="button" id="undo-delete-btn" class="btn" disabled>↩️ Deshacer</button>
-            <button type="button" id="redo-delete-btn" class="btn" disabled>↪️ Rehacer</button>
+            <button type="button" id="undo-delete-btn" class="btn btn-primary" disabled>↩️ Deshacer</button>
+            <button type="button" id="redo-delete-btn" class="btn btn-primary" disabled>↪️ Rehacer</button>
+            <button type="button" id="open-deleted-btn" class="btn btn-warn">
+              🗑️ Eliminadas <span id="deleted-count-badge" hidden>0</span>
+            </button>
+            <span class="edit-spacer"></span>
+            <button type="button" id="clear-deleted-btn" class="btn" title="Vaciar eliminadas del día">🧹 Limpiar</button>
           </div>
           <ul id="solicitudes-list" class="items"></ul>
           <p id="empty" class="empty" hidden>Aún no hay solicitudes.</p>
@@ -1497,6 +1613,23 @@
       </div>
     </section>
   </main>
+
+  <div id="deleted-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="deleted-modal-title">
+      <button type="button" class="modal-close-btn" id="deleted-close-x" aria-label="Cerrar">×</button>
+      <h2 id="deleted-modal-title">Canciones eliminadas</h2>
+      <div class="field" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <label for="deleted-day-select" style="font-weight:800;">Ver día:</label>
+        <select id="deleted-day-select"></select>
+        <span style="flex:1 1 auto;"></span>
+        <button type="button" id="restore-all-deleted" class="btn btn-primary">Restaurar todo</button>
+      </div>
+      <div id="deleted-list" class="deleted-list"></div>
+      <div class="actions modal-actions">
+        <button type="button" id="deleted-close" class="btn">Cerrar</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     (function () {
@@ -1966,8 +2099,18 @@
       const editActionsBar = document.getElementById('edit-actions-bar');
       const undoDeleteBtn = document.getElementById('undo-delete-btn');
       const redoDeleteBtn = document.getElementById('redo-delete-btn');
+      const openDeletedBtn = document.getElementById('open-deleted-btn');
+      const clearDeletedBtn = document.getElementById('clear-deleted-btn');
+      const deletedCountBadge = document.getElementById('deleted-count-badge');
+      const deletedModal = document.getElementById('deleted-modal');
+      const deletedCloseBtn = document.getElementById('deleted-close');
+      const deletedCloseXBtn = document.getElementById('deleted-close-x');
+      const deletedDaySelect = document.getElementById('deleted-day-select');
+      const deletedListEl = document.getElementById('deleted-list');
+      const restoreAllDeletedBtn = document.getElementById('restore-all-deleted');
       let editUndoStack = [];
       let editRedoStack = [];
+      let deletedRestoreInFlight = false;
 
       function isEditModeActive() {
         try {
@@ -1985,6 +2128,335 @@
         if (!active) return;
         if (undoDeleteBtn) undoDeleteBtn.disabled = editUndoStack.length === 0;
         if (redoDeleteBtn) redoDeleteBtn.disabled = editRedoStack.length === 0;
+        try { refreshDeletedCountBadge(); } catch (_) {}
+      }
+
+      function getDeletedBinMap() {
+        try { return JSON.parse(localStorage.getItem('deleted_solicitudes_by_day') || '{}'); } catch (_) { return {}; }
+      }
+
+      function setDeletedBinMap(map) {
+        try { localStorage.setItem('deleted_solicitudes_by_day', JSON.stringify(map || {})); } catch (_) {}
+      }
+
+      function getDeletedKey(entry) {
+        const docId = String(entry?.docId || '').trim();
+        if (docId) return `doc:${docId}`;
+        const songId = String(entry?.songId || '').trim();
+        if (songId) return `song:${songId}`;
+        const id = String(entry?.requestData?.id || '').trim();
+        if (id) return `id:${id}`;
+        return '';
+      }
+
+      function listDeletedForDay(day) {
+        const key = String(day || '').trim();
+        const map = getDeletedBinMap();
+        const arr = Array.isArray(map[key]) ? map[key] : [];
+        return arr.slice().sort((a, b) => Number(b?.deletedAt || 0) - Number(a?.deletedAt || 0));
+      }
+
+      function upsertDeletedEntry(day, entry) {
+        const d = String(day || '').trim();
+        if (!d) return;
+        const map = getDeletedBinMap();
+        const arr = Array.isArray(map[d]) ? map[d] : [];
+        const k = getDeletedKey(entry);
+        const nextEntry = {
+          ...entry,
+          day: d,
+          deletedAt: Number(entry?.deletedAt || Date.now()),
+          requestData: sanitizeRequestDataForStorage(entry?.requestData, d),
+          localEntry: sanitizeLocalEntryForStorage(entry?.localEntry)
+        };
+        const idx = k ? arr.findIndex((x) => getDeletedKey(x) === k) : -1;
+        if (idx >= 0) arr[idx] = nextEntry;
+        else arr.push(nextEntry);
+        map[d] = arr.slice(-500);
+        setDeletedBinMap(map);
+      }
+
+      function removeDeletedEntry(day, entry) {
+        const d = String(day || '').trim();
+        if (!d) return;
+        const map = getDeletedBinMap();
+        const arr = Array.isArray(map[d]) ? map[d] : [];
+        const k = getDeletedKey(entry);
+        const next = k ? arr.filter((x) => getDeletedKey(x) !== k) : arr;
+        map[d] = next;
+        setDeletedBinMap(map);
+      }
+
+      function clearDeletedForDay(day) {
+        const d = String(day || '').trim();
+        if (!d) return;
+        const map = getDeletedBinMap();
+        map[d] = [];
+        setDeletedBinMap(map);
+      }
+
+      function refreshDeletedCountBadge() {
+        if (!deletedCountBadge) return;
+        const day = String(document.getElementById('day-select')?.value || '').trim();
+        const count = day ? listDeletedForDay(day).length : 0;
+        deletedCountBadge.hidden = count <= 0;
+        deletedCountBadge.textContent = String(count);
+      }
+
+      function openDeletedModal() {
+        if (!deletedModal) return;
+        deletedModal.hidden = false;
+        try {
+          if (deletedDaySelect) {
+            deletedDaySelect.innerHTML = '';
+            const daySel = document.getElementById('day-select');
+            if (daySel) {
+              Array.from(daySel.options || []).forEach((opt) => {
+                const o = document.createElement('option');
+                o.value = opt.value;
+                o.textContent = opt.textContent;
+                deletedDaySelect.appendChild(o);
+              });
+              deletedDaySelect.value = daySel.value;
+            }
+          }
+        } catch (_) {}
+        renderDeletedList();
+      }
+
+      function closeDeletedModal() {
+        if (!deletedModal) return;
+        deletedModal.hidden = true;
+      }
+
+      function formatDeletedRowTitle(entry) {
+        const d = entry?.requestData || entry || {};
+        const song = String(d.cancion || '').trim() || 'Desconocida';
+        const artist = String(d.artista || '').trim() || 'Desconocido';
+        return `${song} — ${artist}`;
+      }
+
+      function formatDeletedRowSub(entry) {
+        const d = entry?.requestData || entry || {};
+        const u = String(d.displayName || d.usuario || '').trim() || 'Anónimo';
+        const h = String(d.hora || '').trim() || '';
+        return h ? `Pedido por ${u} • ${h}` : `Pedido por ${u}`;
+      }
+
+      function normalizeTsMs(v) {
+        try {
+          if (!v) return 0;
+          if (typeof v.toMillis === 'function') return v.toMillis();
+          if (typeof v.toDate === 'function') return v.toDate().getTime();
+          if (v instanceof Date) return v.getTime();
+          const t = new Date(v).getTime();
+          return Number.isFinite(t) ? t : 0;
+        } catch (_) {
+          return 0;
+        }
+      }
+
+      function sanitizeRequestDataForStorage(d, fallbackDay) {
+        try {
+          const src = d || {};
+          const day = String(src.day || fallbackDay || '').trim();
+          const tsMs = normalizeTsMs(src.ts) || Number(src.tsMs || 0) || Date.now();
+          return {
+            id: src.id,
+            usuario: src.usuario,
+            displayName: src.displayName,
+            cancion: src.cancion,
+            artista: src.artista,
+            genero: src.genero,
+            cover: src.cover,
+            status: src.status,
+            hora: src.hora,
+            day,
+            tsMs
+          };
+        } catch (_) {
+          return d || {};
+        }
+      }
+
+      function sanitizeLocalEntryForStorage(e) {
+        try {
+          if (!e) return null;
+          const out = { ...e };
+          if (out.time) {
+            const ms = normalizeTsMs(out.time);
+            if (ms) out.time = ms;
+          }
+          return out;
+        } catch (_) {
+          return e || null;
+        }
+      }
+
+      async function applyRestoreAction(action, options) {
+        const day = String(action?.day || '').trim();
+        if (!day) return;
+        const songId = action.songId;
+        const shouldUpdateUI = !!(options && options.updateUI);
+
+        if (action.docId && window.db) {
+          const data = { ...(action.requestData || {}) };
+          const tsMs = Number(data.tsMs || 0) || normalizeTsMs(data.ts) || Date.now();
+          if (firebase?.firestore?.Timestamp?.fromMillis) data.ts = firebase.firestore.Timestamp.fromMillis(tsMs);
+          else data.ts = new Date(tsMs);
+          data.day = String(data.day || day).trim() || day;
+          await window.db.collection('solicitudes').doc(action.docId).set(data, { merge: false });
+        } else {
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          const arr = Array.isArray(byDay[day]) ? byDay[day] : [];
+          if (action.localEntry) {
+            const insertAt = Number.isFinite(action.localIndex) ? Math.max(0, Math.min(action.localIndex, arr.length)) : arr.length;
+            arr.splice(insertAt, 0, action.localEntry);
+            byDay[day] = arr;
+            localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+          } else if (action.requestData) {
+            arr.push(action.requestData);
+            byDay[day] = arr;
+            localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+          }
+        }
+
+        if (action.wasPlayed && songId) {
+          const localPlayed = getLocalPlayedMap();
+          const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+          if (!arr.includes(songId)) {
+            arr.push(songId);
+            localPlayed[day] = arr;
+            setLocalPlayedMap(localPlayed);
+          }
+          try { if (window.playedSongsCache) window.playedSongsCache[day] = arr; } catch (_) {}
+          if (action.wasSkipped) {
+            const localSkipped = getLocalSkippedMap();
+            const sArr = Array.isArray(localSkipped[day]) ? localSkipped[day] : [];
+            if (!sArr.includes(songId)) {
+              sArr.push(songId);
+              localSkipped[day] = sArr;
+              setLocalSkippedMap(localSkipped);
+            }
+          }
+          await cloudAddPlayed(day, songId, action.itemForLog, { skipped: !!action.wasSkipped });
+        }
+
+        if (action.docId) {
+          const existing = Array.isArray(currentManualOrder) ? currentManualOrder.slice() : [];
+          if (!existing.includes(action.docId)) {
+            const insertAt = Number.isFinite(action.orderIndex) ? Math.max(0, Math.min(action.orderIndex, existing.length)) : existing.length;
+            existing.splice(insertAt, 0, action.docId);
+            currentManualOrder = existing;
+            localStorage.setItem(`manualOrder:${day}`, JSON.stringify(existing));
+            try {
+              if (window.db) {
+                await window.db.collection('manualOrders').doc(day).set({
+                  order: existing,
+                  day,
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+              }
+            } catch (_) {}
+          }
+        }
+
+        removeDeletedEntry(day, action);
+        try { refreshDeletedCountBadge(); } catch (_) {}
+        if (shouldUpdateUI) {
+          const selectedDay = String(document.getElementById('day-select')?.value || '').trim();
+          if (selectedDay === day) {
+            const restored = {
+              ...(action.requestData || {}),
+              id: action.docId || (action.requestData?.id || null),
+              requestId: action.requestData?.id,
+              day,
+              hora: action.requestData?.hora || action.itemForLog?.hora || toHour(action.requestData?.ts)
+            };
+            const idKey = String(action.docId || '');
+            const next = Array.isArray(currentDayItems) ? currentDayItems.slice() : [];
+            const existingIdx = idKey ? next.findIndex(x => String(x?.id || '') === idKey) : -1;
+            if (existingIdx >= 0) next[existingIdx] = restored;
+            else next.push(restored);
+            currentDayItems = applyOrder(next, currentManualOrder);
+            window.__dayItems = currentDayItems;
+            renderSolicitudes(currentDayItems);
+          }
+        }
+      }
+
+      async function applyDeleteAction(action, options) {
+        const day = String(action?.day || '').trim();
+        if (!day) return;
+        const songId = action.songId;
+        const shouldUpdateUI = !!(options && options.updateUI);
+
+        if (action.docId && window.db) {
+          await window.db.collection('solicitudes').doc(action.docId).delete();
+        } else {
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          const arr = Array.isArray(byDay[day]) ? byDay[day] : [];
+          if (action.localEntry) {
+            const idx = arr.findIndex(x =>
+              x.usuario === action.localEntry.usuario &&
+              x.cancion === action.localEntry.cancion &&
+              x.artista === action.localEntry.artista &&
+              String(x.time) === String(action.localEntry.time)
+            );
+            if (idx >= 0) arr.splice(idx, 1);
+            byDay[day] = arr;
+            localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+          }
+        }
+
+        upsertDeletedEntry(day, action);
+        try { refreshDeletedCountBadge(); } catch (_) {}
+
+        if (action.wasPlayed && songId) {
+          const localPlayed = getLocalPlayedMap();
+          const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+          localPlayed[day] = arr.filter(id => id !== songId);
+          setLocalPlayedMap(localPlayed);
+          try { if (window.playedSongsCache) window.playedSongsCache[day] = localPlayed[day]; } catch (_) {}
+          const localSkipped = getLocalSkippedMap();
+          const sArr = Array.isArray(localSkipped[day]) ? localSkipped[day] : [];
+          localSkipped[day] = sArr.filter(id => id !== songId);
+          setLocalSkippedMap(localSkipped);
+          await cloudRemovePlayed(day, songId, action.itemForLog, { skipped: !!action.wasSkipped });
+        }
+
+        if (action.docId) {
+          const existing = Array.isArray(currentManualOrder) ? currentManualOrder.slice() : [];
+          const next = existing.filter(id => id !== action.docId);
+          currentManualOrder = next;
+          localStorage.setItem(`manualOrder:${day}`, JSON.stringify(next));
+          try {
+            if (window.db) {
+              await window.db.collection('manualOrders').doc(day).set({
+                order: next,
+                day,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+              }, { merge: true });
+            }
+          } catch (_) {}
+        }
+
+        if (shouldUpdateUI) {
+          const selectedDay = String(document.getElementById('day-select')?.value || '').trim();
+          if (selectedDay === day) {
+            const idKey = String(action.docId || '');
+            const nextItems = Array.isArray(currentDayItems) ? currentDayItems.slice() : [];
+            const filtered = nextItems.filter((x) => {
+              if (idKey && String(x?.id || '') === idKey) return false;
+              const sid = `${x?.usuario}-${x?.cancion}-${x?.artista}-${x?.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+              if (songId && sid === songId) return false;
+              return true;
+            });
+            currentDayItems = applyOrder(filtered, currentManualOrder);
+            window.__dayItems = currentDayItems;
+            renderSolicitudes(currentDayItems);
+          }
+        }
       }
 
       function getLocalPlayedMap() {
@@ -2074,90 +2546,14 @@
         const action = editUndoStack.pop();
         editRedoStack.push(action);
         refreshEditActionsBar();
-
-        if (action?.type !== 'delete') return;
-        const day = action.day;
-        const songId = action.songId;
-
-        try {
-          if (action.docId && window.db) {
-            await window.db.collection('solicitudes').doc(action.docId).set(action.requestData || {}, { merge: false });
-          } else {
-            const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-            const arr = Array.isArray(byDay[day]) ? byDay[day] : [];
-            if (action.localEntry) {
-              const insertAt = Number.isFinite(action.localIndex) ? Math.max(0, Math.min(action.localIndex, arr.length)) : arr.length;
-              arr.splice(insertAt, 0, action.localEntry);
-              byDay[day] = arr;
-              localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
-            }
-          }
-
-          if (action.wasPlayed && songId) {
-            const localPlayed = getLocalPlayedMap();
-            const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
-            if (!arr.includes(songId)) {
-              arr.push(songId);
-              localPlayed[day] = arr;
-              setLocalPlayedMap(localPlayed);
-            }
-            try { if (window.playedSongsCache) window.playedSongsCache[day] = arr; } catch (_) {}
-            if (action.wasSkipped) {
-              const localSkipped = getLocalSkippedMap();
-              const sArr = Array.isArray(localSkipped[day]) ? localSkipped[day] : [];
-              if (!sArr.includes(songId)) {
-                sArr.push(songId);
-                localSkipped[day] = sArr;
-                setLocalSkippedMap(localSkipped);
-              }
-            }
-            await cloudAddPlayed(day, songId, action.itemForLog, { skipped: !!action.wasSkipped });
-          }
-
-          if (action.docId) {
-            const existing = Array.isArray(currentManualOrder) ? currentManualOrder.slice() : [];
-            if (!existing.includes(action.docId)) {
-              const insertAt = Number.isFinite(action.orderIndex) ? Math.max(0, Math.min(action.orderIndex, existing.length)) : existing.length;
-              existing.splice(insertAt, 0, action.docId);
-              currentManualOrder = existing;
-              localStorage.setItem(`manualOrder:${day}`, JSON.stringify(existing));
-              try {
-                if (window.db) {
-                  await window.db.collection('manualOrders').doc(day).set({
-                    order: existing,
-                    day,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                  }, { merge: true });
-                }
-              } catch (_) {}
-            }
-          }
-        } catch (err) {
-          console.error('Error al deshacer:', err);
+        if (action?.type === 'delete') {
+          try { await applyRestoreAction(action, { updateUI: true }); } catch (err) { console.error('Error al deshacer:', err); }
+          return;
         }
-
-        try {
-          const selectedDay = String(document.getElementById('day-select')?.value || '').trim();
-          if (selectedDay === day) {
-            const restored = {
-              ...(action.requestData || {}),
-              id: action.docId || (action.requestData?.id || null),
-              requestId: action.requestData?.id,
-              day,
-              hora: action.requestData?.hora || action.itemForLog?.hora || toHour(action.requestData?.ts)
-            };
-
-            const idKey = String(action.docId || '');
-            const next = Array.isArray(currentDayItems) ? currentDayItems.slice() : [];
-            const existingIdx = idKey ? next.findIndex(x => String(x?.id || '') === idKey) : -1;
-            if (existingIdx >= 0) next[existingIdx] = restored;
-            else next.push(restored);
-
-            currentDayItems = applyOrder(next, currentManualOrder);
-            window.__dayItems = currentDayItems;
-            renderSolicitudes(currentDayItems);
-          }
-        } catch (_) {}
+        if (action?.type === 'restore') {
+          try { await applyDeleteAction(action, { updateUI: true }); } catch (err) { console.error('Error al deshacer:', err); }
+          return;
+        }
       }
 
       async function redoLastEditAction() {
@@ -2165,79 +2561,155 @@
         const action = editRedoStack.pop();
         editUndoStack.push(action);
         refreshEditActionsBar();
+        if (action?.type === 'delete') {
+          try { await applyDeleteAction(action, { updateUI: true }); } catch (err) { console.error('Error al rehacer:', err); }
+          return;
+        }
+        if (action?.type === 'restore') {
+          try { await applyRestoreAction(action, { updateUI: true }); } catch (err) { console.error('Error al rehacer:', err); }
+          return;
+        }
+      }
 
-        if (action?.type !== 'delete') return;
-        const day = action.day;
-        const songId = action.songId;
+      function renderDeletedList() {
+        if (!deletedListEl || !deletedDaySelect) return;
+        const day = String(deletedDaySelect.value || '').trim();
+        const arr = day ? listDeletedForDay(day) : [];
+        deletedListEl.innerHTML = '';
 
-        try {
-          if (action.docId && window.db) {
-            await window.db.collection('solicitudes').doc(action.docId).delete();
-          } else {
-            const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-            const arr = Array.isArray(byDay[day]) ? byDay[day] : [];
-            if (action.localEntry) {
-              const idx = arr.findIndex(x =>
-                x.usuario === action.localEntry.usuario &&
-                x.cancion === action.localEntry.cancion &&
-                x.artista === action.localEntry.artista &&
-                String(x.time) === String(action.localEntry.time)
-              );
-              if (idx >= 0) arr.splice(idx, 1);
-              byDay[day] = arr;
-              localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
-            }
-          }
-
-          if (action.wasPlayed && songId) {
-            const localPlayed = getLocalPlayedMap();
-            const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
-            localPlayed[day] = arr.filter(id => id !== songId);
-            setLocalPlayedMap(localPlayed);
-            try { if (window.playedSongsCache) window.playedSongsCache[day] = localPlayed[day]; } catch (_) {}
-            const localSkipped = getLocalSkippedMap();
-            const sArr = Array.isArray(localSkipped[day]) ? localSkipped[day] : [];
-            localSkipped[day] = sArr.filter(id => id !== songId);
-            setLocalSkippedMap(localSkipped);
-            await cloudRemovePlayed(day, songId, action.itemForLog, { skipped: !!action.wasSkipped });
-          }
-
-          if (action.docId) {
-            const existing = Array.isArray(currentManualOrder) ? currentManualOrder.slice() : [];
-            const next = existing.filter(id => id !== action.docId);
-            currentManualOrder = next;
-            localStorage.setItem(`manualOrder:${day}`, JSON.stringify(next));
-            try {
-              if (window.db) {
-                await window.db.collection('manualOrders').doc(day).set({
-                  order: next,
-                  day,
-                  updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-              }
-            } catch (_) {}
-          }
-        } catch (err) {
-          console.error('Error al rehacer:', err);
+        if (!arr.length) {
+          const empty = document.createElement('div');
+          empty.className = 'deleted-row';
+          empty.innerHTML = `<div class="meta"><div class="title">No hay canciones eliminadas</div><div class="sub">Cuando elimines canciones en modo edición, aparecerán aquí.</div></div><button type="button" class="restore-btn" disabled>Restaurar</button>`;
+          deletedListEl.appendChild(empty);
+          try { if (restoreAllDeletedBtn) restoreAllDeletedBtn.disabled = true; } catch (_) {}
+          return;
         }
 
-        try {
-          const selectedDay = String(document.getElementById('day-select')?.value || '').trim();
-          if (selectedDay === day) {
-            const idKey = String(action.docId || '');
-            const nextItems = Array.isArray(currentDayItems) ? currentDayItems.slice() : [];
-            const filtered = nextItems.filter((x) => {
-              if (idKey && String(x?.id || '') === idKey) return false;
-              const sid = `${x?.usuario}-${x?.cancion}-${x?.artista}-${x?.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
-              if (songId && sid === songId) return false;
-              return true;
-            });
-            currentDayItems = applyOrder(filtered, currentManualOrder);
-            window.__dayItems = currentDayItems;
-            renderSolicitudes(currentDayItems);
-          }
-        } catch (_) {}
+        try { if (restoreAllDeletedBtn) restoreAllDeletedBtn.disabled = false; } catch (_) {}
+
+        arr.forEach((entry) => {
+          const row = document.createElement('div');
+          row.className = 'deleted-row';
+          const meta = document.createElement('div');
+          meta.className = 'meta';
+          const title = document.createElement('div');
+          title.className = 'title';
+          title.textContent = formatDeletedRowTitle(entry);
+          const sub = document.createElement('div');
+          sub.className = 'sub';
+          sub.textContent = formatDeletedRowSub(entry);
+          const fine = document.createElement('div');
+          fine.className = 'fine';
+          fine.textContent = (entry?.docId ? `ID: ${entry.docId}` : (entry?.songId ? `SongID: ${entry.songId}` : ''));
+          meta.appendChild(title);
+          meta.appendChild(sub);
+          meta.appendChild(fine);
+
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'restore-btn';
+          btn.textContent = 'Restaurar';
+          btn.disabled = deletedRestoreInFlight;
+          btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (deletedRestoreInFlight) return;
+            deletedRestoreInFlight = true;
+            try {
+              btn.disabled = true;
+              const restoreAction = { ...entry, type: 'restore', day: day };
+              await applyRestoreAction(restoreAction, { updateUI: true });
+              try {
+                editUndoStack.push({ ...restoreAction, type: 'restore' });
+                editRedoStack = [];
+                refreshEditActionsBar();
+              } catch (_) {}
+              renderDeletedList();
+            } catch (err) {
+              console.error('Error restaurando:', err);
+              alert('No se pudo restaurar la canción. Revisa permisos o inténtalo de nuevo.');
+            } finally {
+              deletedRestoreInFlight = false;
+              try { btn.disabled = false; } catch (_) {}
+            }
+          });
+
+          row.appendChild(meta);
+          row.appendChild(btn);
+          deletedListEl.appendChild(row);
+        });
       }
+
+      openDeletedBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isEditModeActive()) return;
+        openDeletedModal();
+      });
+
+      clearDeletedBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isEditModeActive()) return;
+        const day = String(document.getElementById('day-select')?.value || '').trim();
+        if (!day) return;
+        if (!confirm('¿Vaciar la lista de eliminadas del día seleccionado?')) return;
+        clearDeletedForDay(day);
+        try { refreshDeletedCountBadge(); } catch (_) {}
+        try { if (deletedDaySelect) deletedDaySelect.value = day; } catch (_) {}
+        renderDeletedList();
+      });
+
+      deletedCloseBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeDeletedModal();
+      });
+
+      deletedCloseXBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeDeletedModal();
+      });
+
+      deletedModal?.addEventListener('click', (e) => {
+        if (e.target === deletedModal) closeDeletedModal();
+      });
+
+      deletedDaySelect?.addEventListener('change', () => {
+        renderDeletedList();
+      });
+
+      restoreAllDeletedBtn?.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!deletedDaySelect) return;
+        const day = String(deletedDaySelect.value || '').trim();
+        if (!day) return;
+        const entries = listDeletedForDay(day);
+        if (!entries.length) return;
+        if (!confirm(`¿Restaurar ${entries.length} canciones eliminadas del día ${day}?`)) return;
+        if (deletedRestoreInFlight) return;
+        deletedRestoreInFlight = true;
+        try {
+          for (const entry of entries) {
+            const restoreAction = { ...entry, type: 'restore', day: day };
+            await applyRestoreAction(restoreAction, { updateUI: true });
+            try {
+              editUndoStack.push({ ...restoreAction, type: 'restore' });
+            } catch (_) {}
+          }
+          editRedoStack = [];
+          refreshEditActionsBar();
+          renderDeletedList();
+        } catch (err) {
+          console.error('Error restaurando todo:', err);
+          alert('No se pudieron restaurar todas las canciones. Revisa permisos e inténtalo de nuevo.');
+        } finally {
+          deletedRestoreInFlight = false;
+        }
+      });
 
       undoDeleteBtn?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -2413,6 +2885,7 @@
             const requestData = {
               id: it.requestId || songId,
               usuario: it.usuario,
+              displayName: it.displayName,
               cancion: it.cancion,
               artista: it.artista,
               genero: it.genero,
@@ -2425,27 +2898,24 @@
             let localEntry = null;
             let localIndex = null;
             try {
-              if (docId && window.db) {
-                await window.db.collection('solicitudes').doc(docId).delete();
-              } else {
-                const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-                const arr = Array.isArray(byDay[day]) ? byDay[day] : [];
-                const idx = arr.findIndex(x =>
-                  x.usuario === it.usuario &&
-                  x.cancion === it.cancion &&
-                  x.artista === it.artista &&
-                  toHour(x.time) === it.hora
-                );
-                if (idx >= 0) {
-                  localEntry = arr[idx];
-                  localIndex = idx;
-                  arr.splice(idx, 1);
-                  byDay[day] = arr;
-                  localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
-                }
+              if (!(docId && window.db)) {
+                try {
+                  const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+                  const arr = Array.isArray(byDay[day]) ? byDay[day] : [];
+                  const idx = arr.findIndex(x =>
+                    x.usuario === it.usuario &&
+                    x.cancion === it.cancion &&
+                    x.artista === it.artista &&
+                    toHour(x.time) === it.hora
+                  );
+                  if (idx >= 0) {
+                    localEntry = arr[idx];
+                    localIndex = idx;
+                  }
+                } catch (_) {}
               }
 
-              editUndoStack.push({
+              const action = {
                 type: 'delete',
                 day,
                 docId: docId || null,
@@ -2457,66 +2927,12 @@
                 wasSkipped,
                 orderIndex: orderIndex >= 0 ? orderIndex : null,
                 itemForLog: { usuario: it.usuario, cancion: it.cancion, artista: it.artista, hora: it.hora }
-              });
+              };
+
+              await applyDeleteAction(action, { updateUI: true });
+              editUndoStack.push(action);
               editRedoStack = [];
               refreshEditActionsBar();
-
-              // Limpiar estado reproducida del localStorage
-              const localPlayed = getLocalPlayedMap();
-              if (localPlayed[day]) {
-                localPlayed[day] = localPlayed[day].filter(id => id !== songId);
-                setLocalPlayedMap(localPlayed);
-              }
-              const localSkipped = getLocalSkippedMap();
-              if (localSkipped[day]) {
-                localSkipped[day] = localSkipped[day].filter(id => id !== songId);
-                setLocalSkippedMap(localSkipped);
-              }
-
-              // NEW: Limpiar estado reproducida de Firebase (asegurar consistencia)
-              if (window.db) {
-                try {
-                   const playedRef = window.db.collection('playedSongs').doc(day);
-                   const playedDoc = await playedRef.get();
-                   if (playedDoc.exists) {
-                     const pData = playedDoc.data() || {};
-                     const pSongs = Array.isArray(pData.songs) ? pData.songs : (Array.isArray(pData.list) ? pData.list : []);
-                     if (pSongs.includes(songId)) {
-                       // Estaba marcada en la nube, borrarla y descontar
-                       const upd = {
-                         songs: firebase.firestore.FieldValue.arrayRemove(songId),
-                         skipped: firebase.firestore.FieldValue.arrayRemove(songId),
-                         lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                       };
-                       await playedRef.update(upd);
-                       const uName = (it.usuario || '').trim();
-                       if (!wasSkipped) {
-                         await updateUserPlayedCounter(uName, day, -1);
-                         await registerToggleEvent({
-                           action: 'unmark',
-                           usuario: uName,
-                           cancion: it.cancion,
-                           artista: it.artista,
-                           day: day,
-                           hora: it.hora,
-                           songId: songId
-                         });
-                       }
-                     }
-                   }
-                } catch(cloudErr) {
-                   console.warn('Error limpiando canción reproducida de Firebase al borrar:', cloudErr);
-                }
-              }
-
-              // Quitar del arreglo y re-render
-              currentDayItems = currentDayItems.filter(item => {
-                const sid = `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
-                return sid !== songId;
-              });
-              // Persistir y re-render con orden compartido
-              persistManualOrder(currentDayItems, day);
-              renderSolicitudes(applyOrder(currentDayItems, currentManualOrder));
             } catch (err) {
               console.error('Error eliminando canción:', err);
               alert('No se pudo eliminar la canción. Revisa permisos o inténtalo de nuevo.');
