@@ -1111,6 +1111,20 @@
     let selectedBadgeMap = {};
     let currentCardData = null;
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const forcedBadgeParam = String(urlParams.get('badge') || '').trim();
+    const forcedUserParam = String(urlParams.get('user') || '').trim();
+    function normalizeUserForOverride(v) {
+      try { return String(v || '').trim().replace(/^@/, '').toLowerCase(); } catch (_) { return ''; }
+    }
+    const forcedUserKey = normalizeUserForOverride(forcedUserParam);
+    function getForcedBadgeForUser(username) {
+      if (!forcedBadgeParam) return '';
+      if (!forcedUserKey) return forcedBadgeParam;
+      const u = normalizeUserForOverride(username);
+      return (u && u === forcedUserKey) ? forcedBadgeParam : '';
+    }
+
     function normalizeUserKey(v) {
       try {
         return String(v || '').trim().replace(/^@/, '').toLowerCase();
@@ -1147,7 +1161,9 @@
     function applyBadgeToCard(data) {
       if (!userInsigniaEl) return;
       const direct = data && data.badge ? String(data.badge).trim() : '';
-      const badge = direct || getBadgeForUser(data);
+      const userNameForOverride = (data && (data.displayName || data.usuario)) ? String(data.displayName || data.usuario) : '';
+      const forced = getForcedBadgeForUser(userNameForOverride);
+      const badge = direct || forced || getBadgeForUser(data);
       userInsigniaEl.hidden = !badge;
       userInsigniaEl.className = 'user-insignia' + (badge ? ` ${badge}` : '');
       if (!badge) { userInsigniaEl.textContent = ''; return; }

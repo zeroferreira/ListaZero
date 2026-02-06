@@ -300,6 +300,29 @@
     .queue-pos-3 .queue-item-inner { border-left-color: var(--queue-accent-color); opacity: 0.8; filter: brightness(0.6); }
 
     /* Panel de Configuración */
+    #roulette-btn {
+      position: fixed;
+      top: 20px;
+      left: 80px;
+      z-index: 10001;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      border-radius: 50%;
+      cursor: grab;
+      font-size: 24px;
+      transition: background 0.3s ease, transform 0.3s ease, opacity 0.3s ease;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      user-select: none;
+      opacity: 0.2;
+    }
+    #roulette-btn:active { cursor: grabbing; }
+    #roulette-btn:hover { opacity: 1; background: rgba(0,0,0,0.8); }
+
     #settings-btn {
       position: fixed;
       top: 20px;
@@ -440,6 +463,7 @@
 
   <!-- Botón de Configuración -->
   <button id="settings-btn" title="Configurar Overlay">⚙️</button>
+  <button id="roulette-btn" title="Ruleta de Selección">🎡</button>
   
   <!-- Indicador de Duración Total -->
   <div id="total-duration-indicator" style="
@@ -459,6 +483,39 @@
       box-shadow: 0 4px 6px rgba(0,0,0,0.3);
   ">
     ⏳ Tiempo Total: <span id="total-time-val">0m</span>
+  </div>
+
+  <!-- Roulette Modal -->
+  <div id="roulette-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 10005; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(10px);">
+    <button id="close-roulette" style="position: absolute; top: 20px; right: 20px; background: transparent; border: none; color: white; font-size: 40px; cursor: pointer; z-index: 10006;">&times;</button>
+    
+    <div style="display: flex; gap: 40px; align-items: flex-start; max-width: 95vw; height: 80vh;">
+       <!-- Wheel Column -->
+       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 2;">
+          <div style="position: relative; width: 500px; height: 500px;">
+             <canvas id="roulette-canvas" width="500" height="500"></canvas>
+             <!-- Arrow pointing left (at 0 radians/3 o'clock is 0, usually) -->
+             <!-- We will draw the wheel so 0 is right. We put arrow at right. -->
+             <div style="position: absolute; top: 50%; right: -25px; transform: translateY(-50%); width: 0; height: 0; border-top: 20px solid transparent; border-bottom: 20px solid transparent; border-right: 40px solid white; filter: drop-shadow(0 0 5px rgba(0,0,0,0.5));"></div>
+          </div>
+          <button id="spin-btn" style="margin-top: 30px; padding: 15px 50px; font-size: 24px; font-weight: 900; background: #e91e63; color: white; border: none; border-radius: 50px; cursor: pointer; box-shadow: 0 0 20px rgba(233,30,99,0.6); text-transform: uppercase; letter-spacing: 2px; transition: transform 0.1s;">GIRAR</button>
+          <div id="winner-display" style="margin-top: 20px; font-size: 36px; font-weight: 900; color: #00e5ff; min-height: 50px; text-shadow: 0 0 10px rgba(0,229,255,0.5); text-align: center;"></div>
+       </div>
+
+       <!-- Participants Column -->
+       <div style="flex: 1; min-width: 300px; background: #1a1a1a; padding: 20px; border-radius: 12px; height: 100%; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #333;">
+          <h3 style="color: white; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+            Participantes <span id="participant-count" style="font-size: 14px; background: #333; padding: 2px 8px; border-radius: 10px; color: #aaa;">0</span>
+          </h3>
+          <div id="participants-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; padding-right: 5px;">
+             <!-- Items injected here -->
+          </div>
+          <div style="margin-top: 10px; border-top: 1px solid #333; padding-top: 10px; display: flex; gap: 10px;">
+             <input type="text" id="add-participant-input" placeholder="Agregar nombre..." style="flex: 1; padding: 8px; background: #333; border: none; color: white; border-radius: 4px;">
+             <button id="add-participant-btn" style="background: #00e5ff; color: black; border: none; padding: 0 15px; border-radius: 4px; font-weight: bold; cursor: pointer;">+</button>
+          </div>
+       </div>
+    </div>
   </div>
 
   <!-- Panel de Configuración -->
@@ -2309,6 +2366,303 @@
     settingsBtn.addEventListener('click', (e) => {
         if (!hasMoved) {
             toggleSettings();
+        }
+    });
+
+    // --- Roulette Logic ---
+    let rouletteParticipants = [];
+    let rouletteCanvas = document.getElementById('roulette-canvas');
+    let rouletteCtx = rouletteCanvas ? rouletteCanvas.getContext('2d') : null;
+    let isSpinning = false;
+    let currentRotation = 0;
+
+    document.addEventListener('DOMContentLoaded', () => {
+       const closeRBtn = document.getElementById('close-roulette');
+       const spinBtn = document.getElementById('spin-btn');
+       const addPartBtn = document.getElementById('add-participant-btn');
+       const addPartInput = document.getElementById('add-participant-input');
+
+       if(closeRBtn) closeRBtn.addEventListener('click', closeRoulette);
+       if(spinBtn) spinBtn.addEventListener('click', spinWheel);
+       
+       if(addPartBtn) {
+           addPartBtn.addEventListener('click', () => {
+               const name = addPartInput.value.trim();
+               if(name) {
+                   addParticipant(name);
+                   addPartInput.value = '';
+               }
+           });
+       }
+       if(addPartInput) {
+           addPartInput.addEventListener('keypress', (e) => {
+               if(e.key === 'Enter') {
+                   const name = addPartInput.value.trim();
+                   if(name) {
+                       addParticipant(name);
+                       addPartInput.value = '';
+                   }
+               }
+           });
+       }
+    });
+
+    function openRoulette() {
+        const modal = document.getElementById('roulette-modal');
+        if(modal) {
+            modal.style.display = 'flex';
+            loadRouletteParticipants();
+        }
+    }
+
+    function closeRoulette() {
+        const modal = document.getElementById('roulette-modal');
+        if(modal) modal.style.display = 'none';
+    }
+
+    function loadRouletteParticipants() {
+        // Extract unique users from pending requests
+        const pending = allRequests.filter(req => {
+            const id = generateSongId(req);
+            return !playedSongIds.has(id);
+        });
+        
+        const users = new Set();
+        pending.forEach(req => {
+            const u = req.displayName || req.usuario || req.user || req.username || '';
+            if(u) users.add(u);
+        });
+        
+        rouletteParticipants = Array.from(users);
+        renderParticipantsList();
+    }
+
+    function renderParticipantsList() {
+        const list = document.getElementById('participants-list');
+        const count = document.getElementById('participant-count');
+        if(!list) return;
+        
+        list.innerHTML = '';
+        if(count) count.innerText = rouletteParticipants.length;
+
+        rouletteParticipants.forEach((p, idx) => {
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.justifyContent = 'space-between';
+            row.style.alignItems = 'center';
+            row.style.background = '#333';
+            row.style.padding = '8px 10px';
+            row.style.borderRadius = '6px';
+            
+            const name = document.createElement('span');
+            name.style.color = 'white';
+            name.innerText = p;
+            
+            const delBtn = document.createElement('button');
+            delBtn.innerText = '×';
+            delBtn.style.background = 'transparent';
+            delBtn.style.border = 'none';
+            delBtn.style.color = '#ff4444';
+            delBtn.style.fontSize = '18px';
+            delBtn.style.cursor = 'pointer';
+            delBtn.onclick = () => removeParticipant(idx);
+
+            row.appendChild(name);
+            row.appendChild(delBtn);
+            list.appendChild(row);
+        });
+        
+        drawWheel();
+    }
+
+    function addParticipant(name) {
+        if(!rouletteParticipants.includes(name)) {
+            rouletteParticipants.push(name);
+            renderParticipantsList();
+        }
+    }
+
+    function removeParticipant(index) {
+        rouletteParticipants.splice(index, 1);
+        renderParticipantsList();
+    }
+
+    function drawWheel() {
+        if(!rouletteCtx || !rouletteCanvas) {
+             rouletteCanvas = document.getElementById('roulette-canvas');
+             if(rouletteCanvas) rouletteCtx = rouletteCanvas.getContext('2d');
+             else return;
+        }
+
+        const ctx = rouletteCtx;
+        const width = rouletteCanvas.width;
+        const height = rouletteCanvas.height;
+        const cx = width / 2;
+        const cy = height / 2;
+        const radius = Math.min(width, height) / 2 - 10;
+        
+        ctx.clearRect(0, 0, width, height);
+        
+        if(rouletteParticipants.length === 0) {
+             ctx.fillStyle = '#ccc';
+             ctx.font = '24px Arial';
+             ctx.textAlign = 'center';
+             ctx.fillText('Sin participantes', cx, cy);
+             return;
+        }
+
+        const arc = (2 * Math.PI) / rouletteParticipants.length;
+        const colors = ['#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4caf50', '#8bc34a', '#cddc39', '#ffeb3b', '#ffc107', '#ff9800', '#ff5722'];
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(currentRotation);
+
+        rouletteParticipants.forEach((p, i) => {
+            const angle = i * arc;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, radius, angle, angle + arc);
+            ctx.fillStyle = colors[i % colors.length];
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.save();
+            ctx.rotate(angle + arc / 2);
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'right';
+            ctx.fillText(p, radius - 20, 5);
+            ctx.restore();
+        });
+
+        ctx.restore();
+        
+        // Center circle
+        ctx.beginPath();
+        ctx.arc(cx, cy, 30, 0, 2 * Math.PI);
+        ctx.fillStyle = 'white';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#333';
+        ctx.stroke();
+    }
+
+    function spinWheel() {
+        if(isSpinning || rouletteParticipants.length === 0) return;
+        
+        isSpinning = true;
+        const winnerDisplay = document.getElementById('winner-display');
+        if(winnerDisplay) winnerDisplay.innerText = '';
+        
+        const minSpins = 5;
+        const maxSpins = 10;
+        const duration = 5000; // ms
+        const spinAngle = (minSpins + Math.random() * (maxSpins - minSpins)) * 2 * Math.PI;
+        
+        const startRotation = currentRotation;
+        const targetRotation = startRotation + spinAngle;
+        const startTime = performance.now();
+
+        function animate(time) {
+            const elapsed = time - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            // Ease out cubic
+            const ease = 1 - Math.pow(1 - progress, 3);
+            
+            currentRotation = startRotation + (targetRotation - startRotation) * ease;
+            drawWheel();
+            
+            if(progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                isSpinning = false;
+                determineWinner();
+            }
+        }
+        
+        requestAnimationFrame(animate);
+    }
+
+    function determineWinner() {
+        const count = rouletteParticipants.length;
+        if(count === 0) return;
+        
+        const normalized = currentRotation % (2 * Math.PI);
+        let angleOnWheel = (0 - normalized) % (2 * Math.PI);
+        if(angleOnWheel < 0) angleOnWheel += 2 * Math.PI;
+        
+        const arc = (2 * Math.PI) / count;
+        const index = Math.floor(angleOnWheel / arc);
+        
+        const winner = rouletteParticipants[index];
+        const winnerDisplay = document.getElementById('winner-display');
+        if(winnerDisplay) {
+            winnerDisplay.innerText = "🏆 " + winner;
+        }
+    }
+
+    // --- Drag & Drop for Roulette Button ---
+    const rouletteBtn = document.getElementById('roulette-btn');
+    const rouletteBtnPosKey = `widget_btn_pos:${location.pathname}:roulette-btn`;
+    let isDraggingR = false;
+    let dragOffsetXR = 0;
+    let dragOffsetYR = 0;
+    let hasMovedR = false;
+
+    try {
+      const savedR = localStorage.getItem(rouletteBtnPosKey);
+      if (savedR) {
+        const pos = JSON.parse(savedR);
+        if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
+          rouletteBtn.style.left = `${pos.left}px`;
+          rouletteBtn.style.top = `${pos.top}px`;
+        }
+      }
+    } catch (_) {}
+
+    rouletteBtn.addEventListener('mousedown', (e) => {
+        isDraggingR = true;
+        hasMovedR = false;
+        const rect = rouletteBtn.getBoundingClientRect();
+        dragOffsetXR = e.clientX - rect.left;
+        dragOffsetYR = e.clientY - rect.top;
+        rouletteBtn.style.cursor = 'grabbing';
+        rouletteBtn.style.transition = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDraggingR) return;
+        hasMovedR = true;
+        e.preventDefault();
+        const x = e.clientX - dragOffsetXR;
+        const y = e.clientY - dragOffsetYR;
+        rouletteBtn.style.left = `${x}px`;
+        rouletteBtn.style.top = `${y}px`;
+    });
+
+    document.addEventListener('mouseup', (e) => {
+        if (!isDraggingR) return;
+        isDraggingR = false;
+        rouletteBtn.style.cursor = 'grab';
+        rouletteBtn.style.transition = 'background 0.3s ease, transform 0.3s ease, opacity 0.3s ease';
+
+        if (hasMovedR) {
+          const rect = rouletteBtn.getBoundingClientRect();
+          const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
+          const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
+          rouletteBtn.style.left = `${left}px`;
+          rouletteBtn.style.top = `${top}px`;
+          try {
+            localStorage.setItem(rouletteBtnPosKey, JSON.stringify({ left, top }));
+          } catch (_) {}
+        }
+    });
+    
+    rouletteBtn.addEventListener('click', (e) => {
+        if (!hasMovedR) {
+            openRoulette();
         }
     });
   </script>
