@@ -1,13 +1,10 @@
 @echo off
 title Zero FM TikTok Bot
 if /I not "%~1"=="_keep" (
-    echo %CMDCMDLINE% | findstr /I "/c" >nul 2>&1
-    if %errorlevel% equ 0 (
-        cmd /k ""%~f0" _keep"
-        exit /b 0
-    )
+    cmd /k ""%~f0" _keep"
+    exit /b 0
 )
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions
 cd /d "%~dp0"
 set "LOGDIR=%~dp0logs"
 set "LOGFILE=%LOGDIR%\startup.log"
@@ -24,11 +21,11 @@ echo Log: %LOGFILE%
 
 :: Comprobar si Node.js esta instalado
 where node >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo [ERROR] No se detecto Node.js en PATH.>> "%LOGFILE%"
 )
 node -v >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo [ADVERTENCIA] No se detecto Node.js en el comando global.
     echo Intentando buscar en rutas alternativas...
     
@@ -37,7 +34,7 @@ if %errorlevel% neq 0 (
 )
 
 node -v >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo [ERROR] No se pudo ejecutar Node.js. Instala Node.js LTS (incluye npm).>> "%LOGFILE%"
     echo [ERROR] No se pudo ejecutar Node.js. Instala Node.js (incluye npm).
     echo Log: %LOGFILE%
@@ -46,7 +43,7 @@ if %errorlevel% neq 0 (
 )
 
 npm -v >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo [ERROR] No se pudo ejecutar npm. Reinstala Node.js (con npm).>> "%LOGFILE%"
     echo [ERROR] No se pudo ejecutar npm. Reinstala Node.js (con npm).
     echo Log: %LOGFILE%
@@ -66,22 +63,6 @@ if not exist "index.js" (
     exit /b 1
 )
 
-set "TODAY="
-for /f "usebackq delims=" %%d in (`powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd"`) do set "TODAY=%%d"
-set "LAST="
-if exist "%LOGDIR%\last_update.txt" (
-    for /f "usebackq delims=" %%x in ("%LOGDIR%\last_update.txt") do set "LAST=%%x"
-)
-if not "%TODAY%"=="" (
-    if /I not "%LAST%"=="%TODAY%" (
-        if exist "ACTUALIZAR.bat" (
-            echo [INFO] Buscando actualizaciones... >> "%LOGFILE%"
-            call "%~dp0ACTUALIZAR.bat" /silent >> "%LOGFILE%" 2>&1
-            echo %TODAY%> "%LOGDIR%\last_update.txt"
-        )
-    )
-)
-
 :: Intentar iniciar sin bloquear
 goto check_modules
 
@@ -91,7 +72,7 @@ if not exist "node_modules" (
     echo [INFO] Primera vez iniciando. Instalando librerias necesarias...
     echo Esto puede tardar unos minutos. Por favor espera.
     call npm install >> "%LOGFILE%" 2>&1
-    if %errorlevel% neq 0 (
+    if errorlevel 1 (
         echo [ERROR] npm install fallo. Revisa el log: %LOGFILE%
         type "%LOGFILE%" | more
         pause
@@ -108,7 +89,7 @@ if not exist "node_modules" (
 if not exist "node_modules\socket.io\package.json" (
     echo [INFO] Actualizando librerias (socket.io faltante)...
     call npm install >> "%LOGFILE%" 2>&1
-    if %errorlevel% neq 0 (
+    if errorlevel 1 (
         echo [ERROR] npm install fallo. Revisa el log: %LOGFILE%
         type "%LOGFILE%" | more
         pause
@@ -118,7 +99,7 @@ if not exist "node_modules\socket.io\package.json" (
 if not exist "node_modules\firebase\package.json" (
     echo [INFO] Actualizando librerias (firebase faltante)...
     call npm install >> "%LOGFILE%" 2>&1
-    if %errorlevel% neq 0 (
+    if errorlevel 1 (
         echo [ERROR] npm install fallo. Revisa el log: %LOGFILE%
         type "%LOGFILE%" | more
         pause
