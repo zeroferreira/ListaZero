@@ -5424,6 +5424,137 @@
       el.hidden = !shouldShowStatsTicker();
     }
 
+    function getLocalPlayedMapForTicker() {
+      try { return JSON.parse(localStorage.getItem('playedSongs') || '{}'); } catch (_) { return {}; }
+    }
+
+    function getLocalSkippedMapForTicker() {
+      try { return JSON.parse(localStorage.getItem('skippedSongs') || '{}'); } catch (_) { return {}; }
+    }
+
+    function normalizeUserForTicker(u) {
+      try {
+        if (typeof window.normalizeUserForStats === 'function') return window.normalizeUserForStats(u);
+      } catch (_) {}
+      return String(u || '').trim().toLowerCase();
+    }
+
+    function isTestRequestForTicker(it) {
+      try {
+        if (typeof window.isTestRequestForStats === 'function') return window.isTestRequestForStats(it);
+      } catch (_) {}
+      const u = String(it?.usuario || '').trim().toLowerCase();
+      if (!u) return true;
+      if (u === 'prueba' || u.startsWith('prueba')) return true;
+      const s = String(it?.cancion || '').trim().toLowerCase();
+      const a = String(it?.artista || '').trim().toLowerCase();
+      if (s === 'prueba' || s.startsWith('prueba')) return true;
+      if (a === 'prueba' || a.startsWith('prueba')) return true;
+      if (it && it.isSimulation === true) return true;
+      if (it && it.isTest === true) return true;
+      if (it && String(it.source || '').toLowerCase() === 'tiktoktest') return true;
+      return false;
+    }
+
+    function getItemTimeMsForTicker(it) {
+      try {
+        if (!it) return 0;
+        if (it.ts && typeof it.ts.toMillis === 'function') return it.ts.toMillis();
+        if (it.ts && typeof it.ts.toDate === 'function') return it.ts.toDate().getTime();
+        if (it.ts instanceof Date) return it.ts.getTime();
+        if (it.ts) {
+          const t = new Date(it.ts).getTime();
+          if (!Number.isNaN(t)) return t;
+        }
+        if (it.time) {
+          if (typeof it.time === 'number') return it.time;
+          const t = new Date(it.time).getTime();
+          if (!Number.isNaN(t)) return t;
+        }
+        const h = String(it.hora || '').trim();
+        const day = String(it.day || document.getElementById('day-select')?.value || '').trim();
+        if (day && /^\d{4}-\d{2}-\d{2}$/.test(day) && /^\d{2}:\d{2}$/.test(h)) {
+          const t = new Date(`${day}T${h}:00`).getTime();
+          if (!Number.isNaN(t)) return t;
+        }
+      } catch (_) {}
+      return 0;
+    }
+
+    function getLatestNonTestItemForTicker(items) {
+      if (!Array.isArray(items) || !items.length) return null;
+      let best = null;
+      let bestTime = -Infinity;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (isTestRequestForTicker(it)) continue;
+        const t = getItemTimeMsForTicker(it);
+        if (t > bestTime) { bestTime = t; best = it; }
+      }
+      return best;
+    }
+
+    function computeDayStatsForTicker(items) {
+      const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
+      let totalCount = 0;
+      for (let i = 0; i < (items || []).length; i++) {
+        const it = items[i] || {};
+        if (isTestRequestForTicker(it)) continue;
+        const uNorm = normalizeUserForTicker(it.usuario);
+        totalCount++;
+        const song = String(it.cancion || '').trim().toLowerCase();
+        const artist = String(it.artista || '').trim().toLowerCase();
+        const user = uNorm;
+        const genre = String(it.genero || '').trim().toLowerCase();
+        if (song) songCount[song] = (songCount[song] || 0) + 1;
+        if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(it.artista || '').trim(); }
+        if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(it.usuario || '').trim(); }
+        if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
+      }
+      function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } else if (val === v && (!k || key.localeCompare(k) < 0)) { k = key; } } return k; }
+      const day = String(document.getElementById('day-select')?.value || '').trim();
+      const played = getLocalPlayedMapForTicker();
+      const skipped = getLocalSkippedMapForTicker();
+      const playedArr = Array.isArray(played[day]) ? played[day] : [];
+      const skippedArr = Array.isArray(skipped[day]) ? skipped[day] : [];
+      const skippedSet = new Set(skippedArr.map(x => String(x || '')));
+      const playedCount = playedArr.filter(x => !skippedSet.has(String(x || ''))).length;
+      let vipRequests = 0; let z0VipRequests = 0;
+      for (let i = 0; i < (items || []).length; i++) {
+        const it = items[i] || {};
+        if (isTestRequestForTicker(it)) continue;
+        const unameLc = normalizeUserForTicker(it.usuario);
+        if (window.vipSet && window.vipSet.has(unameLc)) vipRequests++;
+        if (window.z0VipSet && window.z0VipSet.has(unameLc)) z0VipRequests++;
+      }
+      const ts = top(songCount);
+      const ta = top(artistCount);
+      const tg = top(genreCount);
+      const artistTop3 = Object.keys(artistCount)
+        .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
+        .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
+        .slice(0, 3)
+        .map(it => `${it.o} (${it.c})`);
+      const usersTop3 = Object.keys(userCount)
+        .map(k => ({ k, c: userCount[k], o: userOriginal[k] || k }))
+        .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
+        .slice(0, 3)
+        .map(it => `${it.o} (${it.c})`);
+      return {
+        topSong: ts,
+        topSongCount: ts ? (songCount[ts] || 0) : 0,
+        topArtist: ta,
+        topArtistCount: ta ? (artistCount[ta] || 0) : 0,
+        topArtists3: artistTop3,
+        topUsers3: usersTop3,
+        topGenre: tg,
+        total: totalCount,
+        played: playedCount,
+        vip: vipRequests,
+        z0vip: z0VipRequests
+      };
+    }
+
     function computeGlobalStats() {
       let solicitudes = [];
       try { solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]') || []; } catch (_) { solicitudes = []; }
@@ -5513,10 +5644,10 @@
         const now = new Date();
         const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const dayLabel = daySel ? (daySel === todayKey ? 'HOY' : daySel) : 'HOY';
-        const ds = computeDayStatsFromItems(items);
+        const ds = computeDayStatsForTicker(items);
         const top3TxtDay = Array.isArray(ds.topArtists3) && ds.topArtists3.length ? ds.topArtists3.join(', ') : 'N/D';
         const usersTop3TxtDay = Array.isArray(ds.topUsers3) && ds.topUsers3.length ? ds.topUsers3.join(', ') : 'N/D';
-        const latest = window.getLatestNonTestItem ? window.getLatestNonTestItem(items) : (Array.isArray(items) && items.length ? items[items.length - 1] : null);
+        const latest = (typeof window.getLatestNonTestItem === 'function') ? window.getLatestNonTestItem(items) : getLatestNonTestItemForTicker(items);
         const latestTxt = latest ? (String(latest.cancion || '').trim() + (latest.artista ? ' — ' + String(latest.artista).trim() : '')) : 'N/D';
         dayText = '📅 <strong>' + dayLabel + '</strong>' +
           ' • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) +
@@ -5556,21 +5687,16 @@
     }
 
     function refreshStatsTicker() {
-      const items = window.__dayItems;
-      if (Array.isArray(items) && items.length) {
-        try { updateStatsTickerFromItems(items); } catch (_) {}
-        try { updateModernWidgetPure(); } catch (_) {}
-        return;
-      }
       updateStatsTicker();
-      try { updateModernWidgetPure(); } catch (_) {}
+      try { if (typeof updateModernWidgetPure === 'function') updateModernWidgetPure(); } catch (_) {}
     }
     window.refreshStatsTicker = refreshStatsTicker;
 
     function subscribeStatsTicker() {
       if (!window.db) { updateStatsTicker(); return; }
       if (window.__statsTickerUnsub) { try { window.__statsTickerUnsub(); } catch (_) {} }
-      window.__statsTickerUnsub = db.collection('solicitudes').onSnapshot((snap) => {
+      const dbRef = window.db;
+      window.__statsTickerUnsub = dbRef.collection('solicitudes').onSnapshot((snap) => {
         const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
         let total = 0;
         snap.forEach((doc) => {
@@ -5623,7 +5749,8 @@
     function subscribeUserStatsGenres() {
       if (!window.db) return;
       if (window.__userStatsGenresUnsub) { try { window.__userStatsGenresUnsub(); } catch (_) {} }
-      window.__userStatsGenresUnsub = db.collection('userStats').onSnapshot((snap) => {
+      const dbRef = window.db;
+      window.__userStatsGenresUnsub = dbRef.collection('userStats').onSnapshot((snap) => {
         const count = {};
         const usersPoints = [];
         
