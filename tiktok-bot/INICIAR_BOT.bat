@@ -27,16 +27,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo NPM:
-npm -v
-if errorlevel 1 (
-    echo [ERROR] npm no esta disponible. Reinstala Node.js (con npm).
-    pause
-    exit /b 1
-)
-
 :: Instalar dependencias si no existen
 if not exist "node_modules" (
+    where npm >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] npm no esta disponible en PATH. Reinstala Node.js (incluye npm).
+        pause
+        exit /b 1
+    )
     echo [INFO] Primera vez iniciando. Instalando librerias necesarias...
     echo Esto puede tardar unos minutos. Por favor espera.
     if exist "package-lock.json" (
@@ -53,6 +51,12 @@ if not exist "node_modules" (
 
 :: Auto-reparar dependencias si faltan (por updates)
 if not exist "node_modules\socket.io\package.json" (
+    where npm >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] npm no esta disponible en PATH. Reinstala Node.js (incluye npm).
+        pause
+        exit /b 1
+    )
     echo [INFO] Actualizando librerias (socket.io faltante)...
     if exist "package-lock.json" (
         call npm ci --no-audit --no-fund
@@ -66,6 +70,12 @@ if not exist "node_modules\socket.io\package.json" (
     )
 )
 if not exist "node_modules\firebase\package.json" (
+    where npm >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] npm no esta disponible en PATH. Reinstala Node.js (incluye npm).
+        pause
+        exit /b 1
+    )
     echo [INFO] Actualizando librerias (firebase faltante)...
     if exist "package-lock.json" (
         call npm ci --no-audit --no-fund
