@@ -3652,7 +3652,7 @@
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
           const arr = Array.isArray(byDay[dayValue]) ? byDay[dayValue] : [];
           let items = arr
-            .filter(it => !(window.isTestRequestForStats ? window.isTestRequestForStats(it) : (String(it?.usuario || '').trim().toLowerCase() === 'prueba')))
+            .filter(it => !(window.isDummyRequestForList ? window.isDummyRequestForList(it) : (String(it?.usuario || '').trim().toLowerCase() === 'prueba')))
             .filter(it => !vipOnly.checked || vipSet.has(it.usuario) || z0VipSet.has(it.usuario))
             .map(it => ({
               requestId: it.id,
@@ -3697,7 +3697,7 @@
           let items = [];
           snap.forEach((doc) => {
             const data = doc.data();
-            if (window.isTestRequestForStats ? window.isTestRequestForStats(data) : (String(data?.usuario || '').trim().toLowerCase() === 'prueba')) return;
+            if (window.isDummyRequestForList ? window.isDummyRequestForList(data) : (String(data?.usuario || '').trim().toLowerCase() === 'prueba')) return;
             const isVip = vipSet.has(data.usuario) || z0VipSet.has(data.usuario);
             if (vipOnly.checked && !isVip) return;
             items.push({
@@ -3718,7 +3718,7 @@
             const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
             const arr = Array.isArray(byDay[dayValue]) ? byDay[dayValue] : [];
             items = arr
-              .filter(it => !(window.isTestRequestForStats ? window.isTestRequestForStats(it) : (String(it?.usuario || '').trim().toLowerCase() === 'prueba')))
+              .filter(it => !(window.isDummyRequestForList ? window.isDummyRequestForList(it) : (String(it?.usuario || '').trim().toLowerCase() === 'prueba')))
               .filter(it => !vipOnly.checked || vipSet.has(it.usuario) || z0VipSet.has(it.usuario))
               .map(it => ({
                 requestId: it.id,
@@ -3865,7 +3865,7 @@
               if (!resultsMap.has(doc.id)) {
                  const d = doc.data();
                  // Filtro de invisibilidad para pruebas
-                 if (String(d.usuario || '').trim().toLowerCase() === 'prueba') return;
+                 if (window.isDummyRequestForList ? window.isDummyRequestForList(d) : (String(d.usuario || '').trim().toLowerCase() === 'prueba')) return;
                  
                  resultsMap.set(doc.id, {
                    id: doc.id,
@@ -4254,6 +4254,16 @@
         return String(u || '').trim().toLowerCase();
       }
 
+      function isDummyRequestForList(it) {
+        const u = normalizeUserForStats(it?.usuario);
+        const s = String(it?.cancion || '').trim().toLowerCase();
+        const a = String(it?.artista || '').trim().toLowerCase();
+        if (u === 'prueba' || u.startsWith('prueba')) return true;
+        if (s === 'prueba' || s.startsWith('prueba')) return true;
+        if (a === 'prueba' || a.startsWith('prueba')) return true;
+        return false;
+      }
+
       function isTestRequestForStats(it) {
         const u = normalizeUserForStats(it?.usuario);
         if (!u) return true;
@@ -4311,6 +4321,7 @@
 
       try {
         window.normalizeUserForStats = normalizeUserForStats;
+        window.isDummyRequestForList = isDummyRequestForList;
         window.isTestRequestForStats = isTestRequestForStats;
         window.getItemTimeMs = getItemTimeMs;
         window.getLatestNonTestItem = getLatestNonTestItem;
