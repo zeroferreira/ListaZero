@@ -10,6 +10,7 @@ echo.
 
 set "SILENT=0"
 if /I "%~1"=="/silent" set "SILENT=1"
+set "REPO_URL=https://github.com/zeroferreira/ListaZero.git"
 set "ZIP_URL=https://github.com/zeroferreira/ListaZero/archive/refs/heads/main.zip"
 
 for %%F in ("%DEST%") do set "FOLDER=%%~nxF"
@@ -30,16 +31,54 @@ if /I "%FOLDER%"=="Descargas" (
     exit /b 1
 )
 
-where powershell >nul 2>&1
+set "BACKUP_CFG=%TEMP%\zero_fm_config_backup_%RANDOM%.json"
+if exist "config.json" copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
+
+where git >nul 2>&1
+if errorlevel 1 goto zip
+
+echo [INFO] Descargando TODO con Git (como antes)...
+set "TMP=%TEMP%\zero_fm_update_git_%RANDOM%"
+rd /s /q "%TMP%" >nul 2>&1
+git clone --depth 1 "%REPO_URL%" "%TMP%"
 if errorlevel 1 (
-    echo [ERROR] PowerShell no esta disponible.
+    echo [ERROR] No se pudo clonar el repositorio.
+    echo Verifica internet / antivirus / permisos.
     if "%SILENT%"=="0" pause
     exit /b 1
 )
 
-set "BACKUP_CFG=%TEMP%\zero_fm_config_backup_%RANDOM%.json"
-if exist "config.json" copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
+if not exist "%TMP%\tiktok-bot\index.js" (
+    echo [ERROR] La descarga no contiene tiktok-bot\index.js
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
 
+echo [INFO] Copiando archivos al bot local (descarga completa)...
+attrib -R "%DEST%\*.*" /S /D >nul 2>&1
+robocopy "%TMP%\tiktok-bot" "%DEST%" /MIR /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
+  /XD "node_modules" "logs" ".git" ^
+  /XF "config.json" "node.exe" "npm.cmd" "npx.cmd"
+set "RC=%errorlevel%"
+if %RC% geq 8 (
+    echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
+
+rd /s /q "%TMP%" >nul 2>&1
+goto restorecfg
+
+:zip
+where powershell >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] No se encontro Git ni PowerShell.
+    echo Instala Git o habilita PowerShell para poder actualizar.
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
+
+echo [INFO] Git no disponible. Usando descarga por ZIP...
 set "ZIP=%TEMP%\zero_fm_update_%RANDOM%.zip"
 set "TMP=%TEMP%\zero_fm_update_extract_%RANDOM%"
 
@@ -69,7 +108,7 @@ if not exist "%TMP%\ListaZero-main\tiktok-bot\index.js" (
 
 echo [INFO] Copiando archivos al bot local...
 attrib -R "%DEST%\*.*" /S /D >nul 2>&1
-robocopy "%TMP%\ListaZero-main\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
+robocopy "%TMP%\ListaZero-main\tiktok-bot" "%DEST%" /MIR /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
   /XD "node_modules" "logs" ".git" ^
   /XF "config.json" "node.exe" "npm.cmd" "npx.cmd"
 set "RC=%errorlevel%"
@@ -79,6 +118,7 @@ if %RC% geq 8 (
     exit /b 1
 )
 
+:restorecfg
 if exist "%BACKUP_CFG%" (
     copy /Y "%BACKUP_CFG%" "config.json" >nul 2>&1
     del /Q "%BACKUP_CFG%" >nul 2>&1
