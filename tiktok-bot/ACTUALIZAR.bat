@@ -1,12 +1,6 @@
 @echo off
 title Actualizar Bot Zero FM
 setlocal EnableExtensions
-if /I "%~1"=="__child" goto child
-start "Actualizar Bot Zero FM" cmd /k ""%~f0" __child %*"
-exit /b
-
-:child
-setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 set "DEST=%CD%"
 echo ==========================================
@@ -15,9 +9,8 @@ echo ==========================================
 echo.
 
 set "SILENT=0"
-if /I "%~2"=="/silent" set "SILENT=1"
-if /I "%~3"=="/silent" set "SILENT=1"
-set "REPO_URL=https://github.com/zeroferreira/ListaZero.git"
+if /I "%~1"=="/silent" set "SILENT=1"
+set "ZIP_URL=https://github.com/zeroferreira/ListaZero/archive/refs/heads/main.zip"
 
 for %%F in ("%DEST%") do set "FOLDER=%%~nxF"
 if /I "%FOLDER%"=="Downloads" (
@@ -37,11 +30,9 @@ if /I "%FOLDER%"=="Descargas" (
     exit /b 1
 )
 
-git --version >nul 2>&1
+where powershell >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Git no esta instalado.
-    echo Instala Git para poder actualizar.
-    echo Descarga: https://git-scm.com/download/win
+    echo [ERROR] PowerShell no esta disponible.
     if "%SILENT%"=="0" pause
     exit /b 1
 )
@@ -49,18 +40,28 @@ if errorlevel 1 (
 set "BACKUP_CFG=%TEMP%\zero_fm_config_backup_%RANDOM%.json"
 if exist "config.json" copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
 
-set "TMP=%TEMP%\zero_fm_update_git_%RANDOM%"
-echo [INFO] Descargando ultima version (Git clone)...
+set "ZIP=%TEMP%\zero_fm_update_%RANDOM%.zip"
+set "TMP=%TEMP%\zero_fm_update_extract_%RANDOM%"
+
+echo [INFO] Descargando ZIP...
+del /q "%ZIP%" >nul 2>&1
 rd /s /q "%TMP%" >nul 2>&1
-git clone --depth 1 "%REPO_URL%" "%TMP%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $p='%ZIP%'; Invoke-WebRequest -UseBasicParsing -Uri '%ZIP_URL%' -OutFile $p; if(!(Test-Path $p)){ throw 'zip-not-downloaded' }"
 if errorlevel 1 (
-    echo [ERROR] No se pudo clonar el repositorio.
-    echo Verifica internet / antivirus / permisos.
+    echo [ERROR] No se pudo descargar el ZIP.
     if "%SILENT%"=="0" pause
     exit /b 1
 )
 
-if not exist "%TMP%\tiktok-bot\index.js" (
+echo [INFO] Extrayendo ZIP...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Expand-Archive -Force -Path '%ZIP%' -DestinationPath '%TMP%'"
+if errorlevel 1 (
+    echo [ERROR] No se pudo extraer el ZIP.
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
+
+if not exist "%TMP%\ListaZero-main\tiktok-bot\index.js" (
     echo [ERROR] La descarga no contiene tiktok-bot\index.js
     if "%SILENT%"=="0" pause
     exit /b 1
@@ -68,9 +69,9 @@ if not exist "%TMP%\tiktok-bot\index.js" (
 
 echo [INFO] Copiando archivos al bot local...
 attrib -R "%DEST%\*.*" /S /D >nul 2>&1
-robocopy "%TMP%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
+robocopy "%TMP%\ListaZero-main\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
   /XD "node_modules" "logs" ".git" ^
-  /XF "config.json"
+  /XF "config.json" "node.exe" "npm.cmd" "npx.cmd"
 set "RC=%errorlevel%"
 if %RC% geq 8 (
     echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
@@ -84,13 +85,12 @@ if exist "%BACKUP_CFG%" (
 )
 echo.
 rd /s /q "%TMP%" >nul 2>&1
+del /q "%ZIP%" >nul 2>&1
 echo.
 echo [EXITO] Todo actualizado. (config.json se conserva)
 
 :done
-endlocal
-
-
 echo.
 echo Presiona cualquier tecla para cerrar...
 if "%SILENT%"=="0" pause
+endlocal

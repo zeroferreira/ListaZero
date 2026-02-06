@@ -1,11 +1,6 @@
 @echo off
 title Zero FM TikTok Bot
 setlocal EnableExtensions
-if /I "%~1"=="__child" goto child
-start "Zero FM TikTok Bot" cmd /k ""%~f0" __child"
-exit /b
-
-:child
 cd /d "%~dp0"
 echo ==========================================
 echo    Iniciando Bot de Pedidos Zero FM
@@ -19,74 +14,25 @@ if not exist "index.js" (
     exit /b 1
 )
 
-echo Node:
-node -v
+echo Node (verificacion):
+where node >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Node.js no esta disponible. Instala Node.js LTS (incluye npm).
+    echo [ERROR] Node.js no esta disponible en PATH.
+    echo Instala Node.js LTS y reinicia la PC.
     pause
     exit /b 1
 )
+node -v
 
-:: Instalar dependencias si no existen
 if not exist "node_modules" (
-    where npm >nul 2>&1
-    if errorlevel 1 (
-        echo [ERROR] npm no esta disponible en PATH. Reinstala Node.js (incluye npm).
-        pause
-        exit /b 1
-    )
-    echo [INFO] Primera vez iniciando. Instalando librerias necesarias...
-    echo Esto puede tardar unos minutos. Por favor espera.
-    if exist "package-lock.json" (
-        call npm ci --no-audit --no-fund
-    ) else (
-        call npm install --no-audit --no-fund
-    )
-    if errorlevel 1 (
-        echo [ERROR] Instalacion de dependencias fallo.
-        pause
-        exit /b 1
-    )
-)
-
-:: Auto-reparar dependencias si faltan (por updates)
-if not exist "node_modules\socket.io\package.json" (
-    where npm >nul 2>&1
-    if errorlevel 1 (
-        echo [ERROR] npm no esta disponible en PATH. Reinstala Node.js (incluye npm).
-        pause
-        exit /b 1
-    )
-    echo [INFO] Actualizando librerias (socket.io faltante)...
-    if exist "package-lock.json" (
-        call npm ci --no-audit --no-fund
-    ) else (
-        call npm install --no-audit --no-fund
-    )
-    if errorlevel 1 (
-        echo [ERROR] Instalacion de dependencias fallo.
-        pause
-        exit /b 1
-    )
-)
-if not exist "node_modules\firebase\package.json" (
-    where npm >nul 2>&1
-    if errorlevel 1 (
-        echo [ERROR] npm no esta disponible en PATH. Reinstala Node.js (incluye npm).
-        pause
-        exit /b 1
-    )
-    echo [INFO] Actualizando librerias (firebase faltante)...
-    if exist "package-lock.json" (
-        call npm ci --no-audit --no-fund
-    ) else (
-        call npm install --no-audit --no-fund
-    )
-    if errorlevel 1 (
-        echo [ERROR] Instalacion de dependencias fallo.
-        pause
-        exit /b 1
-    )
+    echo [ERROR] Falta la carpeta node_modules (dependencias).
+    echo.
+    echo Solucion:
+    echo 1) Abre INSTALAR_DEPENDENCIAS.bat
+    echo 2) Cuando termine, vuelve a abrir INICIAR_BOT.bat
+    echo.
+    pause
+    exit /b 1
 )
 
 :: Abrir Dashboard
@@ -99,8 +45,9 @@ start http://localhost:%DASH_PORT%/
 :loop
 echo [INFO] Iniciando Bot...
 node index.js
+set "EXITCODE=%ERRORLEVEL%"
 echo.
-echo [ALERTA] El bot se cerro inesperadamente.
+echo [ALERTA] El bot se cerro (codigo %EXITCODE%).
 echo [INFO] Reiniciando en 5 segundos...
 timeout /t 5
 goto loop
