@@ -34,9 +34,13 @@ if errorlevel 1 (
 if not exist "node_modules" (
     echo [INFO] Primera vez iniciando. Instalando librerias necesarias...
     echo Esto puede tardar unos minutos. Por favor espera.
-    call npm install
+    if exist "package-lock.json" (
+        call npm ci --no-audit --no-fund
+    ) else (
+        call npm install --no-audit --no-fund
+    )
     if errorlevel 1 (
-        echo [ERROR] npm install fallo.
+        echo [ERROR] Instalacion de dependencias fallo.
         pause
         exit /b 1
     )
@@ -45,18 +49,26 @@ if not exist "node_modules" (
 :: Auto-reparar dependencias si faltan (por updates)
 if not exist "node_modules\socket.io\package.json" (
     echo [INFO] Actualizando librerias (socket.io faltante)...
-    call npm install
+    if exist "package-lock.json" (
+        call npm ci --no-audit --no-fund
+    ) else (
+        call npm install --no-audit --no-fund
+    )
     if errorlevel 1 (
-        echo [ERROR] npm install fallo.
+        echo [ERROR] Instalacion de dependencias fallo.
         pause
         exit /b 1
     )
 )
 if not exist "node_modules\firebase\package.json" (
     echo [INFO] Actualizando librerias (firebase faltante)...
-    call npm install
+    if exist "package-lock.json" (
+        call npm ci --no-audit --no-fund
+    ) else (
+        call npm install --no-audit --no-fund
+    )
     if errorlevel 1 (
-        echo [ERROR] npm install fallo.
+        echo [ERROR] Instalacion de dependencias fallo.
         pause
         exit /b 1
     )

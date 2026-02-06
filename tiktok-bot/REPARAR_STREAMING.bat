@@ -1,12 +1,14 @@
 @echo off
-title Reparar Bot Zero FM
+title Descargar Archivos Bot Zero FM
+setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 set "DEST=%CD%"
 echo ==========================================
-echo    REPARANDO SINCRONIZACION DEL BOT
+echo    DESCARGANDO ARCHIVOS DEL BOT
 echo ==========================================
 echo.
-echo Este script arreglara el error "not a git repository".
+echo Este script descarga la ultima version del bot y la copia aqui.
+echo Si necesitas una descarga limpia, ejecuta: REPARAR_STREAMING.bat /limpio
 echo.
 
 git --version >nul 2>&1
@@ -19,22 +21,49 @@ if errorlevel 1 (
     exit /b 1
 )
 
-setlocal EnableExtensions
 set "REPO_URL=https://github.com/zeroferreira/ListaZero.git"
 set "BACKUP_CFG=%TEMP%\zero_fm_config_backup_%RANDOM%.json"
 if exist "config.json" copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
 
-set "TMP=%TEMP%\zero_fm_repair_git_%RANDOM%"
-echo [INFO] Descargando ultima version (Git clone)...
-git clone --depth 1 %REPO_URL% "%TMP%"
-if errorlevel 1 (
-    echo [ERROR] No se pudo clonar el repositorio.
-    echo Verifica internet / antivirus / permisos.
-    pause
-    exit /b 1
+set "CLEAN=0"
+if /I "%~1"=="/limpio" set "CLEAN=1"
+
+set "CACHE_BASE=%LOCALAPPDATA%\ZeroFM"
+if "%LOCALAPPDATA%"=="" set "CACHE_BASE=%TEMP%\ZeroFM"
+if not exist "%CACHE_BASE%" md "%CACHE_BASE%" >nul 2>&1
+set "CACHE=%CACHE_BASE%\ListaZero_cache"
+
+if "%CLEAN%"=="1" (
+    echo [INFO] Descarga limpia solicitada. Borrando cache...
+    rd /s /q "%CACHE%" >nul 2>&1
 )
 
-if not exist "%TMP%\tiktok-bot\index.js" (
+echo [INFO] Preparando descarga...
+if exist "%CACHE%\.git\config" (
+    echo [INFO] Actualizando cache (solo descarga cambios)...
+    git -C "%CACHE%" remote set-url origin "%REPO_URL%" >nul 2>&1
+    git -C "%CACHE%" fetch --prune origin main
+    if errorlevel 1 (
+        echo [ALERTA] Fallo fetch. Reintentando con descarga limpia...
+        rd /s /q "%CACHE%" >nul 2>&1
+    )
+)
+if not exist "%CACHE%\.git\config" (
+    echo [INFO] Descargando repositorio (primera vez)...
+    rd /s /q "%CACHE%" >nul 2>&1
+    git clone --depth 1 "%REPO_URL%" "%CACHE%"
+    if errorlevel 1 (
+        echo [ERROR] No se pudo descargar el repositorio.
+        echo Verifica internet / antivirus / permisos.
+        pause
+        exit /b 1
+    )
+)
+
+git -C "%CACHE%" reset --hard origin/main >nul 2>&1
+git -C "%CACHE%" clean -fd >nul 2>&1
+
+if not exist "%CACHE%\tiktok-bot\index.js" (
     echo [ERROR] La descarga no contiene tiktok-bot\index.js
     pause
     exit /b 1
@@ -42,7 +71,7 @@ if not exist "%TMP%\tiktok-bot\index.js" (
 
 echo [INFO] Copiando archivos al bot local...
 attrib -R "%DEST%\*.*" /S /D >nul 2>&1
-robocopy "%TMP%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json"
+robocopy "%CACHE%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:5 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json"
 set "RC=%errorlevel%"
 if %RC% geq 8 (
     echo [ERROR] No se pudo copiar la reparacion. Codigo: %RC%
@@ -59,11 +88,12 @@ if exist "%BACKUP_CFG%" (
     del /Q "%BACKUP_CFG%" >nul 2>&1
 )
 
-rd /s /q "%TMP%" >nul 2>&1
+echo.
+echo [INFO] Cache: "%CACHE%"
 
 echo.
 echo ==========================================
-echo    REPARACION COMPLETADA
+echo    DESCARGA COMPLETADA
 echo ==========================================
 echo.
 echo Ahora intenta abrir INICIAR_BOT.bat de nuevo.
