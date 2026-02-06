@@ -14,10 +14,10 @@ try {
     SocketIOServer = null;
 }
 
-let initializeApp, getFirestore, collection, addDoc, serverTimestamp;
+let initializeApp, getFirestore, collection, addDoc, serverTimestamp, doc, getDoc;
 try {
     ({ initializeApp } = require('firebase/app'));
-    ({ getFirestore, collection, addDoc, serverTimestamp } = require('firebase/firestore'));
+    ({ getFirestore, collection, addDoc, serverTimestamp, doc, getDoc } = require('firebase/firestore'));
 } catch (e) {
     console.error('Critical Error loading Firebase libraries:', e);
     console.error('Solución: ejecuta "npm install" dentro de la carpeta tiktok-bot y usa Node 18+.');
@@ -67,6 +67,57 @@ let mockCiderIo = null;
 let mockCiderPort = 0;
 let mockCiderQueue = [];
 let mockCiderNowPlaying = null;
+
+function normalizeUserKeyText(v) {
+    try {
+        const raw = String(v || '').trim();
+        if (!raw) return '';
+        return raw
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
+            .toLowerCase();
+    } catch (_) {
+        return String(v || '').trim().toLowerCase();
+    }
+}
+
+const userKeyCache = new Map();
+async function getCanonicalUserKey(userId, displayName) {
+    const uid = normalizeUserKeyText(userId);
+    const name = normalizeUserKeyText(displayName);
+    const now = Date.now();
+    const cached = uid ? userKeyCache.get(uid) : null;
+    if (cached && (now - cached.ts) < (6 * 60 * 60 * 1000)) return cached;
+
+    let userKey = uid || name || 'anon';
+    let bestDisplay = String(displayName || '').trim() || String(userId || '').trim() || userKey;
+
+    try {
+        if (db && typeof getDoc === 'function' && typeof doc === 'function') {
+            const candidates = [];
+            if (uid) candidates.push(uid);
+            if (name && name !== uid) candidates.push(name);
+            for (let i = 0; i < candidates.length; i++) {
+                const id = candidates[i];
+                try {
+                    const snap = await getDoc(doc(db, 'userStats', id));
+                    if (snap && typeof snap.exists === 'function' && snap.exists()) {
+                        userKey = id;
+                        const data = snap.data ? (snap.data() || {}) : {};
+                        const dn = String(data.displayName || '').trim();
+                        if (dn) bestDisplay = dn;
+                        break;
+                    }
+                } catch (_) {}
+            }
+        }
+    } catch (_) {}
+
+    const out = { userKey, displayName: bestDisplay, ts: now };
+    if (uid) userKeyCache.set(uid, out);
+    return out;
+}
 
 function getCiderUrl() {
     try {
@@ -561,8 +612,11 @@ function setupListeners() {
                 const cleanQuery = rawQuery.replace(/\s+-\s+/g, ' ').trim();
                 
                 console.log(`📩 Pedido de ${displayName}: ${rawQuery} (Buscando: ${cleanQuery})`);
-                const result = await handleSongRequest(String(userId || '').trim(), cleanQuery, { userId, displayName, rawQuery, source: 'tiktokChat' });
-                pushSrEvent({ source: 'chat', user: String(userId || '').trim(), displayName, userId, query: rawQuery, isVip, accepted: !!result?.ok, queueSaved: !!result?.queueSaved, ciderSent: !!result?.ciderSent, ciderQueued: !!result?.ciderQueued, error: result?.ok ? '' : (result?.error || '') });
+                const resolvedUser = await getCanonicalUserKey(userId, displayName);
+                const userKey = String(resolvedUser.userKey || userId || '').trim();
+                const displayNameBest = String(resolvedUser.displayName || displayName || '').trim();
+                const result = await handleSongRequest(userKey, cleanQuery, { userId, displayName: displayNameBest, rawQuery, source: 'tiktokChat' });
+                pushSrEvent({ source: 'chat', user: userKey, displayName: displayNameBest, userId, query: rawQuery, isVip, accepted: !!result?.ok, queueSaved: !!result?.queueSaved, ciderSent: !!result?.ciderSent, ciderQueued: !!result?.ciderQueued, error: result?.ok ? '' : (result?.error || '') });
             }
         }
     });
@@ -668,6 +722,33 @@ function parseRawQueryToTrack(rawQuery) {
     return { songName: songName || raw, artistName, artworkUrl: '', appleMusicId: '', trackViewUrl: '' };
 }
 
+async function resolveTrackFromSeparatedRaw(rawQuery) {
+    const raw = String(rawQuery || '').trim();
+    if (!raw) return null;
+    const seps = [' - ', ' — ', ' – ', '—', '–', '-'];
+    let parts = null;
+    for (let i = 0; i < seps.length; i++) {
+        const sep = seps[i];
+        if (raw.includes(sep)) {
+            const p = raw.split(sep).map(s => String(s || '').trim()).filter(Boolean);
+            if (p.length >= 2) { parts = p; break; }
+        }
+    }
+    if (!parts) return null;
+    const a = parts[0];
+    const b = parts.slice(1).join(' ').trim();
+    if (!a || !b) return null;
+    try {
+        const r1 = await resolveTrackFromQuery(`${a} ${b}`);
+        if (r1) return r1;
+    } catch (_) {}
+    try {
+        const r2 = await resolveTrackFromQuery(`${b} ${a}`);
+        if (r2) return r2;
+    } catch (_) {}
+    return null;
+}
+
 async function handleSongRequest(user, query, options = {}) {
     try {
         const sendToQueue = options.sendToQueue !== false;
@@ -719,6 +800,14 @@ async function handleSongRequest(user, query, options = {}) {
         }
 
         let usedFallback = false;
+        if (!resolved) {
+            if (rawQuery && rawQuery !== query) {
+                try {
+                    const sepResolved = await resolveTrackFromSeparatedRaw(rawQuery);
+                    if (sepResolved) resolved = sepResolved;
+                } catch (_) {}
+            }
+        }
         if (!resolved) {
             const fallback = parseRawQueryToTrack(rawQuery || query);
             if (fallback) {
@@ -787,7 +876,7 @@ async function handleSongRequest(user, query, options = {}) {
                             artwork: { url: artworkUrl },
                             name: songName,
                             artistName: artistName,
-                            requester: user,
+                            requester: displayName || user,
                             requesterId: userId || '',
                             playParams: { id: String(appleMusicId) },
                             url: trackViewUrl,
