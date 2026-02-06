@@ -1,9 +1,5 @@
 @echo off
 title Zero FM TikTok Bot
-if /I not "%~1"=="_keep" (
-    cmd /k call "%~f0" _keep
-    exit /b 0
-)
 setlocal EnableExtensions
 cd /d "%~dp0"
 set "LOGDIR=%~dp0logs"
@@ -132,3 +128,5 @@ powershell -NoProfile -Command "try { Get-Content -Path '%LOGFILE%' -Tail 40 } c
 echo [INFO] Reiniciando en 5 segundos...
 timeout /t 5
 goto loop
+
+pause
