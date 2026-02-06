@@ -1,5 +1,12 @@
 @echo off
 title Zero FM TikTok Bot
+echo %CMDCMDLINE% | findstr /I "/c" >nul 2>&1
+if %errorlevel% equ 0 (
+    if /I not "%~1"=="_keep" (
+        start "" cmd /k "\"%~f0\" _keep"
+        exit /b 0
+    )
+)
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 set "LOGDIR=%~dp0logs"
@@ -13,6 +20,7 @@ echo ==========================================
 echo    Iniciando Bot de Pedidos Zero FM
 echo ==========================================
 echo.
+echo Log: %LOGFILE%
 
 :: Comprobar si Node.js esta instalado
 where node >nul 2>&1
@@ -56,6 +64,22 @@ if not exist "index.js" (
     echo Log: %LOGFILE%
     pause
     exit /b 1
+)
+
+set "TODAY="
+for /f "usebackq delims=" %%d in (`powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd"`) do set "TODAY=%%d"
+set "LAST="
+if exist "%LOGDIR%\last_update.txt" (
+    for /f "usebackq delims=" %%x in ("%LOGDIR%\last_update.txt") do set "LAST=%%x"
+)
+if not "%TODAY%"=="" (
+    if /I not "%LAST%"=="%TODAY%" (
+        if exist "ACTUALIZAR.bat" (
+            echo [INFO] Buscando actualizaciones... >> "%LOGFILE%"
+            call "%~dp0ACTUALIZAR.bat" /silent >> "%LOGFILE%" 2>&1
+            echo %TODAY%> "%LOGDIR%\last_update.txt"
+        )
+    )
 )
 
 :: Intentar iniciar sin bloquear
@@ -121,6 +145,9 @@ echo.
 echo [ALERTA] El bot se cerro inesperadamente.
 echo [ALERTA] El bot se cerro inesperadamente. >> "%LOGFILE%"
 echo Revisa el log: %LOGFILE%
+echo.
+echo Ultimas lineas del log:
+powershell -NoProfile -Command "try { Get-Content -Path '%LOGFILE%' -Tail 40 } catch { }"
 echo [INFO] Reiniciando en 5 segundos...
 timeout /t 5
 goto loop

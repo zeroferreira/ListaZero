@@ -7,6 +7,8 @@ echo ==========================================
 echo.
 
 setlocal EnableExtensions
+set "SILENT=0"
+if /I "%~1"=="/silent" set "SILENT=1"
 set "REPO_URL=https://github.com/zeroferreira/ListaZero.git"
 set "ZIP_URL=https://github.com/zeroferreira/ListaZero/archive/refs/heads/main.zip"
 
@@ -37,14 +39,14 @@ if %errorlevel% neq 0 (
     echo [ERROR] No se pudo descargar/extraer la actualizacion.
     echo Verifica tu conexion a internet y vuelve a intentar.
     echo.
-    pause
+    if "%SILENT%"=="0" pause
     exit /b 1
 )
 
 for /f "usebackq delims=" %%T in (`powershell -NoProfile -Command "Join-Path $env:TEMP (Get-ChildItem $env:TEMP -Filter 'zero_fm_update_*' | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Name"`) do set "TEMP_DIR=%%T"
 if "%TEMP_DIR%"=="" (
     echo [ERROR] No se encontro carpeta temporal de actualizacion.
-    pause
+    if "%SILENT%"=="0" pause
     exit /b 1
 )
 
@@ -52,7 +54,7 @@ set "SRC=%TEMP_DIR%\ListaZero-main\tiktok-bot"
 if not exist "%SRC%\index.js" (
     echo [ERROR] La estructura descargada no es valida.
     echo Carpeta: %SRC%
-    pause
+    if "%SILENT%"=="0" pause
     exit /b 1
 )
 
@@ -60,7 +62,7 @@ robocopy "%SRC%" "%~dp0" /E /XD "node_modules" "logs" ".git" /XF "config.json" >
 if %errorlevel% geq 8 (
     echo [ERROR] No se pudo copiar la actualizacion.
     echo Code: %errorlevel%
-    pause
+    if "%SILENT%"=="0" pause
     exit /b 1
 )
 
@@ -73,4 +75,4 @@ endlocal
 
 echo.
 echo Presiona cualquier tecla para cerrar...
-pause
+if "%SILENT%"=="0" pause
