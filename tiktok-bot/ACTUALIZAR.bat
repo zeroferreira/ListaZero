@@ -21,34 +21,27 @@ if errorlevel 1 (
 )
 
 set "BACKUP_CFG=%TEMP%\zero_fm_config_backup_%RANDOM%.json"
-if exist "config.json" (
-    copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
-)
+if exist "config.json" copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
 
-if not exist ".git" (
-    echo [INFO] Inicializando repositorio Git...
-    git init
-    git remote add origin %REPO_URL% >nul 2>&1
-) else (
-    git remote get-url origin >nul 2>&1
-    if errorlevel 1 (
-        git remote add origin %REPO_URL% >nul 2>&1
-    )
-)
-
-echo [INFO] Actualizando via Git...
-git fetch --all
+set "TMP=%TEMP%\zero_fm_update_git_%RANDOM%"
+echo [INFO] Descargando ultima version (Git clone)...
+git clone --depth 1 %REPO_URL% "%TMP%" >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] git fetch fallo.
-    if exist "%BACKUP_CFG%" copy /Y "%BACKUP_CFG%" "config.json" >nul 2>&1
+    echo [ERROR] No se pudo clonar el repositorio.
+    echo Verifica internet / antivirus / permisos.
     if "%SILENT%"=="0" pause
     exit /b 1
 )
 
-git reset --hard origin/main
-if errorlevel 1 (
-    echo [ERROR] git reset fallo.
-    if exist "%BACKUP_CFG%" copy /Y "%BACKUP_CFG%" "config.json" >nul 2>&1
+if not exist "%TMP%\tiktok-bot\index.js" (
+    echo [ERROR] La descarga no contiene tiktok-bot\index.js
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
+
+robocopy "%TMP%\tiktok-bot" "%~dp0" /E /XD "node_modules" "logs" ".git" /XF "config.json" >nul
+if %errorlevel% geq 8 (
+    echo [ERROR] No se pudo copiar la actualizacion.
     if "%SILENT%"=="0" pause
     exit /b 1
 )
@@ -58,8 +51,10 @@ if exist "%BACKUP_CFG%" (
     del /Q "%BACKUP_CFG%" >nul 2>&1
 )
 
+rd /s /q "%TMP%" >nul 2>&1
+
 echo.
-echo [EXITO] Todo actualizado via Git. (config.json se conserva)
+echo [EXITO] Todo actualizado. (config.json se conserva)
 
 :done
 endlocal

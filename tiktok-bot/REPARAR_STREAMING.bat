@@ -21,31 +21,37 @@ if errorlevel 1 (
 setlocal EnableExtensions
 set "REPO_URL=https://github.com/zeroferreira/ListaZero.git"
 set "BACKUP_CFG=%TEMP%\zero_fm_config_backup_%RANDOM%.json"
-if exist "config.json" (
-    copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
-)
+if exist "config.json" copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
 
-:: 1. Iniciar Git si no existe
-if not exist ".git" (
-    echo [INFO] Inicializando repositorio Git...
-    git init
-    git remote add origin %REPO_URL%
-)
-
-git remote get-url origin >nul 2>&1
+set "TMP=%TEMP%\zero_fm_repair_git_%RANDOM%"
+echo [INFO] Descargando ultima version (Git clone)...
+git clone --depth 1 %REPO_URL% "%TMP%" >nul 2>&1
 if errorlevel 1 (
-    git remote add origin %REPO_URL% >nul 2>&1
+    echo [ERROR] No se pudo clonar el repositorio.
+    echo Verifica internet / antivirus / permisos.
+    pause
+    exit /b 1
 )
 
-:: 2. Forzar descarga de la ultima version
-echo [INFO] Descargando ultimos archivos...
-git fetch --all
-git reset --hard origin/main
+if not exist "%TMP%\tiktok-bot\index.js" (
+    echo [ERROR] La descarga no contiene tiktok-bot\index.js
+    pause
+    exit /b 1
+)
+
+robocopy "%TMP%\tiktok-bot" "%~dp0" /E /XD "node_modules" "logs" ".git" /XF "config.json" >nul
+if %errorlevel% geq 8 (
+    echo [ERROR] No se pudo copiar la reparacion.
+    pause
+    exit /b 1
+)
 
 if exist "%BACKUP_CFG%" (
     copy /Y "%BACKUP_CFG%" "config.json" >nul 2>&1
     del /Q "%BACKUP_CFG%" >nul 2>&1
 )
+
+rd /s /q "%TMP%" >nul 2>&1
 
 echo.
 echo ==========================================
