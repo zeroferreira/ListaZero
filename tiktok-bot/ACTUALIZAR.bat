@@ -13,6 +13,7 @@ if /I "%~1"=="/silent" set "SILENT=1"
 set "REPO_URL=https://github.com/zeroferreira/ListaZero.git"
 set "ZIP_URL=https://github.com/zeroferreira/ListaZero/archive/refs/heads/main.zip"
 set "ZIP="
+set "TMP="
 
 for %%F in ("%DEST%") do set "FOLDER=%%~nxF"
 if /I "%FOLDER%"=="Downloads" (
@@ -62,9 +63,12 @@ if not exist "%TMP%\tiktok-bot\package.json" (
 
 echo [INFO] Copiando archivos al bot local (descarga completa)...
 attrib -R "%DEST%\*.*" /S /D >nul 2>&1
-robocopy "%TMP%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
-  /XD "node_modules" "logs" ".git" ^
-  /XF "config.json" "node.exe" "npm.cmd" "npx.cmd"
+if /I "%TMP%"=="%DEST%" (
+    echo [ERROR] Seguridad: TMP y DEST coinciden. Abortando para evitar borrar/copiar mal.
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
+robocopy "%TMP%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json" "node.exe" "npm.cmd" "npx.cmd"
 set "RC=%errorlevel%"
 if %RC% geq 8 (
     echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
@@ -72,7 +76,7 @@ if %RC% geq 8 (
     exit /b 1
 )
 
-rd /s /q "%TMP%" >nul 2>&1
+if defined TMP if exist "%TMP%" rd /s /q "%TMP%" >nul 2>&1
 goto restorecfg
 
 :zip
@@ -119,9 +123,12 @@ if not exist "%TMP%\ListaZero-main\tiktok-bot\package.json" (
 
 echo [INFO] Copiando archivos al bot local...
 attrib -R "%DEST%\*.*" /S /D >nul 2>&1
-robocopy "%TMP%\ListaZero-main\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 ^
-  /XD "node_modules" "logs" ".git" ^
-  /XF "config.json" "node.exe" "npm.cmd" "npx.cmd"
+if /I "%TMP%"=="%DEST%" (
+    echo [ERROR] Seguridad: TMP y DEST coinciden. Abortando para evitar borrar/copiar mal.
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
+robocopy "%TMP%\ListaZero-main\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json" "node.exe" "npm.cmd" "npx.cmd"
 set "RC=%errorlevel%"
 if %RC% geq 8 (
     echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
@@ -135,8 +142,8 @@ if exist "%BACKUP_CFG%" (
     del /Q "%BACKUP_CFG%" >nul 2>&1
 )
 echo.
-rd /s /q "%TMP%" >nul 2>&1
-del /q "%ZIP%" >nul 2>&1
+if defined TMP if exist "%TMP%" rd /s /q "%TMP%" >nul 2>&1
+if defined ZIP if exist "%ZIP%" del /q "%ZIP%" >nul 2>&1
 echo.
 echo [EXITO] Todo actualizado. (config.json se conserva)
 
