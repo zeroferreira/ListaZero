@@ -10,65 +10,56 @@ setlocal EnableExtensions
 set "SILENT=0"
 if /I "%~1"=="/silent" set "SILENT=1"
 set "REPO_URL=https://github.com/zeroferreira/ListaZero.git"
-set "ZIP_URL=https://github.com/zeroferreira/ListaZero/archive/refs/heads/main.zip"
 
-:: Metodo 1: Git (si existe .git)
-if exist ".git" (
-    git --version >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo [INFO] Actualizando via Git...
-        git remote get-url origin >nul 2>&1
-        if %errorlevel% neq 0 (
-            git remote add origin %REPO_URL% >nul 2>&1
-        )
-        git fetch --all
-        if %errorlevel% neq 0 goto fallback_zip
-        git reset --hard origin/main
-        if %errorlevel% neq 0 goto fallback_zip
-        echo.
-        echo [EXITO] Todo actualizado via Git.
-        goto done
+git --version >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Git no esta instalado.
+    echo Instala Git para poder actualizar.
+    echo Descarga: https://git-scm.com/download/win
+    if "%SILENT%"=="0" pause
+    exit /b 1
+)
+
+set "BACKUP_CFG=%TEMP%\zero_fm_config_backup_%RANDOM%.json"
+if exist "config.json" (
+    copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
+)
+
+if not exist ".git" (
+    echo [INFO] Inicializando repositorio Git...
+    git init
+    git remote add origin %REPO_URL% >nul 2>&1
+) else (
+    git remote get-url origin >nul 2>&1
+    if errorlevel 1 (
+        git remote add origin %REPO_URL% >nul 2>&1
     )
 )
 
-:fallback_zip
-echo [INFO] Actualizando via descarga (ZIP)...
-powershell -NoProfile -Command "try { $ProgressPreference='SilentlyContinue'; $zip='%ZIP_URL%'; $temp=Join-Path $env:TEMP ('zero_fm_update_'+(Get-Random)); New-Item -ItemType Directory -Path $temp -Force | Out-Null; $zipFile=Join-Path $temp 'repo.zip'; Invoke-WebRequest -Uri $zip -OutFile $zipFile -UseBasicParsing; Expand-Archive -Path $zipFile -DestinationPath $temp -Force; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
-if %errorlevel% neq 0 (
-    echo.
-    echo [ERROR] No se pudo descargar/extraer la actualizacion.
-    echo Verifica tu conexion a internet y vuelve a intentar.
-    echo.
+echo [INFO] Actualizando via Git...
+git fetch --all
+if errorlevel 1 (
+    echo [ERROR] git fetch fallo.
+    if exist "%BACKUP_CFG%" copy /Y "%BACKUP_CFG%" "config.json" >nul 2>&1
     if "%SILENT%"=="0" pause
     exit /b 1
 )
 
-for /f "usebackq delims=" %%T in (`powershell -NoProfile -Command "Join-Path $env:TEMP (Get-ChildItem $env:TEMP -Filter 'zero_fm_update_*' | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Name"`) do set "TEMP_DIR=%%T"
-if "%TEMP_DIR%"=="" (
-    echo [ERROR] No se encontro carpeta temporal de actualizacion.
+git reset --hard origin/main
+if errorlevel 1 (
+    echo [ERROR] git reset fallo.
+    if exist "%BACKUP_CFG%" copy /Y "%BACKUP_CFG%" "config.json" >nul 2>&1
     if "%SILENT%"=="0" pause
     exit /b 1
 )
 
-set "SRC=%TEMP_DIR%\ListaZero-main\tiktok-bot"
-if not exist "%SRC%\index.js" (
-    echo [ERROR] La estructura descargada no es valida.
-    echo Carpeta: %SRC%
-    if "%SILENT%"=="0" pause
-    exit /b 1
+if exist "%BACKUP_CFG%" (
+    copy /Y "%BACKUP_CFG%" "config.json" >nul 2>&1
+    del /Q "%BACKUP_CFG%" >nul 2>&1
 )
 
-robocopy "%SRC%" "%~dp0" /E /XD "node_modules" "logs" ".git" /XF "config.json" >nul
-if %errorlevel% geq 8 (
-    echo [ERROR] No se pudo copiar la actualizacion.
-    echo Code: %errorlevel%
-    if "%SILENT%"=="0" pause
-    exit /b 1
-)
-
-powershell -NoProfile -Command "try { Remove-Item -Recurse -Force '%TEMP_DIR%' } catch {}" >nul 2>&1
 echo.
-echo [EXITO] Todo actualizado via descarga (ZIP). (config.json se conserva)
+echo [EXITO] Todo actualizado via Git. (config.json se conserva)
 
 :done
 endlocal
