@@ -1,6 +1,7 @@
 @echo off
 title Zero FM TikTok Bot
 setlocal EnableExtensions EnableDelayedExpansion
+if /I "%~1"=="__run" goto run
 if /I "%~1"=="__child" goto child
 start "" cmd /k "call ""%~f0"" __child"
 exit /b
@@ -28,7 +29,7 @@ if errorlevel 1 (
 
 echo [INFO] Mostrando salida y guardando log...
 echo.
-call :main 2>&1 | powershell -NoProfile -ExecutionPolicy Bypass -Command "$log='%LOG%'; $input | Tee-Object -FilePath $log -Append"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$log='%LOG%'; cmd /d /c '""%~f0"" __run' 2>&1 | Tee-Object -FilePath $log -Append"
 
 echo.
 echo [FIN] El proceso termino. Log:
@@ -36,6 +37,10 @@ echo "%LOG%"
 echo.
 pause
 exit /b 1
+
+:run
+call :main
+exit /b %ERRORLEVEL%
 
 :main
 echo === INICIO ===
