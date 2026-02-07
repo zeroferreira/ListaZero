@@ -205,6 +205,13 @@ async function getCanonicalUserKey(userId, displayName) {
             if (uid) candidates.push(uid);
             if (name && name !== uid) candidates.push(name);
             
+            // FALLBACK: Probar versión limpia de emojis si no se encuentra
+            // Esto ayuda si la BD tiene "Juan" pero TikTok manda "Juan ⚡️"
+            const cleanName = name.replace(/[^a-z0-9áéíóúñü ]/g, '').trim().replace(/\s+/g, ' ');
+            if (cleanName && cleanName !== name && cleanName !== uid) {
+                candidates.push(cleanName);
+            }
+
             for (let i = 0; i < candidates.length; i++) {
                 const id = candidates[i];
                 try {
