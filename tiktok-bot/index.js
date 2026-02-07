@@ -14,10 +14,10 @@ try {
     SocketIOServer = null;
 }
 
-let initializeApp, getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs;
+let initializeApp, getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, query, where, limit;
 try {
     ({ initializeApp } = require('firebase/app'));
-    ({ getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs } = require('firebase/firestore'));
+    ({ getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, query, where, limit } = require('firebase/firestore'));
 } catch (e) {
     console.error('Critical Error loading Firebase libraries:', e);
     console.error('Solución: ejecuta "npm install" dentro de la carpeta tiktok-bot y usa Node 18+.');
@@ -198,9 +198,13 @@ async function getCanonicalUserKey(userId, displayName) {
 
     try {
         if (db && typeof getDoc === 'function' && typeof doc === 'function') {
+            let found = false;
+
+            // 1. Intentar buscar por ID directo (uid o name)
             const candidates = [];
             if (uid) candidates.push(uid);
             if (name && name !== uid) candidates.push(name);
+            
             for (let i = 0; i < candidates.length; i++) {
                 const id = candidates[i];
                 try {
@@ -210,7 +214,48 @@ async function getCanonicalUserKey(userId, displayName) {
                         const data = snap.data ? (snap.data() || {}) : {};
                         const dn = String(data.displayName || '').trim();
                         if (dn) bestDisplay = dn;
+                        
+                        // AUTO-LINK: Si encontramos por nombre pero no tiene tiktokId, lo guardamos
+                        if (uid && id !== uid && !data.tiktokId) {
+                            try {
+                                await updateDoc(doc(db, 'userStats', id), { tiktokId: uid });
+                                console.log(`🔗 Usuario vinculado: ${id} <-> TikTok: ${uid}`);
+                            } catch (_) {}
+                        }
+                        found = true;
                         break;
+                    }
+                } catch (_) {}
+            }
+
+            // 2. Si no encontramos por ID, buscar por campo 'tiktokId' (fusión previa)
+            if (!found && uid && typeof query === 'function' && typeof where === 'function' && typeof limit === 'function') {
+                try {
+                    const q = query(collection(db, 'userStats'), where('tiktokId', '==', uid), limit(1));
+                    const querySnapshot = await getDocs(q);
+                    if (!querySnapshot.empty) {
+                        const snap = querySnapshot.docs[0];
+                        userKey = snap.id;
+                        const data = snap.data();
+                        const dn = String(data.displayName || '').trim();
+                        if (dn) bestDisplay = dn;
+                        found = true;
+                    }
+                } catch (_) {}
+            }
+            
+            // 3. Si sigue sin encontrar, buscar por 'aliases' (array) si existiera
+             if (!found && uid && typeof query === 'function' && typeof where === 'function' && typeof limit === 'function') {
+                try {
+                    const q = query(collection(db, 'userStats'), where('aliases', 'array-contains', uid), limit(1));
+                    const querySnapshot = await getDocs(q);
+                    if (!querySnapshot.empty) {
+                        const snap = querySnapshot.docs[0];
+                        userKey = snap.id;
+                        const data = snap.data();
+                        const dn = String(data.displayName || '').trim();
+                        if (dn) bestDisplay = dn;
+                        found = true;
                     }
                 } catch (_) {}
             }
