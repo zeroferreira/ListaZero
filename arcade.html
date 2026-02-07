@@ -294,6 +294,7 @@
         const games = Array.from({length: 9}, (_, i) => `Juego ${i + 1}`);
         games[0] = 'SNAKE'; 
         games[1] = 'PING PONG';
+        games[2] = 'GALAGA';
         let activeIndex = 0;
         const wheel = document.getElementById('game-wheel');
         const previewTitle = document.getElementById('game-title-display');
@@ -320,7 +321,7 @@
         let tileCountX = 20;
         let tileCountY = 20;
         let isGameRunning = false;
-        let currentGame = null; // 'SNAKE' | 'PONG'
+        let currentGame = null; // 'SNAKE' | 'PONG' | 'GALAGA'
 
         // --- PONG STATE ---
         let pongPaddleHeight = 80;
@@ -333,6 +334,21 @@
         let ballSpeedY = 5;
         let playerScore = 0;
         let aiScore = 0;
+
+        // --- GALAGA STATE ---
+        let shipX = 0;
+        let shipY = 0;
+        let shipWidth = 30;
+        let shipHeight = 30;
+        let bullets = [];
+        let enemies = [];
+        let particles = [];
+        let enemyDirection = 1;
+        let enemyStepDown = 0;
+        let enemySpeed = 2;
+        let galagaScore = 0;
+        let galagaLevel = 1;
+        let lastShotTime = 0;
 
         function renderWheel() {
             wheel.innerHTML = '';
@@ -366,7 +382,7 @@
         function updatePreview() {
             const selected = games[activeIndex];
             previewTitle.textContent = selected;
-            if (selected === 'SNAKE' || selected === 'PING PONG') {
+            if (selected === 'SNAKE' || selected === 'PING PONG' || selected === 'GALAGA') {
                 playBtn.style.display = 'inline-block';
             } else {
                 playBtn.style.display = 'none';
@@ -379,11 +395,13 @@
             const selected = games[activeIndex];
             if (selected === 'SNAKE') startSnakeGame();
             else if (selected === 'PING PONG') startPongGame();
+            else if (selected === 'GALAGA') startGalagaGame();
         });
         
         restartBtn.addEventListener('click', () => {
             if (currentGame === 'SNAKE') startSnakeGame();
             else if (currentGame === 'PING PONG') startPongGame();
+            else if (currentGame === 'GALAGA') startGalagaGame();
         });
         
         exitGameBtn.addEventListener('click', exitGame);
@@ -641,6 +659,207 @@
             gameOverScreen.style.display = 'flex';
         }
 
+        // --- GALAGA LOGIC ---
+
+        function startGalagaGame() {
+            prepareGameUI();
+            currentGame = 'GALAGA';
+            
+            shipWidth = 30;
+            shipHeight = 30;
+            shipX = gameCanvas.width / 2 - shipWidth / 2;
+            shipY = gameCanvas.height - shipHeight - 20;
+            
+            bullets = [];
+            enemies = [];
+            particles = [];
+            galagaScore = 0;
+            galagaLevel = 1;
+            enemyDirection = 1;
+            enemyStepDown = 0;
+            
+            scoreDisplay.textContent = `SCORE: 0`;
+            spawnEnemies();
+            
+            gameInterval = setInterval(gameLoopGalaga, 1000/60);
+        }
+
+        function spawnEnemies() {
+            const rows = 3 + Math.min(galagaLevel, 3);
+            const cols = 6 + Math.min(galagaLevel, 4);
+            const padding = 10;
+            const enemyW = 25;
+            const enemyH = 25;
+            const startX = (gameCanvas.width - (cols * (enemyW + padding))) / 2;
+            
+            enemies = [];
+            for(let r=0; r<rows; r++) {
+                for(let c=0; c<cols; c++) {
+                    enemies.push({
+                        x: startX + c * (enemyW + padding),
+                        y: 50 + r * (enemyH + padding),
+                        width: enemyW,
+                        height: enemyH,
+                        active: true
+                    });
+                }
+            }
+            enemySpeed = 1 + (galagaLevel * 0.5);
+        }
+
+        function gameLoopGalaga() {
+            // Player Movement (Left/Right)
+            if (keysPressed['ArrowLeft'] || (currentGame === 'GALAGA' && mobileControls.active && mobileKey === 'ArrowLeft')) {
+                shipX = Math.max(0, shipX - 5);
+            }
+            if (keysPressed['ArrowRight'] || (currentGame === 'GALAGA' && mobileControls.active && mobileKey === 'ArrowRight')) {
+                shipX = Math.min(gameCanvas.width - shipWidth, shipX + 5);
+            }
+
+            // Shooting
+            const now = Date.now();
+            if ((keysPressed[' '] || keysPressed['ArrowUp'] || (currentGame === 'GALAGA' && mobileControls.active && mobileKey === 'ArrowUp')) && now - lastShotTime > 300) {
+                bullets.push({x: shipX + shipWidth/2 - 2, y: shipY, width: 4, height: 10, speed: 7, active: true});
+                lastShotTime = now;
+            }
+
+            // Move Bullets
+            bullets.forEach(b => {
+                b.y -= b.speed;
+                if (b.y < 0) b.active = false;
+            });
+            bullets = bullets.filter(b => b.active);
+
+            // Move Enemies
+            let hitWall = false;
+            enemies.forEach(e => {
+                if (!e.active) return;
+                e.x += enemySpeed * enemyDirection;
+                if (e.x <= 0 || e.x + e.width >= gameCanvas.width) hitWall = true;
+            });
+
+            if (hitWall) {
+                enemyDirection *= -1;
+                enemies.forEach(e => e.y += 15);
+            }
+
+            // Check Collisions
+            // Bullet vs Enemy
+            bullets.forEach(b => {
+                enemies.forEach(e => {
+                    if (e.active && b.active && 
+                        b.x < e.x + e.width && 
+                        b.x + b.width > e.x && 
+                        b.y < e.y + e.height && 
+                        b.y + b.height > e.y) {
+                            e.active = false;
+                            b.active = false;
+                            galagaScore += 100;
+                            scoreDisplay.textContent = `SCORE: ${galagaScore}`;
+                            spawnParticles(e.x + e.width/2, e.y + e.height/2, '#ff0050');
+                    }
+                });
+            });
+
+            // Enemy vs Player (Game Over)
+            enemies.forEach(e => {
+                if (e.active && 
+                    shipX < e.x + e.width && 
+                    shipX + shipWidth > e.x && 
+                    shipY < e.y + e.height && 
+                    shipY + shipHeight > e.y) {
+                        gameOver(`GAME OVER! Score: ${galagaScore}`);
+                        return;
+                }
+                if (e.active && e.y + e.height >= gameCanvas.height) {
+                    gameOver(`GAME OVER! Score: ${galagaScore}`);
+                    return;
+                }
+            });
+
+            // Level Complete
+            if (enemies.every(e => !e.active)) {
+                galagaLevel++;
+                spawnEnemies();
+            }
+
+            // Particles
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+            });
+            particles = particles.filter(p => p.life > 0);
+
+            if (isGameRunning) drawGalaga();
+        }
+
+        function spawnParticles(x, y, color) {
+            for(let i=0; i<8; i++) {
+                particles.push({
+                    x: x, 
+                    y: y, 
+                    vx: (Math.random() - 0.5) * 4, 
+                    vy: (Math.random() - 0.5) * 4, 
+                    life: 20,
+                    color: color
+                });
+            }
+        }
+
+        function drawGalaga() {
+            // BG
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+            
+            // Stars (Simple)
+            ctx.fillStyle = '#fff';
+            for(let i=0; i<20; i++) {
+                ctx.fillRect(Math.random() * gameCanvas.width, Math.random() * gameCanvas.height, 1, 1);
+            }
+
+            // Player Ship
+            ctx.fillStyle = '#00f2ea';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00f2ea';
+            ctx.beginPath();
+            ctx.moveTo(shipX + shipWidth/2, shipY);
+            ctx.lineTo(shipX + shipWidth, shipY + shipHeight);
+            ctx.lineTo(shipX + shipWidth/2, shipY + shipHeight - 5); // engine notch
+            ctx.lineTo(shipX, shipY + shipHeight);
+            ctx.closePath();
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Enemies
+            enemies.forEach(e => {
+                if (!e.active) return;
+                ctx.fillStyle = '#ff0050';
+                ctx.shadowColor = '#ff0050';
+                // Simple alien shape
+                ctx.fillRect(e.x, e.y, e.width, e.height);
+                // Eyes
+                ctx.fillStyle = '#000';
+                ctx.fillRect(e.x + 5, e.y + 8, 5, 5);
+                ctx.fillRect(e.x + 15, e.y + 8, 5, 5);
+            });
+            ctx.shadowBlur = 0;
+
+            // Bullets
+            ctx.fillStyle = '#ffff00';
+            bullets.forEach(b => {
+                ctx.fillRect(b.x, b.y, b.width, b.height);
+            });
+
+            // Particles
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / 20;
+                ctx.fillRect(p.x, p.y, 3, 3);
+            });
+            ctx.globalAlpha = 1.0;
+        }
+
         // Input handling
         document.addEventListener('keydown', (e) => {
             if (isGameRunning && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
@@ -694,15 +913,16 @@
         };
 
         // Mobile Controls
+        let mobileKey = null;
         document.querySelectorAll('.dpad-btn').forEach(btn => {
             // Touch events for continuous press (Pong needs holding)
-            let touchInterval;
             
             const startAction = (e) => {
                 e.preventDefault();
                 if (!isGameRunning) return;
                 
                 const key = btn.getAttribute('data-key');
+                mobileKey = key; // Store for loop checks
                 
                 if (currentGame === 'SNAKE') {
                     // Snake is single tap
@@ -723,6 +943,7 @@
             const endAction = (e) => {
                 if (e) e.preventDefault();
                 const key = btn.getAttribute('data-key');
+                mobileKey = null;
                 if (currentGame === 'PING PONG') {
                     keysPressed[key] = false;
                 }
