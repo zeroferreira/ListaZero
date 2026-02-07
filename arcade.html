@@ -324,10 +324,12 @@
         let currentGame = null; // 'SNAKE' | 'PONG' | 'GALAGA'
 
         // --- PONG STATE ---
-        let pongPaddleHeight = 80;
-        let pongPaddleWidth = 10;
-        let playerY = 0;
-        let aiY = 0;
+        let pongPaddleWidth = 80;
+        let pongPaddleHeight = 10;
+        let playerX = 0;
+        let aiX = 0;
+        let playerFixedY = 0;
+        let aiFixedY = 0;
         let ballX = 0;
         let ballY = 0;
         let ballSpeedX = 5;
@@ -535,12 +537,22 @@
             prepareGameUI();
             currentGame = 'PING PONG';
             
-            playerY = gameCanvas.height / 2 - pongPaddleHeight / 2;
-            aiY = gameCanvas.height / 2 - pongPaddleHeight / 2;
+            // Vertical Layout: Paddles Top/Bottom
+            pongPaddleWidth = 80;
+            pongPaddleHeight = 10;
+            
+            // Player at Bottom
+            playerX = gameCanvas.width / 2 - pongPaddleWidth / 2;
+            playerFixedY = gameCanvas.height - 30;
+            
+            // AI at Top
+            aiX = gameCanvas.width / 2 - pongPaddleWidth / 2;
+            aiFixedY = 20;
+            
             ballX = gameCanvas.width / 2;
             ballY = gameCanvas.height / 2;
-            ballSpeedX = 7;
-            ballSpeedY = 7;
+            ballSpeedX = 5;
+            ballSpeedY = 5;
             playerScore = 0;
             aiScore = 0;
             
@@ -553,47 +565,51 @@
             ballX += ballSpeedX;
             ballY += ballSpeedY;
 
-            // Bounce Top/Bottom
-            if (ballY < 0 || ballY > gameCanvas.height) {
-                ballSpeedY = -ballSpeedY;
+            // Bounce Left/Right Walls
+            if (ballX < 0 || ballX > gameCanvas.width) {
+                ballSpeedX = -ballSpeedX;
             }
 
-            // AI Movement (Simple tracking with speed limit)
-            const aiCenter = aiY + pongPaddleHeight / 2;
-            if (aiCenter < ballY - 35) {
-                aiY += 6;
-            } else if (aiCenter > ballY + 35) {
-                aiY -= 6;
+            // AI Movement (Track X)
+            const aiCenter = aiX + pongPaddleWidth / 2;
+            // Simple AI with speed limit
+            if (aiCenter < ballX - 35) {
+                aiX += 6;
+            } else if (aiCenter > ballX + 35) {
+                aiX -= 6;
             }
+            // Clamp AI
+            aiX = Math.max(0, Math.min(gameCanvas.width - pongPaddleWidth, aiX));
 
             // Paddle Collision
-            // Player (Left)
-            if (ballX <= pongPaddleWidth + 10) {
-                if (ballY >= playerY && ballY <= playerY + pongPaddleHeight) {
-                    ballSpeedX = -ballSpeedX;
+            
+            // Player (Bottom)
+            if (ballY >= playerFixedY && ballY <= playerFixedY + pongPaddleHeight) {
+                if (ballX >= playerX && ballX <= playerX + pongPaddleWidth) {
+                    ballSpeedY = -Math.abs(ballSpeedY); // Force go up
                     // Speed up slightly
-                    ballSpeedX = ballSpeedX > 0 ? ballSpeedX + 0.5 : ballSpeedX - 0.5;
-                    // Add angle spin
-                    let deltaY = ballY - (playerY + pongPaddleHeight/2);
-                    ballSpeedY = deltaY * 0.35;
+                    ballSpeedY = ballSpeedY > 0 ? ballSpeedY + 0.5 : ballSpeedY - 0.5;
+                    // Spin (English)
+                    let deltaX = ballX - (playerX + pongPaddleWidth/2);
+                    ballSpeedX = deltaX * 0.35;
                 }
             }
             
-            // AI (Right)
-            if (ballX >= gameCanvas.width - pongPaddleWidth - 10) {
-                if (ballY >= aiY && ballY <= aiY + pongPaddleHeight) {
-                    ballSpeedX = -ballSpeedX;
-                    let deltaY = ballY - (aiY + pongPaddleHeight/2);
-                    ballSpeedY = deltaY * 0.35;
+            // AI (Top)
+            if (ballY <= aiFixedY + pongPaddleHeight && ballY >= aiFixedY) {
+                if (ballX >= aiX && ballX <= aiX + pongPaddleWidth) {
+                    ballSpeedY = Math.abs(ballSpeedY); // Force go down
+                    let deltaX = ballX - (aiX + pongPaddleWidth/2);
+                    ballSpeedX = deltaX * 0.35;
                 }
             }
 
             // Score Points
-            if (ballX < 0) {
-                aiScore++;
-                resetBall();
-            } else if (ballX > gameCanvas.width) {
+            if (ballY < 0) {
                 playerScore++;
+                resetBall();
+            } else if (ballY > gameCanvas.height) {
+                aiScore++;
                 resetBall();
             }
             
@@ -614,8 +630,8 @@
         function resetBall() {
             ballX = gameCanvas.width / 2;
             ballY = gameCanvas.height / 2;
-            ballSpeedX = -ballSpeedX;
-            ballSpeedY = 5;
+            ballSpeedY = (Math.random() > 0.5 ? 5 : -5);
+            ballSpeedX = (Math.random() * 4) - 2;
         }
 
         function drawPong() {
@@ -623,24 +639,24 @@
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
 
-            // Center Line
+            // Center Line (Horizontal)
             ctx.strokeStyle = '#333';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(gameCanvas.width / 2, 0);
-            ctx.lineTo(gameCanvas.width / 2, gameCanvas.height);
+            ctx.moveTo(0, gameCanvas.height / 2);
+            ctx.lineTo(gameCanvas.width, gameCanvas.height / 2);
             ctx.stroke();
 
-            // Player Paddle (Left)
+            // Player Paddle (Bottom)
             ctx.fillStyle = '#00f2ea';
             ctx.shadowBlur = 10;
             ctx.shadowColor = '#00f2ea';
-            ctx.fillRect(10, playerY, pongPaddleWidth, pongPaddleHeight);
+            ctx.fillRect(playerX, playerFixedY, pongPaddleWidth, pongPaddleHeight);
 
-            // AI Paddle (Right)
+            // AI Paddle (Top)
             ctx.fillStyle = '#ff0050';
             ctx.shadowColor = '#ff0050';
-            ctx.fillRect(gameCanvas.width - 10 - pongPaddleWidth, aiY, pongPaddleWidth, pongPaddleHeight);
+            ctx.fillRect(aiX, aiFixedY, pongPaddleWidth, pongPaddleHeight);
 
             // Ball
             ctx.fillStyle = '#fff';
@@ -888,10 +904,7 @@
                     case 'ArrowDown': if (direction !== 'up') nextDirection = 'down'; break;
                 }
             } else if (currentGame === 'PING PONG') {
-                // Pong uses Up/Down for paddle movement
-                // We'll use a smooth movement approach in the loop if we track keys, 
-                // but for simplicity let's stick to direct key events updating position or velocity.
-                // Better for pong: track key state.
+                // Pong uses Left/Right for paddle movement in vertical mode
             }
         });
 
@@ -903,11 +916,11 @@
         // Hook into Pong Loop for smooth movement
         const originalPongLoop = gameLoopPong;
         gameLoopPong = function() {
-            if (keysPressed['ArrowUp']) {
-                playerY = Math.max(0, playerY - 8);
+            if (keysPressed['ArrowLeft']) {
+                playerX = Math.max(0, playerX - 8);
             }
-            if (keysPressed['ArrowDown']) {
-                playerY = Math.min(gameCanvas.height - pongPaddleHeight, playerY + 8);
+            if (keysPressed['ArrowRight']) {
+                playerX = Math.min(gameCanvas.width - pongPaddleWidth, playerX + 8);
             }
             originalPongLoop();
         };
@@ -934,7 +947,7 @@
                     }
                 } else if (currentGame === 'PING PONG') {
                     // Pong is hold
-                    if (key === 'ArrowUp' || key === 'ArrowDown') {
+                    if (key === 'ArrowLeft' || key === 'ArrowRight') {
                         keysPressed[key] = true;
                     }
                 }
