@@ -178,27 +178,53 @@
             transform: scale(1.1);
         }
 
-        /* Botón Volver */
-        .back-btn {
+        /* Mobile Controls HUD */
+        .mobile-controls {
+            display: none; /* Hidden by default, shown when game active on mobile */
             position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 30px;
-            cursor: pointer;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            z-index: 30;
-            transition: background 0.2s;
-            text-decoration: none;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 120px;
+            z-index: 100;
+            pointer-events: none; /* Buttons will have pointer-events: auto */
         }
-        .back-btn:hover { background: rgba(255, 255, 255, 0.2); }
+        
+        .dpad-btn {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            cursor: pointer;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        
+        .dpad-btn:active { background: rgba(255, 0, 80, 0.4); border-color: #ff0050; }
+        
+        .btn-up { top: 0; left: 75px; }
+        .btn-down { bottom: 0; left: 75px; }
+        .btn-left { top: 35px; left: 15px; }
+        .btn-right { top: 35px; right: 15px; }
 
+        @media (max-width: 768px) {
+            .arcade-screen { width: 95vw; height: 90vh; }
+            .arcade-content { grid-template-columns: 1fr; grid-template-rows: 1.5fr 1fr; padding: 10px; }
+            .arcade-header { height: 80px; margin-top: 10px; }
+            svg text { font-size: 40px; }
+            .mobile-controls.active { display: block; }
+        }
     </style>
 </head>
 <body>
@@ -228,8 +254,31 @@
         <div class="arcade-content">
             <!-- Previsualización -->
             <div class="preview-section" id="preview-area">
-                <div class="preview-placeholder">Selecciona un juego</div>
-                <div id="game-title-display" style="margin-top: 20px; font-size: 32px; font-weight: bold; color: #fff;"></div>
+                <div id="preview-placeholder-container" style="text-align: center;">
+                    <div class="preview-placeholder">Selecciona un juego</div>
+                    <div id="game-title-display" style="margin-top: 20px; font-size: 32px; font-weight: bold; color: #fff;"></div>
+                    <button id="play-btn" class="game-item active" style="margin-top: 30px; display: none; background: #ff0050; border-color: #ff0050;">JUGAR</button>
+                </div>
+                
+                <!-- Game Container (Hidden by default) -->
+                <div id="game-container" style="display: none; width: 100%; height: 100%; position: relative;">
+                    <canvas id="game-canvas" style="background: #000; width: 100%; height: 100%; display: block;"></canvas>
+                    <div id="score-display" style="position: absolute; top: 10px; left: 10px; color: #fff; font-size: 20px; font-weight: bold; text-shadow: 2px 2px 0 #000; pointer-events: none;">SCORE: 0</div>
+                    <div id="game-over-screen" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); flex-direction: column; justify-content: center; align-items: center; z-index: 50;">
+                        <h2 style="color: #ff0050; font-size: 40px; margin-bottom: 20px; text-shadow: 0 0 10px #ff0050;">GAME OVER</h2>
+                        <div id="final-score" style="color: #fff; font-size: 24px; margin-bottom: 30px;">Score: 0</div>
+                        <button id="restart-btn" class="game-item active" style="background: #00f2ea; border-color: #00f2ea; color: #000;">REINTENTAR</button>
+                        <button id="exit-game-btn" class="game-item" style="margin-top: 15px; font-size: 16px; padding: 10px 20px;">SALIR</button>
+                    </div>
+                    
+                    <!-- Mobile Controls -->
+                    <div id="mobile-controls" class="mobile-controls">
+                        <div class="dpad-btn btn-up" data-key="ArrowUp">↑</div>
+                        <div class="dpad-btn btn-down" data-key="ArrowDown">↓</div>
+                        <div class="dpad-btn btn-left" data-key="ArrowLeft">←</div>
+                        <div class="dpad-btn btn-right" data-key="ArrowRight">→</div>
+                    </div>
+                </div>
             </div>
 
             <!-- Selector Ruleta -->
@@ -243,9 +292,33 @@
 
     <script>
         const games = Array.from({length: 9}, (_, i) => `Juego ${i + 1}`);
+        games[0] = 'SNAKE'; // Override first game
         let activeIndex = 0;
         const wheel = document.getElementById('game-wheel');
         const previewTitle = document.getElementById('game-title-display');
+        const playBtn = document.getElementById('play-btn');
+        const previewPlaceholder = document.getElementById('preview-placeholder-container');
+        const gameContainer = document.getElementById('game-container');
+        const gameCanvas = document.getElementById('game-canvas');
+        const ctx = gameCanvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-display');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const restartBtn = document.getElementById('restart-btn');
+        const exitGameBtn = document.getElementById('exit-game-btn');
+        const mobileControls = document.getElementById('mobile-controls');
+
+        // Game State
+        let gameInterval;
+        let snake = [];
+        let food = {};
+        let direction = 'right';
+        let nextDirection = 'right';
+        let score = 0;
+        let gridSize = 20;
+        let tileCountX = 20;
+        let tileCountY = 20;
+        let isGameRunning = false;
 
         function renderWheel() {
             wheel.innerHTML = '';
@@ -262,13 +335,11 @@
         function setActive(index) {
             activeIndex = index;
             // Calcular offset para centrar el elemento activo
-            // Altura aproximada del item (60px) + gap (15px) = 75px
             const itemHeight = 75; 
             const offset = (index * -itemHeight) + (wheel.parentElement.offsetHeight / 2) - (itemHeight / 2);
             
             wheel.style.transform = `translateY(${offset}px)`;
             
-            // Actualizar clases
             const items = document.querySelectorAll('.game-item');
             items.forEach((item, i) => {
                 if (i === activeIndex) item.classList.add('active');
@@ -280,26 +351,228 @@
 
         function updatePreview() {
             previewTitle.textContent = games[activeIndex];
-            // Aquí se podría cargar una imagen o video de preview real
+            if (games[activeIndex] === 'SNAKE') {
+                playBtn.style.display = 'inline-block';
+            } else {
+                playBtn.style.display = 'none';
+            }
         }
+
+        // --- SNAKE GAME LOGIC ---
+        
+        playBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+        exitGameBtn.addEventListener('click', exitGame);
+
+        function startGame() {
+            previewPlaceholder.style.display = 'none';
+            gameContainer.style.display = 'block';
+            gameOverScreen.style.display = 'none';
+            
+            // Show mobile controls if touch device or small screen
+            if (window.innerWidth <= 768 || 'ontouchstart' in window) {
+                mobileControls.style.display = 'block';
+            }
+
+            resizeCanvas();
+            resetGame();
+            isGameRunning = true;
+            gameInterval = setInterval(gameLoop, 100);
+        }
+
+        function exitGame() {
+            clearInterval(gameInterval);
+            isGameRunning = false;
+            gameContainer.style.display = 'none';
+            previewPlaceholder.style.display = 'block';
+            mobileControls.style.display = 'none';
+        }
+
+        function resizeCanvas() {
+            // Make canvas fit container
+            gameCanvas.width = gameContainer.offsetWidth;
+            gameCanvas.height = gameContainer.offsetHeight;
+            
+            // Recalculate grid based on size
+            gridSize = Math.floor(Math.min(gameCanvas.width, gameCanvas.height) / 20);
+            tileCountX = Math.floor(gameCanvas.width / gridSize);
+            tileCountY = Math.floor(gameCanvas.height / gridSize);
+        }
+
+        function resetGame() {
+            snake = [
+                {x: 10, y: 10},
+                {x: 9, y: 10},
+                {x: 8, y: 10}
+            ];
+            direction = 'right';
+            nextDirection = 'right';
+            score = 0;
+            scoreDisplay.textContent = `SCORE: ${score}`;
+            placeFood();
+        }
+
+        function placeFood() {
+            food = {
+                x: Math.floor(Math.random() * tileCountX),
+                y: Math.floor(Math.random() * tileCountY)
+            };
+            // Ensure food doesn't spawn on snake
+            for (let part of snake) {
+                if (part.x === food.x && part.y === food.y) {
+                    placeFood();
+                    break;
+                }
+            }
+        }
+
+        function gameLoop() {
+            direction = nextDirection;
+            
+            const head = {x: snake[0].x, y: snake[0].y};
+
+            switch(direction) {
+                case 'left': head.x--; break;
+                case 'right': head.x++; break;
+                case 'up': head.y--; break;
+                case 'down': head.y++; break;
+            }
+
+            // Wrap around (Classic Snake or Wall Death? Let's do Wall Death for Arcade difficulty, or Wrap? Let's do Wall Death)
+            if (head.x < 0 || head.x >= tileCountX || head.y < 0 || head.y >= tileCountY) {
+                gameOver();
+                return;
+            }
+
+            // Self collision
+            for (let part of snake) {
+                if (part.x === head.x && part.y === head.y) {
+                    gameOver();
+                    return;
+                }
+            }
+
+            snake.unshift(head);
+
+            // Eat food
+            if (head.x === food.x && head.y === food.y) {
+                score += 10;
+                scoreDisplay.textContent = `SCORE: ${score}`;
+                placeFood();
+            } else {
+                snake.pop();
+            }
+
+            draw();
+        }
+
+        function draw() {
+            // Clear background
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+            // Draw Snake
+            snake.forEach((part, index) => {
+                ctx.fillStyle = index === 0 ? '#00f2ea' : '#00b8b2'; // Head different color
+                ctx.fillRect(part.x * gridSize, part.y * gridSize, gridSize - 2, gridSize - 2);
+                
+                // Glow effect
+                if (index === 0) {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = '#00f2ea';
+                } else {
+                    ctx.shadowBlur = 0;
+                }
+            });
+            ctx.shadowBlur = 0;
+
+            // Draw Food
+            ctx.fillStyle = '#ff0050';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#ff0050';
+            ctx.beginPath();
+            ctx.arc((food.x * gridSize) + gridSize/2, (food.y * gridSize) + gridSize/2, gridSize/2 - 2, 0, Math.PI*2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function gameOver() {
+            clearInterval(gameInterval);
+            isGameRunning = false;
+            finalScoreDisplay.textContent = `Score: ${score}`;
+            gameOverScreen.style.display = 'flex';
+        }
+
+        // Input handling
+        document.addEventListener('keydown', (e) => {
+            // If game is running, prevent default scrolling
+            if (isGameRunning && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+            }
+
+            if (!isGameRunning) {
+                // Menu navigation
+                if (e.key === 'ArrowDown') {
+                    setActive((activeIndex + 1) % games.length);
+                } else if (e.key === 'ArrowUp') {
+                    setActive((activeIndex - 1 + games.length) % games.length);
+                } else if (e.key === 'Enter' && games[activeIndex] === 'SNAKE' && previewPlaceholder.style.display !== 'none') {
+                    startGame();
+                }
+                return;
+            }
+
+            // Game controls
+            switch(e.key) {
+                case 'ArrowLeft': if (direction !== 'right') nextDirection = 'left'; break;
+                case 'ArrowUp': if (direction !== 'down') nextDirection = 'up'; break;
+                case 'ArrowRight': if (direction !== 'left') nextDirection = 'right'; break;
+                case 'ArrowDown': if (direction !== 'up') nextDirection = 'down'; break;
+            }
+        });
+
+        // Mobile Controls
+        document.querySelectorAll('.dpad-btn').forEach(btn => {
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (!isGameRunning) return;
+                const key = btn.getAttribute('data-key');
+                switch(key) {
+                    case 'ArrowLeft': if (direction !== 'right') nextDirection = 'left'; break;
+                    case 'ArrowUp': if (direction !== 'down') nextDirection = 'up'; break;
+                    case 'ArrowRight': if (direction !== 'left') nextDirection = 'right'; break;
+                    case 'ArrowDown': if (direction !== 'up') nextDirection = 'down'; break;
+                }
+            });
+            // Mouse click support for testing on desktop
+            btn.addEventListener('mousedown', (e) => {
+                if (!isGameRunning) return;
+                const key = btn.getAttribute('data-key');
+                switch(key) {
+                    case 'ArrowLeft': if (direction !== 'right') nextDirection = 'left'; break;
+                    case 'ArrowUp': if (direction !== 'down') nextDirection = 'up'; break;
+                    case 'ArrowRight': if (direction !== 'left') nextDirection = 'right'; break;
+                    case 'ArrowDown': if (direction !== 'up') nextDirection = 'down'; break;
+                }
+            });
+        });
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (isGameRunning) {
+                resizeCanvas();
+                // Optionally redraw immediately
+                draw();
+            }
+        });
 
         // Init
         renderWheel();
-        
-        // Esperar un momento para calcular altura correcta y centrar
         setTimeout(() => setActive(0), 100);
-
-        // Control con teclado
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowDown') {
-                setActive((activeIndex + 1) % games.length);
-            } else if (e.key === 'ArrowUp') {
-                setActive((activeIndex - 1 + games.length) % games.length);
-            }
-        });
         
-        // Scroll con rueda
+        // Scroll with wheel (Menu)
         document.querySelector('.selector-section').addEventListener('wheel', (e) => {
+            if (isGameRunning) return; // Disable menu scroll if game running (though mouse is usually separate)
             e.preventDefault();
             if (e.deltaY > 0) {
                 setActive((activeIndex + 1) % games.length);
