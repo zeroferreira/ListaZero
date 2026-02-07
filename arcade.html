@@ -292,7 +292,8 @@
 
     <script>
         const games = Array.from({length: 9}, (_, i) => `Juego ${i + 1}`);
-        games[0] = 'SNAKE'; // Override first game
+        games[0] = 'SNAKE'; 
+        games[1] = 'PING PONG';
         let activeIndex = 0;
         const wheel = document.getElementById('game-wheel');
         const previewTitle = document.getElementById('game-title-display');
@@ -319,6 +320,19 @@
         let tileCountX = 20;
         let tileCountY = 20;
         let isGameRunning = false;
+        let currentGame = null; // 'SNAKE' | 'PONG'
+
+        // --- PONG STATE ---
+        let pongPaddleHeight = 80;
+        let pongPaddleWidth = 10;
+        let playerY = 0;
+        let aiY = 0;
+        let ballX = 0;
+        let ballY = 0;
+        let ballSpeedX = 5;
+        let ballSpeedY = 5;
+        let playerScore = 0;
+        let aiScore = 0;
 
         function renderWheel() {
             wheel.innerHTML = '';
@@ -350,56 +364,66 @@
         }
 
         function updatePreview() {
-            previewTitle.textContent = games[activeIndex];
-            if (games[activeIndex] === 'SNAKE') {
+            const selected = games[activeIndex];
+            previewTitle.textContent = selected;
+            if (selected === 'SNAKE' || selected === 'PING PONG') {
                 playBtn.style.display = 'inline-block';
             } else {
                 playBtn.style.display = 'none';
             }
         }
 
-        // --- SNAKE GAME LOGIC ---
+        // --- GAME CONTROLLER ---
         
-        playBtn.addEventListener('click', startGame);
-        restartBtn.addEventListener('click', startGame);
+        playBtn.addEventListener('click', () => {
+            const selected = games[activeIndex];
+            if (selected === 'SNAKE') startSnakeGame();
+            else if (selected === 'PING PONG') startPongGame();
+        });
+        
+        restartBtn.addEventListener('click', () => {
+            if (currentGame === 'SNAKE') startSnakeGame();
+            else if (currentGame === 'PING PONG') startPongGame();
+        });
+        
         exitGameBtn.addEventListener('click', exitGame);
 
-        function startGame() {
+        function prepareGameUI() {
             previewPlaceholder.style.display = 'none';
             gameContainer.style.display = 'block';
             gameOverScreen.style.display = 'none';
             
-            // Show mobile controls if touch device or small screen
             if (window.innerWidth <= 768 || 'ontouchstart' in window) {
                 mobileControls.style.display = 'block';
             }
-
             resizeCanvas();
-            resetGame();
             isGameRunning = true;
-            gameInterval = setInterval(gameLoop, 100);
         }
 
         function exitGame() {
             clearInterval(gameInterval);
             isGameRunning = false;
+            currentGame = null;
             gameContainer.style.display = 'none';
             previewPlaceholder.style.display = 'block';
             mobileControls.style.display = 'none';
         }
 
         function resizeCanvas() {
-            // Make canvas fit container
             gameCanvas.width = gameContainer.offsetWidth;
             gameCanvas.height = gameContainer.offsetHeight;
             
-            // Recalculate grid based on size
+            // Recalculate grid based on size for Snake
             gridSize = Math.floor(Math.min(gameCanvas.width, gameCanvas.height) / 20);
             tileCountX = Math.floor(gameCanvas.width / gridSize);
             tileCountY = Math.floor(gameCanvas.height / gridSize);
         }
 
-        function resetGame() {
+        // --- SNAKE LOGIC ---
+
+        function startSnakeGame() {
+            prepareGameUI();
+            currentGame = 'SNAKE';
             snake = [
                 {x: 10, y: 10},
                 {x: 9, y: 10},
@@ -410,6 +434,7 @@
             score = 0;
             scoreDisplay.textContent = `SCORE: ${score}`;
             placeFood();
+            gameInterval = setInterval(gameLoopSnake, 100);
         }
 
         function placeFood() {
@@ -417,7 +442,6 @@
                 x: Math.floor(Math.random() * tileCountX),
                 y: Math.floor(Math.random() * tileCountY)
             };
-            // Ensure food doesn't spawn on snake
             for (let part of snake) {
                 if (part.x === food.x && part.y === food.y) {
                     placeFood();
@@ -426,9 +450,8 @@
             }
         }
 
-        function gameLoop() {
+        function gameLoopSnake() {
             direction = nextDirection;
-            
             const head = {x: snake[0].x, y: snake[0].y};
 
             switch(direction) {
@@ -438,23 +461,20 @@
                 case 'down': head.y++; break;
             }
 
-            // Wrap around (Classic Snake or Wall Death? Let's do Wall Death for Arcade difficulty, or Wrap? Let's do Wall Death)
             if (head.x < 0 || head.x >= tileCountX || head.y < 0 || head.y >= tileCountY) {
-                gameOver();
+                gameOver(`Score: ${score}`);
                 return;
             }
 
-            // Self collision
             for (let part of snake) {
                 if (part.x === head.x && part.y === head.y) {
-                    gameOver();
+                    gameOver(`Score: ${score}`);
                     return;
                 }
             }
 
             snake.unshift(head);
 
-            // Eat food
             if (head.x === food.x && head.y === food.y) {
                 score += 10;
                 scoreDisplay.textContent = `SCORE: ${score}`;
@@ -463,20 +483,16 @@
                 snake.pop();
             }
 
-            draw();
+            drawSnake();
         }
 
-        function draw() {
-            // Clear background
+        function drawSnake() {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
 
-            // Draw Snake
             snake.forEach((part, index) => {
-                ctx.fillStyle = index === 0 ? '#00f2ea' : '#00b8b2'; // Head different color
+                ctx.fillStyle = index === 0 ? '#00f2ea' : '#00b8b2';
                 ctx.fillRect(part.x * gridSize, part.y * gridSize, gridSize - 2, gridSize - 2);
-                
-                // Glow effect
                 if (index === 0) {
                     ctx.shadowBlur = 15;
                     ctx.shadowColor = '#00f2ea';
@@ -486,7 +502,6 @@
             });
             ctx.shadowBlur = 0;
 
-            // Draw Food
             ctx.fillStyle = '#ff0050';
             ctx.shadowBlur = 15;
             ctx.shadowColor = '#ff0050';
@@ -496,73 +511,236 @@
             ctx.shadowBlur = 0;
         }
 
-        function gameOver() {
+        // --- PONG LOGIC ---
+
+        function startPongGame() {
+            prepareGameUI();
+            currentGame = 'PING PONG';
+            
+            playerY = gameCanvas.height / 2 - pongPaddleHeight / 2;
+            aiY = gameCanvas.height / 2 - pongPaddleHeight / 2;
+            ballX = gameCanvas.width / 2;
+            ballY = gameCanvas.height / 2;
+            ballSpeedX = 7;
+            ballSpeedY = 7;
+            playerScore = 0;
+            aiScore = 0;
+            
+            scoreDisplay.textContent = `PLAYER: 0  |  CPU: 0`;
+            gameInterval = setInterval(gameLoopPong, 1000/60); // 60 FPS
+        }
+
+        function gameLoopPong() {
+            // Move Ball
+            ballX += ballSpeedX;
+            ballY += ballSpeedY;
+
+            // Bounce Top/Bottom
+            if (ballY < 0 || ballY > gameCanvas.height) {
+                ballSpeedY = -ballSpeedY;
+            }
+
+            // AI Movement (Simple tracking with speed limit)
+            const aiCenter = aiY + pongPaddleHeight / 2;
+            if (aiCenter < ballY - 35) {
+                aiY += 6;
+            } else if (aiCenter > ballY + 35) {
+                aiY -= 6;
+            }
+
+            // Paddle Collision
+            // Player (Left)
+            if (ballX <= pongPaddleWidth + 10) {
+                if (ballY >= playerY && ballY <= playerY + pongPaddleHeight) {
+                    ballSpeedX = -ballSpeedX;
+                    // Speed up slightly
+                    ballSpeedX = ballSpeedX > 0 ? ballSpeedX + 0.5 : ballSpeedX - 0.5;
+                    // Add angle spin
+                    let deltaY = ballY - (playerY + pongPaddleHeight/2);
+                    ballSpeedY = deltaY * 0.35;
+                }
+            }
+            
+            // AI (Right)
+            if (ballX >= gameCanvas.width - pongPaddleWidth - 10) {
+                if (ballY >= aiY && ballY <= aiY + pongPaddleHeight) {
+                    ballSpeedX = -ballSpeedX;
+                    let deltaY = ballY - (aiY + pongPaddleHeight/2);
+                    ballSpeedY = deltaY * 0.35;
+                }
+            }
+
+            // Score Points
+            if (ballX < 0) {
+                aiScore++;
+                resetBall();
+            } else if (ballX > gameCanvas.width) {
+                playerScore++;
+                resetBall();
+            }
+            
+            scoreDisplay.textContent = `PLAYER: ${playerScore}  |  CPU: ${aiScore}`;
+
+            // Win Condition (First to 5)
+            if (playerScore >= 5) {
+                gameOver(`YOU WIN! (${playerScore}-${aiScore})`);
+                return;
+            } else if (aiScore >= 5) {
+                gameOver(`YOU LOSE! (${playerScore}-${aiScore})`);
+                return;
+            }
+
+            drawPong();
+        }
+
+        function resetBall() {
+            ballX = gameCanvas.width / 2;
+            ballY = gameCanvas.height / 2;
+            ballSpeedX = -ballSpeedX;
+            ballSpeedY = 5;
+        }
+
+        function drawPong() {
+            // Background
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+            // Center Line
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(gameCanvas.width / 2, 0);
+            ctx.lineTo(gameCanvas.width / 2, gameCanvas.height);
+            ctx.stroke();
+
+            // Player Paddle (Left)
+            ctx.fillStyle = '#00f2ea';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00f2ea';
+            ctx.fillRect(10, playerY, pongPaddleWidth, pongPaddleHeight);
+
+            // AI Paddle (Right)
+            ctx.fillStyle = '#ff0050';
+            ctx.shadowColor = '#ff0050';
+            ctx.fillRect(gameCanvas.width - 10 - pongPaddleWidth, aiY, pongPaddleWidth, pongPaddleHeight);
+
+            // Ball
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#fff';
+            ctx.beginPath();
+            ctx.arc(ballX, ballY, 8, 0, Math.PI*2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function gameOver(msg) {
             clearInterval(gameInterval);
             isGameRunning = false;
-            finalScoreDisplay.textContent = `Score: ${score}`;
+            finalScoreDisplay.textContent = msg;
             gameOverScreen.style.display = 'flex';
         }
 
         // Input handling
         document.addEventListener('keydown', (e) => {
-            // If game is running, prevent default scrolling
             if (isGameRunning && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
                 e.preventDefault();
             }
 
             if (!isGameRunning) {
-                // Menu navigation
                 if (e.key === 'ArrowDown') {
                     setActive((activeIndex + 1) % games.length);
                 } else if (e.key === 'ArrowUp') {
                     setActive((activeIndex - 1 + games.length) % games.length);
-                } else if (e.key === 'Enter' && games[activeIndex] === 'SNAKE' && previewPlaceholder.style.display !== 'none') {
-                    startGame();
+                } else if (e.key === 'Enter' && previewPlaceholder.style.display !== 'none') {
+                    const selected = games[activeIndex];
+                    if (selected === 'SNAKE') startSnakeGame();
+                    else if (selected === 'PING PONG') startPongGame();
                 }
                 return;
             }
 
             // Game controls
-            switch(e.key) {
-                case 'ArrowLeft': if (direction !== 'right') nextDirection = 'left'; break;
-                case 'ArrowUp': if (direction !== 'down') nextDirection = 'up'; break;
-                case 'ArrowRight': if (direction !== 'left') nextDirection = 'right'; break;
-                case 'ArrowDown': if (direction !== 'up') nextDirection = 'down'; break;
+            if (currentGame === 'SNAKE') {
+                switch(e.key) {
+                    case 'ArrowLeft': if (direction !== 'right') nextDirection = 'left'; break;
+                    case 'ArrowUp': if (direction !== 'down') nextDirection = 'up'; break;
+                    case 'ArrowRight': if (direction !== 'left') nextDirection = 'right'; break;
+                    case 'ArrowDown': if (direction !== 'up') nextDirection = 'down'; break;
+                }
+            } else if (currentGame === 'PING PONG') {
+                // Pong uses Up/Down for paddle movement
+                // We'll use a smooth movement approach in the loop if we track keys, 
+                // but for simplicity let's stick to direct key events updating position or velocity.
+                // Better for pong: track key state.
             }
         });
 
+        // Pong Paddle Movement (Smooth)
+        const keysPressed = {};
+        document.addEventListener('keydown', (e) => keysPressed[e.key] = true);
+        document.addEventListener('keyup', (e) => keysPressed[e.key] = false);
+
+        // Hook into Pong Loop for smooth movement
+        const originalPongLoop = gameLoopPong;
+        gameLoopPong = function() {
+            if (keysPressed['ArrowUp']) {
+                playerY = Math.max(0, playerY - 8);
+            }
+            if (keysPressed['ArrowDown']) {
+                playerY = Math.min(gameCanvas.height - pongPaddleHeight, playerY + 8);
+            }
+            originalPongLoop();
+        };
+
         // Mobile Controls
         document.querySelectorAll('.dpad-btn').forEach(btn => {
-            btn.addEventListener('touchstart', (e) => {
+            // Touch events for continuous press (Pong needs holding)
+            let touchInterval;
+            
+            const startAction = (e) => {
                 e.preventDefault();
                 if (!isGameRunning) return;
+                
                 const key = btn.getAttribute('data-key');
-                switch(key) {
-                    case 'ArrowLeft': if (direction !== 'right') nextDirection = 'left'; break;
-                    case 'ArrowUp': if (direction !== 'down') nextDirection = 'up'; break;
-                    case 'ArrowRight': if (direction !== 'left') nextDirection = 'right'; break;
-                    case 'ArrowDown': if (direction !== 'up') nextDirection = 'down'; break;
+                
+                if (currentGame === 'SNAKE') {
+                    // Snake is single tap
+                    switch(key) {
+                        case 'ArrowLeft': if (direction !== 'right') nextDirection = 'left'; break;
+                        case 'ArrowUp': if (direction !== 'down') nextDirection = 'up'; break;
+                        case 'ArrowRight': if (direction !== 'left') nextDirection = 'right'; break;
+                        case 'ArrowDown': if (direction !== 'up') nextDirection = 'down'; break;
+                    }
+                } else if (currentGame === 'PING PONG') {
+                    // Pong is hold
+                    if (key === 'ArrowUp' || key === 'ArrowDown') {
+                        keysPressed[key] = true;
+                    }
                 }
-            });
-            // Mouse click support for testing on desktop
-            btn.addEventListener('mousedown', (e) => {
-                if (!isGameRunning) return;
+            };
+
+            const endAction = (e) => {
+                if (e) e.preventDefault();
                 const key = btn.getAttribute('data-key');
-                switch(key) {
-                    case 'ArrowLeft': if (direction !== 'right') nextDirection = 'left'; break;
-                    case 'ArrowUp': if (direction !== 'down') nextDirection = 'up'; break;
-                    case 'ArrowRight': if (direction !== 'left') nextDirection = 'right'; break;
-                    case 'ArrowDown': if (direction !== 'up') nextDirection = 'down'; break;
+                if (currentGame === 'PING PONG') {
+                    keysPressed[key] = false;
                 }
-            });
+            };
+
+            btn.addEventListener('touchstart', startAction);
+            btn.addEventListener('touchend', endAction);
+            btn.addEventListener('mousedown', startAction);
+            btn.addEventListener('mouseup', endAction);
+            btn.addEventListener('mouseleave', endAction);
         });
         
         // Handle window resize
         window.addEventListener('resize', () => {
             if (isGameRunning) {
                 resizeCanvas();
-                // Optionally redraw immediately
-                draw();
+                if (currentGame === 'SNAKE') drawSnake();
+                else if (currentGame === 'PING PONG') drawPong();
             }
         });
 
@@ -572,7 +750,7 @@
         
         // Scroll with wheel (Menu)
         document.querySelector('.selector-section').addEventListener('wheel', (e) => {
-            if (isGameRunning) return; // Disable menu scroll if game running (though mouse is usually separate)
+            if (isGameRunning) return; 
             e.preventDefault();
             if (e.deltaY > 0) {
                 setActive((activeIndex + 1) % games.length);
