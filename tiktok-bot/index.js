@@ -39,7 +39,7 @@ let config = {
     dashboardPort: 3000,
     ciderUrl: "http://localhost:10767",
     mockCider: false,
-    requireVipForSr: true
+    requireVipForSr: false
 };
 
 try {
