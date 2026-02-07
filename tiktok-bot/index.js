@@ -712,11 +712,10 @@ function setupListeners() {
 
             const rawQuery = msg.replace(/^!(sr|pedir|cancion)\s+/i, '').trim();
             if (rawQuery.length > 0) {
-                // Optimización: Reemplazar guiones con espacios para mejorar la búsqueda
-                // Esto permite "Artista - Cancion" o "Cancion - Artista" sin problemas
-                const cleanQuery = rawQuery.replace(/\s+-\s+/g, ' ').trim();
+                // Preservamos el query original para mejor detección
+                const cleanQuery = rawQuery.trim();
                 
-                console.log(`📩 Pedido de ${displayName}: ${rawQuery} (Buscando: ${cleanQuery})`);
+                console.log(`📩 Pedido de ${displayName}: ${rawQuery}`);
                 const resolvedUser = await getCanonicalUserKey(userId, displayName);
                 const userKey = String(resolvedUser.userKey || userId || '').trim();
                 const displayNameBest = String(resolvedUser.displayName || displayName || '').trim();
@@ -767,15 +766,18 @@ const tempVipUsers = new Set();
 
 // Manejar pedido de canción
 async function resolveTrackFromQuery(query) {
-    const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=10`;
+    // 1. Buscar en iTunes
+    const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=15`;
     const response = await axios.get(searchUrl);
     if (!response.data || response.data.resultCount === 0) {
         return null;
     }
 
-    let track = response.data.results[0];
+    const results = response.data.results;
     const avoidKeywords = ['karaoke', 'tribute', 'cover', 'instrumental', 'remix', 'lullaby', 'rendition', 'slowed', 'reverb'];
-    const cleanTrack = response.data.results.find(t => {
+    
+    // 2. Filtrar resultados "malos" (covers, karaoke, etc.)
+    const validResults = results.filter(t => {
         const lowerName = (t.trackName || '').toLowerCase();
         const lowerArtist = (t.artistName || '').toLowerCase();
         const lowerCollection = (t.collectionName || '').toLowerCase();
@@ -787,9 +789,46 @@ async function resolveTrackFromQuery(query) {
         return !hasBadWord;
     });
 
-    if (cleanTrack) {
-        track = cleanTrack;
+    // Si no hay resultados válidos, usamos los originales (mejor algo que nada)
+    const candidates = validResults.length > 0 ? validResults : results;
+
+    // 3. Sistema de Puntuación (Scoring) para encontrar el mejor match
+    // Dividimos el query en palabras clave
+    const queryWords = query.toLowerCase()
+        .replace(/-/g, ' ') // Tratar guiones como espacios para el matching
+        .replace(/[^a-z0-9áéíóúñü ]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length > 1);
+    
+    let bestTrack = candidates[0];
+    let maxScore = -1;
+
+    for (const t of candidates) {
+        const tName = (t.trackName || '').toLowerCase();
+        const tArtist = (t.artistName || '').toLowerCase();
+        // Normalizamos el texto del track para buscar coincidencias
+        const fullText = `${tName} ${tArtist}`.replace(/[^a-z0-9áéíóúñü ]/g, '');
+        
+        let score = 0;
+        
+        // Puntos por cada palabra del query encontrada en el resultado
+        for (const w of queryWords) {
+            if (fullText.includes(w)) score += 1;
+        }
+
+        // Puntos extra si el Artista coincide exactamente con una parte del query
+        if (query.toLowerCase().includes(tArtist)) score += 2;
+
+        // Puntos extra si el Track coincide exactamente
+        if (query.toLowerCase().includes(tName)) score += 2;
+
+        if (score > maxScore) {
+            maxScore = score;
+            bestTrack = t;
+        }
     }
+
+    const track = bestTrack;
 
     const songName = track.trackName;
     const artistName = track.artistName;
