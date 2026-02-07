@@ -200,12 +200,23 @@
             <div class="card">
                 <h3>Permisos de Pedido</h3>
                 <div class="toggle-row">
-                    <span>Requerir VIP para !sr</span>
+                    <span>Requerir Monedas/Donaciones (!sr)</span>
                     <label class="switch">
                         <input type="checkbox" id="requireVipForSr" checked>
                         <span class="slider"></span>
                     </label>
                 </div>
+                <div class="inline-status" style="margin-top: 5px;">
+                    <small>Si está activado, solo los usuarios que hayan donado (VIP) podrán pedir canciones.</small>
+                </div>
+
+                <div style="margin-top: 20px; border-top: 1px solid #333; padding-top: 15px;">
+                    <label>Comandos Personalizados (separados por coma)</label>
+                    <input type="text" id="commandAliases" placeholder="!sr, !pedir, !cancion">
+                    <small style="color: #666; display: block; margin-top: 5px;">Ejemplo: !sr, !p, !musica. Deja vacío para usar los predeterminados.</small>
+                </div>
+                
+                <h4 style="margin-top: 20px;">Excepciones (siempre permitidos)</h4>
                 <div class="toggle-row">
                     <span>Permitir Suscriptores</span>
                     <label class="switch">
@@ -409,6 +420,10 @@
                 document.getElementById('allowSubscribers').checked = data.allowSubscribers;
                 document.getElementById('allowModerators').checked = data.allowModerators;
                 document.getElementById('allowSuperFans').checked = data.allowSuperFans;
+                
+                // Comandos
+                const cmds = Array.isArray(data.commandAliases) ? data.commandAliases.join(', ') : '';
+                document.getElementById('commandAliases').value = cmds || '!sr, !pedir, !cancion';
             });
 
         async function refreshStatus() {
@@ -451,6 +466,9 @@
         refreshStatus();
 
         function saveConfig() {
+            const cmdVal = document.getElementById('commandAliases').value;
+            const commandAliases = cmdVal.split(',').map(s => s.trim()).filter(Boolean);
+
             const config = {
                 tiktokUsername: document.getElementById('tiktokUsername').value,
                 minCoinsForVip: parseInt(document.getElementById('minCoinsForVip').value),
@@ -458,7 +476,8 @@
                 allowSubscribers: document.getElementById('allowSubscribers').checked,
                 allowModerators: document.getElementById('allowModerators').checked,
                 allowSuperFans: document.getElementById('allowSuperFans').checked,
-                ciderUrl: document.getElementById('ciderUrl')?.value || "http://localhost:10767"
+                ciderUrl: document.getElementById('ciderUrl')?.value || "http://localhost:10767",
+                commandAliases: commandAliases.length > 0 ? commandAliases : ["!sr", "!pedir", "!cancion"]
             };
 
             fetch('/api/config', {

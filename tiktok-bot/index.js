@@ -39,7 +39,8 @@ let config = {
     dashboardPort: 3000,
     ciderUrl: "http://localhost:10767",
     mockCider: false,
-    requireVipForSr: false
+    requireVipForSr: false,
+    commandAliases: ["!sr", "!pedir", "!cancion"]
 };
 
 try {
@@ -592,9 +593,21 @@ function startBot() {
             const rawMessage = body.message ? String(body.message).trim() : '';
             let query = body.query ? String(body.query).trim() : '';
             if (rawMessage) {
+                const aliases = Array.isArray(config.commandAliases) && config.commandAliases.length > 0 
+                    ? config.commandAliases 
+                    : ["!sr", "!pedir", "!cancion"];
+                
                 const lower = rawMessage.toLowerCase();
-                if (lower.startsWith('!sr ') || lower.startsWith('!pedir ') || lower.startsWith('!cancion ')) {
-                    query = rawMessage.replace(/^!(sr|pedir|cancion)\s+/i, '').trim();
+                let matchedAlias = null;
+                for (const alias of aliases) {
+                    if (lower.startsWith(alias.toLowerCase() + ' ')) {
+                        matchedAlias = alias;
+                        break;
+                    }
+                }
+                
+                if (matchedAlias) {
+                    query = rawMessage.substring(matchedAlias.length).trim();
                 } else {
                     query = rawMessage;
                 }
@@ -750,9 +763,20 @@ function setupListeners() {
         const isVip = isSubscriber || isModerator || isSuperFan || isStreamer || tempVipUsers.has(userId);
         const requireVip = config.requireVipForSr !== false;
 
-        if (msg.toLowerCase().startsWith('!sr ') || 
-            msg.toLowerCase().startsWith('!pedir ') || 
-            msg.toLowerCase().startsWith('!cancion ')) {
+        const aliases = Array.isArray(config.commandAliases) && config.commandAliases.length > 0 
+            ? config.commandAliases 
+            : ["!sr", "!pedir", "!cancion"];
+        
+        const lowerMsg = msg.toLowerCase();
+        let matchedAlias = null;
+        for (const alias of aliases) {
+            if (lowerMsg.startsWith(alias.toLowerCase() + ' ')) {
+                matchedAlias = alias;
+                break;
+            }
+        }
+
+        if (matchedAlias) {
             
             console.log(`📝 Comando detectado de ${displayName} (${userId}): ${msg}`);
             
@@ -762,7 +786,7 @@ function setupListeners() {
                 return;
             }
 
-            const rawQuery = msg.replace(/^!(sr|pedir|cancion)\s+/i, '').trim();
+            const rawQuery = msg.substring(matchedAlias.length).trim();
             if (rawQuery.length > 0) {
                 // Preservamos el query original para mejor detección
                 const cleanQuery = rawQuery.trim();
