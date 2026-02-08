@@ -86,7 +86,7 @@
             image-rendering: pixelated;
         }
 
-        /* PANEL DERECHO: SELECTOR (RUEDA) */
+        /* PANEL DERECHO: SELECTOR (LISTA) */
         #selector-panel {
             flex: 1;
             background: var(--panel-bg);
@@ -94,9 +94,12 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             border-left: 2px solid rgba(255,255,255,0.1);
             max-width: 400px;
+            overflow-y: auto;
+            padding-top: 120px; /* Space for header */
+            padding-bottom: 20px;
         }
 
         /* Header Curvo (SVG) */
@@ -109,46 +112,115 @@
             justify-content: center;
             z-index: 20;
             pointer-events: none;
+            background: linear-gradient(to bottom, var(--panel-bg) 80%, transparent);
         }
 
-        .arcade-header svg text {
-            font-size: 40px;
-            font-weight: 900;
-            fill: transparent;
-            stroke: #fff;
-            stroke-width: 1.5px;
-            text-shadow: 0 0 10px var(--neon-pink);
-        }
-
-        /* Canvas de la Rueda */
-        canvas#wheel-canvas {
+        /* Lista de Juegos (Reemplaza Canvas Rueda) */
+        #games-list {
             width: 100%;
-            height: 100%;
-            cursor: grab;
-            touch-action: none;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            padding: 0 20px;
+            z-index: 10;
         }
-        canvas#wheel-canvas:active { cursor: grabbing; }
 
-        /* Botón JUGAR (Overlay en el selector) */
-        #play-btn {
-            position: absolute;
-            bottom: 50px;
-            background: linear-gradient(90deg, var(--neon-pink), #ff0080);
-            color: white;
-            border: none;
-            padding: 15px 40px;
-            font-size: 24px;
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            border-radius: 30px;
+        .game-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
             cursor: pointer;
-            box-shadow: 0 0 20px var(--neon-pink);
-            transition: transform 0.2s, filter 0.2s;
-            z-index: 30;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .game-card:hover, .game-card.active {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(0, 242, 234, 0.2);
+            transform: translateX(5px);
+        }
+
+        .game-card.active {
+            border-color: var(--neon-pink);
+            box-shadow: 0 0 15px rgba(255, 0, 80, 0.3);
+        }
+
+        .game-info h3 {
+            margin: 0;
+            font-size: 18px;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .game-info p {
+            margin: 5px 0 0 0;
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        .play-icon {
+            font-size: 24px;
+            color: var(--neon-cyan);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .game-card:hover .play-icon, .game-card.active .play-icon {
+            opacity: 1;
+        }
+
+        .game-card.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .game-card.disabled:hover {
+            transform: none;
+            box-shadow: none;
+            border-color: rgba(255,255,255,0.1);
+        }
+
+        /* Estado IDLE del Monitor */
+        #idle-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+            z-index: 40;
+            pointer-events: none;
+        }
+
+        .idle-logo {
+            font-size: 80px;
+            color: #333;
+            text-shadow: 0 0 10px #333;
+            animation: pulse 2s infinite;
+        }
+
+        .idle-text {
+            margin-top: 20px;
+            color: #555;
+            font-size: 18px;
+            letter-spacing: 2px;
             text-transform: uppercase;
         }
-        #play-btn:active { transform: scale(0.95); filter: brightness(1.2); }
-        #play-btn:disabled { background: #333; box-shadow: none; color: #888; cursor: not-allowed; }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; text-shadow: 0 0 10px #333; }
+            50% { opacity: 1; text-shadow: 0 0 20px #555; }
+            100% { opacity: 0.5; text-shadow: 0 0 10px #333; }
+        }
+
+
 
         /* --- HUD MÓVIL (CONTROLES) --- */
         #mobile-hud {
@@ -328,6 +400,12 @@
         <div id="game-stage">
             <canvas id="game-canvas"></canvas>
             
+            <!-- Pantalla de Espera (Idle) -->
+            <div id="idle-screen">
+                <div class="idle-logo">👾</div>
+                <div class="idle-text">PRESS START</div>
+            </div>
+            
             <!-- HUD Táctil -->
             <div id="mobile-hud">
                 <div class="dpad-container">
@@ -342,7 +420,7 @@
             </div>
             
             <!-- Game Over / Score Overlay -->
-            <div id="score-overlay" style="position: absolute; top: 10px; right: 10px; font-size: 20px; font-weight: bold; text-shadow: 2px 2px 0 #000;"></div>
+            <div id="score-overlay" style="position: absolute; top: 10px; right: 10px; font-size: 20px; font-weight: bold; text-shadow: 2px 2px 0 #000; display: none;"></div>
         </div>
 
         <!-- DERECHA: SELECTOR -->
@@ -358,9 +436,10 @@
                 </svg>
             </div>
             
-            <canvas id="wheel-canvas"></canvas>
-            
-            <button id="play-btn">JUGAR</button>
+            <!-- Nueva Lista de Juegos -->
+            <div id="games-list">
+                <!-- Se llena con JS -->
+            </div>
         </div>
     </div>
 
@@ -675,145 +754,56 @@
             }
         }
 
-        // --- WHEEL SELECTOR UI ---
-        const Wheel = {
-            canvas: document.getElementById('wheel-canvas'),
-            ctx: null,
-            angle: 0,
-            targetAngle: 0,
-            selectedIdx: 0,
+        // --- LIST SELECTOR UI ---
+        const ListSelector = {
+            container: document.getElementById('games-list'),
             
             init() {
-                this.ctx = this.canvas.getContext('2d');
-                this.resize();
-                window.addEventListener('resize', () => this.resize());
-                
-                // Mouse/Touch Drag
-                let startY = 0;
-                let isDragging = false;
-                
-                const onDown = (y) => { startY = y; isDragging = true; };
-                const onMove = (y) => {
-                    if (!isDragging) return;
-                    const delta = (y - startY) * 0.005;
-                    this.targetAngle -= delta;
-                    startY = y;
-                };
-                const onUp = () => {
-                    isDragging = false;
-                    // Snap to nearest
-                    const step = (Math.PI * 2) / GAMES.length;
-                    const snap = Math.round(this.targetAngle / step) * step;
-                    this.targetAngle = snap;
-                };
-
-                this.canvas.addEventListener('mousedown', e => onDown(e.clientY));
-                window.addEventListener('mousemove', e => onMove(e.clientY));
-                window.addEventListener('mouseup', onUp);
-                
-                this.canvas.addEventListener('touchstart', e => onDown(e.touches[0].clientY));
-                window.addEventListener('touchmove', e => onMove(e.touches[0].clientY));
-                window.addEventListener('touchend', onUp);
-                
-                this.loop();
+                this.render();
             },
             
-            resize() {
-                this.canvas.width = this.canvas.offsetWidth;
-                this.canvas.height = this.canvas.offsetHeight;
-            },
-            
-            loop() {
-                // Smooth Lerp
-                this.angle += (this.targetAngle - this.angle) * 0.1;
-                
-                this.draw();
-                
-                // Calculate selected
-                const step = (Math.PI * 2) / GAMES.length;
-                let norm = (this.angle % (Math.PI * 2));
-                if (norm < 0) norm += Math.PI * 2;
-                
-                // The index calculation depends on rotation direction, simplified here:
-                const index = Math.round(this.angle / step) % GAMES.length;
-                this.selectedIdx = (index < 0 ? index + GAMES.length : index); // Wrap
-                
-                const game = GAMES[this.selectedIdx];
-                const btn = document.getElementById('play-btn');
-                btn.innerText = game.disabled ? "PRONTO" : `JUGAR ${game.name}`;
-                btn.disabled = !!game.disabled;
-                
-                requestAnimationFrame(() => this.loop());
-            },
-            
-            draw() {
-                const w = this.canvas.width;
-                const h = this.canvas.height;
-                // Centered wheel for better visibility on all screens
-                const cx = w / 2; 
-                const cy = h / 2;
-                // Responsive radius
-                const radius = Math.min(w, h) * 0.4;
-                
-                this.ctx.clearRect(0,0,w,h);
-                
-                const step = (Math.PI * 2) / GAMES.length;
-                
-                GAMES.forEach((game, i) => {
-                    const theta = i * step + this.angle;
+            render() {
+                this.container.innerHTML = '';
+                GAMES.forEach(game => {
+                    const card = document.createElement('div');
+                    card.className = `game-card ${game.disabled ? 'disabled' : ''}`;
+                    if (Arcade.activeGameId === game.id) card.classList.add('active');
                     
-                    // 3D-ish Projection
-                    const x = cx + Math.cos(theta) * radius * 0.8; // Wider spread
-                    const y = cy + Math.sin(theta) * radius;
-                    const scale = (Math.cos(theta) + 2) * 0.5; // Scale by depth
+                    card.innerHTML = `
+                        <div class="game-info">
+                            <h3>${game.name}</h3>
+                            <p>${game.disabled ? 'PRÓXIMAMENTE' : 'ARCADE CLASSIC'}</p>
+                        </div>
+                        <div class="play-icon">▶</div>
+                    `;
                     
-                    if (Math.cos(theta) > 0) { // Only draw front items
-                        this.ctx.save();
-                        this.ctx.translate(x, y);
-                        this.ctx.scale(scale, scale);
-                        
-                        // Text Background
-                        this.ctx.fillStyle = game.color + "44";
-                        this.ctx.fillRect(-100, -30, 200, 60);
-                        this.ctx.strokeStyle = game.color;
-                        this.ctx.strokeRect(-100, -30, 200, 60);
-                        
-                        // Text
-                        this.ctx.fillStyle = "#fff";
-                        this.ctx.font = "bold 20px Courier New";
-                        this.ctx.textAlign = "center";
-                        this.ctx.textBaseline = "middle";
-                        this.ctx.fillText(game.name, 0, 0);
-                        
-                        this.ctx.restore();
+                    if (!game.disabled) {
+                        card.onclick = () => Arcade.launch(game.id);
                     }
+                    
+                    this.container.appendChild(card);
                 });
-                
-                // Selection Indicator
-                this.ctx.fillStyle = "#fff";
-                this.ctx.beginPath();
-                // Arrow pointing from right
-                this.ctx.moveTo(w - 10, cy - 10);
-                this.ctx.lineTo(w - 30, cy);
-                this.ctx.lineTo(w - 10, cy + 10);
-                this.ctx.fill();
-                
-                // Arrow pointing from left (optional, creates bracket effect)
-                this.ctx.beginPath();
-                this.ctx.moveTo(10, cy - 10);
-                this.ctx.lineTo(30, cy);
-                this.ctx.lineTo(10, cy + 10);
-                this.ctx.fill();
+            },
+            
+            updateActive(id) {
+                const cards = this.container.querySelectorAll('.game-card');
+                cards.forEach((card, index) => {
+                    if (GAMES[index].id === id) card.classList.add('active');
+                    else card.classList.remove('active');
+                });
             }
         };
 
         // --- MAIN MANAGER ---
         const Arcade = {
             activeGame: null,
+            activeGameId: null,
             canvas: document.getElementById('game-canvas'),
+            idleScreen: document.getElementById('idle-screen'),
+            scoreOverlay: document.getElementById('score-overlay'),
             
             init() {
-                Wheel.init();
+                ListSelector.init();
                 
                 // Resize Canvas
                 const resize = () => {
@@ -822,18 +812,19 @@
                 };
                 window.addEventListener('resize', resize);
                 resize();
-                
-                // Play Button
-                document.getElementById('play-btn').addEventListener('click', () => {
-                    const gameId = GAMES[Wheel.selectedIdx].id;
-                    this.launch(gameId);
-                });
             },
             
             launch(id) {
                 if (this.activeGame) {
                     this.activeGame.stop();
                 }
+                
+                this.activeGameId = id;
+                ListSelector.updateActive(id);
+                
+                // Hide Idle Screen
+                this.idleScreen.style.display = 'none';
+                this.scoreOverlay.style.display = 'block';
                 
                 // Clear Canvas
                 const ctx = this.canvas.getContext('2d');
