@@ -40,6 +40,7 @@ let config = {
     ciderUrl: "http://localhost:10767",
     mockCider: false,
     requireVipForSr: false,
+    allowPointsCommand: true, // Nuevo: Permitir !puntos
     commandAliases: ["!sr", "!pedir", "!cancion"]
 };
 
@@ -764,7 +765,9 @@ function setupListeners() {
         const requireVip = config.requireVipForSr !== false;
 
         // --- COMANDO DE PUNTOS ---
-        if (lowerMsg === '!puntos' || lowerMsg === '!points' || lowerMsg.startsWith('!puntos ') || lowerMsg.startsWith('!points ')) {
+        const isPointsCmd = lowerMsg === '!puntos' || lowerMsg === '!points' || lowerMsg.startsWith('!puntos ') || lowerMsg.startsWith('!points ');
+        
+        if (isPointsCmd && config.allowPointsCommand !== false) {
             const resolved = await getCanonicalUserKey(userId, displayName);
             const key = resolved.userKey || userId;
             const dn = resolved.displayName || displayName;
