@@ -326,6 +326,8 @@
                     padding: 15px;
                     text-shadow: 0 1px 3px rgba(0,0,0,0.3);
                     box-shadow: 0 5px 20px rgba(255, 0, 80, 0.4);
+                    margin-top: auto; /* Push to bottom of container if possible */
+                    margin-bottom: 50px;
                 }
 
                 /* Controles Móviles */
@@ -385,6 +387,13 @@
             }
             .arcade-content.game-active .selector-section {
                 display: none;
+            }
+
+            /* NEW: Selected Mode (Ready to Play) */
+            .preview-section.selected-mode {
+                flex: 1; /* Expand to full height */
+                border-radius: 20px;
+                transition: all 0.5s ease;
             }
         }
 
@@ -555,7 +564,13 @@
                 const el = document.createElement('div');
                 el.className = `game-item ${index === activeIndex ? 'active' : ''}`;
                 el.textContent = game;
-                el.onclick = () => setActive(index);
+                el.onclick = () => {
+                    if (index === activeIndex) {
+                        confirmSelection();
+                    } else {
+                        setActive(index);
+                    }
+                };
                 wheel.appendChild(el);
             });
             updatePreview();
@@ -581,13 +596,36 @@
         function updatePreview() {
             const selected = games[activeIndex];
             previewTitle.textContent = selected;
+            
+            // Default: Hide Play Button initially to not block view
+            playBtn.style.display = 'none';
+            
             if (selected === 'SNAKE' || selected === 'PING PONG' || selected === 'GALAGA') {
-                playBtn.style.display = 'inline-block';
                 comingSoonContainer.style.display = 'none';
+                // Show hint or just title
             } else {
-                playBtn.style.display = 'none';
                 comingSoonContainer.style.display = 'block';
             }
+        }
+        
+        // --- SELECTION LOGIC ---
+        function confirmSelection() {
+            // Lock in game
+            const selected = games[activeIndex];
+            if (selected !== 'SNAKE' && selected !== 'PING PONG' && selected !== 'GALAGA') return; // Ignore coming soon
+
+            // UI Transition
+            document.querySelector('.selector-section').style.display = 'none'; // Hide wheel
+            playBtn.style.display = 'inline-block'; // Show Play Button
+            playBtn.style.transform = 'scale(1.2)'; // Emphasis
+            
+            // Adjust Preview Section to fill space
+            const previewSec = document.querySelector('.preview-section');
+            previewSec.classList.add('selected-mode');
+            
+            // Update Back Button behavior
+            const backBtn = document.querySelector('.back-btn');
+            backBtn.setAttribute('data-mode', 'selected');
         }
 
         // --- GAME CONTROLLER ---
@@ -1094,9 +1132,21 @@
         
         // Smart Back Button (Exit Game vs Exit Arcade)
         document.querySelector('.back-btn').addEventListener('click', (e) => {
+            const btn = e.currentTarget;
             if (isGameRunning) {
                 e.preventDefault();
                 exitGame();
+                return;
+            }
+            
+            if (btn.getAttribute('data-mode') === 'selected') {
+                e.preventDefault();
+                // Return to Wheel
+                document.querySelector('.selector-section').style.display = 'flex';
+                playBtn.style.display = 'none';
+                document.querySelector('.preview-section').classList.remove('selected-mode');
+                btn.removeAttribute('data-mode');
+                return;
             }
         });
 
