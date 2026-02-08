@@ -2,635 +2,814 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Arcade - Zero FM</title>
-    <link rel="stylesheet" href="styles.css?v=2.11">
     <style>
-        * { box-sizing: border-box; } /* Reset básico */
-        
-        /* Estilos específicos para Arcade */
-        body {
-            background-color: #000;
-            color: #fff;
-            font-family: 'Avenir', sans-serif;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            width: 100vw;
-            overflow-x: hidden;
-            overflow-y: auto; /* Permitir scroll siempre */
+        :root {
+            --neon-pink: #ff0050;
+            --neon-cyan: #00f2ea;
+            --bg-dark: #050508;
+            --panel-bg: rgba(20, 20, 25, 0.9);
         }
 
-        /* Fondo de orbs heredado */
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-dark);
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            overflow: hidden; /* App-like feel */
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- FONDO ANIMADO --- */
         .immersive-bg {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             z-index: -1;
             pointer-events: none;
-            overflow: hidden;
         }
         .orb {
             position: absolute;
             border-radius: 50%;
             filter: blur(80px);
-            opacity: 0.4;
-            animation: orbFloat 20s infinite ease-in-out;
+            opacity: 0.3;
+            animation: float 20s infinite ease-in-out;
         }
-        .orb-1 { top: -10%; left: -10%; width: 50vw; height: 50vw; background: #ff0050; animation-delay: 0s; }
-        .orb-2 { bottom: -10%; right: -10%; width: 60vw; height: 60vw; background: #00f2ea; animation-delay: -5s; }
-        .orb-3 { top: 40%; left: 40%; width: 40vw; height: 40vw; background: #8a2be2; animation-delay: -10s; }
-
-        @keyframes orbFloat {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            33% { transform: translate(30px, -50px) scale(1.1); }
-            66% { transform: translate(-20px, 20px) scale(0.9); }
+        .orb-1 { top: -10%; left: -10%; width: 60vw; height: 60vw; background: var(--neon-pink); }
+        .orb-2 { bottom: -10%; right: -10%; width: 70vw; height: 70vw; background: var(--neon-cyan); animation-delay: -5s; }
+        @keyframes float {
+            0%, 100% { transform: translate(0,0); }
+            50% { transform: translate(30px, -50px); }
         }
 
-        /* HEADER */
-        .arcade-header {
-            height: 100px;
+        /* --- LAYOUT PRINCIPAL --- */
+        #arcade-container {
+            flex: 1;
             display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-top: 10px;
-            margin-bottom: 20px;
-            flex-shrink: 0;
-            z-index: 10;
-        }
-        
-        svg text {
-            font-family: 'Courier New', monospace;
-            font-weight: 900;
-            font-size: 50px;
-            fill: transparent;
-            stroke: #fff;
-            stroke-width: 2px;
-            text-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 0 20px #ff0050;
-            animation: textGlow 3s infinite alternate;
-        }
-        
-        @keyframes textGlow {
-            0% { stroke: #fff; text-shadow: 0 0 10px #ff0050; }
-            100% { stroke: #ff0050; text-shadow: 0 0 20px #00f2ea, 0 0 40px #ff0050; }
-        }
-
-        /* MAIN GRID */
-        .games-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-            width: 90%;
-            max-width: 1200px;
-            padding-bottom: 50px;
-            z-index: 10;
-        }
-
-        .game-card {
-            background: rgba(20, 20, 30, 0.7);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 30px 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            backdrop-filter: blur(10px);
-            min-height: 180px;
+            width: 100%;
+            height: 100%;
             position: relative;
+        }
+
+        /* PANEL IZQUIERDO: MONITOR DE JUEGO */
+        #game-stage {
+            flex: 2;
+            position: relative;
+            background: #000;
+            border-right: 2px solid #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             overflow: hidden;
         }
 
-        .game-card:hover {
-            transform: translateY(-5px);
-            border-color: #ff0050;
-            box-shadow: 0 10px 30px rgba(255, 0, 80, 0.3);
-            background: rgba(30, 30, 45, 0.9);
-        }
-
-        .game-card h3 {
-            margin: 0 0 15px 0;
-            font-size: 24px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: #fff;
-        }
-
-        .game-card .play-btn {
-            background: linear-gradient(45deg, #ff0050, #ff0070);
-            color: white;
-            border: none;
-            padding: 10px 25px;
-            border-radius: 20px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            transition: transform 0.2s;
-        }
-        
-        .game-card:hover .play-btn {
-            transform: scale(1.1);
-        }
-
-        .game-card.disabled {
-            opacity: 0.6;
-            cursor: default;
-            border-color: #333;
-        }
-        
-        .game-card.disabled:hover {
-            transform: none;
-            box-shadow: none;
-        }
-        
-        .game-card.disabled .play-btn {
-            background: #444;
-            color: #888;
-        }
-
-        /* GAME OVERLAY (Fullscreen) */
-        #game-overlay {
-            display: none;
-            position: fixed;
+        /* Scanlines Effect */
+        #game-stage::after {
+            content: "";
+            position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: #000;
-            z-index: 2000;
-            flex-direction: column;
+            background: repeating-linear-gradient(0deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 1px, transparent 1px, transparent 2px);
+            pointer-events: none;
+            z-index: 50;
         }
 
-        #game-container {
+        canvas#game-canvas {
             width: 100%;
             height: 100%;
-            position: relative;
-            background: #000;
-        }
-
-        canvas {
             display: block;
-            width: 100%;
-            height: 100%;
+            image-rendering: pixelated;
         }
 
-        /* Botón Volver (Flotante) */
-        .back-btn {
-            position: fixed;
+        /* PANEL DERECHO: SELECTOR (RUEDA) */
+        #selector-panel {
+            flex: 1;
+            background: var(--panel-bg);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-left: 2px solid rgba(255,255,255,0.1);
+            max-width: 400px;
+        }
+
+        /* Header Curvo (SVG) */
+        .arcade-header {
+            position: absolute;
             top: 20px;
-            left: 20px;
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            width: 100%;
+            height: 100px;
             display: flex;
             justify-content: center;
-            align-items: center;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .arcade-header svg text {
+            font-size: 40px;
+            font-weight: 900;
+            fill: transparent;
+            stroke: #fff;
+            stroke-width: 1.5px;
+            text-shadow: 0 0 10px var(--neon-pink);
+        }
+
+        /* Canvas de la Rueda */
+        canvas#wheel-canvas {
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+            touch-action: none;
+        }
+        canvas#wheel-canvas:active { cursor: grabbing; }
+
+        /* Botón JUGAR (Overlay en el selector) */
+        #play-btn {
+            position: absolute;
+            bottom: 50px;
+            background: linear-gradient(90deg, var(--neon-pink), #ff0080);
             color: white;
-            text-decoration: none;
+            border: none;
+            padding: 15px 40px;
             font-size: 24px;
-            backdrop-filter: blur(5px);
-            z-index: 3000;
-            transition: all 0.2s;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 20px var(--neon-pink);
+            transition: transform 0.2s, filter 0.2s;
+            z-index: 30;
+            text-transform: uppercase;
         }
-        
-        .back-btn:hover {
-            background: rgba(255, 0, 80, 0.8);
-            transform: scale(1.1);
-        }
+        #play-btn:active { transform: scale(0.95); filter: brightness(1.2); }
+        #play-btn:disabled { background: #333; box-shadow: none; color: #888; cursor: not-allowed; }
 
-        /* Loading Screen for Visitors */
-        #visitor-overlay {
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 60vh;
-            text-align: center;
-            z-index: 100;
-        }
-
-        .coming-soon-msg { font-size: 24px; color: #ff0050; font-weight: bold; margin-bottom: 10px; }
-        .arcade-loading-text { 
-            color: #00ff00; 
-            font-family: monospace; 
-            font-size: 20px; 
-            animation: blink 1s infinite; 
-        }
-        @keyframes blink { 50% { opacity: 0; } }
-
-        /* HUD Controls */
-        .mobile-controls {
+        /* --- HUD MÓVIL (CONTROLES) --- */
+        #mobile-hud {
             display: none;
             position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 200px;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            height: 150px;
+            z-index: 100;
+            pointer-events: none; /* Let clicks pass through empty space */
+        }
+
+        .dpad-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 120px;
             height: 120px;
-            z-index: 2100;
-            pointer-events: none;
+            pointer-events: auto;
+        }
+
+        .action-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 80px;
+            height: 80px;
+            pointer-events: auto;
         }
 
         .dpad-btn {
             position: absolute;
-            width: 50px; height: 50px;
-            background: rgba(255, 255, 255, 0.15);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            color: white;
+            width: 40px; height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
             display: flex; justify-content: center; align-items: center;
-            font-size: 24px;
-            pointer-events: auto;
-            backdrop-filter: blur(4px);
+            font-size: 20px;
+            backdrop-filter: blur(5px);
+            border-radius: 5px;
         }
+        .dpad-btn:active { background: var(--neon-cyan); color: #000; }
         
-        .dpad-btn:active { background: rgba(255, 0, 80, 0.5); }
-        .btn-up { top: 0; left: 75px; }
-        .btn-down { bottom: 0; left: 75px; }
-        .btn-left { top: 35px; left: 15px; }
-        .btn-right { top: 35px; right: 15px; }
+        .btn-up { top: 0; left: 40px; }
+        .btn-down { bottom: 0; left: 40px; }
+        .btn-left { top: 40px; left: 0; }
+        .btn-right { top: 40px; right: 0; }
 
-        @media (max-width: 768px) {
-            .mobile-controls { display: block; }
-            .games-grid { grid-template-columns: 1fr; width: 85%; }
-            .game-card { min-height: 120px; flex-direction: row; justify-content: space-between; padding: 20px; }
-            .game-card h3 { margin: 0; font-size: 18px; text-align: left; }
-            .game-card .play-btn { padding: 8px 20px; font-size: 12px; }
+        .action-btn {
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            background: rgba(255, 0, 80, 0.2);
+            border: 2px solid var(--neon-pink);
+            color: #fff;
+            font-weight: bold;
+            font-size: 18px;
+            display: flex; justify-content: center; align-items: center;
+            backdrop-filter: blur(5px);
+        }
+        .action-btn:active { background: var(--neon-pink); box-shadow: 0 0 20px var(--neon-pink); }
+
+        /* Botón Volver */
+        .back-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 40px; height: 40px;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid #fff;
+            border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            color: #fff; text-decoration: none;
+            z-index: 200;
+            font-size: 20px;
+        }
+
+        /* --- PANTALLA DE CARGA (VISITANTES) --- */
+        #visitor-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            z-index: 999;
+            text-align: center;
+        }
+        .loading-text { color: #0f0; font-size: 24px; animation: blink 1s infinite; margin-top: 20px; }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        /* --- RESPONSIVE MOBILE --- */
+        @media (max-width: 1024px) {
+            #arcade-container {
+                flex-direction: column; /* Apilar verticalmente */
+            }
+
+            #game-stage {
+                flex: 1.5; /* Más espacio al juego */
+                width: 100%;
+                border-right: none;
+                border-bottom: 2px solid #333;
+            }
+
+            #selector-panel {
+                flex: 1;
+                width: 100%;
+                max-width: none;
+                border-left: none;
+            }
+
+            #mobile-hud {
+                display: block; /* Mostrar controles en móvil */
+            }
+
+            /* Ajuste de controles */
+            .dpad-container { bottom: 10px; left: 10px; transform: scale(0.9); }
+            .action-container { bottom: 10px; right: 10px; transform: scale(0.9); }
+            
+            #play-btn {
+                bottom: 20px;
+                padding: 10px 30px;
+                font-size: 20px;
+            }
         }
     </style>
 </head>
 <body>
 
-    <!-- Fondo -->
     <div class="immersive-bg">
         <div class="orb orb-1"></div>
         <div class="orb orb-2"></div>
-        <div class="orb orb-3"></div>
     </div>
 
-    <!-- Botón Volver -->
-    <a href="lista.html" class="back-btn" id="main-back-btn">←</a>
-
-    <!-- Header -->
-    <div class="arcade-header">
-        <svg width="300" height="100" viewBox="0 0 300 100">
-            <path id="curve" d="M30,80 Q150,10 270,80" fill="transparent"/>
-            <text width="300">
-                <textPath xlink:href="#curve" startOffset="50%" text-anchor="middle">
-                    ARCADE
-                </textPath>
-            </text>
-        </svg>
+    <!-- Acceso Restringido -->
+    <div id="visitor-overlay" style="display: none;">
+        <h1 style="color: #ff0050; font-size: 30px;">¡MUY PRONTO! 🫢</h1>
+        <div class="loading-text">LOADING...</div>
+        <a href="lista.html" style="color: #fff; margin-top: 30px; text-decoration: underline;">Volver a la lista</a>
     </div>
 
-    <!-- Visitor View -->
-    <div id="visitor-overlay">
-        <div class="coming-soon-msg">¡Muy pronto! 🫢</div>
-        <div class="arcade-loading-text">LOADING...</div>
-    </div>
+    <a href="lista.html" class="back-btn" id="exit-btn">←</a>
 
-    <!-- Games Grid (Admin Only) -->
-    <div class="games-grid" id="games-grid">
-        <!-- Cards generated by JS -->
-    </div>
-
-    <!-- Game Overlay (Fullscreen) -->
-    <div id="game-overlay">
-        <a href="#" class="back-btn" id="exit-game-btn" style="z-index: 3001;">✕</a>
-        <div id="game-container">
+    <div id="arcade-container">
+        <!-- IZQUIERDA: PANTALLA DE JUEGO -->
+        <div id="game-stage">
             <canvas id="game-canvas"></canvas>
-            <div id="score-display" style="position: absolute; top: 20px; right: 20px; color: #fff; font-size: 20px; font-weight: bold; pointer-events: none;">SCORE: 0</div>
             
-            <div id="game-over-screen" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); flex-direction: column; justify-content: center; align-items: center; z-index: 50;">
-                <h2 style="color: #ff0050; font-size: 40px; margin-bottom: 20px;">GAME OVER</h2>
-                <div id="final-score" style="color: #fff; font-size: 24px; margin-bottom: 30px;">Score: 0</div>
-                <button id="restart-btn" style="background: #00f2ea; border: none; padding: 15px 40px; border-radius: 30px; font-size: 18px; font-weight: bold; cursor: pointer; color: #000;">REINTENTAR</button>
+            <!-- HUD Táctil -->
+            <div id="mobile-hud">
+                <div class="dpad-container">
+                    <div class="dpad-btn btn-up" data-key="ArrowUp">▲</div>
+                    <div class="dpad-btn btn-down" data-key="ArrowDown">▼</div>
+                    <div class="dpad-btn btn-left" data-key="ArrowLeft">◀</div>
+                    <div class="dpad-btn btn-right" data-key="ArrowRight">▶</div>
+                </div>
+                <div class="action-container">
+                    <div class="action-btn" data-key="Space">🔥</div>
+                </div>
             </div>
+            
+            <!-- Game Over / Score Overlay -->
+            <div id="score-overlay" style="position: absolute; top: 10px; right: 10px; font-size: 20px; font-weight: bold; text-shadow: 2px 2px 0 #000;"></div>
+        </div>
 
-            <!-- Mobile HUD -->
-            <div id="mobile-controls" class="mobile-controls">
-                <div class="dpad-btn btn-up" data-key="ArrowUp">↑</div>
-                <div class="dpad-btn btn-down" data-key="ArrowDown">↓</div>
-                <div class="dpad-btn btn-left" data-key="ArrowLeft">←</div>
-                <div class="dpad-btn btn-right" data-key="ArrowRight">→</div>
+        <!-- DERECHA: SELECTOR -->
+        <div id="selector-panel">
+            <div class="arcade-header">
+                <svg width="300" height="100" viewBox="0 0 300 100">
+                    <path id="curve" d="M30,80 Q150,10 270,80" fill="transparent"/>
+                    <text width="300">
+                        <textPath xlink:href="#curve" startOffset="50%" text-anchor="middle">
+                            ARCADE
+                        </textPath>
+                    </text>
+                </svg>
             </div>
+            
+            <canvas id="wheel-canvas"></canvas>
+            
+            <button id="play-btn">JUGAR</button>
         </div>
     </div>
 
     <script>
-        // --- GAME LIST ---
-        const gamesList = [
-            { id: 'SNAKE', name: 'Snake Classic', active: true },
-            { id: 'PING PONG', name: 'Neon Pong', active: true },
-            { id: 'GALAGA', name: 'Space Shooter', active: true },
-            { id: 'COMING1', name: 'Juego 4', active: false },
-            { id: 'COMING2', name: 'Juego 5', active: false },
-            { id: 'COMING3', name: 'Juego 6', active: false },
+        /**
+         * ARCADE SYSTEM CORE
+         * Handles Game Loop, State Management, and Input
+         */
+        
+        // --- CONFIG ---
+        const GAMES = [
+            { id: 'SNAKE', name: "SNAKE", color: "#00f2ea" },
+            { id: 'PONG', name: "NEON PONG", color: "#ff0050" },
+            { id: 'GALAGA', name: "GALAGA", color: "#8a2be2" },
+            { id: 'COMING1', name: "COMING SOON", color: "#555", disabled: true },
+            { id: 'COMING2', name: "COMING SOON", color: "#555", disabled: true }
         ];
 
-        // --- ELEMENTS ---
-        const grid = document.getElementById('games-grid');
-        const visitorOverlay = document.getElementById('visitor-overlay');
-        const gameOverlay = document.getElementById('game-overlay');
-        const mainBackBtn = document.getElementById('main-back-btn');
-        const exitGameBtn = document.getElementById('exit-game-btn');
-        
         // --- AUTH CHECK ---
         const isAdmin = localStorage.getItem('isAdminMode') === 'true';
-
         if (!isAdmin) {
-            grid.style.display = 'none';
-            visitorOverlay.style.display = 'flex';
-        } else {
-            renderGrid();
+            document.getElementById('visitor-overlay').style.display = 'flex';
+            document.getElementById('arcade-container').style.display = 'none';
         }
 
-        function renderGrid() {
-            grid.innerHTML = '';
-            gamesList.forEach(game => {
-                const card = document.createElement('div');
-                card.className = `game-card ${game.active ? '' : 'disabled'}`;
-                card.innerHTML = `
-                    <h3>${game.name}</h3>
-                    <button class="play-btn">${game.active ? 'JUGAR' : 'PRONTO'}</button>
-                `;
+        // --- INPUT SYSTEM ---
+        const Input = {
+            keys: {},
+            init() {
+                window.addEventListener('keydown', e => this.keys[e.code] = true);
+                window.addEventListener('keyup', e => this.keys[e.code] = false);
                 
-                if (game.active) {
-                    card.onclick = () => launchGame(game.id);
+                // Touch Controls
+                const touchBtns = document.querySelectorAll('.dpad-btn, .action-btn');
+                touchBtns.forEach(btn => {
+                    const code = btn.dataset.key === 'Space' ? 'Space' : btn.dataset.key;
+                    
+                    const press = (e) => { e.preventDefault(); this.keys[code] = true; };
+                    const release = (e) => { e.preventDefault(); this.keys[code] = false; };
+                    
+                    btn.addEventListener('touchstart', press);
+                    btn.addEventListener('touchend', release);
+                    btn.addEventListener('mousedown', press);
+                    btn.addEventListener('mouseup', release);
+                });
+            },
+            isPressed(code) { return this.keys[code] === true; }
+        };
+        Input.init();
+
+        // --- GAME BASE CLASS ---
+        class Game {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.width = canvas.width;
+                this.height = canvas.height;
+                this.running = false;
+                this.score = 0;
+            }
+            start() { this.running = true; this.loop(); }
+            stop() { this.running = false; }
+            loop() {
+                if (!this.running) return;
+                this.update();
+                this.draw();
+                requestAnimationFrame(() => this.loop());
+            }
+            update() {}
+            draw() {}
+            gameOver(msg) {
+                this.stop();
+                this.ctx.fillStyle = "rgba(0,0,0,0.8)";
+                this.ctx.fillRect(0,0,this.width, this.height);
+                this.ctx.fillStyle = "#fff";
+                this.ctx.font = "30px Courier New";
+                this.ctx.textAlign = "center";
+                this.ctx.fillText("GAME OVER", this.width/2, this.height/2 - 20);
+                this.ctx.font = "20px Courier New";
+                this.ctx.fillText(msg || `Score: ${this.score}`, this.width/2, this.height/2 + 20);
+            }
+        }
+
+        // --- SNAKE GAME ---
+        class SnakeGame extends Game {
+            constructor(canvas) {
+                super(canvas);
+                this.grid = 20;
+                this.snake = [{x: 5, y: 5}, {x: 4, y: 5}];
+                this.food = {x: 10, y: 10};
+                this.dir = {x: 1, y: 0};
+                this.nextDir = {x: 1, y: 0};
+                this.frameCount = 0;
+                this.speed = 5; // Lower is faster (frames to skip)
+            }
+            update() {
+                // Input
+                if (Input.isPressed('ArrowUp') && this.dir.y === 0) this.nextDir = {x: 0, y: -1};
+                if (Input.isPressed('ArrowDown') && this.dir.y === 0) this.nextDir = {x: 0, y: 1};
+                if (Input.isPressed('ArrowLeft') && this.dir.x === 0) this.nextDir = {x: -1, y: 0};
+                if (Input.isPressed('ArrowRight') && this.dir.x === 0) this.nextDir = {x: 1, y: 0};
+
+                // Move (throttled)
+                this.frameCount++;
+                if (this.frameCount < this.speed) return;
+                this.frameCount = 0;
+
+                this.dir = this.nextDir;
+                const head = {x: this.snake[0].x + this.dir.x, y: this.snake[0].y + this.dir.y};
+
+                // Collisions
+                const cols = Math.floor(this.width / this.grid);
+                const rows = Math.floor(this.height / this.grid);
+                
+                if (head.x < 0 || head.x >= cols || head.y < 0 || head.y >= rows || this.snake.some(p => p.x === head.x && p.y === head.y)) {
+                    this.gameOver();
+                    return;
                 }
-                grid.appendChild(card);
-            });
-        }
 
-        // --- GAME LAUNCHER ---
-        let currentGame = null;
-        let isGameRunning = false;
-
-        function launchGame(gameId) {
-            currentGame = gameId;
-            isGameRunning = true;
-            
-            // UI Switch
-            grid.style.display = 'none';
-            mainBackBtn.style.display = 'none';
-            document.querySelector('.arcade-header').style.display = 'none'; // Hide header for full immersion
-            gameOverlay.style.display = 'flex';
-
-            // Start Logic
-            resizeCanvas();
-            if (gameId === 'SNAKE') startSnakeGame();
-            else if (gameId === 'PING PONG') startPongGame();
-            else if (gameId === 'GALAGA') startGalagaGame();
-        }
-
-        function closeGame() {
-            isGameRunning = false;
-            currentGame = null;
-            clearInterval(gameInterval);
-            
-            // UI Switch
-            gameOverlay.style.display = 'none';
-            grid.style.display = 'grid'; // Restore grid
-            mainBackBtn.style.display = 'flex';
-            document.querySelector('.arcade-header').style.display = 'flex';
-        }
-
-        exitGameBtn.onclick = (e) => {
-            e.preventDefault();
-            closeGame();
-        };
-
-        // --- GAME LOGIC VARS (Shared) ---
-        const gameCanvas = document.getElementById('game-canvas');
-        const ctx = gameCanvas.getContext('2d');
-        const scoreDisplay = document.getElementById('score-display');
-        const gameOverScreen = document.getElementById('game-over-screen');
-        const finalScoreDisplay = document.getElementById('final-score');
-        const restartBtn = document.getElementById('restart-btn');
-        let gameInterval;
-
-        restartBtn.onclick = () => {
-            gameOverScreen.style.display = 'none';
-            if (currentGame === 'SNAKE') startSnakeGame();
-            else if (currentGame === 'PING PONG') startPongGame();
-            else if (currentGame === 'GALAGA') startGalagaGame();
-        };
-
-        function resizeCanvas() {
-            gameCanvas.width = window.innerWidth;
-            gameCanvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', () => {
-            if(isGameRunning) resizeCanvas();
-        });
-
-        // --- SNAKE ---
-        let snake = [], food = {}, direction = 'right', nextDirection = 'right', score = 0, gridSize = 20;
-        
-        function startSnakeGame() {
-            gridSize = Math.floor(Math.min(gameCanvas.width, gameCanvas.height) / 25);
-            snake = [{x: 5, y: 5}, {x: 4, y: 5}, {x: 3, y: 5}];
-            direction = 'right'; nextDirection = 'right'; score = 0;
-            scoreDisplay.textContent = `SCORE: 0`;
-            placeFood();
-            gameInterval = setInterval(gameLoopSnake, 100);
-        }
-
-        function placeFood() {
-            const cols = Math.floor(gameCanvas.width / gridSize);
-            const rows = Math.floor(gameCanvas.height / gridSize);
-            food = {
-                x: Math.floor(Math.random() * cols),
-                y: Math.floor(Math.random() * rows)
-            };
-        }
-
-        function gameLoopSnake() {
-            direction = nextDirection;
-            const head = {x: snake[0].x, y: snake[0].y};
-            if(direction === 'right') head.x++;
-            else if(direction === 'left') head.x--;
-            else if(direction === 'up') head.y--;
-            else if(direction === 'down') head.y++;
-
-            const cols = Math.floor(gameCanvas.width / gridSize);
-            const rows = Math.floor(gameCanvas.height / gridSize);
-
-            if (head.x < 0 || head.x >= cols || head.y < 0 || head.y >= rows || snake.some(p => p.x === head.x && p.y === head.y)) {
-                gameOver(`Score: ${score}`);
-                return;
-            }
-
-            snake.unshift(head);
-            if (head.x === food.x && head.y === food.y) {
-                score += 10;
-                scoreDisplay.textContent = `SCORE: ${score}`;
-                placeFood();
-            } else snake.pop();
-
-            // Draw
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
-            
-            ctx.fillStyle = '#00f2ea';
-            snake.forEach(p => ctx.fillRect(p.x*gridSize, p.y*gridSize, gridSize-2, gridSize-2));
-            
-            ctx.fillStyle = '#ff0050';
-            ctx.fillRect(food.x*gridSize, food.y*gridSize, gridSize-2, gridSize-2);
-        }
-
-        // --- PONG ---
-        let playerX = 0, aiX = 0, ballX = 0, ballY = 0, ballSX = 5, ballSY = 5, pScore = 0, aiScore = 0;
-        let paddleW = 100, paddleH = 15;
-
-        function startPongGame() {
-            paddleW = gameCanvas.width * 0.25; // Responsive paddle
-            playerX = (gameCanvas.width - paddleW)/2;
-            aiX = playerX;
-            ballX = gameCanvas.width/2;
-            ballY = gameCanvas.height/2;
-            pScore = 0; aiScore = 0;
-            scoreDisplay.textContent = `P: 0 | CPU: 0`;
-            gameInterval = setInterval(gameLoopPong, 16);
-        }
-
-        function gameLoopPong() {
-            ballX += ballSX; ballY += ballSY;
-
-            // Walls
-            if(ballX < 0 || ballX > gameCanvas.width) ballSX *= -1;
-
-            // AI
-            const aiCenter = aiX + paddleW/2;
-            if(aiCenter < ballX - 20) aiX += 7;
-            else if(aiCenter > ballX + 20) aiX -= 7;
-            aiX = Math.max(0, Math.min(gameCanvas.width - paddleW, aiX));
-
-            // Paddles
-            // Player Bottom
-            if(ballY > gameCanvas.height - 40 && ballY < gameCanvas.height - 10 && ballX > playerX && ballX < playerX + paddleW) {
-                ballSY = -Math.abs(ballSY);
-                ballSX += (Math.random() - 0.5) * 4;
-            }
-            // AI Top
-            if(ballY < 40 && ballY > 10 && ballX > aiX && ballX < aiX + paddleW) {
-                ballSY = Math.abs(ballSY);
-            }
-
-            // Points
-            if(ballY < 0) { pScore++; resetBall(); }
-            if(ballY > gameCanvas.height) { aiScore++; resetBall(); }
-            scoreDisplay.textContent = `P: ${pScore} | CPU: ${aiScore}`;
-
-            // Draw
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
-            ctx.fillStyle = '#00f2ea'; // Player
-            ctx.fillRect(playerX, gameCanvas.height - 30, paddleW, paddleH);
-            ctx.fillStyle = '#ff0050'; // AI
-            ctx.fillRect(aiX, 20, paddleW, paddleH);
-            ctx.fillStyle = '#fff';
-            ctx.beginPath(); ctx.arc(ballX, ballY, 8, 0, Math.PI*2); ctx.fill();
-        }
-
-        function resetBall() {
-            ballX = gameCanvas.width/2; ballY = gameCanvas.height/2;
-            ballSY = 5 * (Math.random() > 0.5 ? 1 : -1);
-        }
-
-        // --- GALAGA (Simplified) ---
-        let shipX = 0, bullets = [], enemies = [], gScore = 0;
-        
-        function startGalagaGame() {
-            shipX = gameCanvas.width/2;
-            bullets = []; enemies = []; gScore = 0;
-            spawnEnemies();
-            gameInterval = setInterval(gameLoopGalaga, 16);
-        }
-
-        function spawnEnemies() {
-            for(let i=0; i<5; i++) {
-                for(let j=0; j<3; j++) {
-                    enemies.push({
-                        x: 50 + i * 60, y: 50 + j * 50, w: 40, h: 40, active: true, dir: 1
-                    });
+                this.snake.unshift(head);
+                
+                // Eat Food
+                if (head.x === this.food.x && head.y === this.food.y) {
+                    this.score += 10;
+                    this.food = {
+                        x: Math.floor(Math.random() * cols),
+                        y: Math.floor(Math.random() * rows)
+                    };
+                } else {
+                    this.snake.pop();
                 }
             }
+            draw() {
+                this.ctx.fillStyle = "#000";
+                this.ctx.fillRect(0, 0, this.width, this.height);
+                
+                // Snake
+                this.ctx.fillStyle = "#00f2ea";
+                this.snake.forEach(p => this.ctx.fillRect(p.x*this.grid, p.y*this.grid, this.grid-1, this.grid-1));
+                
+                // Food
+                this.ctx.fillStyle = "#ff0050";
+                this.ctx.fillRect(this.food.x*this.grid, this.food.y*this.grid, this.grid-1, this.grid-1);
+                
+                // Score
+                document.getElementById('score-overlay').innerText = `SCORE: ${this.score}`;
+            }
         }
 
-        function gameLoopGalaga() {
-            // Logic would go here (similar to previous implementation but simplified for brevity in this refactor)
-            // Re-using simplified render for now to prove concept
-            
-            // Player
-            if(keys['ArrowLeft']) shipX -= 5;
-            if(keys['ArrowRight']) shipX += 5;
-            
-            // Draw
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
-            
-            // Ship
-            ctx.fillStyle = '#00f2ea';
-            ctx.fillRect(shipX, gameCanvas.height - 50, 40, 40);
+        // --- PONG GAME ---
+        class PongGame extends Game {
+            constructor(canvas) {
+                super(canvas);
+                this.paddleW = 100; this.paddleH = 15;
+                this.p1 = {x: this.width/2 - 50, y: this.height - 30};
+                this.ai = {x: this.width/2 - 50, y: 20};
+                this.ball = {x: this.width/2, y: this.height/2, vx: 5, vy: 5, r: 8};
+            }
+            update() {
+                // Player Move
+                if (Input.isPressed('ArrowLeft')) this.p1.x -= 8;
+                if (Input.isPressed('ArrowRight')) this.p1.x += 8;
+                this.p1.x = Math.max(0, Math.min(this.width - this.paddleW, this.p1.x));
 
-            // Enemies
-            enemies.forEach(e => {
-                if(e.active) {
-                    ctx.fillStyle = '#ff0050';
-                    ctx.fillRect(e.x, e.y, e.w, e.h);
+                // Ball Move
+                this.ball.x += this.ball.vx;
+                this.ball.y += this.ball.vy;
+
+                // Wall Bounce
+                if (this.ball.x < 0 || this.ball.x > this.width) this.ball.vx *= -1;
+
+                // Paddle Bounce
+                // Player
+                if (this.ball.y > this.p1.y && this.ball.y < this.p1.y + this.paddleH && 
+                    this.ball.x > this.p1.x && this.ball.x < this.p1.x + this.paddleW) {
+                    this.ball.vy = -Math.abs(this.ball.vy);
+                    this.ball.vx += (Math.random() - 0.5) * 4; // Spin
+                }
+                // AI
+                if (this.ball.y < this.ai.y + this.paddleH && this.ball.y > this.ai.y &&
+                    this.ball.x > this.ai.x && this.ball.x < this.ai.x + this.paddleW) {
+                    this.ball.vy = Math.abs(this.ball.vy);
+                }
+
+                // AI Move
+                const center = this.ai.x + this.paddleW/2;
+                if (center < this.ball.x - 20) this.ai.x += 6;
+                else if (center > this.ball.x + 20) this.ai.x -= 6;
+                this.ai.x = Math.max(0, Math.min(this.width - this.paddleW, this.ai.x));
+
+                // Point
+                if (this.ball.y < 0 || this.ball.y > this.height) {
+                    this.ball.x = this.width/2; 
+                    this.ball.y = this.height/2;
+                    this.ball.vy *= -1;
+                    if (this.ball.y < 0) this.score++;
+                }
+                
+                document.getElementById('score-overlay').innerText = `SCORE: ${this.score}`;
+            }
+            draw() {
+                this.ctx.fillStyle = "#000";
+                this.ctx.fillRect(0,0,this.width,this.height);
+                
+                // Paddles
+                this.ctx.fillStyle = "#00f2ea";
+                this.ctx.fillRect(this.p1.x, this.p1.y, this.paddleW, this.paddleH);
+                this.ctx.fillStyle = "#ff0050";
+                this.ctx.fillRect(this.ai.x, this.ai.y, this.paddleW, this.paddleH);
+                
+                // Ball
+                this.ctx.fillStyle = "#fff";
+                this.ctx.beginPath();
+                this.ctx.arc(this.ball.x, this.ball.y, this.ball.r, 0, Math.PI*2);
+                this.ctx.fill();
+            }
+        }
+
+        // --- GALAGA GAME ---
+        class GalagaGame extends Game {
+            constructor(canvas) {
+                super(canvas);
+                this.ship = {x: this.width/2, y: this.height - 50, w: 30, h: 30};
+                this.bullets = [];
+                this.enemies = [];
+                this.spawnEnemies();
+                this.lastShot = 0;
+            }
+            spawnEnemies() {
+                for(let i=0; i<6; i++) {
+                    for(let j=0; j<3; j++) {
+                        this.enemies.push({
+                            x: 50 + i * 50, y: 50 + j * 40, w: 30, h: 30,
+                            active: true, dir: 1
+                        });
+                    }
+                }
+            }
+            update() {
+                // Ship Move
+                if (Input.isPressed('ArrowLeft')) this.ship.x -= 5;
+                if (Input.isPressed('ArrowRight')) this.ship.x += 5;
+                this.ship.x = Math.max(0, Math.min(this.width - this.ship.w, this.ship.x));
+
+                // Shoot (Space or Action Btn)
+                if (Input.isPressed('Space') || Input.isPressed('ArrowUp')) {
+                    const now = Date.now();
+                    if (now - this.lastShot > 300) {
+                        this.bullets.push({x: this.ship.x + 13, y: this.ship.y, active: true});
+                        this.lastShot = now;
+                    }
+                }
+
+                // Bullets
+                this.bullets.forEach(b => { b.y -= 8; if(b.y < 0) b.active = false; });
+                this.bullets = this.bullets.filter(b => b.active);
+
+                // Enemies
+                let hitWall = false;
+                this.enemies.forEach(e => {
+                    if (!e.active) return;
                     e.x += 2 * e.dir;
-                    if(e.x > gameCanvas.width - 50 || e.x < 10) e.dir *= -1;
+                    if (e.x > this.width - 40 || e.x < 10) hitWall = true;
+                    
+                    // Collision
+                    this.bullets.forEach(b => {
+                        if (b.active && b.x > e.x && b.x < e.x + e.w && b.y > e.y && b.y < e.y + e.h) {
+                            e.active = false;
+                            b.active = false;
+                            this.score += 100;
+                        }
+                    });
+                });
+
+                if (hitWall) {
+                    this.enemies.forEach(e => { e.dir *= -1; e.y += 10; });
                 }
-            });
-        }
 
-        function gameOver(msg) {
-            clearInterval(gameInterval);
-            isGameRunning = false;
-            finalScoreDisplay.textContent = msg;
-            gameOverScreen.style.display = 'flex';
-        }
-
-        // --- CONTROLS ---
-        const keys = {};
-        window.addEventListener('keydown', e => {
-            keys[e.key] = true;
-            if(currentGame === 'SNAKE') {
-                if(e.key === 'ArrowUp' && direction !== 'down') nextDirection = 'up';
-                if(e.key === 'ArrowDown' && direction !== 'up') nextDirection = 'down';
-                if(e.key === 'ArrowLeft' && direction !== 'right') nextDirection = 'left';
-                if(e.key === 'ArrowRight' && direction !== 'left') nextDirection = 'right';
+                if (this.enemies.every(e => !e.active)) {
+                    this.spawnEnemies(); // Next level
+                }
+                
+                document.getElementById('score-overlay').innerText = `SCORE: ${this.score}`;
             }
-        });
-        window.addEventListener('keyup', e => keys[e.key] = false);
+            draw() {
+                this.ctx.fillStyle = "#000";
+                this.ctx.fillRect(0,0,this.width,this.height);
 
-        // Mobile Touch
-        document.querySelectorAll('.dpad-btn').forEach(btn => {
-            btn.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                const k = btn.dataset.key;
-                keys[k] = true;
-                // Snake direct turn
-                if(currentGame === 'SNAKE') {
-                    if(k === 'ArrowUp' && direction !== 'down') nextDirection = 'up';
-                    if(k === 'ArrowDown' && direction !== 'up') nextDirection = 'down';
-                    if(k === 'ArrowLeft' && direction !== 'right') nextDirection = 'left';
-                    if(k === 'ArrowRight' && direction !== 'left') nextDirection = 'right';
+                // Ship
+                this.ctx.fillStyle = "#00f2ea";
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.ship.x + 15, this.ship.y);
+                this.ctx.lineTo(this.ship.x + 30, this.ship.y + 30);
+                this.ctx.lineTo(this.ship.x, this.ship.y + 30);
+                this.ctx.fill();
+
+                // Bullets
+                this.ctx.fillStyle = "#ffff00";
+                this.bullets.forEach(b => this.ctx.fillRect(b.x, b.y, 4, 10));
+
+                // Enemies
+                this.enemies.forEach(e => {
+                    if(e.active) {
+                        this.ctx.fillStyle = "#ff0050";
+                        this.ctx.fillRect(e.x, e.y, e.w, e.h);
+                        // Eyes
+                        this.ctx.fillStyle = "#000";
+                        this.ctx.fillRect(e.x + 5, e.y + 8, 5, 5);
+                        this.ctx.fillRect(e.x + 20, e.y + 8, 5, 5);
+                    }
+                });
+            }
+        }
+
+        // --- WHEEL SELECTOR UI ---
+        const Wheel = {
+            canvas: document.getElementById('wheel-canvas'),
+            ctx: null,
+            angle: 0,
+            targetAngle: 0,
+            selectedIdx: 0,
+            
+            init() {
+                this.ctx = this.canvas.getContext('2d');
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                
+                // Mouse/Touch Drag
+                let startY = 0;
+                let isDragging = false;
+                
+                const onDown = (y) => { startY = y; isDragging = true; };
+                const onMove = (y) => {
+                    if (!isDragging) return;
+                    const delta = (y - startY) * 0.005;
+                    this.targetAngle -= delta;
+                    startY = y;
+                };
+                const onUp = () => {
+                    isDragging = false;
+                    // Snap to nearest
+                    const step = (Math.PI * 2) / GAMES.length;
+                    const snap = Math.round(this.targetAngle / step) * step;
+                    this.targetAngle = snap;
+                };
+
+                this.canvas.addEventListener('mousedown', e => onDown(e.clientY));
+                window.addEventListener('mousemove', e => onMove(e.clientY));
+                window.addEventListener('mouseup', onUp);
+                
+                this.canvas.addEventListener('touchstart', e => onDown(e.touches[0].clientY));
+                window.addEventListener('touchmove', e => onMove(e.touches[0].clientY));
+                window.addEventListener('touchend', onUp);
+                
+                this.loop();
+            },
+            
+            resize() {
+                this.canvas.width = this.canvas.offsetWidth;
+                this.canvas.height = this.canvas.offsetHeight;
+            },
+            
+            loop() {
+                // Smooth Lerp
+                this.angle += (this.targetAngle - this.angle) * 0.1;
+                
+                this.draw();
+                
+                // Calculate selected
+                const step = (Math.PI * 2) / GAMES.length;
+                let norm = (this.angle % (Math.PI * 2));
+                if (norm < 0) norm += Math.PI * 2;
+                
+                // The index calculation depends on rotation direction, simplified here:
+                const index = Math.round(this.angle / step) % GAMES.length;
+                this.selectedIdx = (index < 0 ? index + GAMES.length : index); // Wrap
+                
+                const game = GAMES[this.selectedIdx];
+                const btn = document.getElementById('play-btn');
+                btn.innerText = game.disabled ? "PRONTO" : `JUGAR ${game.name}`;
+                btn.disabled = !!game.disabled;
+                
+                requestAnimationFrame(() => this.loop());
+            },
+            
+            draw() {
+                const w = this.canvas.width;
+                const h = this.canvas.height;
+                const cx = w * 0.8; // Right aligned wheel
+                const cy = h / 2;
+                const radius = h * 0.4;
+                
+                this.ctx.clearRect(0,0,w,h);
+                
+                const step = (Math.PI * 2) / GAMES.length;
+                
+                GAMES.forEach((game, i) => {
+                    const theta = i * step + this.angle;
+                    
+                    // 3D-ish Projection
+                    const x = cx + Math.cos(theta) * radius * 0.5; // Flattened X
+                    const y = cy + Math.sin(theta) * radius;
+                    const scale = (Math.cos(theta) + 2) * 0.5; // Scale by depth
+                    const alpha = (Math.cos(theta) + 1) * 0.5;
+                    
+                    if (Math.cos(theta) > 0) { // Only draw front items
+                        this.ctx.save();
+                        this.ctx.translate(x, y);
+                        this.ctx.scale(scale, scale);
+                        
+                        // Text Background
+                        this.ctx.fillStyle = game.color + "44";
+                        this.ctx.fillRect(-100, -30, 200, 60);
+                        this.ctx.strokeStyle = game.color;
+                        this.ctx.strokeRect(-100, -30, 200, 60);
+                        
+                        // Text
+                        this.ctx.fillStyle = "#fff";
+                        this.ctx.font = "bold 20px Courier New";
+                        this.ctx.textAlign = "center";
+                        this.ctx.textBaseline = "middle";
+                        this.ctx.fillText(game.name, 0, 0);
+                        
+                        this.ctx.restore();
+                    }
+                });
+                
+                // Selection Indicator
+                this.ctx.fillStyle = "#fff";
+                this.ctx.beginPath();
+                this.ctx.moveTo(w - 20, cy - 10);
+                this.ctx.lineTo(w - 40, cy);
+                this.ctx.lineTo(w - 20, cy + 10);
+                this.ctx.fill();
+            }
+        };
+
+        // --- MAIN MANAGER ---
+        const Arcade = {
+            activeGame: null,
+            canvas: document.getElementById('game-canvas'),
+            
+            init() {
+                Wheel.init();
+                
+                // Resize Canvas
+                const resize = () => {
+                    this.canvas.width = this.canvas.parentElement.offsetWidth;
+                    this.canvas.height = this.canvas.parentElement.offsetHeight;
+                };
+                window.addEventListener('resize', resize);
+                resize();
+                
+                // Play Button
+                document.getElementById('play-btn').addEventListener('click', () => {
+                    const gameId = GAMES[Wheel.selectedIdx].id;
+                    this.launch(gameId);
+                });
+            },
+            
+            launch(id) {
+                if (this.activeGame) {
+                    this.activeGame.stop();
                 }
-            });
-            btn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                keys[btn.dataset.key] = false;
-            });
-        });
+                
+                // Clear Canvas
+                const ctx = this.canvas.getContext('2d');
+                ctx.clearRect(0,0,this.canvas.width, this.canvas.height);
+                
+                switch(id) {
+                    case 'SNAKE': this.activeGame = new SnakeGame(this.canvas); break;
+                    case 'PONG': this.activeGame = new PongGame(this.canvas); break;
+                    case 'GALAGA': this.activeGame = new GalagaGame(this.canvas); break;
+                    default: return;
+                }
+                
+                this.activeGame.start();
+            }
+        };
+
+        Arcade.init();
 
     </script>
-
 </body>
 </html>
