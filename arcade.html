@@ -239,59 +239,109 @@
         .btn-left { top: 35px; left: 15px; }
         .btn-right { top: 35px; right: 15px; }
 
-        @media (max-width: 768px) {
+        /* --- RESPONSIVE DESIGN --- */
+
+        /* 1. Ajustes Generales para Móviles/Tablets (Compactar UI) */
+        @media (max-width: 1024px), (max-height: 600px) {
             .arcade-screen { 
                 width: 100vw; 
                 height: 100vh; 
                 border-radius: 0;
                 border: none;
             }
-            .arcade-content { 
-                grid-template-columns: 1fr; 
-                grid-template-rows: 1.2fr 1fr; 
-                padding: 10px; 
-                gap: 10px;
-            }
             .arcade-header { 
                 height: 60px; 
-                margin-top: 10px; 
+                margin-top: 5px; 
             }
             svg {
                 width: 100%;
                 height: 100%;
             }
             svg text { 
-                font-size: 50px; 
+                font-size: 40px; 
             }
-            .mobile-controls.active { display: block; }
-            
-            /* Ajustar previsualización en móvil */
-            .preview-section {
-                padding: 10px;
-            }
-            #game-title-display {
-                font-size: 24px !important;
-                margin-top: 10px !important;
-            }
-            
-            /* Ajustar selector en móvil */
-            .selector-section {
-                mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
-            }
-            .game-item {
-                font-size: 16px;
-                padding: 10px 20px;
-            }
-            .game-item.active {
-                font-size: 20px;
-            }
-            
             .back-btn {
                 top: 10px;
                 left: 10px;
                 font-size: 12px;
                 padding: 5px 10px;
                 z-index: 50;
+            }
+            .mobile-controls.active { display: block; }
+        }
+
+        /* 2. MODO VERTICAL (PORTRAIT) - Layout Apilado (Preview Arriba / Selector Abajo) */
+        @media (orientation: portrait) {
+            .arcade-content { 
+                grid-template-columns: 1fr; 
+                grid-template-rows: 1fr 1fr; /* 50/50 split */
+                padding: 10px; 
+                gap: 15px;
+            }
+            
+            /* Previsualización */
+            .preview-section {
+                padding: 10px;
+                order: 1; /* Asegurar que vaya primero */
+            }
+            #game-title-display {
+                font-size: 24px !important;
+                margin-top: 5px !important;
+            }
+            
+            /* Selector */
+            .selector-section {
+                order: 2;
+                mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent);
+            }
+            .game-item {
+                font-size: 16px;
+                padding: 12px 20px;
+            }
+            .game-item.active {
+                font-size: 22px;
+                padding: 15px 30px;
+            }
+
+            /* Modo Juego Activo: Ocultar selector para dar espacio al juego */
+            .arcade-content.game-active {
+                grid-template-rows: 1fr;
+                gap: 0;
+                padding: 0;
+            }
+            .arcade-content.game-active .selector-section {
+                display: none;
+            }
+            .arcade-content.game-active .preview-section {
+                border-radius: 0;
+                border: none;
+            }
+        }
+
+        /* 3. MODO HORIZONTAL (LANDSCAPE) EN MÓVIL - Layout Lado a Lado (Estilo Desktop Compacto) */
+        @media (orientation: landscape) and (max-height: 600px) {
+            .arcade-content { 
+                grid-template-columns: 1.2fr 0.8fr; /* Lado a lado */
+                grid-template-rows: 1fr;
+                padding: 10px 40px; /* Más padding lateral para evitar el notch */
+                gap: 10px;
+            }
+            
+            .arcade-header {
+                height: 40px;
+            }
+            
+            .game-item {
+                font-size: 14px;
+                padding: 8px 15px;
+            }
+            .game-item.active {
+                font-size: 18px;
+            }
+            
+            /* Ajustar rueda para que quepan más items en horizontal corto */
+            .selector-section {
+                 mask-image: linear-gradient(to bottom, transparent, black 5%, black 95%, transparent);
             }
         }
     </style>
@@ -488,24 +538,31 @@
         exitGameBtn.addEventListener('click', exitGame);
 
         function prepareGameUI() {
+            document.querySelector('.arcade-content').classList.add('game-active');
             previewPlaceholder.style.display = 'none';
             gameContainer.style.display = 'block';
             gameOverScreen.style.display = 'none';
             
-            if (window.innerWidth <= 768 || 'ontouchstart' in window) {
+            if (window.innerWidth <= 1024 || 'ontouchstart' in window) {
                 mobileControls.style.display = 'block';
             }
-            resizeCanvas();
+            
+            // Force resize after layout change
+            setTimeout(resizeCanvas, 50);
             isGameRunning = true;
         }
 
         function exitGame() {
+            document.querySelector('.arcade-content').classList.remove('game-active');
             clearInterval(gameInterval);
             isGameRunning = false;
             currentGame = null;
             gameContainer.style.display = 'none';
             previewPlaceholder.style.display = 'block';
             mobileControls.style.display = 'none';
+            
+            // Re-render wheel to ensure correct positioning if resized
+            setTimeout(() => setActive(activeIndex), 50);
         }
 
         function resizeCanvas() {
