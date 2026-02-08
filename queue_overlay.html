@@ -300,6 +300,51 @@
     .queue-pos-3 .queue-item-inner { border-left-color: var(--queue-accent-color); opacity: 0.8; filter: brightness(0.6); }
 
     /* Panel de Configuración */
+    
+    /* Notificaciones Toast */
+    #notification-container {
+      position: fixed;
+      top: 100px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 20000;
+      pointer-events: none;
+    }
+
+    .notification-toast {
+      background: rgba(0, 0, 0, 0.85);
+      border-left: 5px solid #00e5ff;
+      border-radius: 8px;
+      padding: 15px 20px;
+      color: #fff;
+      font-family: 'Montserrat', sans-serif;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+      min-width: 250px;
+      animation: slideInRight 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .notification-toast.points { border-left-color: #ffd700; }
+    
+    .notification-icon { font-size: 24px; }
+    .notification-content { display: flex; flex-direction: column; }
+    .notification-title { font-weight: bold; font-size: 14px; opacity: 0.8; text-transform: uppercase; margin-bottom: 2px; }
+    .notification-msg { font-weight: bold; font-size: 18px; }
+
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes fadeOutRight {
+      to { transform: translateX(100%); opacity: 0; }
+    }
+
     #roulette-btn {
       position: fixed;
       top: 20px;
@@ -462,6 +507,7 @@
   </div>
 
   <!-- Botón de Configuración -->
+  <div id="notification-container"></div>
   <button id="settings-btn" title="Configurar Overlay">⚙️</button>
   <button id="roulette-btn" title="Ruleta de Selección">🎡</button>
   
@@ -2275,9 +2321,63 @@
         }, (error) => {
           console.error("Error en manualOrders:", error);
         });
+
+      // Listener de Notificaciones
+      db.collection('notifications')
+        .orderBy('timestamp', 'desc')
+        .limit(5)
+        .onSnapshot((snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              // Solo mostrar si es reciente (últimos 10 segundos)
+              const now = Date.now();
+              const ts = data.timestamp ? (data.timestamp.toMillis ? data.timestamp.toMillis() : new Date(data.timestamp).getTime()) : now;
+              
+              if (now - ts < 10000) {
+                 showNotification(data);
+              }
+            }
+          });
+        });
+
     } else {
       console.warn("Firestore no disponible. Cola no podrá sincronizarse.");
       renderQueue();
+    }
+
+    function showNotification(data) {
+        const container = document.getElementById('notification-container');
+        if (!container) return;
+        
+        const div = document.createElement('div');
+        div.className = `notification-toast ${data.type || ''}`;
+        
+        let icon = '🔔';
+        let title = 'Notificación';
+        
+        if (data.type === 'points') {
+            icon = '💰';
+            title = 'Puntos Zero FM';
+        }
+        
+        div.innerHTML = `
+            <div class="notification-icon">${icon}</div>
+            <div class="notification-content">
+                <div class="notification-title">${title}</div>
+                <div class="notification-msg">${data.message}</div>
+            </div>
+        `;
+        
+        container.appendChild(div);
+        
+        // Auto remove
+        setTimeout(() => {
+            div.style.animation = 'fadeOutRight 0.5s forwards';
+            setTimeout(() => {
+                if (div.parentNode) div.parentNode.removeChild(div);
+            }, 500);
+        }, 5000);
     }
 
     // --- Lógica de Simulación ---

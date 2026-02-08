@@ -763,6 +763,39 @@ function setupListeners() {
         const isVip = isSubscriber || isModerator || isSuperFan || isStreamer || tempVipUsers.has(userId);
         const requireVip = config.requireVipForSr !== false;
 
+        // --- COMANDO DE PUNTOS ---
+        if (lowerMsg === '!puntos' || lowerMsg === '!points' || lowerMsg.startsWith('!puntos ') || lowerMsg.startsWith('!points ')) {
+            const resolved = await getCanonicalUserKey(userId, displayName);
+            const key = resolved.userKey || userId;
+            const dn = resolved.displayName || displayName;
+            
+            try {
+                if (db && typeof getDoc === 'function' && typeof doc === 'function') {
+                    const snap = await getDoc(doc(db, 'userStats', key));
+                    let pts = 0;
+                    if (snap.exists()) {
+                        const d = snap.data();
+                        pts = Number(d.totalPoints) || 0;
+                    }
+                    console.log(`💰 @${dn} tiene ${pts} puntos.`);
+
+                    // Enviar notificación visual al Overlay
+                    if (db && typeof addDoc === 'function' && typeof collection === 'function') {
+                        await addDoc(collection(db, 'notifications'), {
+                            type: 'points',
+                            user: dn,
+                            points: pts,
+                            message: `@${dn} tiene ${pts} puntos`,
+                            timestamp: serverTimestamp()
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error(`Error consultando puntos de ${dn}:`, e);
+            }
+            return; 
+        }
+
         const aliases = Array.isArray(config.commandAliases) && config.commandAliases.length > 0 
             ? config.commandAliases 
             : ["!sr", "!pedir", "!cancion"];
