@@ -238,39 +238,72 @@
         .loading-text { color: #0f0; font-size: 24px; animation: blink 1s infinite; margin-top: 20px; }
         @keyframes blink { 50% { opacity: 0; } }
 
-        /* --- RESPONSIVE MOBILE --- */
+        /* --- RESPONSIVE BREAKPOINTS --- */
+        
+        /* PC / Desktop (Default) > 1024px */
+        #arcade-container {
+            flex-direction: row;
+        }
+        #game-stage {
+            flex: 3; /* Más ancho para el juego en PC */
+            border-right: 2px solid #333;
+            border-bottom: none;
+        }
+        #selector-panel {
+            flex: 1;
+            border-left: 2px solid rgba(255,255,255,0.1);
+            max-width: 500px; /* Un poco más ancho */
+            min-width: 300px;
+        }
+        .arcade-header {
+            top: 40px; /* Más espacio arriba */
+        }
+        #play-btn {
+            bottom: 80px;
+        }
+
+        /* Tablet (Portrait & Landscape small) & Mobile */
         @media (max-width: 1024px) {
             #arcade-container {
-                flex-direction: column; /* Apilar verticalmente */
+                flex-direction: column;
             }
-
             #game-stage {
-                flex: 1.5; /* Más espacio al juego */
+                flex: 1; /* Repartir espacio */
                 width: 100%;
                 border-right: none;
                 border-bottom: 2px solid #333;
             }
-
             #selector-panel {
                 flex: 1;
                 width: 100%;
                 max-width: none;
                 border-left: none;
+                min-width: 0;
             }
-
-            #mobile-hud {
-                display: block; /* Mostrar controles en móvil */
+            .arcade-header {
+                top: 10px;
+                height: 60px;
             }
-
-            /* Ajuste de controles */
-            .dpad-container { bottom: 10px; left: 10px; transform: scale(0.9); }
-            .action-container { bottom: 10px; right: 10px; transform: scale(0.9); }
-            
+            .arcade-header svg text {
+                font-size: 30px;
+            }
             #play-btn {
                 bottom: 20px;
                 padding: 10px 30px;
                 font-size: 20px;
             }
+            
+            /* Ajustes para tabletas específicamente */
+            @media (min-height: 800px) {
+                 #game-stage { flex: 1.5; } /* Más juego en pantallas altas */
+            }
+        }
+        
+        /* Mobile Small */
+        @media (max-width: 600px) {
+             #mobile-hud { display: block; }
+             .dpad-container { bottom: 10px; left: 10px; transform: scale(0.8); transform-origin: bottom left; }
+             .action-container { bottom: 10px; right: 10px; transform: scale(0.8); transform-origin: bottom right; }
         }
     </style>
 </head>
@@ -347,11 +380,11 @@
         ];
 
         // --- AUTH CHECK ---
-        const isAdmin = localStorage.getItem('isAdminMode') === 'true';
-        if (!isAdmin) {
-            document.getElementById('visitor-overlay').style.display = 'flex';
-            document.getElementById('arcade-container').style.display = 'none';
-        }
+        // const isAdmin = localStorage.getItem('isAdminMode') === 'true';
+        // if (!isAdmin) {
+        //    document.getElementById('visitor-overlay').style.display = 'flex';
+        //    document.getElementById('arcade-container').style.display = 'none';
+        // }
 
         // --- INPUT SYSTEM ---
         const Input = {
@@ -716,9 +749,11 @@
             draw() {
                 const w = this.canvas.width;
                 const h = this.canvas.height;
-                const cx = w * 0.8; // Right aligned wheel
+                // Centered wheel for better visibility on all screens
+                const cx = w / 2; 
                 const cy = h / 2;
-                const radius = h * 0.4;
+                // Responsive radius
+                const radius = Math.min(w, h) * 0.4;
                 
                 this.ctx.clearRect(0,0,w,h);
                 
@@ -728,10 +763,9 @@
                     const theta = i * step + this.angle;
                     
                     // 3D-ish Projection
-                    const x = cx + Math.cos(theta) * radius * 0.5; // Flattened X
+                    const x = cx + Math.cos(theta) * radius * 0.8; // Wider spread
                     const y = cy + Math.sin(theta) * radius;
                     const scale = (Math.cos(theta) + 2) * 0.5; // Scale by depth
-                    const alpha = (Math.cos(theta) + 1) * 0.5;
                     
                     if (Math.cos(theta) > 0) { // Only draw front items
                         this.ctx.save();
@@ -758,9 +792,17 @@
                 // Selection Indicator
                 this.ctx.fillStyle = "#fff";
                 this.ctx.beginPath();
-                this.ctx.moveTo(w - 20, cy - 10);
-                this.ctx.lineTo(w - 40, cy);
-                this.ctx.lineTo(w - 20, cy + 10);
+                // Arrow pointing from right
+                this.ctx.moveTo(w - 10, cy - 10);
+                this.ctx.lineTo(w - 30, cy);
+                this.ctx.lineTo(w - 10, cy + 10);
+                this.ctx.fill();
+                
+                // Arrow pointing from left (optional, creates bracket effect)
+                this.ctx.beginPath();
+                this.ctx.moveTo(10, cy - 10);
+                this.ctx.lineTo(30, cy);
+                this.ctx.lineTo(10, cy + 10);
                 this.ctx.fill();
             }
         };
