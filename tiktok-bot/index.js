@@ -563,7 +563,7 @@ function startBot() {
             config = next;
 
             fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-            console.log("💾 Configuración actualizada desde el Dashboard.");
+            console.log(`💾 Configuración actualizada: Modo Estricto (VIP) = ${config.requireVipForSr ? 'ACTIVADO 🔒' : 'DESACTIVADO 🔓'}`);
 
             if (oldUser !== config.tiktokUsername || oldSession !== config.sessionId) {
                 console.log("🔄 Cambio de credenciales detectado. Reiniciando conexión...");
