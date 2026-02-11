@@ -557,6 +557,7 @@ function startBot() {
         try {
             const newConfig = req.body || {};
             const oldUser = config.tiktokUsername;
+            const oldSession = config.sessionId;
             const next = { ...config, ...newConfig };
             if (!next.tiktokUsername) next.tiktokUsername = oldUser;
             config = next;
@@ -564,8 +565,8 @@ function startBot() {
             fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
             console.log("💾 Configuración actualizada desde el Dashboard.");
 
-            if (oldUser !== config.tiktokUsername) {
-                console.log("🔄 Cambio de usuario detectado. Reiniciando conexión...");
+            if (oldUser !== config.tiktokUsername || oldSession !== config.sessionId) {
+                console.log("🔄 Cambio de credenciales detectado. Reiniciando conexión...");
                 TIKTOK_USERNAME = config.tiktokUsername;
                 isConnecting = false;
                 if (tiktokLiveConnection) {
@@ -746,6 +747,7 @@ function setupListeners() {
     // CHAT
     tiktokLiveConnection.on('chat', async (data) => {
         const msg = data.comment;
+        const lowerMsg = msg.toLowerCase();
         const displayName = data.nickname;
         const userId = data.uniqueId;
         
@@ -803,7 +805,6 @@ function setupListeners() {
             ? config.commandAliases 
             : ["!sr", "!pedir", "!cancion"];
         
-        const lowerMsg = msg.toLowerCase();
         let matchedAlias = null;
         for (const alias of aliases) {
             if (lowerMsg.startsWith(alias.toLowerCase() + ' ')) {
