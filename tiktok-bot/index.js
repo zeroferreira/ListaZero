@@ -764,7 +764,10 @@ function setupListeners() {
         const isStreamer = userId.toLowerCase() === TIKTOK_USERNAME.toLowerCase();
         
         const isVip = isSubscriber || isModerator || isSuperFan || isStreamer || tempVipUsers.has(userId);
-        const requireVip = config.requireVipForSr !== false;
+        const requireVip = config.requireVipForSr === true; // Strict check
+
+        // Debug Permissions (Solo si falla)
+        // console.log(`[AUTH] User: ${displayName} | VIP: ${isVip} | ConfigReq: ${requireVip} | AllowSubs: ${config.allowSubscribers}`);
 
         // --- COMANDO DE PUNTOS ---
         const isPointsCmd = lowerMsg === '!puntos' || lowerMsg === '!points' || lowerMsg.startsWith('!puntos ') || lowerMsg.startsWith('!points ');
@@ -817,7 +820,9 @@ function setupListeners() {
             
             console.log(`📝 Comando detectado de ${displayName} (${userId}): ${msg}`);
             
+            // Log de depuración para permisos
             if (requireVip && !isVip) {
+                console.log(`🔍 DEBUG PERMISOS: ReqVIP=${requireVip}, UserVIP=${isVip} (Sub=${isSubscriber}, Mod=${isModerator}, Fan=${isSuperFan})`);
                 console.log(`🚫 ${displayName} intentó pedir, pero no tiene permiso.`);
                 pushSrEvent({ source: 'chat', user: userId, displayName, userId, query: msg, isVip, accepted: false, denied: 'notVip' });
                 return;
