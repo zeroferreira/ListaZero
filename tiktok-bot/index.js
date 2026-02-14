@@ -41,7 +41,8 @@ let config = {
     mockCider: false,
     requireVipForSr: false,
     allowPointsCommand: true, // Nuevo: Permitir !puntos
-    commandAliases: ["!sr", "!pedir", "!cancion"]
+    commandAliases: ["!zr", "!sr", "!pedir", "!cancion"],
+    ignoreExampleQuery: "artista cancion"
 };
 
 try {
@@ -830,9 +831,15 @@ function setupListeners() {
 
             const rawQuery = msg.substring(matchedAlias.length).trim();
             if (rawQuery.length > 0) {
-                // Preservamos el query original para mejor detección
                 const cleanQuery = rawQuery.trim();
                 
+                // --- IGNORAR EJEMPLOS ---
+                const exampleToIgnore = String(config.ignoreExampleQuery || "artista cancion").trim().toLowerCase();
+                if (cleanQuery.toLowerCase() === exampleToIgnore) {
+                    console.log(`💡 Ejemplo detectado ("${cleanQuery}"), ignorando pedido.`);
+                    return;
+                }
+
                 console.log(`📩 Pedido de ${displayName}: ${rawQuery}`);
                 const resolvedUser = await getCanonicalUserKey(userId, displayName);
                 const userKey = String(resolvedUser.userKey || userId || '').trim();
