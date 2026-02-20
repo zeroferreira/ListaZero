@@ -1361,6 +1361,11 @@
                     <div class="stat-number" id="personal-rank">-</div>
                     <div class="stat-label">Posición global</div>
                   </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">🎁</div>
+                    <div class="stat-number" id="personal-accepted-redemptions">0</div>
+                    <div class="stat-label">Canjes aceptados</div>
+                  </div>
                 </div>
 
                 <div class="favorite-genres">
@@ -8080,6 +8085,9 @@
         
         // Renderizar estadísticas personales
         renderPersonalStats(data);
+        
+        // Renderizar géneros favoritos
+        renderFavoriteGenres();
       }
 
       function renderAchievements(data) {
@@ -12667,6 +12675,20 @@
         } catch (error) {
            // Fallback rank
         }
+
+        // --- NUEVA LÓGICA: Contar canjes aceptados ---
+        try {
+           const dbRef = window.db || db;
+           const tUser = String(targetUser || '').trim();
+           if (tUser) {
+             const snap = await dbRef.collection('rewardRequests')
+               .where('userId', '==', tUser)
+               .where('status', '==', 'approved')
+               .get();
+             const acceptedEl = document.getElementById('personal-accepted-redemptions');
+             if (acceptedEl) acceptedEl.textContent = String(snap.size);
+           }
+        } catch (e) { console.error('Error counting redemptions:', e); }
         
         // Renderizar géneros favoritos (simulado)
         renderFavoriteGenresForUser();
@@ -13531,7 +13553,9 @@
           }
           
           // Crear solicitud de recompensa en Firestore
-          const requestId = Date.now().toString();
+          const requestRef = db.collection('rewardRequests').doc();
+          const requestId = requestRef.id;
+          
           const rewardRequest = {
             id: requestId,
             userId: username,
@@ -13548,7 +13572,7 @@
           
           // Usar batch para descontar puntos y crear solicitud atómicamente
           const batch = db.batch();
-          const requestRef = db.collection('rewardRequests').doc(requestId);
+          // const requestRef = db.collection('rewardRequests').doc(requestId); // Ya definido arriba
           
           batch.set(requestRef, rewardRequest);
           batch.set(userDocRef, { 
