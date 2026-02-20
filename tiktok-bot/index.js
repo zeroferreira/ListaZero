@@ -115,14 +115,14 @@ function getBadgeForUser(userKey, userId, displayName) {
     }
 
     // Check Top Donors (Gold, Silver, Bronze)
-    if (donorRanks.gold && donorRanks.gold.user === u) return 'z0-vip'; // Gold = z0-vip
-    if (donorRanks.silver && donorRanks.silver.user === u) return 'z0-platino'; // Silver = z0-platino
-    if (donorRanks.bronze && donorRanks.bronze.user === u) return 'donador'; // Bronze = donador
+    if (donorRanks.gold && donorRanks.gold.user === u) return 'donador-oro'; 
+    if (donorRanks.silver && donorRanks.silver.user === u) return 'donador-plata';
+    if (donorRanks.bronze && donorRanks.bronze.user === u) return 'donador-bronce';
 
     // Check tempVipUsers (Session VIPs/Donors)
     for (let i = 0; i < candidates.length; i++) {
         const k = candidates[i];
-        if (tempVipUsers.has(k)) return 'donador';
+        if (tempVipUsers.has(k)) return 'donador'; // Default donador (after Top 3)
     }
 
     return '';
