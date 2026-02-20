@@ -36,6 +36,9 @@ if /I "%FOLDER%"=="Descargas" (
 set "BACKUP_CFG=%TEMP%\zero_fm_config_backup_%RANDOM%.json"
 if exist "config.json" copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
 
+set "BACKUP_FIREBASE=%TEMP%\zero_fm_firebase_backup_%RANDOM%.js"
+if exist "firebase-config.js" copy /Y "firebase-config.js" "%BACKUP_FIREBASE%" >nul 2>&1
+
 where git >nul 2>&1
 if errorlevel 1 goto zip
 
@@ -68,7 +71,7 @@ if /I "%TMP%"=="%DEST%" (
     if "%SILENT%"=="0" pause
     exit /b 1
 )
-robocopy "%TMP%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json" "node.exe" "npm.cmd" "npx.cmd"
+robocopy "%TMP%\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json" "firebase-config.js" "node.exe" "npm.cmd" "npx.cmd"
 set "RC=%errorlevel%"
 if %RC% geq 8 (
     echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
@@ -128,7 +131,7 @@ if /I "%TMP%"=="%DEST%" (
     if "%SILENT%"=="0" pause
     exit /b 1
 )
-robocopy "%TMP%\ListaZero-main\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json" "node.exe" "npm.cmd" "npx.cmd"
+robocopy "%TMP%\ListaZero-main\tiktok-bot" "%DEST%" /E /COPY:DAT /DCOPY:DAT /R:3 /W:1 /XD "node_modules" "logs" ".git" /XF "config.json" "firebase-config.js" "node.exe" "npm.cmd" "npx.cmd"
 set "RC=%errorlevel%"
 if %RC% geq 8 (
     echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
@@ -140,6 +143,10 @@ if %RC% geq 8 (
 if exist "%BACKUP_CFG%" (
     copy /Y "%BACKUP_CFG%" "config.json" >nul 2>&1
     del /Q "%BACKUP_CFG%" >nul 2>&1
+)
+if exist "%BACKUP_FIREBASE%" (
+    copy /Y "%BACKUP_FIREBASE%" "firebase-config.js" >nul 2>&1
+    del /Q "%BACKUP_FIREBASE%" >nul 2>&1
 )
 echo.
 if defined TMP if exist "%TMP%" rd /s /q "%TMP%" >nul 2>&1
