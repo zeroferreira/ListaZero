@@ -865,28 +865,6 @@ function setupListeners() {
         if (coins >= minCoins) {
             console.log(`🎁 ${data.nickname} donó ${coins} monedas. ¡VIP por esta sesión!`);
             tempVipUsers.add(data.uniqueId);
-
-            // --- GUARDAR COMO DONADOR PERMANENTE ---
-            try {
-                if (db && typeof addDoc === 'function' && typeof collection === 'function') {
-                    // Normalizar ID para verificar si ya existe en memoria
-                    const u = normalizeUserKeyForBadges(data.uniqueId);
-                    
-                    // Solo guardar si no lo tenemos ya registrado (evita spam de escrituras)
-                    if (!badgeSets.donador.has(u)) {
-                        await addDoc(collection(db, 'donadorUsers'), {
-                            name: data.uniqueId, // Campo clave usado por refreshBadgeSets
-                            displayName: data.nickname,
-                            addedAt: serverTimestamp(),
-                            coins: coins
-                        });
-                        console.log(`💾 ${data.nickname} guardado como Donador permanente en BD.`);
-                        badgeSets.donador.add(u); // Actualizar memoria inmediatamente
-                    }
-                }
-            } catch (e) {
-                console.error("❌ Error guardando donador en BD:", e);
-            }
         }
     });
 }
