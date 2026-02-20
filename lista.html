@@ -2767,6 +2767,24 @@
         redoLastEditAction();
       });
       
+      window.handleRewardIconClick = function(e) {
+         e.preventDefault();
+         e.stopPropagation();
+         
+         if (localStorage.getItem('isAdminMode') === 'true') {
+             const adminPanel = document.getElementById('admin-panel');
+             if (adminPanel) adminPanel.hidden = false;
+             
+             // Open rewards section
+             if (typeof showAdminSection === 'function') {
+                showAdminSection('rewards');
+             } else {
+                const rewardsBtn = document.querySelector('button[data-section="rewards"]');
+                if (rewardsBtn) rewardsBtn.click();
+             }
+         }
+      };
+
       function renderSolicitudes(items) {
         if (!solicitudesList) {
           console.error('❌ solicitudesList no encontrado');
@@ -2815,6 +2833,11 @@
              li.classList.add('has-pending-reward');
           }
 
+          const isDjMode = localStorage.getItem('isAdminMode') === 'true';
+          const rewardIconHtml = hasPendingReward 
+            ? `<span class="reward-pending-icon" title="Solicitud de recompensa pendiente" ${isDjMode ? 'onclick="handleRewardIconClick(event)" style="cursor:pointer"' : ''}>🎁</span>` 
+            : '';
+
           const selectedBadge = typeof window.getSelectedBadgeFor === 'function' ? window.getSelectedBadgeFor(it.usuario) : '';
           if (selectedBadge) {
             li.classList.remove('vip','z0-vip','donador','z0-fan','z0-platino');
@@ -2841,7 +2864,7 @@
             <span class="col col-time">${it.hora || ''}</span>
             <span class="col col-usuario usuario">
                <span class="uname-text">${displayUser}</span>
-               ${hasPendingReward ? '<span class="reward-pending-icon" title="Solicitud de recompensa pendiente">🎁</span>' : ''}
+               ${rewardIconHtml}
             </span>
             <span class="col col-cancion">
               <span class="text">${it.cancion}</span>
@@ -2855,7 +2878,7 @@
               <div class="line-with-copy mobile-user-row">
                  <div class="usuario-line usuario">
                    ${displayUser}
-                   ${hasPendingReward ? '<span class="reward-pending-icon" title="Solicitud de recompensa pendiente">🎁</span>' : ''}
+                   ${rewardIconHtml}
                  </div>
               </div>
               <div class="line-with-copy">
@@ -13404,11 +13427,12 @@
              if (hasChanged) {
                console.log('🎁 Actualizando lista por cambios en solicitudes pendientes');
                // Re-renderizar lista actual para mostrar iconos
-               if (window.currentDayItems && typeof renderSolicitudes === 'function') {
+               const itemsToRender = window.currentDayItems || window.__dayItems;
+               if (itemsToRender && typeof renderSolicitudes === 'function') {
                  // Si hay orden manual, aplicarlo
                  const ordered = typeof applyOrder === 'function' && window.currentManualOrder 
-                    ? applyOrder(window.currentDayItems, window.currentManualOrder) 
-                    : window.currentDayItems;
+                    ? applyOrder(itemsToRender, window.currentManualOrder) 
+                    : itemsToRender;
                  renderSolicitudes(ordered);
                }
              }
