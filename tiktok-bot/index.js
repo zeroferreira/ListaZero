@@ -114,6 +114,11 @@ function getBadgeForUser(userKey, userId, displayName) {
         if (badgeSets.z0Fan.has(k)) return 'z0-fan';
     }
 
+    // Check Top Donors (Gold, Silver, Bronze)
+    if (donorRanks.gold && donorRanks.gold.user === u) return 'z0-vip'; // Gold = z0-vip
+    if (donorRanks.silver && donorRanks.silver.user === u) return 'z0-platino'; // Silver = z0-platino
+    if (donorRanks.bronze && donorRanks.bronze.user === u) return 'donador'; // Bronze = donador
+
     // Check tempVipUsers (Session VIPs/Donors)
     for (let i = 0; i < candidates.length; i++) {
         const k = candidates[i];
@@ -860,13 +865,42 @@ function setupListeners() {
     // REGALOS
     tiktokLiveConnection.on('gift', async (data) => {
         const coins = data.diamondCount;
-        const minCoins = config.minCoinsForVip; // USAR CONFIG
+        const minCoins = config.minCoinsForVip; 
         
-        if (coins >= minCoins) {
-            console.log(`🎁 ${data.nickname} donó ${coins} monedas. ¡VIP por esta sesión!`);
-            tempVipUsers.add(data.uniqueId);
-        }
+        // Registrar donación acumulada
+        const uid = data.uniqueId;
+        const currentAmount = sessionDonations.get(uid) || 0;
+        sessionDonations.set(uid, currentAmount + coins);
+        
+        console.log(`🎁 ${data.nickname} donó ${coins} (Total: ${sessionDonations.get(uid)})`);
+
+        // Recalcular rangos
+        recalculateDonorRanks();
     });
+}
+
+// Mapa de donaciones de la sesión
+const sessionDonations = new Map();
+
+// Rangos de donadores (Top 3)
+let donorRanks = {
+    gold: null,   // { user, amount }
+    silver: null,
+    bronze: null
+};
+
+function recalculateDonorRanks() {
+    // Convertir a array y ordenar por monto descendente
+    const sorted = Array.from(sessionDonations.entries())
+        .sort((a, b) => b[1] - a[1]);
+
+    donorRanks = {
+        gold: sorted[0] ? { user: sorted[0][0], amount: sorted[0][1] } : null,
+        silver: sorted[1] ? { user: sorted[1][0], amount: sorted[1][1] } : null,
+        bronze: sorted[2] ? { user: sorted[2][0], amount: sorted[2][1] } : null
+    };
+
+    console.log('🏆 Ranking Donadores:', donorRanks);
 }
 
 // Conectar al Live
