@@ -5970,7 +5970,7 @@
       const searchBox = document.querySelector('.search-box');
       const daySelect = document.getElementById('day-select');
 
-      const ADMIN_PASS = '1415130*';
+      // const ADMIN_PASS = '...'; // Eliminado por seguridad
       // Leer estado inicial de localStorage
       let isAdminLoggedIn = localStorage.getItem('isAdminMode') === 'true'; 
       const adminModal = document.getElementById('admin-modal');
@@ -6017,9 +6017,35 @@
       });
 
 
+      // Cargar contraseña desde localStorage o usar prompt si no existe
+      // Esto evita tener la contraseña hardcodeada en el código público
+      function getAdminPass() {
+         return localStorage.getItem('__admin_secret_hash') || ''; 
+      }
+
+      function setAdminPass(newPass) {
+         if(newPass) localStorage.setItem('__admin_secret_hash', newPass);
+      }
+
       function tryOpenAdmin() {
         const pass = adminPassInput.value;
-        if (pass === ADMIN_PASS) {
+        const storedHash = getAdminPass();
+        
+        // Si no hay contraseña configurada, la primera vez se configura
+        if (!storedHash) {
+           if (pass.length > 5) {
+              if (confirm('¿Quieres establecer esta contraseña como la clave de Admin para este navegador?')) {
+                 setAdminPass(pass);
+                 alert('Contraseña guardada localmente. Úsala para ingresar.');
+                 return;
+              }
+           } else {
+              alert('Para configurar el acceso por primera vez, ingresa una contraseña de al menos 6 caracteres.');
+              return;
+           }
+        }
+
+        if (pass === storedHash) {
           isAdminLoggedIn = true;
           localStorage.setItem('isAdminMode', 'true'); // Persistir login
           adminModal.hidden = true;

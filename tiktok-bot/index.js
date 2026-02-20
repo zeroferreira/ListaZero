@@ -470,15 +470,26 @@ async function flushCiderQueue() {
 
 // --- FUNCION PRINCIPAL ---
 function startBot() {
-    // Configuración de Firebase
-    const firebaseConfig = {
-      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-      authDomain: "zero-strom-web.firebaseapp.com",
-      projectId: "zero-strom-web",
-      storageBucket: "zero-strom-web.firebasestorage.app",
-      messagingSenderId: "758369466349",
-      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
-    };
+    // Cargar configuración de Firebase
+    let firebaseConfig;
+    try {
+        if (fs.existsSync(path.join(__dirname, 'firebase-config.js'))) {
+            firebaseConfig = require('./firebase-config');
+        } else {
+            // Fallback o error si no existe (para desarrollo local seguro)
+            console.warn("⚠️ No se encontró firebase-config.js. Usando configuración vacía o de entorno.");
+            firebaseConfig = {
+                apiKey: process.env.FIREBASE_API_KEY,
+                authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+                projectId: process.env.FIREBASE_PROJECT_ID,
+                storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+                messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+                appId: process.env.FIREBASE_APP_ID
+            };
+        }
+    } catch (e) {
+        console.error("Error cargando configuración de Firebase:", e);
+    }
 
     // Inicializar Firebase
     const firebaseApp = initializeApp(firebaseConfig);
