@@ -2061,14 +2061,14 @@
 
       const artist = currentCiderTrack.artist;
       const song = currentCiderTrack.song;
-      const requester = currentCiderTrack.user ? String(currentCiderTrack.user).trim() : '';
       const requesterId = currentCiderTrack.requesterId ? String(currentCiderTrack.requesterId).trim() : '';
       const playingAppleMusicId = currentCiderTrack.appleMusicId ? String(currentCiderTrack.appleMusicId).trim() : '';
       
-      const key = `${playingAppleMusicId}|${artist}|${song}|${requesterId || requester}`;
-      if (lastAutoMarkedSong === key) return; // Already handled this track
-      
-      // Normalize for comparison: remove accents, special chars, lowercase
+      // Clave única para evitar procesar la misma canción múltiples veces
+      const key = `${playingAppleMusicId}|${artist}|${song}|${requesterId}`;
+      if (lastAutoMarkedSong === key) return; 
+
+      // Normalización segura para comparación
       const normalize = (str) => {
           if (!str) return "";
           return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -2077,61 +2077,49 @@
       const targetArtist = normalize(artist);
       const targetSong = normalize(song);
 
-      // Guard Clause: Prevent matching empty/short strings (fixes "match everything" bug)
-      // User reported logic worked before 8:40, so we keep this minimal but safe
-      if (targetArtist.length < 2 || targetSong.length < 2) {
-          // console.warn("⚠️ Cider track data too short to match safely:", artist, "-", song);
-          return;
-      }
+      if (targetArtist.length < 2 || targetSong.length < 2) return;
 
-      const targetRequester = normalize(requesterId || requester);
-
-      // Filter unplayed requests using generateSongId for accurate check
+      // Filtrar canciones NO reproducidas
       const candidates = allRequests.filter(req => {
           const id = generateSongId(req);
           return !playedSongIds.has(id);
       });
 
-      const pick = (reqList) => {
-        if (!Array.isArray(reqList) || !reqList.length) return null;
-        if (playingAppleMusicId) {
-          for (const req of reqList) {
-            const reqAm = req && req.appleMusicId ? String(req.appleMusicId).trim() : '';
-            if (reqAm && reqAm === playingAppleMusicId) return req;
+      // Lógica de Matching (Prioridad: ID > Match Exacto > Match Parcial)
+      const findMatch = () => {
+          // 1. Coincidencia por Apple Music ID (si existe)
+          if (playingAppleMusicId) {
+             const idMatch = candidates.find(req => String(req.appleMusicId || '').trim() === playingAppleMusicId);
+             if (idMatch) return idMatch;
           }
-        }
-        for (const req of reqList) {
-          const reqArtist = normalize(req.artista);
-          const reqSong = normalize(req.cancion);
-          const matchStandard = 
-              (reqArtist.includes(targetArtist) || targetArtist.includes(reqArtist)) &&
-              (reqSong.includes(targetSong) || targetSong.includes(reqSong));
-          const matchSwapped = 
-              (reqArtist.includes(targetSong) || targetSong.includes(reqArtist)) &&
-              (reqSong.includes(targetArtist) || targetArtist.includes(reqSong));
-          const matchCombined = 
-              reqSong.includes(targetArtist) && reqSong.includes(targetSong);
-          if (matchStandard || matchSwapped || matchCombined) return req;
-        }
-        return null;
+
+          // 2. Coincidencia por Texto (Artista y Canción)
+          for (const req of candidates) {
+              const reqArtist = normalize(req.artista);
+              const reqSong = normalize(req.cancion);
+
+              // Match Exacto (o contenido completo)
+              const artistMatch = reqArtist.includes(targetArtist) || targetArtist.includes(reqArtist);
+              const songMatch = reqSong.includes(targetSong) || targetSong.includes(reqSong);
+
+              // Match Cruzado (a veces artista y canción están invertidos)
+              const swappedMatch = (reqArtist.includes(targetSong) || targetSong.includes(reqArtist)) &&
+                                   (reqSong.includes(targetArtist) || targetArtist.includes(reqSong));
+
+              if ((artistMatch && songMatch) || swappedMatch) return req;
+          }
+          return null;
       };
 
-      let primary = candidates;
-      if (targetRequester && targetRequester.length >= 2) {
-        const filtered = candidates.filter(req =>
-          normalize(req?.usuario) === targetRequester ||
-          normalize(req?.userId) === targetRequester ||
-          normalize(req?.requesterId) === targetRequester
-        );
-        if (filtered.length) primary = filtered;
-      }
+      const match = findMatch();
 
-      const match = pick(primary) || pick(candidates);
       if (match) {
         console.log(`✨ Auto-marking song as played: ${match.artista} - ${match.cancion}`);
         const generatedId = generateSongId(match);
         markSongAsPlayed(generatedId);
         lastAutoMarkedSong = key;
+      } else {
+        console.log(`🔍 No match found for Cider track: ${artist} - ${song} (AM ID: ${playingAppleMusicId})`);
       }
     }
 
@@ -2197,11 +2185,30 @@
           : '';
 
         if (artist && name) {
-          currentCiderTrack = { artist: String(artist), song: String(name), user: String(requester || ''), requesterId: String(requesterId || ''), appleMusicId: String(appleMusicId || '') };
-          if (type === "playbackStatus.nowPlayingItemDidChange" || type === "playbackStatus.playbackStateDidChange" || type === "playbackStatus.nowPlayingItemDidChangeV2" || type === "get-playback") {
-            console.log("🎵 Cider Now Playing:", artist, "-", name);
+          // Actualizar estado de reproducción actual
+          currentCiderTrack = { 
+              artist: String(artist), 
+              song: String(name), 
+              requesterId: String(requesterId || ''), 
+              appleMusicId: String(appleMusicId || '') 
+          };
+
+          // Lista de eventos que indican cambio de canción
+          const changeEvents = [
+              "playbackStatus.nowPlayingItemDidChange", 
+              "playbackStatus.nowPlayingItemDidChangeV2", 
+              "playbackStatus.playbackStateDidChange", // A veces llega primero
+              "get-playback" // Respuesta a nuestra petición inicial
+          ];
+
+          if (changeEvents.includes(type)) {
+            console.log("🎵 Cider Now Playing:", artist, "-", name, `[${type}]`);
+            // Intentar marcar inmediatamente
+            checkCurrentTrackAgainstQueue();
+            
+            // Reintentar en 2s por si la cola no estaba cargada
+            setTimeout(checkCurrentTrackAgainstQueue, 2000);
           }
-          checkCurrentTrackAgainstQueue();
         }
       });
     }
