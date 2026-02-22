@@ -971,13 +971,10 @@ async function resolveTrackFromQuery(query) {
 
     // 3. Sistema de Puntuación (Scoring) para encontrar el mejor match
     // Dividimos el query en palabras clave
-    const queryWords = query.toLowerCase()
-        .replace(/-/g, ' ') // Tratar guiones como espacios para el matching
-        .replace(/[^a-z0-9áéíóúñü ]/g, '')
-        .split(/\s+/)
-        .filter(w => w.length > 1);
+    const normalizedQuery = query.toLowerCase().replace(/[^a-z0-9áéíóúñü ]/g, '');
+    const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 1);
     
-    let bestTrack = candidates[0];
+    let bestTrack = null;
     let maxScore = -1;
 
     for (const t of candidates) {
@@ -994,10 +991,15 @@ async function resolveTrackFromQuery(query) {
         }
 
         // Puntos extra si el Artista coincide exactamente con una parte del query
-        if (query.toLowerCase().includes(tArtist)) score += 2;
-
+        if (normalizedQuery.includes(tArtist)) score += 3;
+        
         // Puntos extra si el Track coincide exactamente
-        if (query.toLowerCase().includes(tName)) score += 2;
+        if (normalizedQuery.includes(tName)) score += 3;
+
+        // Puntos extra por coincidencia EXACTA de Artista - Cancion (o viceversa)
+        const combinedA = `${tArtist} ${tName}`.replace(/[^a-z0-9áéíóúñü ]/g, '');
+        const combinedB = `${tName} ${tArtist}`.replace(/[^a-z0-9áéíóúñü ]/g, '');
+        if (normalizedQuery.includes(combinedA) || normalizedQuery.includes(combinedB)) score += 5;
 
         if (score > maxScore) {
             maxScore = score;
@@ -1005,7 +1007,14 @@ async function resolveTrackFromQuery(query) {
         }
     }
 
-    const track = bestTrack;
+    // UMBRAL DE CALIDAD: Si el score es muy bajo, asumimos que no es lo que el usuario pidió
+    // (Ej: Usuario pide "Bad Bunny Monaco" y iTunes devuelve "Monaco" de otro artista random con score 1)
+    if (maxScore < 2 && queryWords.length > 1) {
+        console.log(`⚠️ Low match score (${maxScore}) for "${query}". Falling back to raw input.`);
+        return null; // Esto activará el fallback a parseRawQueryToTrack
+    }
+
+    const track = bestTrack || candidates[0];
 
     const songName = track.trackName;
     const artistName = track.artistName;
