@@ -2090,7 +2090,10 @@
           // 1. Coincidencia por Apple Music ID (si existe)
           if (playingAppleMusicId) {
              const idMatch = candidates.find(req => String(req.appleMusicId || '').trim() === playingAppleMusicId);
-             if (idMatch) return idMatch;
+             if (idMatch) {
+               console.log(`✅ MATCH POR ID: ${playingAppleMusicId} -> ${idMatch.artista} - ${idMatch.cancion}`);
+               return idMatch;
+             }
           }
 
           // 2. Coincidencia por Texto (Artista y Canción)
@@ -2106,7 +2109,10 @@
               const swappedMatch = (reqArtist.includes(targetSong) || targetSong.includes(reqArtist)) &&
                                    (reqSong.includes(targetArtist) || targetArtist.includes(reqSong));
 
-              if ((artistMatch && songMatch) || swappedMatch) return req;
+              if ((artistMatch && songMatch) || swappedMatch) {
+                  console.log(`✅ MATCH POR TEXTO: "${targetArtist} - ${targetSong}" vs "${reqArtist} - ${reqSong}"`);
+                  return req;
+              }
           }
           return null;
       };
@@ -2163,9 +2169,13 @@
         console.warn("❌ Error conectando a Cider:", err && err.message ? err.message : err);
       });
 
-      ciderSocket.on("disconnect", () => {
-        console.log("❌ Desconectado de Cider");
-        ciderSocket = null;
+      ciderSocket.on("disconnect", (reason) => {
+        console.log("❌ Desconectado de Cider. Razón:", reason);
+        // NO anular ciderSocket aquí para permitir reconexión automática de socket.io
+        if (reason === "io server disconnect") {
+          // Si el servidor nos desconecta explícitamente, intentar reconectar manual
+          ciderSocket.connect();
+        }
       });
 
       ciderSocket.on("API:Playback", (event) => {
