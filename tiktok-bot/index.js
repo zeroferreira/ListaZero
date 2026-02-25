@@ -17,7 +17,7 @@ try {
 let initializeApp, getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, query, where, limit;
 try {
     ({ initializeApp } = require('firebase/app'));
-    ({ getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, query, where, limit } = require('firebase/firestore'));
+    ({ getFirestore, collection, addDoc, setDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, query, where, limit } = require('firebase/firestore'));
 } catch (e) {
     console.error('Critical Error loading Firebase libraries:', e);
     console.error('Solución: ejecuta "npm install" dentro de la carpeta tiktok-bot y usa Node 18+.');
@@ -749,13 +749,41 @@ function setupListeners() {
     tiktokLiveConnection.removeAllListeners();
     
     // Debug: Log de conexión exitosa
-    tiktokLiveConnection.on('connected', state => {
+    tiktokLiveConnection.on('connected', async state => {
         console.log(`🟢 Conectado exitosamente (Room ID: ${state.roomId})`);
+        // Actualizar estado LIVE en Firestore
+        if (db) {
+            try {
+                const configRef = doc(db, 'config', 'liveStatus');
+                await setDoc(configRef, { 
+                    isLive: true,
+                    roomId: String(state.roomId),
+                    startedAt: serverTimestamp()
+                }, { merge: true });
+                console.log('📡 Estado LIVE actualizado en Firestore: ON');
+            } catch (e) {
+                console.error('Error actualizando estado LIVE:', e);
+            }
+        }
     });
 
-    // Manejo de desconexiones
-    tiktokLiveConnection.on('disconnected', () => {
+    tiktokLiveConnection.on('disconnected', async () => {
         console.log('❌ Live finalizado o desconectado.');
+        
+        // Actualizar estado LIVE en Firestore
+        if (db) {
+            try {
+                const configRef = doc(db, 'config', 'liveStatus');
+                await setDoc(configRef, { 
+                    isLive: false,
+                    endedAt: serverTimestamp()
+                }, { merge: true });
+                console.log('📡 Estado LIVE actualizado en Firestore: OFF');
+            } catch (e) {
+                console.error('Error actualizando estado LIVE:', e);
+            }
+        }
+
         console.log('🔄 Volviendo a buscar Live...');
         setTimeout(connectToLive, 10000); 
     });
