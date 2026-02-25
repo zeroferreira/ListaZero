@@ -544,18 +544,60 @@
             } catch(_) {}
         }
 
+        // --- MOUSE EVENTS (PC) ---
         indicator.addEventListener('mousedown', (e) => {
             isDragging = true;
             startX = e.clientX - indicator.getBoundingClientRect().left;
             startY = e.clientY - indicator.getBoundingClientRect().top;
             indicator.style.cursor = 'grabbing';
+            e.preventDefault(); // Evitar selección
         });
 
         document.addEventListener('mousemove', (e) => {
             if (!isDragging) return;
             e.preventDefault();
-            const x = e.clientX - startX;
-            const y = e.clientY - startY;
+            moveElement(e.clientX, e.clientY);
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                stopDragging();
+            }
+        });
+
+        // --- TOUCH EVENTS (MOBILE) ---
+        indicator.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0) {
+                isDragging = true;
+                const touch = e.touches[0];
+                const rect = indicator.getBoundingClientRect();
+                startX = touch.clientX - rect.left;
+                startY = touch.clientY - rect.top;
+                indicator.style.cursor = 'grabbing';
+                // Important: prevent default to avoid scrolling while dragging
+                e.preventDefault(); 
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            if (e.touches.length > 0) {
+                e.preventDefault(); // Stop scrolling
+                const touch = e.touches[0];
+                moveElement(touch.clientX, touch.clientY);
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchend', (e) => {
+             if (isDragging) {
+                 stopDragging();
+             }
+        });
+
+        // --- COMMON LOGIC ---
+        function moveElement(clientX, clientY) {
+            const x = clientX - startX;
+            const y = clientY - startY;
             
             // Boundary checks
             const maxX = window.innerWidth - indicator.offsetWidth;
@@ -563,20 +605,20 @@
             
             indicator.style.left = `${Math.min(Math.max(0, x), maxX)}px`;
             indicator.style.top = `${Math.min(Math.max(0, y), maxY)}px`;
-            indicator.style.right = 'auto'; // Disable right when dragging
-        });
+            indicator.style.right = 'auto'; 
+            indicator.style.bottom = 'auto';
+        }
 
-        document.addEventListener('mouseup', () => {
-            if (isDragging) {
-                isDragging = false;
-                indicator.style.cursor = 'grab';
-                localStorage.setItem('liveIndicatorPos', JSON.stringify({
-                    top: indicator.style.top,
-                    left: indicator.style.left,
-                    right: 'auto'
-                }));
-            }
-        });
+        function stopDragging() {
+            isDragging = false;
+            indicator.style.cursor = 'grab';
+            localStorage.setItem('liveIndicatorPos', JSON.stringify({
+                top: indicator.style.top,
+                left: indicator.style.left,
+                right: 'auto',
+                bottom: 'auto'
+            }));
+        }
 
         // Firestore Listener
         if (window.db) {
