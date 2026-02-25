@@ -2905,8 +2905,19 @@
             <button class="play-toggle-btn" title="Marcar como reproducida">
               <span class="play-icon">▶️</span>
             </button>
+            <!-- Botón Mover al Top (Solo en modo edición) -->
+            <button class="move-top-btn" title="Mover al inicio" aria-label="Mover al inicio" style="display:none;">⬆️</button>
             <button class="delete-btn" title="Eliminar canción" aria-label="Eliminar">🗑️</button>
           `;
+
+          // Listener para botón Top
+          const topBtn = li.querySelector('.move-top-btn');
+          if (topBtn) {
+              topBtn.onclick = (e) => {
+                  e.stopPropagation();
+                  moveRequestToTop(it.id || it.docId);
+              };
+          }
 
           const copyButtons = li.querySelectorAll('.copy-chip');
           if (copyButtons && copyButtons.length) {
@@ -6062,6 +6073,81 @@
       // --- INDICADOR LIVE ---
       const liveIndicator = document.getElementById('live-indicator');
       const liveIndicatorText = liveIndicator?.querySelector('.indicator-text');
+      const liveDragHandle = liveIndicator?.querySelector('.drag-handle');
+      
+      // Lógica de Draggable para el Indicador Live
+      if (liveIndicator && liveDragHandle) {
+          let isDragging = false;
+          let currentX;
+          let currentY;
+          let initialX;
+          let initialY;
+          let xOffset = 0;
+          let yOffset = 0;
+
+          // Cargar posición guardada
+          try {
+              const savedPos = JSON.parse(localStorage.getItem('liveIndicatorPos') || '{}');
+              if (savedPos.x && savedPos.y) {
+                  xOffset = savedPos.x;
+                  yOffset = savedPos.y;
+                  setTranslate(xOffset, yOffset, liveIndicator);
+              }
+          } catch (_) {}
+
+          liveDragHandle.addEventListener("mousedown", dragStart);
+          document.addEventListener("mouseup", dragEnd);
+          document.addEventListener("mousemove", drag);
+          
+          // Soporte táctil
+          liveDragHandle.addEventListener("touchstart", dragStart, {passive: false});
+          document.addEventListener("touchend", dragEnd);
+          document.addEventListener("touchmove", drag, {passive: false});
+
+          function dragStart(e) {
+              if (e.type === "touchstart") {
+                  initialX = e.touches[0].clientX - xOffset;
+                  initialY = e.touches[0].clientY - yOffset;
+              } else {
+                  initialX = e.clientX - xOffset;
+                  initialY = e.clientY - yOffset;
+              }
+
+              if (e.target === liveDragHandle) {
+                  isDragging = true;
+              }
+          }
+
+          function dragEnd(e) {
+              initialX = currentX;
+              initialY = currentY;
+              isDragging = false;
+              // Guardar posición
+              localStorage.setItem('liveIndicatorPos', JSON.stringify({ x: xOffset, y: yOffset }));
+          }
+
+          function drag(e) {
+              if (isDragging) {
+                  e.preventDefault();
+                  if (e.type === "touchmove") {
+                      currentX = e.touches[0].clientX - initialX;
+                      currentY = e.touches[0].clientY - initialY;
+                  } else {
+                      currentX = e.clientX - initialX;
+                      currentY = e.clientY - initialY;
+                  }
+
+                  xOffset = currentX;
+                  yOffset = currentY;
+
+                  setTranslate(currentX, currentY, liveIndicator);
+              }
+          }
+
+          function setTranslate(xPos, yPos, el) {
+              el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
+          }
+      }
       
       function updateLiveStatus(isLive) {
           if (!liveIndicator) return;
