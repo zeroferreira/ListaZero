@@ -13569,6 +13569,12 @@
             description: reward.description
           };
           
+          // --- ACTUALIZACIÓN OPTIMISTA PREVIA ---
+          // Restar visualmente antes de enviar a DB para feedback instantáneo
+          const optimisticPoints = Math.max(0, currentPoints - cost);
+          const pointsDisplay = document.getElementById('user-points-display');
+          if (pointsDisplay) pointsDisplay.textContent = `${optimisticPoints} pts`;
+          
           console.log('💾 Guardando solicitud en Firestore...');
           
           // Usar batch para descontar puntos y crear solicitud atómicamente
@@ -13587,10 +13593,21 @@
           
           // Actualizar localmente también para reflejo inmediato en UI
           const userData = getGamificationDataForUser(username);
-          userData.points = Math.max(0, currentPoints - cost); // Estimado
+          userData.points = Math.max(0, currentPoints - cost); 
           userData._cloudSyncedPoints = userData.points;
           saveGamificationDataForUser(userData, username);
           
+          // --- ACTUALIZACIÓN VISUAL CRÍTICA ---
+          // Actualizar inmediatamente el header para que el usuario vea la resta de puntos
+          try {
+             // 1. Actualizar elemento del DOM directamente si existe
+             const headerPointsEl = document.getElementById('user-points-display');
+             if (headerPointsEl) headerPointsEl.textContent = `${userData.points} pts`;
+             
+             // 2. Llamar a la función oficial de actualización de UI
+             await updateUserHeaderUI(username);
+          } catch (e) { console.warn('Error actualizando header tras canje:', e); }
+
           showMessageModal({
              title: '✅ Solicitud Enviada',
              message: `Has solicitado "${reward.name}".\n\nSe han descontado ${cost} puntos. El administrador revisará tu solicitud pronto.`
