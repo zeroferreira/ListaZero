@@ -595,14 +595,6 @@
          </div>
       </div>
 
-      <!-- INDICADOR LIVE (Flotante y Arrastrable) - Movido aquí para estar fuera del panel admin y otros contenedores -->
-      <div id="live-indicator" class="live-indicator offline" hidden style="display: flex !important; z-index: 99999 !important;">
-        <span class="indicator-dot"></span>
-        <span class="indicator-text">Offline</span>
-        <!-- Handle para arrastrar -->
-        <div class="drag-handle" title="Mover">⋮</div>
-      </div>
-
       <div id="admin-panel" class="admin-panel" hidden>
         
         <div class="admin-sections-tabs" role="tablist" aria-label="Secciones de administración">
@@ -2915,9 +2907,8 @@
             </button>
             <button class="delete-btn" title="Eliminar canción" aria-label="Eliminar">🗑️</button>
           `;
-
-          // Botón Top eliminado de aquí para moverlo a la lista de widget
-
+          
+          /* Botón Mover al Top ELIMINADO de aquí */
 
           const copyButtons = li.querySelectorAll('.copy-chip');
           if (copyButtons && copyButtons.length) {
@@ -6071,40 +6062,10 @@
       }
 
       // --- INDICADOR LIVE ---
-      // IMPORTANTE: Definido FUERA del closure IIFE para que sea accesible globalmente si es necesario, 
-      // pero aquí lo mantenemos dentro por encapsulamiento, asegurándonos de que se ejecute.
       const liveIndicator = document.getElementById('live-indicator');
       const liveIndicatorText = liveIndicator?.querySelector('.indicator-text');
       const liveDragHandle = liveIndicator?.querySelector('.drag-handle');
       
-      // Función para actualizar estado LIVE
-      function updateLiveStatus(isLive) {
-          if (!liveIndicator) return;
-          
-          if (isLive) {
-              liveIndicator.classList.remove('offline');
-              liveIndicator.classList.add('live');
-              liveIndicator.hidden = false;
-              if (liveIndicatorText) liveIndicatorText.textContent = 'Live 🔴';
-          } else {
-              liveIndicator.classList.remove('live');
-              liveIndicator.classList.add('offline');
-              liveIndicator.hidden = false; 
-              if (liveIndicatorText) liveIndicatorText.textContent = 'Offline 🔘';
-          }
-      }
-
-      // Listener global para estado LIVE
-      if (window.db) {
-          db.collection('config').doc('liveStatus').onSnapshot((doc) => {
-              const isLive = doc.exists && doc.data()?.isLive === true;
-              console.log('📡 Live Status Update:', isLive); // Debug log
-              updateLiveStatus(isLive);
-          }, (err) => console.warn('Live status error:', err));
-      } else {
-          console.warn('DB no inicializada para Live Status');
-      }
-
       // Lógica de Draggable para el Indicador Live
       if (liveIndicator && liveDragHandle) {
           let isDragging = false;
@@ -6118,7 +6079,7 @@
           // Cargar posición guardada
           try {
               const savedPos = JSON.parse(localStorage.getItem('liveIndicatorPos') || '{}');
-              if (savedPos.x !== undefined && savedPos.y !== undefined) {
+              if (savedPos.x && savedPos.y) {
                   xOffset = savedPos.x;
                   yOffset = savedPos.y;
                   setTranslate(xOffset, yOffset, liveIndicator);
@@ -6143,7 +6104,7 @@
                   initialY = e.clientY - yOffset;
               }
 
-              if (e.target === liveDragHandle || e.target.closest('.drag-handle')) {
+              if (e.target === liveDragHandle) {
                   isDragging = true;
               }
           }
@@ -6176,6 +6137,21 @@
 
           function setTranslate(xPos, yPos, el) {
               el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
+          }
+      }
+      
+      function updateLiveStatus(isLive) {
+          if (!liveIndicator) return;
+          if (isLive) {
+              liveIndicator.classList.remove('offline');
+              liveIndicator.classList.add('live');
+              liveIndicator.hidden = false;
+              if (liveIndicatorText) liveIndicatorText.textContent = 'Live 🔴';
+          } else {
+              liveIndicator.classList.remove('live');
+              liveIndicator.classList.add('offline');
+              liveIndicator.hidden = false; 
+              if (liveIndicatorText) liveIndicatorText.textContent = 'Offline 🔘';
           }
       }
 
@@ -10047,27 +10023,7 @@
           if (bd.top1Bonus > 0) {
              lines.push(`<div class="genre-chip"><span>🏆 Top 1 Diario </span><span>${bd.top1Count} × 150 = ${bd.top1Bonus}</span></div>`);
           }
-
-          // Ajustes Manuales (Nuevo)
-          if (bd.manualBonus !== 0) {
-             const sign = bd.manualBonus > 0 ? '+' : '';
-             lines.push(`<div class="genre-chip"><span>🔧 Ajuste Manual </span><span>${sign}${bd.manualBonus}</span></div>`);
-          }
           
-          // Rachas
-          lines.push(`<div class="genre-chip"><span>🔥 Rachas </span><span>${bd.streakBonus}</span></div>`);
-          
-          // Logros
-          lines.push(`<div class="genre-chip"><span>🏆 Logros </span><span>${bd.achievements}</span></div>`);
-          
-          // Recompensas (Gastado)
-          if (bd.redemptionsSpent > 0) {
-             lines.push(`<div class="genre-chip" style="color: #ef4444;"><span>🎁 Gastado </span><span>-${bd.redemptionsSpent}</span></div>`);
-          }
-          
-          list.innerHTML = lines.join('');
-        }
-      }          
           // Rachas (solo si hay puntos)
           if (bd.streakBonus > 0) {
             lines.push(`<div class="genre-chip"><span>🔥 Rachas </span><span>${bd.streakBonus}</span></div>`);

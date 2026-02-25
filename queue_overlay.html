@@ -1056,9 +1056,33 @@
           grip.style.opacity = '0.8';
           grip.style.fontWeight = '900';
           grip.style.padding = '0 4px';
+          grip.style.cursor = 'grab';
+
+          // --- BOTÓN MOVER AL TOP ---
+          const topBtn = document.createElement('button');
+          topBtn.textContent = '⬆️';
+          topBtn.title = 'Mover al inicio';
+          topBtn.style.background = 'rgba(255,255,255,0.1)';
+          topBtn.style.border = '1px solid rgba(255,255,255,0.2)';
+          topBtn.style.color = '#fff';
+          topBtn.style.borderRadius = '4px';
+          topBtn.style.width = '24px';
+          topBtn.style.height = '24px';
+          topBtn.style.fontSize = '12px';
+          topBtn.style.display = 'flex';
+          topBtn.style.alignItems = 'center';
+          topBtn.style.justifyContent = 'center';
+          topBtn.style.cursor = 'pointer';
+          topBtn.style.marginRight = '8px'; // Espacio antes del grip
+          
+          topBtn.onclick = async (e) => {
+             e.stopPropagation();
+             moveRequestToTop(key);
+          };
 
           row.appendChild(left);
           row.appendChild(mid);
+          row.appendChild(topBtn); // Insertar antes del grip
           row.appendChild(grip);
 
           row.addEventListener('dragstart', (e) => {
@@ -1089,6 +1113,24 @@
       render();
     }
     
+    // Función auxiliar para mover al top
+    async function moveRequestToTop(targetKey) {
+        if (!targetKey) return;
+        const pending = getPendingRequestsForMover();
+        const orderKeys = pending.map(req => String(req?.docId || req?.id || generateSongId(req) || '')).filter(Boolean);
+        
+        const idx = orderKeys.indexOf(targetKey);
+        if (idx < 0) return; // No encontrado
+        
+        // Mover al principio
+        orderKeys.splice(idx, 1);
+        orderKeys.unshift(targetKey);
+        
+        await persistManualOrder(orderKeys);
+        try { renderQueue(); } catch (_) {}
+        try { renderWidgetMoverList(); } catch (_) {}
+    }
+
     // --- Configuración / Settings Logic ---
     function switchTab(tabName) {
       // Buttons
