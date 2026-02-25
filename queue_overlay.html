@@ -1056,33 +1056,9 @@
           grip.style.opacity = '0.8';
           grip.style.fontWeight = '900';
           grip.style.padding = '0 4px';
-          grip.style.cursor = 'grab';
-
-          // --- BOTÓN MOVER AL TOP ---
-          const topBtn = document.createElement('button');
-          topBtn.textContent = '⬆️';
-          topBtn.title = 'Mover al inicio';
-          topBtn.style.background = 'rgba(255,255,255,0.1)';
-          topBtn.style.border = '1px solid rgba(255,255,255,0.2)';
-          topBtn.style.color = '#fff';
-          topBtn.style.borderRadius = '4px';
-          topBtn.style.width = '24px';
-          topBtn.style.height = '24px';
-          topBtn.style.fontSize = '12px';
-          topBtn.style.display = 'flex';
-          topBtn.style.alignItems = 'center';
-          topBtn.style.justifyContent = 'center';
-          topBtn.style.cursor = 'pointer';
-          topBtn.style.marginRight = '8px'; // Espacio antes del grip
-          
-          topBtn.onclick = async (e) => {
-             e.stopPropagation();
-             moveRequestToTop(key);
-          };
 
           row.appendChild(left);
           row.appendChild(mid);
-          row.appendChild(topBtn); // Insertar antes del grip
           row.appendChild(grip);
 
           row.addEventListener('dragstart', (e) => {
@@ -1113,24 +1089,6 @@
       render();
     }
     
-    // Función auxiliar para mover al top
-    async function moveRequestToTop(targetKey) {
-        if (!targetKey) return;
-        const pending = getPendingRequestsForMover();
-        const orderKeys = pending.map(req => String(req?.docId || req?.id || generateSongId(req) || '')).filter(Boolean);
-        
-        const idx = orderKeys.indexOf(targetKey);
-        if (idx < 0) return; // No encontrado
-        
-        // Mover al principio
-        orderKeys.splice(idx, 1);
-        orderKeys.unshift(targetKey);
-        
-        await persistManualOrder(orderKeys);
-        try { renderQueue(); } catch (_) {}
-        try { renderWidgetMoverList(); } catch (_) {}
-    }
-
     // --- Configuración / Settings Logic ---
     function switchTab(tabName) {
       // Buttons
@@ -1739,39 +1697,6 @@
       return b;
     }
 
-    // Función para mover una tarjeta al principio de la lista manual
-    function moveCardToTop(songId) {
-        if (!songId) return;
-        
-        // Obtener TODAS las canciones pendientes actuales (ya filtradas por played)
-        const pending = allRequests.filter(req => !playedSongIds.has(generateSongId(req)));
-        
-        // Ordenarlas según el orden actual (manual o timestamp)
-        // Usamos la misma lógica que renderQueue
-        let ordered = applyOrder(pending, currentManualOrder);
-        
-        // Extraer la canción que queremos mover
-        const targetIndex = ordered.findIndex(req => generateSongId(req) === songId);
-        if (targetIndex === -1) return; // No encontrada
-        
-        const targetReq = ordered[targetIndex];
-        ordered.splice(targetIndex, 1); // Quitarla de su posición actual
-        ordered.unshift(targetReq); // Ponerla al principio
-        
-        // Generar el nuevo array de IDs para guardar
-        const newOrderIds = ordered.map(req => generateSongId(req));
-        
-        // Guardar nuevo orden en Firestore
-        if (db) {
-            db.collection('manualOrders').doc(currentDay).set({
-                order: newOrderIds,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true }).then(() => {
-                console.log(`Canción ${songId} movida al inicio`);
-            }).catch(err => console.error("Error moviendo canción:", err));
-        }
-    }
-
     function createQueueItem(req, index) {
       const cancion = req.cancion || req.songName || req.song || req.name || '';
       const artista = req.artista || req.artistName || req.artist || '';
@@ -1780,11 +1705,9 @@
       const badge = rawBadge || getForcedBadgeForUser(usuario);
       const badgeHtml = badge ? `<span class="user-insignia ${badge}">${badgeLabel(badge)}</span>` : '';
       const div = document.createElement('div');
-      const sId = generateSongId(req);
-      
       // Wrapper con clases de posición
       div.className = `queue-item queue-pos-${index + 1}`; 
-      div.dataset.songId = sId;
+      div.dataset.songId = generateSongId(req);
       if (req.docId) div.dataset.docId = req.docId;
       
       // Structure for optional Album Art and Wait Time
@@ -1806,8 +1729,7 @@
            </div>
         </div>
       `;
-    return div;
-    }
+      return div;
     }
 
     function renderQueue() {
@@ -2605,6 +2527,122 @@
     let dragOffsetX = 0;
     let dragOffsetY = 0;
     let hasMoved = false;
+
+    // --- Drag & Drop Logic for Queue Cards ---
+    let dragSrcEl = null;
+
+    function handleDragStart(e) {
+      this.style.opacity = '0.4';
+      dragSrcEl = this;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', this.innerHTML);
+    }
+
+    function handleDragOver(e) {
+      if (e.preventDefault) {
+        e.preventDefault();
+      }
+      e.dataTransfer.dropEffect = 'move';
+      return false;
+    }
+
+    function handleDragEnter(e) {
+      this.classList.add('over');
+    }
+
+    function handleDragLeave(e) {
+      this.classList.remove('over');
+    }
+
+    function handleDrop(e) {
+      if (e.stopPropagation) {
+        e.stopPropagation();
+      }
+      if (dragSrcEl !== this) {
+        // Swap elements
+        const container = document.getElementById('queue-container');
+        const allCards = Array.from(container.querySelectorAll('.queue-item'));
+        const srcIndex = allCards.indexOf(dragSrcEl);
+        const destIndex = allCards.indexOf(this);
+
+        if (srcIndex < destIndex) {
+            container.insertBefore(dragSrcEl, this.nextSibling);
+        } else {
+            container.insertBefore(dragSrcEl, this);
+        }
+        
+        saveOrder(); // Save new order to Firebase
+      }
+      return false;
+    }
+
+    function handleDragEnd(e) {
+      this.style.opacity = '1';
+      let items = document.querySelectorAll('.queue-item');
+      items.forEach(function (item) {
+        item.classList.remove('over');
+      });
+    }
+
+    function moveToTop(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      // Encontrar la tarjeta padre
+      const card = e.target.closest('.queue-item');
+      if (!card) return;
+      
+      const container = document.getElementById('queue-container');
+      // Mover al principio del contenedor (antes del primer hijo)
+      container.insertBefore(card, container.firstChild);
+      
+      // Guardar el nuevo orden
+      saveOrder();
+      
+      // Feedback visual
+      card.style.transition = 'background-color 0.3s';
+      card.style.backgroundColor = 'rgba(34, 197, 94, 0.2)';
+      setTimeout(() => {
+          card.style.backgroundColor = '';
+      }, 500);
+    }
+
+    function addDragEvents(card) {
+      card.setAttribute('draggable', true);
+      card.addEventListener('dragstart', handleDragStart, false);
+      card.addEventListener('dragenter', handleDragEnter, false);
+      card.addEventListener('dragover', handleDragOver, false);
+      card.addEventListener('dragleave', handleDragLeave, false);
+      card.addEventListener('drop', handleDrop, false);
+      card.addEventListener('dragend', handleDragEnd, false);
+      
+      // Botón "Mover al inicio" (solo visible en modo edición)
+      let topBtn = card.querySelector('.move-top-btn');
+      if (!topBtn) {
+        topBtn = document.createElement('button');
+        topBtn.className = 'move-top-btn';
+        topBtn.innerHTML = '⬆️';
+        topBtn.title = 'Mover al principio de la cola';
+        // Usar addEventListener para evitar conflictos
+        topBtn.addEventListener('click', moveToTop);
+        // Insertar en la tarjeta (asegurarse de que el CSS lo posicione bien)
+        card.appendChild(topBtn);
+      }
+    }
+
+    // Guardar orden manual en Firebase
+    function saveOrder() {
+        const container = document.getElementById('queue-container');
+        const items = Array.from(container.querySelectorAll('.queue-item'));
+        const newOrder = items.map(el => el.dataset.songId).filter(id => id);
+        
+        if (newOrder.length > 0) {
+            console.log("Saving manual order:", newOrder);
+            db.collection('manualOrders').doc(currentDay).set({
+                order: newOrder,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        }
+    }
 
     try {
       const saved = localStorage.getItem(settingsBtnPosKey);

@@ -517,6 +517,88 @@
   </style>
 </head>
 <body>
+  <!-- Indicador de Live Flotante -->
+  <div id="live-indicator" class="live-indicator offline" title="Estado de la transmisión">
+    <div class="live-dot"></div>
+    <span class="live-text">Offline</span>
+  </div>
+
+  <script>
+    // --- LIVE STATUS LOGIC ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const indicator = document.getElementById('live-indicator');
+        const text = indicator.querySelector('.live-text');
+        
+        // Draggable Logic
+        let isDragging = false;
+        let startX, startY;
+        
+        // Load saved position
+        const savedPos = localStorage.getItem('liveIndicatorPos');
+        if (savedPos) {
+            try {
+                const p = JSON.parse(savedPos);
+                if (p.top) indicator.style.top = p.top;
+                if (p.left) indicator.style.left = p.left;
+                if (p.right) indicator.style.right = p.right;
+            } catch(_) {}
+        }
+
+        indicator.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX - indicator.getBoundingClientRect().left;
+            startY = e.clientY - indicator.getBoundingClientRect().top;
+            indicator.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            const x = e.clientX - startX;
+            const y = e.clientY - startY;
+            
+            // Boundary checks
+            const maxX = window.innerWidth - indicator.offsetWidth;
+            const maxY = window.innerHeight - indicator.offsetHeight;
+            
+            indicator.style.left = `${Math.min(Math.max(0, x), maxX)}px`;
+            indicator.style.top = `${Math.min(Math.max(0, y), maxY)}px`;
+            indicator.style.right = 'auto'; // Disable right when dragging
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                indicator.style.cursor = 'grab';
+                localStorage.setItem('liveIndicatorPos', JSON.stringify({
+                    top: indicator.style.top,
+                    left: indicator.style.left,
+                    right: 'auto'
+                }));
+            }
+        });
+
+        // Firestore Listener
+        if (window.db) {
+            db.collection('system').doc('status')
+                .onSnapshot((doc) => {
+                    const data = doc.data();
+                    const isLive = data && data.isLive === true;
+                    
+                    if (isLive) {
+                        indicator.classList.remove('offline');
+                        indicator.classList.add('live');
+                        text.textContent = 'EN VIVO';
+                    } else {
+                        indicator.classList.remove('live');
+                        indicator.classList.add('offline');
+                        text.textContent = 'OFFLINE';
+                    }
+                });
+        }
+    });
+  </script>
+
   <main class="container">
     <section class="card" aria-labelledby="titulo">
       <div class="title-bar" role="group" aria-label="Barra de título y filtro">
@@ -2907,8 +2989,6 @@
             </button>
             <button class="delete-btn" title="Eliminar canción" aria-label="Eliminar">🗑️</button>
           `;
-          
-          /* Botón Mover al Top ELIMINADO de aquí */
 
           const copyButtons = li.querySelectorAll('.copy-chip');
           if (copyButtons && copyButtons.length) {
@@ -6055,121 +6135,12 @@
       function showAdminPanel() {
         adminPanel.hidden = false;
         window.renderAllUsersSelect?.();
-        // showAdminSection('badges'); // Mostrar sección de insignias por defecto
-        // Mantener en la última sección visitada o default
-        const lastSection = localStorage.getItem('lastAdminSection') || 'badges';
-        showAdminSection(lastSection);
+        showAdminSection('badges'); // Mostrar sección de insignias por defecto
       }
 
-      // --- INDICADOR LIVE ---
-      const liveIndicator = document.getElementById('live-indicator');
-      const liveIndicatorText = liveIndicator?.querySelector('.indicator-text');
-      const liveDragHandle = liveIndicator?.querySelector('.drag-handle');
-      
-      // Lógica de Draggable para el Indicador Live
-      if (liveIndicator && liveDragHandle) {
-          let isDragging = false;
-          let currentX;
-          let currentY;
-          let initialX;
-          let initialY;
-          let xOffset = 0;
-          let yOffset = 0;
-
-          // Cargar posición guardada
-          try {
-              const savedPos = JSON.parse(localStorage.getItem('liveIndicatorPos') || '{}');
-              if (savedPos.x && savedPos.y) {
-                  xOffset = savedPos.x;
-                  yOffset = savedPos.y;
-                  setTranslate(xOffset, yOffset, liveIndicator);
-              }
-          } catch (_) {}
-
-          liveDragHandle.addEventListener("mousedown", dragStart);
-          document.addEventListener("mouseup", dragEnd);
-          document.addEventListener("mousemove", drag);
-          
-          // Soporte táctil
-          liveDragHandle.addEventListener("touchstart", dragStart, {passive: false});
-          document.addEventListener("touchend", dragEnd);
-          document.addEventListener("touchmove", drag, {passive: false});
-
-          function dragStart(e) {
-              if (e.type === "touchstart") {
-                  initialX = e.touches[0].clientX - xOffset;
-                  initialY = e.touches[0].clientY - yOffset;
-              } else {
-                  initialX = e.clientX - xOffset;
-                  initialY = e.clientY - yOffset;
-              }
-
-              if (e.target === liveDragHandle) {
-                  isDragging = true;
-              }
-          }
-
-          function dragEnd(e) {
-              initialX = currentX;
-              initialY = currentY;
-              isDragging = false;
-              // Guardar posición
-              localStorage.setItem('liveIndicatorPos', JSON.stringify({ x: xOffset, y: yOffset }));
-          }
-
-          function drag(e) {
-              if (isDragging) {
-                  e.preventDefault();
-                  if (e.type === "touchmove") {
-                      currentX = e.touches[0].clientX - initialX;
-                      currentY = e.touches[0].clientY - initialY;
-                  } else {
-                      currentX = e.clientX - initialX;
-                      currentY = e.clientY - initialY;
-                  }
-
-                  xOffset = currentX;
-                  yOffset = currentY;
-
-                  setTranslate(currentX, currentY, liveIndicator);
-              }
-          }
-
-          function setTranslate(xPos, yPos, el) {
-              el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
-          }
-      }
-      
-      function updateLiveStatus(isLive) {
-          if (!liveIndicator) return;
-          if (isLive) {
-              liveIndicator.classList.remove('offline');
-              liveIndicator.classList.add('live');
-              liveIndicator.hidden = false;
-              if (liveIndicatorText) liveIndicatorText.textContent = 'Live 🔴';
-          } else {
-              liveIndicator.classList.remove('live');
-              liveIndicator.classList.add('offline');
-              liveIndicator.hidden = false; 
-              if (liveIndicatorText) liveIndicatorText.textContent = 'Offline 🔘';
-          }
-      }
-
-      // Listener global para estado LIVE
-      if (window.db) {
-          db.collection('config').doc('liveStatus').onSnapshot((doc) => {
-              const isLive = doc.exists && doc.data()?.isLive === true;
-              updateLiveStatus(isLive);
-          }, (err) => console.warn('Live status error:', err));
-      }
-
-      // --- ELIMINADO: Botón Toggle Manual (ahora es automático por el bot) ---
-      
       // Función para mostrar una sección específica del admin
       function showAdminSection(section) {
         if (adminSectionSelect) adminSectionSelect.value = section;
-        localStorage.setItem('lastAdminSection', section); // Recordar sección
-
         if (adminSectionTabs && adminSectionTabs.length) {
           adminSectionTabs.forEach((btn) => {
             const isActive = btn.getAttribute('data-section') === section;
@@ -6195,9 +6166,7 @@
             loadRewardRequests(); // Cargar solicitudes de recompensas
             break;
           case 'maintenance':
-            if (maintenanceSection) {
-                maintenanceSection.hidden = false;
-            }
+            if (maintenanceSection) maintenanceSection.hidden = false;
             // Poblar selector de compensación si existe la función
             if (typeof window.populateAdminCompensationSelector === 'function') {
                window.populateAdminCompensationSelector();

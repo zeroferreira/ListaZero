@@ -17,12 +17,42 @@ try {
 let initializeApp, getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, query, where, limit;
 try {
     ({ initializeApp } = require('firebase/app'));
-    ({ getFirestore, collection, addDoc, setDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, query, where, limit } = require('firebase/firestore'));
+    ({ getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, query, where, limit } = require('firebase/firestore'));
 } catch (e) {
     console.error('Critical Error loading Firebase libraries:', e);
     console.error('Solución: ejecuta "npm install" dentro de la carpeta tiktok-bot y usa Node 18+.');
     process.exit(1);
 }
+
+// --- ACTUALIZADOR DE ESTADO LIVE ---
+let dbStatus = null;
+function initStatusUpdater(firebaseConfig) {
+    if (!firebaseConfig) return;
+    try {
+        const { initializeApp: initApp } = require('firebase/app');
+        // Usar nombre único para no chocar con la app principal
+        const app = initApp(firebaseConfig, 'statusUpdater');
+        const { getFirestore: getFS } = require('firebase/firestore');
+        dbStatus = getFS(app);
+    } catch (e) { console.error("Error init status updater:", e); }
+}
+
+function updateLiveStatus(isLive) {
+    if (!dbStatus) return;
+    const { doc, setDoc, serverTimestamp } = require('firebase/firestore'); 
+    // Nota: setDoc y serverTimestamp deben importarse o usarse de la instancia correcta
+    // Simplificación: Usamos la referencia global ya importada si es compatible, o reimportamos
+    try {
+        const docRef = doc(dbStatus, 'system', 'status');
+        // Usamos setDoc de la librería modular
+        const { setDoc: setDocModular, serverTimestamp: stModular } = require('firebase/firestore');
+        setDocModular(docRef, {
+            isLive: isLive,
+            lastUpdate: stModular()
+        }, { merge: true }).catch(err => console.error("Error updating live status:", err));
+    } catch(e) { console.error("Update live status failed:", e); }
+}
+// -----------------------------------
 
 // --- CONFIGURACIÓN ESTATICA ---
 const CONFIG_FILE = path.join(__dirname, 'config.json');
@@ -50,6 +80,21 @@ try {
         const raw = fs.readFileSync(CONFIG_FILE);
         config = { ...config, ...JSON.parse(raw) };
         console.log("📂 Configuración cargada:", config);
+    }
+    
+    // Cargar credenciales Firebase Web para actualizar estado LIVE
+    const fbConfigFile = path.join(__dirname, 'firebase-config.js');
+    if (fs.existsSync(fbConfigFile)) {
+        const fbConfig = require(fbConfigFile);
+        initStatusUpdater(fbConfig);
+    } else {
+        // Fallback config si no existe el archivo
+        initStatusUpdater({
+          apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+          authDomain: "zero-strom-web.firebaseapp.com",
+          projectId: "zero-strom-web",
+          appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+        });
     }
 } catch (e) {
     console.error("Error cargando config:", e);
@@ -749,41 +794,19 @@ function setupListeners() {
     tiktokLiveConnection.removeAllListeners();
     
     // Debug: Log de conexión exitosa
-    tiktokLiveConnection.on('connected', async state => {
+    tiktokLiveConnection.on('connected', state => {
         console.log(`🟢 Conectado exitosamente (Room ID: ${state.roomId})`);
-        // Actualizar estado LIVE en Firestore
-        if (db) {
-            try {
-                const configRef = doc(db, 'config', 'liveStatus');
-                await setDoc(configRef, { 
-                    isLive: true,
-                    roomId: String(state.roomId),
-                    startedAt: serverTimestamp()
-                }, { merge: true });
-                console.log('📡 Estado LIVE actualizado en Firestore: ON');
-            } catch (e) {
-                console.error('Error actualizando estado LIVE:', e);
-            }
-        }
+        updateLiveStatus(true); // Actualizar estado a ONLINE
+    });
+    
+    tiktokLiveConnection.on('disconnected', () => {
+        console.log('🔴 Desconectado del live.');
+        updateLiveStatus(false); // Actualizar estado a OFFLINE
     });
 
-    tiktokLiveConnection.on('disconnected', async () => {
+    // Manejo de desconexiones
+    tiktokLiveConnection.on('disconnected', () => {
         console.log('❌ Live finalizado o desconectado.');
-        
-        // Actualizar estado LIVE en Firestore
-        if (db) {
-            try {
-                const configRef = doc(db, 'config', 'liveStatus');
-                await setDoc(configRef, { 
-                    isLive: false,
-                    endedAt: serverTimestamp()
-                }, { merge: true });
-                console.log('📡 Estado LIVE actualizado en Firestore: OFF');
-            } catch (e) {
-                console.error('Error actualizando estado LIVE:', e);
-            }
-        }
-
         console.log('🔄 Volviendo a buscar Live...');
         setTimeout(connectToLive, 10000); 
     });
