@@ -1697,6 +1697,39 @@
       return b;
     }
 
+    // Función para mover una tarjeta al principio de la lista manual
+    function moveCardToTop(songId) {
+        if (!songId) return;
+        
+        // Obtener TODAS las canciones pendientes actuales (ya filtradas por played)
+        const pending = allRequests.filter(req => !playedSongIds.has(generateSongId(req)));
+        
+        // Ordenarlas según el orden actual (manual o timestamp)
+        // Usamos la misma lógica que renderQueue
+        let ordered = applyOrder(pending, currentManualOrder);
+        
+        // Extraer la canción que queremos mover
+        const targetIndex = ordered.findIndex(req => generateSongId(req) === songId);
+        if (targetIndex === -1) return; // No encontrada
+        
+        const targetReq = ordered[targetIndex];
+        ordered.splice(targetIndex, 1); // Quitarla de su posición actual
+        ordered.unshift(targetReq); // Ponerla al principio
+        
+        // Generar el nuevo array de IDs para guardar
+        const newOrderIds = ordered.map(req => generateSongId(req));
+        
+        // Guardar nuevo orden en Firestore
+        if (db) {
+            db.collection('manualOrders').doc(currentDay).set({
+                order: newOrderIds,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true }).then(() => {
+                console.log(`Canción ${songId} movida al inicio`);
+            }).catch(err => console.error("Error moviendo canción:", err));
+        }
+    }
+
     function createQueueItem(req, index) {
       const cancion = req.cancion || req.songName || req.song || req.name || '';
       const artista = req.artista || req.artistName || req.artist || '';
@@ -1705,14 +1738,16 @@
       const badge = rawBadge || getForcedBadgeForUser(usuario);
       const badgeHtml = badge ? `<span class="user-insignia ${badge}">${badgeLabel(badge)}</span>` : '';
       const div = document.createElement('div');
+      const sId = generateSongId(req);
+      
       // Wrapper con clases de posición
       div.className = `queue-item queue-pos-${index + 1}`; 
-      div.dataset.songId = generateSongId(req);
+      div.dataset.songId = sId;
       if (req.docId) div.dataset.docId = req.docId;
       
       // Structure for optional Album Art and Wait Time
       div.innerHTML = `
-        <div class="queue-item-inner" style="flex-direction: row; align-items: center; gap: 15px;">
+        <div class="queue-item-inner" style="flex-direction: row; align-items: center; gap: 15px; position: relative;">
            <img class="item-art" src="" style="display:none; width: 60px; height: 60px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">
            
            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
@@ -1727,8 +1762,40 @@
                </div>
                <div class="item-wait" style="font-size: 11px; color: var(--queue-accent-color); margin-top: 4px; font-weight: bold; display:none;"></div>
            </div>
+           
+           <!-- Botón Mover al Top (Solo visible al hacer hover) -->
+           <button class="move-top-btn" title="Mover al principio" style="
+               position: absolute;
+               right: 10px;
+               top: 50%;
+               transform: translateY(-50%);
+               background: rgba(255,255,255,0.2);
+               border: 1px solid rgba(255,255,255,0.3);
+               color: white;
+               border-radius: 50%;
+               width: 30px;
+               height: 30px;
+               display: none; 
+               align-items: center;
+               justify-content: center;
+               cursor: pointer;
+               font-size: 16px;
+               z-index: 10;
+           ">⬆️</button>
         </div>
       `;
+      
+      // Mostrar botón al hacer hover (CSS inline para simplicidad o usar stylesheet)
+      div.onmouseenter = () => { div.querySelector('.move-top-btn').style.display = 'flex'; };
+      div.onmouseleave = () => { div.querySelector('.move-top-btn').style.display = 'none'; };
+      
+      // Listener del botón
+      const btn = div.querySelector('.move-top-btn');
+      btn.onclick = (e) => {
+          e.stopPropagation();
+          moveCardToTop(sId);
+      };
+
       return div;
     }
 

@@ -6053,12 +6053,60 @@
       function showAdminPanel() {
         adminPanel.hidden = false;
         window.renderAllUsersSelect?.();
-        showAdminSection('badges'); // Mostrar sección de insignias por defecto
+        // showAdminSection('badges'); // Mostrar sección de insignias por defecto
+        // Mantener en la última sección visitada o default
+        const lastSection = localStorage.getItem('lastAdminSection') || 'badges';
+        showAdminSection(lastSection);
       }
+
+      // --- INDICADOR LIVE ---
+      const liveIndicator = document.getElementById('live-indicator');
+      const liveIndicatorText = liveIndicator?.querySelector('.indicator-text');
+      
+      function updateLiveStatus(isLive) {
+          if (!liveIndicator) return;
+          if (isLive) {
+              liveIndicator.classList.remove('offline');
+              liveIndicator.classList.add('live');
+              liveIndicator.hidden = false;
+              if (liveIndicatorText) liveIndicatorText.textContent = 'Live 🔴';
+          } else {
+              liveIndicator.classList.remove('live');
+              liveIndicator.classList.add('offline');
+              liveIndicator.hidden = false; 
+              if (liveIndicatorText) liveIndicatorText.textContent = 'Offline 🔘';
+          }
+      }
+
+      // Listener global para estado LIVE
+      if (window.db) {
+          db.collection('config').doc('liveStatus').onSnapshot((doc) => {
+              const isLive = doc.exists && doc.data()?.isLive === true;
+              updateLiveStatus(isLive);
+          }, (err) => console.warn('Live status error:', err));
+      }
+
+      // Botón Toggle en Mantenimiento
+      const liveToggleBtn = document.createElement('button');
+      liveToggleBtn.className = 'btn btn-primary';
+      liveToggleBtn.textContent = '🔴 Toggle Live Status';
+      liveToggleBtn.style.margin = '10px 0';
+      liveToggleBtn.style.width = '100%';
+      liveToggleBtn.onclick = async () => {
+          try {
+              const ref = db.collection('config').doc('liveStatus');
+              const doc = await ref.get();
+              const newState = !(doc.exists && doc.data().isLive);
+              await ref.set({ isLive: newState }, { merge: true });
+              alert(`Estado cambiado a: ${newState ? 'LIVE' : 'OFFLINE'}`);
+          } catch(e) { alert('Error: ' + e.message); }
+      };
 
       // Función para mostrar una sección específica del admin
       function showAdminSection(section) {
         if (adminSectionSelect) adminSectionSelect.value = section;
+        localStorage.setItem('lastAdminSection', section); // Recordar sección
+
         if (adminSectionTabs && adminSectionTabs.length) {
           adminSectionTabs.forEach((btn) => {
             const isActive = btn.getAttribute('data-section') === section;
@@ -6084,7 +6132,13 @@
             loadRewardRequests(); // Cargar solicitudes de recompensas
             break;
           case 'maintenance':
-            if (maintenanceSection) maintenanceSection.hidden = false;
+            if (maintenanceSection) {
+                maintenanceSection.hidden = false;
+                // Insertar botón de Live si no existe
+                if (!maintenanceSection.contains(liveToggleBtn)) {
+                    maintenanceSection.insertBefore(liveToggleBtn, maintenanceSection.firstChild);
+                }
+            }
             // Poblar selector de compensación si existe la función
             if (typeof window.populateAdminCompensationSelector === 'function') {
                window.populateAdminCompensationSelector();
