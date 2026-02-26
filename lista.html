@@ -622,9 +622,16 @@
         }
 
         // Firestore Listener con Debug
-        if (window.db) {
+        function initLiveStatusListener() {
+            const dbRef = window.db || (firebase.apps.length ? firebase.firestore() : null);
+            if (!dbRef) {
+                console.log("⏳ DB no lista para Live Status, reintentando en 500ms...");
+                setTimeout(initLiveStatusListener, 500);
+                return;
+            }
+
             console.log("🔌 Iniciando listener de estado LIVE en system/status...");
-            db.collection('system').doc('status')
+            dbRef.collection('system').doc('status')
                 .onSnapshot((doc) => {
                     if (!doc.exists) {
                         console.warn("⚠️ Documento system/status NO existe aún.");
@@ -648,9 +655,9 @@
                 }, (error) => {
                     console.error("❌ Error escuchando estado Live (permisos?):", error);
                 });
-        } else {
-            console.error("❌ window.db no está definido al intentar conectar el indicador LIVE");
         }
+        
+        initLiveStatusListener();
     });
   </script>
 
