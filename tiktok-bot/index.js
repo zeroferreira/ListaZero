@@ -806,14 +806,10 @@ function setupListeners() {
         updateLiveStatus(true); // Actualizar estado a ONLINE
     });
     
+    // Solo un listener de 'disconnected' principal que maneja ambas cosas
     tiktokLiveConnection.on('disconnected', () => {
         console.log('🔴 Desconectado del live.');
         updateLiveStatus(false); // Actualizar estado a OFFLINE
-    });
-
-    // Manejo de desconexiones
-    tiktokLiveConnection.on('disconnected', () => {
-        console.log('❌ Live finalizado o desconectado.');
         console.log('🔄 Volviendo a buscar Live...');
         setTimeout(connectToLive, 10000); 
     });
@@ -824,6 +820,7 @@ function setupListeners() {
 
     tiktokLiveConnection.on('streamEnd', () => {
         console.log('🏁 El stream ha terminado.');
+        updateLiveStatus(false); // Asegurar OFFLINE al terminar stream
     });
 
     // CHAT
