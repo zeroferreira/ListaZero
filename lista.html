@@ -13583,12 +13583,14 @@
         const userData = getGamificationDataForUser(targetUser);
         console.log('👤 Usuario objetivo:', targetUser, 'Puntos (local):', userData.points);
         let effectivePoints = Number(userData.points || 0);
+        let userStatsDoc = null;
         
         // Actualizar información del usuario
         rewardsUserInfo.textContent = targetUser;
         try {
           const best = await fetchBestUserStatsDoc(targetUser);
           if (best && best.data) {
+            userStatsDoc = best.data;
             const cloudPoints = Number((best.data || {}).totalPoints || 0);
             effectivePoints = cloudPoints;
           }
@@ -13606,33 +13608,52 @@
         const rewardsContainer = document.getElementById('rewards-list');
         rewardsContainer.innerHTML = '';
         
+        const now = Date.now();
+        const COOLDOWN_MS = 36 * 60 * 60 * 1000; // 36 Horas
+
         REWARDS.forEach(reward => {
           const canAfford = effectivePoints >= reward.cost;
-          const rewardCard = document.createElement('div');
-          rewardCard.className = `reward-card ${canAfford ? 'affordable' : 'expensive'}`;
           
+          // Lógica de Cooldown
+          let isOnCooldown = false;
+          let remainingHours = 0;
+          
+          if (userStatsDoc && userStatsDoc.lastRedeemedAt && userStatsDoc.lastRedeemedAt[reward.id]) {
+              const lastTime = new Date(userStatsDoc.lastRedeemedAt[reward.id]).getTime();
+              const elapsed = now - lastTime;
+              if (elapsed < COOLDOWN_MS) {
+                  isOnCooldown = true;
+                  remainingHours = Math.ceil((COOLDOWN_MS - elapsed) / (1000 * 60 * 60));
+              }
+          }
+
+          const rewardCard = document.createElement('div');
+          rewardCard.className = `reward-card ${canAfford ? 'affordable' : 'expensive'} ${isOnCooldown ? 'cooldown-active' : ''}`;
+          
+          let btnText = canAfford ? 'Canjear' : 'Insuficiente';
+          let btnDisabled = !canAfford;
+          
+          if (isOnCooldown) {
+              btnText = `Espera ${remainingHours}h`;
+              btnDisabled = true;
+          }
+
           rewardCard.innerHTML = `
             <div class="reward-icon">${reward.icon}</div>
             <div class="reward-info">
               <h4 class="reward-title">${reward.name}</h4>
               <p class="reward-description">${reward.description}</p>
               <div class="reward-cost">${reward.cost} puntos</div>
+              ${isOnCooldown ? `<div class="cooldown-badge">⏳ Cooldown activo</div>` : ''}
             </div>
-            <button class="reward-btn" ${!canAfford ? 'disabled' : ''} 
+            <button class="reward-btn" ${btnDisabled ? 'disabled' : ''} 
                     onclick="requestReward('${reward.id}', '${targetUser}', ${reward.cost})">
-              ${canAfford ? 'Canjear' : 'Insuficiente'}
+              ${btnText}
             </button>
           `;
           
           rewardsContainer.appendChild(rewardCard);
-          rewardCard.addEventListener('click', function(){
-            rewardCard.classList.add('animate-border');
-            setTimeout(function(){ rewardCard.classList.remove('animate-border'); }, 1400);
-          });
-          rewardCard.addEventListener('touchstart', function(){
-            rewardCard.classList.add('animate-border');
-            setTimeout(function(){ rewardCard.classList.remove('animate-border'); }, 1400);
-          }, { passive: true });
+          // ... events ...
         });
         
         // Renderizar solicitudes pendientes
@@ -13653,12 +13674,27 @@
           const userDoc = await userDocRef.get();
           
           let currentPoints = 0;
+          let userLastRedeemed = {};
+
           if (userDoc.exists) {
-             currentPoints = Number(userDoc.data().totalPoints || 0);
+             const data = userDoc.data();
+             currentPoints = Number(data.totalPoints || 0);
+             userLastRedeemed = data.lastRedeemedAt || {};
           } else {
              // Fallback a local si no existe en DB (aunque debería)
              const localData = getGamificationDataForUser(username);
              currentPoints = localData.points || 0;
+          }
+
+          // Validación de Cooldown en el momento del canje (doble check)
+          const COOLDOWN_MS = 36 * 60 * 60 * 1000;
+          if (userLastRedeemed[rewardId]) {
+              const lastTime = new Date(userLastRedeemed[rewardId]).getTime();
+              if (Date.now() - lastTime < COOLDOWN_MS) {
+                  showErrorNotification('Debes esperar 36 horas antes de canjear esto nuevamente.');
+                  if(btn) { btn.disabled = true; btn.textContent = 'En espera...'; }
+                  return;
+              }
           }
 
           console.log('👤 Puntos actuales (DB):', currentPoints);
@@ -13701,15 +13737,21 @@
           
           console.log('💾 Guardando solicitud en Firestore...');
           
-          // Usar batch para descontar puntos y crear solicitud atómicamente
+          // Usar batch para actualizar solicitud y restar puntos atómicamente
           const batch = db.batch();
-          // const requestRef = db.collection('rewardRequests').doc(requestId); // Ya definido arriba
           
+          // 1. Crear solicitud
           batch.set(requestRef, rewardRequest);
-          batch.set(userDocRef, { 
+          
+          // 2. Restar puntos al usuario Y ACTUALIZAR COOLDOWN
+          const updatePayload = {
              totalPoints: firebase.firestore.FieldValue.increment(-cost),
              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
+          };
+          // Guardar el timestamp de este canje específico
+          updatePayload[`lastRedeemedAt.${rewardId}`] = new Date().toISOString();
+
+          batch.set(userDocRef, updatePayload, { merge: true });
           
           await batch.commit();
           
