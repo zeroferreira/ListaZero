@@ -27,18 +27,27 @@ try {
 // --- ACTUALIZADOR DE ESTADO LIVE ---
 let dbStatus = null;
 function initStatusUpdater(firebaseConfig) {
-    if (!firebaseConfig) return;
+    if (!firebaseConfig) {
+        console.error("❌ initStatusUpdater: No se recibió configuración de Firebase.");
+        return;
+    }
     try {
         const { initializeApp: initApp } = require('firebase/app');
         // Usar nombre único para no chocar con la app principal
         const app = initApp(firebaseConfig, 'statusUpdater');
         const { getFirestore: getFS } = require('firebase/firestore');
         dbStatus = getFS(app);
-    } catch (e) { console.error("Error init status updater:", e); }
+        console.log("✅ Sistema de actualización de estado LIVE inicializado correctamente.");
+    } catch (e) { 
+        console.error("❌ Error CRÍTICO inicializando actualizador de estado:", e); 
+    }
 }
 
 function updateLiveStatus(isLive) {
-    if (!dbStatus) return;
+    if (!dbStatus) {
+        console.error("⚠️ updateLiveStatus invocado pero dbStatus es NULL. ¿Falló la inicialización?");
+        return;
+    }
     try {
         const { doc, setDoc, serverTimestamp } = require('firebase/firestore'); 
         const docRef = doc(dbStatus, 'system', 'status');

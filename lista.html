@@ -528,6 +528,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         const indicator = document.getElementById('live-indicator');
         const text = indicator.querySelector('.live-text');
+        const dot = indicator.querySelector('.live-dot');
         
         // Draggable Logic
         let isDragging = false;
@@ -620,23 +621,35 @@
             }));
         }
 
-        // Firestore Listener
+        // Firestore Listener con Debug
         if (window.db) {
+            console.log("🔌 Iniciando listener de estado LIVE en system/status...");
             db.collection('system').doc('status')
                 .onSnapshot((doc) => {
+                    if (!doc.exists) {
+                        console.warn("⚠️ Documento system/status NO existe aún.");
+                        return;
+                    }
                     const data = doc.data();
                     const isLive = data && data.isLive === true;
+                    console.log("📡 Cambio en estado LIVE recibido:", data, "-> isLive:", isLive);
                     
                     if (isLive) {
                         indicator.classList.remove('offline');
                         indicator.classList.add('live');
                         text.textContent = 'EN VIVO';
+                        dot.style.backgroundColor = '#fff';
                     } else {
                         indicator.classList.remove('live');
                         indicator.classList.add('offline');
                         text.textContent = 'OFFLINE';
+                        dot.style.backgroundColor = '#9ca3af';
                     }
+                }, (error) => {
+                    console.error("❌ Error escuchando estado Live (permisos?):", error);
                 });
+        } else {
+            console.error("❌ window.db no está definido al intentar conectar el indicador LIVE");
         }
     });
   </script>
@@ -898,6 +911,22 @@
                     <h3>🔧 Acciones de Sistema</h3>
                   </div>
                   <div class="card-body">
+                   
+                   <!-- Control Manual de Estado LIVE -->
+                   <div class="live-control-box" style="margin-bottom: 20px; padding: 15px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px;">
+                      <h4 style="margin: 0 0 10px 0; font-size: 16px;">🔴 Control Manual de Estado LIVE</h4>
+                      <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+                        Usa esto si el bot falla en detectar el estado automáticamente.
+                      </p>
+                      <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <span id="current-live-status-text" style="font-weight: bold; font-size: 14px;">Estado Actual: Desconocido</span>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" id="force-live-on" class="btn btn-sm btn-success" style="flex: 1;">Forzar ONLINE</button>
+                            <button type="button" id="force-live-off" class="btn btn-sm btn-danger" style="flex: 1;">Forzar OFFLINE</button>
+                        </div>
+                      </div>
+                   </div>
+
                    <div class="action-grid">
                       <button type="button" id="recalculate-users" class="btn btn-outline-success" title="Recalcular puntos de todos los usuarios">
                         <span class="btn-icon">🔄</span>
@@ -8874,6 +8903,43 @@
 
         const daySelectEl = document.getElementById('day-select');
         const recalculateBtn = document.getElementById('recalculate-users');
+        const forceLiveOnBtn = document.getElementById('force-live-on');
+        const forceLiveOffBtn = document.getElementById('force-live-off');
+        const liveStatusText = document.getElementById('current-live-status-text');
+
+        // Función para actualizar estado LIVE manual
+        async function setManualLiveStatus(status) {
+            try {
+                if (liveStatusText) liveStatusText.textContent = "Actualizando...";
+                await db.collection('system').doc('status').set({
+                    isLive: status,
+                    lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
+                    forcedBy: 'admin'
+                }, { merge: true });
+                console.log(`✅ Estado LIVE forzado a: ${status ? 'ONLINE' : 'OFFLINE'}`);
+            } catch (e) {
+                console.error("Error forzando estado LIVE:", e);
+                alert("Error: " + e.message);
+            }
+        }
+
+        // Listener para actualizar el texto del panel admin
+        if (liveStatusText) {
+            db.collection('system').doc('status').onSnapshot(doc => {
+                const data = doc.data() || {};
+                const isLive = !!data.isLive;
+                liveStatusText.textContent = `Estado Actual: ${isLive ? 'ONLINE 🟢' : 'OFFLINE 🔴'}`;
+                liveStatusText.style.color = isLive ? '#22c55e' : '#ef4444';
+            });
+        }
+
+        if (forceLiveOnBtn) {
+            forceLiveOnBtn.addEventListener('click', () => setManualLiveStatus(true));
+        }
+        
+        if (forceLiveOffBtn) {
+            forceLiveOffBtn.addEventListener('click', () => setManualLiveStatus(false));
+        }
         
         if (recalculateBtn) {
           recalculateBtn.addEventListener('click', async () => {
