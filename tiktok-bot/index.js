@@ -39,17 +39,15 @@ function initStatusUpdater(firebaseConfig) {
 
 function updateLiveStatus(isLive) {
     if (!dbStatus) return;
-    const { doc, setDoc, serverTimestamp } = require('firebase/firestore'); 
-    // Nota: setDoc y serverTimestamp deben importarse o usarse de la instancia correcta
-    // Simplificación: Usamos la referencia global ya importada si es compatible, o reimportamos
     try {
+        const { doc, setDoc, serverTimestamp } = require('firebase/firestore'); 
         const docRef = doc(dbStatus, 'system', 'status');
-        // Usamos setDoc de la librería modular
-        const { setDoc: setDocModular, serverTimestamp: stModular } = require('firebase/firestore');
-        setDocModular(docRef, {
+        setDoc(docRef, {
             isLive: isLive,
-            lastUpdate: stModular()
-        }, { merge: true }).catch(err => console.error("Error updating live status:", err));
+            lastUpdate: serverTimestamp()
+        }, { merge: true })
+        .then(() => console.log(`✅ Estado LIVE actualizado: ${isLive ? 'ONLINE' : 'OFFLINE'}`))
+        .catch(err => console.error("Error updating live status:", err));
     } catch(e) { console.error("Update live status failed:", e); }
 }
 // -----------------------------------
