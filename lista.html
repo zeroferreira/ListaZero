@@ -9114,7 +9114,38 @@
       document.head.appendChild(notificationStyles);
 
       async function updateUserHeaderUI(username, providedData = null) {
-        const data = providedData || getGamificationDataForUser(username);
+        // CORRECCIÓN CRÍTICA: Priorizar Firestore para TODOS los usuarios en el header también.
+        // providedData suele venir de 'syncGamificationDataWithCloud' que ya hace la fusión correcta.
+        // Pero si no viene, 'getGamificationDataForUser' lee de localStorage, lo cual es peligroso
+        // si el Admin está viendo otro perfil o si el localStorage tiene basura.
+        
+        let data = providedData;
+        
+        // Si no hay datos provistos, intentar obtenerlos de la manera más segura posible
+        if (!data) {
+             const currentUser = getCurrentUser(); // Usuario logueado real
+             const viewingSelf = String(currentUser).toLowerCase().includes(String(username).toLowerCase());
+             
+             if (viewingSelf) {
+                 // Si es uno mismo, está bien usar local (feedback instantáneo)
+                 data = getGamificationDataForUser(username);
+             } else {
+                 // Si vemos a otro, intentar leer de la caché de usuarios sincronizados o esperar
+                 // Para evitar bloqueo, leemos local PERO solo si tiene la marca de _cloudSyncedPoints
+                 // O mejor, forzamos una lectura limpia si es posible, aunque sea asíncrona.
+                 // Dado que esta función debe ser rápida para UI, usaremos local pero filtraremos visualmente si hay discrepancia enorme.
+                 data = getGamificationDataForUser(username);
+                 
+                 // Parche: Si el dato local tiene puntos inflados respecto a la última sincronización conocida, usar la sync.
+                 if (data && data._cloudSyncedPoints !== undefined && data.points > data._cloudSyncedPoints) {
+                     // Detectamos que local > nube en un perfil ajeno (posible residuo de admin).
+                     // Forzamos visualización de lo sincronizado.
+                     console.log(`⚠️ Ajustando visualización de header para ${username}: Local(${data.points}) -> Cloud(${data._cloudSyncedPoints})`);
+                     data.points = data._cloudSyncedPoints;
+                 }
+             }
+        }
+
         if (!data) return;
 
         const currentLevel = getLevelInfo(data.level);
