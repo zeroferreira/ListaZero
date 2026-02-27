@@ -11128,58 +11128,81 @@
 
 
       // Función auxiliar para obtener todos los datos combinados
+      // IMPORTANTE: Ahora distingue si debe usar LocalStorage (solo para el usuario actual) o solo Firestore
       async function getAllCombinedSolicitudes() {
         const allSolicitudesMap = new Map();
+        
+        // Determinar contexto de usuario
+        const currentUser = getCurrentUser();
+        const targetUser = getCurrentSelectedUser() || currentUser;
+        const normTarget = String(targetUser).toLowerCase().trim();
+        const normCurrent = String(currentUser).toLowerCase().trim();
+        // Solo usar LocalStorage si estamos viendo nuestro propio perfil
+        // Y NO somos Admin viendo a otro (aunque Admin tenga local data de todos, no debe usarla para calcular stats ajenos)
+        const useLocal = normTarget === normCurrent; 
+
         const toKey = (s) => {
           const usuario = String(s?.usuario || '').trim();
           const cancion = String(s?.cancion || '').trim();
           const artista = String(s?.artista || '').trim();
           const hora = String(s?.hora || '').trim() || String(s?.time || s?.ts || '').trim();
-          return `${usuario}-${cancion}-${artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+          // Incluir día para unicidad absoluta
+          const day = String(s?.day || '').trim();
+          return `${usuario}-${cancion}-${artista}-${hora}-${day}`.replace(/[^a-zA-Z0-9-]/g, '');
         };
         const add = (s) => {
           if (!s || !s.usuario || !s.cancion || !s.artista) return;
           const key = toKey(s);
           if (!key) return;
-          allSolicitudesMap.set(key, s);
+          if (!allSolicitudesMap.has(key)) allSolicitudesMap.set(key, s);
         };
 
-        try {
-          const dayItems = Array.isArray(window.__dayItems) ? window.__dayItems : [];
-          dayItems.forEach(it => add({
-            usuario: it.usuario,
-            cancion: it.cancion,
-            artista: it.artista,
-            day: it.day,
-            ts: it.ts || it.time,
-            hora: it.hora || ''
-          }));
-        } catch (_) {}
+        // 1. Datos en memoria (session) - Solo si useLocal
+        if (useLocal) {
+            try {
+              const dayItems = Array.isArray(window.__dayItems) ? window.__dayItems : [];
+              dayItems.forEach(it => add({
+                usuario: it.usuario,
+                cancion: it.cancion,
+                artista: it.artista,
+                day: it.day,
+                ts: it.ts || it.time,
+                hora: it.hora || ''
+              }));
+            } catch (_) {}
 
-        try {
-          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]') || [];
-          localSolicitudes.forEach(s => add({
-            usuario: s.usuario,
-            cancion: s.cancion,
-            artista: s.artista,
-            day: s.day,
-            ts: s.time || s.ts,
-            hora: s.hora || ''
-          }));
-        } catch (_) {}
+            try {
+              const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]') || [];
+              localSolicitudes.forEach(s => add({
+                usuario: s.usuario,
+                cancion: s.cancion,
+                artista: s.artista,
+                day: s.day,
+                ts: s.time || s.ts,
+                hora: s.hora || ''
+              }));
+            } catch (_) {}
 
-        try {
-          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}') || {};
-          Object.values(byDay).forEach(arr => (arr || []).forEach(s => add({
-            usuario: s.usuario,
-            cancion: s.cancion,
-            artista: s.artista,
-            day: s.day,
-            ts: s.time || s.ts,
-            hora: s.hora || ''
-          })));
-        } catch (_) {}
+            try {
+              const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}') || {};
+              Object.values(byDay).forEach(arr => (arr || []).forEach(s => add({
+                usuario: s.usuario,
+                cancion: s.cancion,
+                artista: s.artista,
+                day: s.day,
+                ts: s.time || s.ts,
+                hora: s.hora || ''
+              })));
+            } catch (_) {}
+        }
 
+        // 2. Firestore (Siempre, pero filtrado si es necesario)
+        // El problema es que esta función trae SOLICITUDES del día seleccionado en el combo.
+        // Pero para calcular stats globales (puntos), necesitamos TODAS las solicitudes del usuario.
+        // getAllCombinedSolicitudes NO está diseñada para traer historial completo de Firestore, solo del día.
+        // Para historial completo, se debe usar 'countTotalRequestedSongsForUser'.
+        
+        // Mantenemos la lógica existente para el día seleccionado:
         try {
           const daySel = document.getElementById('day-select')?.value || '';
           const dbRef = window.db || db;
