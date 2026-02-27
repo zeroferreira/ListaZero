@@ -9473,31 +9473,21 @@
            const norm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
            if (!norm) return 0;
            
-           // 0. SHORT-CIRCUIT: Si ya tenemos el set en memoria (mantenido por el listener y updates optimistas), usarlo.
-           // Esto es crucial para que el "unmark" se refleje instantáneamente antes de que llegue a Firestore.
-           if (window.__toggleReady && window.__toggleReady[norm] && window.__userToggleSet && window.__userToggleSet[norm]) {
-             console.log(`🚀 Usando set en memoria para ${norm}: ${window.__userToggleSet[norm].size}`);
-             return window.__userToggleSet[norm].size;
-           }
+           // IMPORTANTE: NO usar LocalStorage para el conteo de puntos globales.
+           // LocalStorage solo contiene lo que se marcó en ESTE dispositivo.
+           // Si el admin tiene 36k es porque él marcó muchas canciones, pero si el usuario
+           // entra desde otro PC, solo verá lo que está en Firestore.
+           // Para garantizar consistencia, DEBEMOS confiar en Firestore como única fuente de verdad para estadísticas públicas.
+
+           // Sin embargo, para evitar romper la experiencia inmediata del usuario que marca cosas,
+           // podemos usar el set en memoria SI ES EL USUARIO ACTUAL.
+           // Pero para ver perfiles ajenos (Transparencia), SOLO Firestore.
 
            const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
            const prefix = sanitize(`${norm}-`);
            const ids = new Set();
            
-           // 1. LocalStorage
-           try {
-             const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-             Object.keys(localPlayed).forEach(day => {
-               if (!isOnOrAfterStart(day)) return;
-               const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
-               arr.forEach(x => {
-                 const id = sanitize(x);
-                 if (id.startsWith(prefix)) ids.add(id);
-               });
-             });
-           } catch(e){}
-
-           // 2. Firestore playedSongs
+           // 1. Firestore playedSongs (FUENTE DE VERDAD)
            try {
              const snap = await db.collection('playedSongs').get();
              snap.forEach(doc => {
@@ -9512,7 +9502,7 @@
              });
            } catch(e){}
            
-           // 3. System Events (unmark/mark logic)
+           // 2. System Events (unmark/mark logic corrections)
            try {
              const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
              const latest = {};
@@ -9531,6 +9521,26 @@
                 else if (latest[sid].action === 'unmark') ids.delete(sid);
              });
            } catch(e){}
+
+           // 3. SOLO SI ES EL USUARIO PROPIO (Admin viendo su propia sesión o User viéndose a sí mismo)
+           // Mezclar con LocalStorage para dar feedback instantáneo de lo que acaba de hacer.
+           // Pero si estamos viendo a OTRO usuario, NO usar nuestro LocalStorage.
+           const currentUser = getCurrentSelectedUser(); // o quien está logueado/seleccionado
+           const viewingSelf = currentUser && String(currentUser).toLowerCase().includes(norm);
+           
+           if (viewingSelf) {
+               try {
+                 const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+                 Object.keys(localPlayed).forEach(day => {
+                   if (!isOnOrAfterStart(day)) return;
+                   const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+                   arr.forEach(x => {
+                     const id = sanitize(x);
+                     if (id.startsWith(prefix)) ids.add(id);
+                   });
+                 });
+               } catch(e){}
+           }
 
            console.log(`🔢 Conteo final (calculado) para ${norm}: ${ids.size}`);
            return ids.size;
