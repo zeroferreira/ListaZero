@@ -12749,20 +12749,7 @@
            const prefix = sanitize(`${norm}-`);
            const ids = new Set();
            
-           // 1. LocalStorage
-           try {
-             const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-             Object.keys(localPlayed).forEach(day => {
-               if (!isOnOrAfterStart(day)) return;
-               const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
-               arr.forEach(x => {
-                 const id = sanitize(x);
-                 if (id.startsWith(prefix)) ids.add(id);
-               });
-             });
-           } catch(e){}
-
-           // 2. Firestore playedSongs
+           // 1. Firestore playedSongs (FUENTE DE VERDAD)
            try {
              const snap = await db.collection('playedSongs').get();
              snap.forEach(doc => {
@@ -12777,7 +12764,7 @@
              });
            } catch(e){}
            
-           // 3. System Events (unmark/mark logic)
+           // 2. System Events (unmark/mark logic)
            try {
              const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
              const latest = {};
@@ -12796,6 +12783,28 @@
                 else if (latest[sid].action === 'unmark') ids.delete(sid);
              });
            } catch(e){}
+
+           // 3. SOLO SI ES EL USUARIO PROPIO (Admin viendo su propia sesión o User viéndose a sí mismo)
+           // Mezclar con LocalStorage para dar feedback instantáneo de lo que acaba de hacer.
+           // Pero si estamos viendo a OTRO usuario, NO usar nuestro LocalStorage.
+           const currentUser = getCurrentUser(); // Usar el usuario logueado REAL (no el del perfil seleccionado)
+           const isAdmin = String(currentUser).toLowerCase().includes('admin'); // O lógica de admin si existe
+           const isOwner = String(currentUser).toLowerCase().includes(norm);
+           const viewingSelf = isOwner; // Solo usar local si es el PROPIO usuario. Admin NO debe ver su local en otros.
+           
+           if (viewingSelf) {
+               try {
+                 const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+                 Object.keys(localPlayed).forEach(day => {
+                   if (!isOnOrAfterStart(day)) return;
+                   const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+                   arr.forEach(x => {
+                     const id = sanitize(x);
+                     if (id.startsWith(prefix)) ids.add(id);
+                   });
+                 });
+               } catch(e){}
+           }
 
            return ids.size;
          } catch(e) { return 0; }
