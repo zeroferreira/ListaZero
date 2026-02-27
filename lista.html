@@ -11861,11 +11861,12 @@
             
             console.log(`☁️ Puntos nube: ${cloudPoints}, Puntos locales: ${localData.points}`);
             
-            // Estrategia de fusión:
-            // 1. Si no hay objeto gamification en nube, pero hay puntos, intentar reconstruir o priorizar local si es mayor.
-            // 2. Si hay objeto gamification, fusionar logros y tomar máximos de rachas/puntos.
+            // Estrategia de fusión MEJORADA (Anti-Flicker):
+            // Priorizar el valor MÁS ALTO entre local y nube para evitar regresiones visuales.
+            // La nube puede tener retraso, el local puede tener puntos recientes no subidos.
             
             let mergedData = { ...localData };
+            const maxPoints = Math.max(localData.points || 0, cloudPoints);
             
             if (cloudGamification) {
                // Fusionar logros (Unión)
@@ -11873,10 +11874,10 @@
                const cloudAch = new Set(cloudGamification.achievements || []);
                const mergedAch = [...new Set([...localAch, ...cloudAch])];
                
-               // Puntos: la fuente de verdad es totalPoints en la nube (puede bajar por canjes)
                mergedData.achievements = mergedAch;
-               mergedData.points = cloudPoints;
-               mergedData._cloudSyncedPoints = cloudPoints;
+               // Usar el máximo para evitar que el usuario vea bajar sus puntos
+               mergedData.points = maxPoints;
+               mergedData._cloudSyncedPoints = cloudPoints; // Mantener referencia real de la nube
                
                // Rachas: Tomar la mejor racha histórica registrada
                mergedData.streaks = {
@@ -11885,24 +11886,31 @@
                   best: Math.max(localData.streaks?.best || 0, cloudGamification.streaks?.best || 0)
                };
                
-               // Si la nube tiene más puntos, confiar en su nivel/xp también (o recalcular después)
+               // Si la nube tiene más puntos, confiar en su nivel/xp también
                if ((cloudGamification.points || 0) > (localData.points || 0)) {
                   mergedData.level = cloudGamification.level;
                   mergedData.xp = cloudGamification.xp;
                   mergedData.stats = cloudGamification.stats || mergedData.stats;
                }
             } else {
-               // Nube solo tiene totalPoints (migración o ajuste manual admin)
-               mergedData.points = cloudPoints;
+               // Nube solo tiene totalPoints
+               mergedData.points = maxPoints;
                mergedData._cloudSyncedPoints = cloudPoints;
             }
             
-            // Guardar fusión en local
+            // Guardar fusión en local inmediatamente
             saveGamificationDataForUser(mergedData, username);
             
-            // Guardar fusión en nube (para que el otro dispositivo se actualice también)
-            // Solo si hubo cambios o si es necesario unificar
-            if ((best && best.key && best.key !== normUser) || JSON.stringify(mergedData) !== JSON.stringify(cloudGamification) || cloudPoints !== mergedData.points) {
+            // Si el local era mayor que la nube, forzar subida para sincronizar
+            if (localData.points > cloudPoints) {
+                 console.log('☁️ Local > Nube. Forzando actualización en nube...');
+                 await docRef.set({
+                    totalPoints: maxPoints,
+                    gamification: mergedData,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                 }, { merge: true });
+            } else if ((best && best.key && best.key !== normUser) || JSON.stringify(mergedData) !== JSON.stringify(cloudGamification)) {
+               // Actualización estándar si hay discrepancias estructurales
                console.log('☁️ Actualizando nube con datos fusionados...');
                await docRef.set({
                   totalPoints: mergedData.points,
