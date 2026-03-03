@@ -10161,7 +10161,7 @@
           const el = document.getElementById(id);
           if (el) el.textContent = String(val);
         };
-          // --- Transparencia: recalcular con conteo consistente ---
+          // --- COHERENCIA: Usar cálculo real ---
           try {
              const currentUser = getCurrentUser();
              const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
@@ -10180,9 +10180,13 @@
                  const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0);
                  const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
                  bd.earnedTotal = earnedTotal;
-                 // --- COHERENCIA: Usar cálculo real ---
                  bd.adjustment = 0; 
                  bd.total = Math.max(0, predictedNet);
+             } else {
+                 // FIX: Si somos Admin, asegurar que bd.total coincida con la nube
+                 if (typeof bd.cloudTotal === 'number') {
+                     bd.total = bd.cloudTotal;
+                 }
              }
              
           } catch(e) { console.error('Error actualizando transparencia con conteo consistente:', e); }
@@ -10244,8 +10248,12 @@
                 if (!r || !r.cost) return;
                 const st = statusText(String(r.status || 'pending'));
                 const cost = Math.max(0, Number(r.cost || 0));
-                const sign = (r.status === 'rejected') ? '+' : '-';
-                lines.push(`<div class="genre-chip"><span>• ${r.rewardName || r.rewardId || 'Recompensa'} (${st})</span><span>${sign}${cost}</span></div>`);
+                // FIX: Si fue rechazado, los puntos se devolvieron (o no se cobraron), así que es +0 o +cost si se habían descontado.
+                // Pero en redemptionsSpent solo sumamos pending/approved.
+                // Si aquí aparece un rejected, es solo informativo, no restó.
+                const sign = (r.status === 'rejected') ? '(Rechazado)' : '-';
+                const val = (r.status === 'rejected') ? 0 : cost;
+                lines.push(`<div class="genre-chip"><span>• ${r.rewardName || r.rewardId || 'Recompensa'}</span><span>${sign}${val}</span></div>`);
               });
             } catch (_) {}
           }
