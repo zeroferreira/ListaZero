@@ -10017,17 +10017,37 @@
         } catch (_) {}
 
         const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus;
+        
+        // --- MODO ADMIN: Verdad Absoluta de Nube ---
+        // Si somos Admin viendo a otro usuario, confiamos en el total de la nube.
+        // Si el cálculo local difiere, asumimos que la diferencia son gastos (canjes) que no pudimos consultar.
+        const currentUser = getCurrentUser();
+        const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
+        const normTarget = String(usuario || '').trim().replace(/^@/, '').toLowerCase();
+        const isAdminMode = localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true';
+        const isOwner = !isAdminMode && (normCurrent === normTarget);
+
+        if (!isOwner && cloudTotal !== undefined) {
+             // Si hay discrepancia y no encontramos canjes, asumimos que la diferencia es lo gastado
+             const calculatedDiff = earnedTotal - cloudTotal;
+             if (calculatedDiff > 0 && redemptionsSpent === 0) {
+                 redemptionsSpent = calculatedDiff;
+             }
+        }
+
         const predictedNet = earnedTotal - redemptionsSpent;
         
         // --- COHERENCIA GLOBAL: Usar siempre el cálculo reconstruido como verdad ---
         // Si el historial (playedSongs + requests) dice X, entonces es X.
         // Ignoramos el valor cacheado 'cloudTotal' para el display, pero lo actualizamos si difiere.
-        const displayTotal = Math.max(0, predictedNet);
+        // EXCEPCIÓN: Si somos Admin viendo a otro, 'cloudTotal' ES la verdad.
+        const displayTotal = (!isOwner && cloudTotal !== undefined) ? cloudTotal : Math.max(0, predictedNet);
         const adjustment = 0; 
 
         try {
           // Sincronizar con Firebase si hay discrepancia para que otros dispositivos vean el dato actualizado
-          if (window.__ALLOW_BREAKDOWN_WRITE__) {
+          // FIX: Si somos Admin viendo a otro, NO sobrescribir la nube con nuestros cálculos locales potencialmente incompletos
+          if (window.__ALLOW_BREAKDOWN_WRITE__ && isOwner) {
             const diff = Math.abs(Number(cloudTotal || 0) - displayTotal);
             if (diff > 0.1 || !cloudTotal) {
                 const docRef = db.collection('userStats').doc(norm(usuario));
@@ -10143,17 +10163,27 @@
         };
           // --- Transparencia: recalcular con conteo consistente ---
           try {
-             const totalPlayed = await countTotalToggledSongsForUser(u);
-             bd.playedCount = totalPlayed;
-             bd.base = totalPlayed * 25;
-             bd.vipBonus = bd.isVip ? (totalPlayed * 40) : 0;
-             
-             const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0);
-             const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
-             bd.earnedTotal = earnedTotal;
-             // --- COHERENCIA: Usar cálculo real ---
-             bd.adjustment = 0; 
-             bd.total = Math.max(0, predictedNet);
+             const currentUser = getCurrentUser();
+             const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
+             const normTarget = String(u || '').trim().replace(/^@/, '').toLowerCase();
+             const isAdminMode = localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true';
+             const isOwner = !isAdminMode && (normCurrent === normTarget);
+
+             // Solo recalcular "en vivo" si somos el dueño (para feedback inmediato).
+             // Si somos Admin, confiamos en los datos procesados por computeUserBreakdown (Cloud Truth).
+             if (isOwner) {
+                 const totalPlayed = await countTotalToggledSongsForUser(u);
+                 bd.playedCount = totalPlayed;
+                 bd.base = totalPlayed * 25;
+                 bd.vipBonus = bd.isVip ? (totalPlayed * 40) : 0;
+                 
+                 const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0);
+                 const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
+                 bd.earnedTotal = earnedTotal;
+                 // --- COHERENCIA: Usar cálculo real ---
+                 bd.adjustment = 0; 
+                 bd.total = Math.max(0, predictedNet);
+             }
              
           } catch(e) { console.error('Error actualizando transparencia con conteo consistente:', e); }
 
@@ -11309,7 +11339,8 @@
       }
 
       function normalizeUserKey(username) {
-        return String(username || '').trim().replace(/^@/, '').toLowerCase();
+        // Normalización robusta: minúsculas, trim, sin @ y sin acentos (NFD)
+        return String(username || '').trim().replace(/^@/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
       }
 
       function normalizeUserKeyLoose(username) {
