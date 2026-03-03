@@ -9373,14 +9373,30 @@
           }
 
           // Persistir en Firestore para ranking global
-          if (window.db) {
+          // FIX CRÍTICO: Solo el dueño (Owner) debe actualizar sus stats calculadas localmente en la nube.
+          // Si un Admin visualiza a otro usuario, su cálculo local puede estar incompleto (faltan canciones en cache).
+          // Permitir que el Admin sobrescriba la nube causaría regresiones de puntos.
+          
+          const currentUser = getCurrentUser();
+          const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
+          const normTarget = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
+          const isAdminMode = localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true';
+          const isOwner = !isAdminMode && (normCurrent === normTarget);
+
+          if (window.db && isOwner) {
             const normUser = normalizeUserKey(targetUser);
+            // Validar que no estemos bajando los puntos drásticamente por error local
+            // Solo permitir actualizar si el nuevo total es razonable o si estamos seguros
+            // Pero como isOwner = true, asumimos que el usuario tiene sus datos locales completos.
+            
             db.collection('userStats').doc(normUser).set({
               totalPoints: data.points,
               level: data.level,
               achievements: data.achievements,
               lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true }).catch(err => console.error('Error guardando stats en Firestore:', err));
+          } else {
+             console.log(`🔒 Evitando sobrescritura de Cloud Stats para ${targetUser} (No soy Owner)`);
           }
           
           console.log(`✅ Usuario ${targetUser}: ${data.points} puntos, nivel ${data.level}, ${data.achievements.length} logros`);
@@ -10181,7 +10197,11 @@
                  const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
                  bd.earnedTotal = earnedTotal;
                  bd.adjustment = 0; 
-                 bd.total = Math.max(0, predictedNet);
+                 // FIX CRÍTICO: Si la nube dice que tenemos más puntos que el cálculo local, 
+                 // usamos la nube para evitar regresiones visuales.
+                 // Esto protege al dueño de ver menos puntos si su caché local está incompleta.
+                 const cloudVal = typeof bd.cloudTotal === 'number' ? bd.cloudTotal : 0;
+                 bd.total = Math.max(cloudVal, Math.max(0, predictedNet));
              } else {
                  // FIX: Si somos Admin, asegurar que bd.total coincida con la nube
                  if (typeof bd.cloudTotal === 'number') {
