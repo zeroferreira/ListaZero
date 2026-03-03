@@ -796,6 +796,34 @@ function startBot() {
 
 startBot();
 
+// Cache para evitar escrituras redundantes de foto de perfil en la misma sesión
+const profilePicCache = new Set();
+
+async function updateUserProfilePic(userId, displayName, url) {
+    if (!url || !db) return;
+    
+    // Si ya actualizamos en esta sesión, saltar (ahorro de escrituras)
+    if (profilePicCache.has(userId)) return;
+
+    try {
+        const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
+        const resolved = await getCanonicalUserKey(userId, displayName);
+        const key = resolved.userKey || userId;
+        
+        const userRef = doc(db, 'userStats', key);
+        await setDoc(userRef, {
+            profilePic: url,
+            lastSeen: serverTimestamp(),
+            displayName: displayName // Aprovechar para refrescar nombre
+        }, { merge: true });
+        
+        console.log(`📸 Foto de perfil guardada para ${displayName}`);
+        profilePicCache.add(userId);
+    } catch (e) {
+        console.error(`Error actualizando foto de perfil de ${displayName}:`, e);
+    }
+}
+
 // Configurar Listeners
 function setupListeners() {
     tiktokLiveConnection.removeAllListeners();
@@ -829,6 +857,12 @@ function setupListeners() {
         const lowerMsg = msg.toLowerCase();
         const displayName = data.nickname;
         const userId = data.uniqueId;
+        const profilePic = data.profilePictureUrl;
+        
+        // Actualizar foto de perfil en segundo plano
+        if (profilePic) {
+            updateUserProfilePic(userId, displayName, profilePic);
+        }
         
         // DEBUG: Ver todos los mensajes para confirmar que llegan
         // console.log(`[CHAT] ${user}: ${msg}`); 
@@ -935,10 +969,18 @@ function setupListeners() {
         
         // Registrar donación acumulada
         const uid = data.uniqueId;
+        const displayName = data.nickname;
+        const profilePic = data.profilePictureUrl;
+        
+        // Actualizar foto de perfil
+        if (profilePic) {
+            updateUserProfilePic(uid, displayName, profilePic);
+        }
+
         const currentAmount = sessionDonations.get(uid) || 0;
         sessionDonations.set(uid, currentAmount + coins);
         
-        console.log(`🎁 ${data.nickname} donó ${coins} (Total: ${sessionDonations.get(uid)})`);
+        console.log(`🎁 ${displayName} donó ${coins} (Total: ${sessionDonations.get(uid)})`);
 
         // Recalcular rangos
         recalculateDonorRanks();
