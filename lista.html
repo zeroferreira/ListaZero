@@ -11929,11 +11929,14 @@
         // Usar la misma lógica de normalización robusta
         const rawUser = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
         
-        // --- FIX ABSOLUTO: Si NO soy el usuario dueño de los datos, JAMÁS leer de localStorage ---
+        // --- FIX ABSOLUTO: Si NO soy el usuario dueño de los datos O soy Admin, JAMÁS leer de localStorage ---
         const currentUser = getCurrentUser();
         const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
+        
+        // MODO ADMIN: Si es admin, preferimos datos de nube (forzamos comportamiento de "no dueño")
+        const isAdminMode = localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true';
         // Normalización simple para comparación rápida, la robusta se usa para claves
-        const isOwner = rawUser === normCurrent;
+        const isOwner = !isAdminMode && (rawUser === normCurrent);
         
         if (!isOwner) {
             // Si no soy el dueño, buscar solo en memoria (cache de sesión)
@@ -11996,7 +11999,10 @@
             const currentUser = getCurrentUser();
             const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
             const normTarget = String(username || '').trim().replace(/^@/, '').toLowerCase();
-            const isOwner = normCurrent === normTarget;
+            
+            // MODO ADMIN: Si es admin, ignoramos local y preferimos nube al 100%
+            const isAdminMode = localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true';
+            const isOwner = !isAdminMode && (normCurrent === normTarget);
 
             let mergedData = { ...localData };
             // Solo aplicar maxPoints si soy el dueño. Si soy Admin viendo a otro, la verdad ABSOLUTA es la nube.
@@ -12096,7 +12102,8 @@
         // --- LOCALSTORAGE: Solo si soy el dueño ---
         const currentUser = getCurrentUser();
         const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
-        const isOwner = rawUser === normCurrent;
+        const isAdminMode = localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true';
+        const isOwner = !isAdminMode && (rawUser === normCurrent);
 
         if (isOwner) {
             const allDataStr = localStorage.getItem('gamificationData');
