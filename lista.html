@@ -11971,8 +11971,16 @@
             // Priorizar el valor MÁS ALTO entre local y nube para evitar regresiones visuales.
             // La nube puede tener retraso, el local puede tener puntos recientes no subidos.
             
+            // FIX CRÍTICO: Si NO soy el usuario dueño de los datos, JAMÁS confiar en mis datos locales
+            // Esto evita que un Admin con datos locales residuales (inflados) sobrescriba los datos reales de un usuario.
+            const currentUser = getCurrentUser();
+            const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
+            const normTarget = String(username || '').trim().replace(/^@/, '').toLowerCase();
+            const isOwner = normCurrent === normTarget;
+
             let mergedData = { ...localData };
-            const maxPoints = Math.max(localData.points || 0, cloudPoints);
+            // Solo aplicar maxPoints si soy el dueño. Si soy Admin viendo a otro, la verdad ABSOLUTA es la nube.
+            const maxPoints = isOwner ? Math.max(localData.points || 0, cloudPoints) : cloudPoints;
             
             if (cloudProfilePic) {
                 mergedData.profilePic = cloudProfilePic;
@@ -11993,11 +12001,12 @@
                mergedData.streaks = {
                   ...localData.streaks,
                   ...cloudGamification.streaks,
-                  best: Math.max(localData.streaks?.best || 0, cloudGamification.streaks?.best || 0)
+                  // Si no soy dueño, la mejor racha es la de la nube.
+                  best: isOwner ? Math.max(localData.streaks?.best || 0, cloudGamification.streaks?.best || 0) : (cloudGamification.streaks?.best || 0)
                };
                
                // Si la nube tiene más puntos, confiar en su nivel/xp también
-               if ((cloudGamification.points || 0) > (localData.points || 0)) {
+               if ((cloudGamification.points || 0) > (localData.points || 0) || !isOwner) {
                   mergedData.level = cloudGamification.level;
                   mergedData.xp = cloudGamification.xp;
                   mergedData.stats = cloudGamification.stats || mergedData.stats;
@@ -12006,14 +12015,21 @@
                // Nube solo tiene totalPoints
                mergedData.points = maxPoints;
                mergedData._cloudSyncedPoints = cloudPoints;
+               // Si no hay gamification en nube y no soy dueño, usar stats básicos de nube si existen, o resetear
+               if (!isOwner) {
+                   mergedData.points = cloudPoints;
+                   // Limpiar datos locales que podrían ser basura
+                   mergedData.streaks = { current: 0, best: 0, calendar: {} };
+               }
             }
             
-            // Guardar fusión en local inmediatamente
+            // Guardar fusión en local inmediatamente (para caché de visualización)
             saveGamificationDataForUser(mergedData, username);
             
             // Si el local era mayor que la nube, forzar subida para sincronizar
-            if (localData.points > cloudPoints) {
-                 console.log('☁️ Local > Nube. Forzando actualización en nube...');
+            // FIX: Solo permitir subida forzada si soy el DUEÑO de los datos
+            if (isOwner && localData.points > cloudPoints) {
+                 console.log('☁️ Local > Nube (Soy Dueño). Forzando actualización en nube...');
                  await docRef.set({
                     totalPoints: maxPoints,
                     gamification: mergedData,
@@ -12021,12 +12037,16 @@
                  }, { merge: true });
             } else if ((best && best.key && best.key !== normUser) || JSON.stringify(mergedData) !== JSON.stringify(cloudGamification)) {
                // Actualización estándar si hay discrepancias estructurales
-               console.log('☁️ Actualizando nube con datos fusionados...');
-               await docRef.set({
-                  totalPoints: mergedData.points,
-                  gamification: mergedData,
-                  updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-               }, { merge: true });
+               // Solo si los datos fusionados son diferentes a la nube Y (soy dueño O son correcciones estructurales seguras)
+               // Si soy admin viendo a otro, mergedData es básicamente cloudGamification, así que esto no debería dispararse innecesariamente.
+               if (isOwner) {
+                   console.log('☁️ Actualizando nube con datos fusionados...');
+                   await docRef.set({
+                      totalPoints: mergedData.points,
+                      gamification: mergedData,
+                      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                   }, { merge: true });
+               }
             }
             
             return mergedData;
