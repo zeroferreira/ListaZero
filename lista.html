@@ -9589,10 +9589,16 @@
            // 3. SOLO SI ES EL USUARIO PROPIO (Admin viendo su propia sesión o User viéndose a sí mismo)
            // Mezclar con LocalStorage para dar feedback instantáneo de lo que acaba de hacer.
            // Pero si estamos viendo a OTRO usuario, NO usar nuestro LocalStorage.
-           const currentUser = getCurrentSelectedUser(); // o quien está logueado/seleccionado
-           const viewingSelf = currentUser && String(currentUser).toLowerCase().includes(norm);
+           const currentUser = getCurrentUser(); // El usuario real logueado en el navegador
+           const targetUser = getCurrentSelectedUser(); // El usuario que estamos viendo
            
-           if (viewingSelf) {
+           // Verificar si soy el dueño de los datos que estoy viendo
+           const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
+           const normTarget = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
+           // También validar contra el usuario solicitado en la función
+           const isOwner = normCurrent === norm && normCurrent === normTarget;
+           
+           if (isOwner) {
                try {
                  const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
                  Object.keys(localPlayed).forEach(day => {
@@ -9604,6 +9610,8 @@
                    });
                  });
                } catch(e){}
+           } else {
+               console.log(`🔒 countTotalToggledSongsForUser: Ignorando localStorage porque ${normCurrent} está viendo a ${norm}`);
            }
 
            console.log(`🔢 Conteo final (calculado) para ${norm}: ${ids.size}`);
@@ -11900,11 +11908,40 @@
         }
       }
 
+      // --- CACHE DE MEMORIA PARA GAMIFICACIÓN ---
+      // Esto permite que el Admin vea datos de otros usuarios sin guardarlos en su LocalStorage
+      window.__memoryGamificationData = {};
+
+      function getDefaultGamificationData() {
+          return {
+              points: 0,
+              level: 1,
+              xp: 0,
+              achievements: [],
+              streaks: { current: 0, best: 0, lastActivity: null, calendar: {} },
+              stats: { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false }
+          };
+      }
+
       // Modificar funciones existentes para usar el usuario seleccionado
       function getGamificationDataForUser(usuario = null) {
         const targetUser = usuario || getCurrentSelectedUser();
         // Usar la misma lógica de normalización robusta
         const rawUser = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
+        
+        // --- FIX ABSOLUTO: Si NO soy el usuario dueño de los datos, JAMÁS leer de localStorage ---
+        const currentUser = getCurrentUser();
+        const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
+        // Normalización simple para comparación rápida, la robusta se usa para claves
+        const isOwner = rawUser === normCurrent;
+        
+        if (!isOwner) {
+            // Si no soy el dueño, buscar solo en memoria (cache de sesión)
+            // Si no está en memoria, devolver default (se llenará cuando syncGamificationDataWithCloud termine)
+            // Esto garantiza que NUNCA se devuelva "basura" persistida en localStorage de sesiones anteriores.
+            const normUser = rawUser.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return window.__memoryGamificationData[normUser] || getDefaultGamificationData();
+        }
         
         const data = localStorage.getItem('gamificationData');
         const allData = data ? JSON.parse(data) : {};
@@ -11917,24 +11954,7 @@
             userData = allData[normUser];
         }
         
-        return userData || {
-          points: 0,
-          level: 1,
-          xp: 0,
-          achievements: [],
-          streaks: {
-            current: 0,
-            best: 0,
-            lastActivity: null,
-            calendar: {}
-          },
-          stats: {
-            totalSongs: 0,
-            uniqueArtists: 0,
-            activeDays: 0,
-            isVip: false
-          }
-        };
+        return userData || getDefaultGamificationData();
       }
 
       // NUEVA FUNCIÓN: Sincronizar datos con la nube
@@ -12066,19 +12086,30 @@
           return;
         }
 
-        const allDataStr = localStorage.getItem('gamificationData');
-        const allData = allDataStr ? JSON.parse(allDataStr) : {};
+        const rawUser = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
         
-        // console.log(`💾 Guardando datos para ${targetUser}:`, data);
+        // --- CACHE DE MEMORIA: Siempre actualizar ---
+        const normUser = rawUser.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        window.__memoryGamificationData = window.__memoryGamificationData || {};
+        window.__memoryGamificationData[normUser] = data;
         
-        allData[targetUser.toLowerCase()] = data;
-        localStorage.setItem('gamificationData', JSON.stringify(allData));
-        
-        // console.log(`✅ Datos guardados en localStorage para ${targetUser}`);
+        // --- LOCALSTORAGE: Solo si soy el dueño ---
+        const currentUser = getCurrentUser();
+        const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
+        const isOwner = rawUser === normCurrent;
+
+        if (isOwner) {
+            const allDataStr = localStorage.getItem('gamificationData');
+            const allData = allDataStr ? JSON.parse(allDataStr) : {};
+            allData[rawUser] = data;
+            localStorage.setItem('gamificationData', JSON.stringify(allData));
+        } else {
+            // console.log(`🔒 Evitando escritura en localStorage para ${targetUser} (No soy dueño)`);
+        }
         
         // PUSH AUTOMÁTICO A LA NUBE (Debounce simple para evitar saturación)
-        // Esto asegura que los cambios locales (como puntos por canciones o logros) se reflejen globalmente
-        if (window.db) {
+        // Solo intentar subir si soy el dueño, para evitar que el Admin sobrescriba
+        if (isOwner && window.db) {
            const now = Date.now();
            window._lastCloudPush = window._lastCloudPush || {};
            const lastPush = window._lastCloudPush[targetUser.toLowerCase()] || 0;
