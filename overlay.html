@@ -118,6 +118,29 @@
       animation: icon-pulse 2s infinite ease-in-out;
       box-shadow: 0 0 15px var(--accent-color-glow);
       border: 2px solid var(--accent-color);
+      /* Aseguramos que el contenido extra (img) se comporte bien */
+      overflow: hidden; 
+    }
+
+    /* Clase especial para cuando hay foto de perfil */
+    .header.has-profile-pic::before {
+      content: none !important; /* Quitar emoji del pseudo-elemento */
+      display: none !important;
+    }
+    
+    /* Estilo para la imagen inyectada */
+    .header-profile-pic {
+      width: var(--icon-circle-size);
+      height: var(--icon-circle-size);
+      min-width: var(--icon-circle-size);
+      min-height: var(--icon-circle-size);
+      border-radius: 50%;
+      object-fit: cover;
+      margin-right: 15px;
+      animation: icon-pulse 2s infinite ease-in-out;
+      box-shadow: 0 0 15px var(--accent-color-glow);
+      border: 2px solid var(--accent-color);
+      display: inline-block;
     }
 
     @keyframes icon-pulse {
@@ -798,16 +821,14 @@
       root.style.setProperty('--text-color', s.text);
       
       // Icon Content & Size
-      // Aseguramos que el contenido tenga comillas si no es un emoji directo (aunque CSS content string requiere comillas)
-      // Pero para emojis directos en variables, funciona mejor con comillas escapadas en JS para CSS var? 
-      // En realidad, para 'content' en CSS, necesitamos que sea una cadena. 
-      // Si pasamos el emoji tal cual a la variable, luego en content: var(--icon-content) funciona si la variable tiene comillas.
-      // O podemos poner content: var(--icon-content) y que la variable sea '"🎵"'.
-      
-      const iconChar = s.icon || '🎵';
-      root.style.setProperty('--icon-content', `"${iconChar}"`);
-      root.style.setProperty('--icon-circle-size', (s.iconCircleSize || 50) + 'px');
-      root.style.setProperty('--icon-font-size', (s.iconFontSize || 25) + 'px');
+          let iconChar = s.icon || '🎵';
+          // Fix: Si viene sin comillas, agregarlas para CSS content property
+          if (!iconChar.startsWith('"') && !iconChar.startsWith("'")) {
+             iconChar = `"${iconChar}"`;
+          }
+          root.style.setProperty('--icon-content', iconChar);
+          root.style.setProperty('--icon-circle-size', (s.iconCircleSize || 50) + 'px');
+          root.style.setProperty('--icon-font-size', (s.iconFontSize || 25) + 'px');
 
       // Icon Background Color
       const ir = parseInt((s.iconBg || '#ffffff').substr(1,2), 16);
@@ -1052,24 +1073,66 @@
       
       const data = notificationQueue.shift();
       const normalized = await normalizeRequestForDisplay(data);
-      isProcessing = false;
+      // isProcessing = false; // ELIMINADO: showNotification ahora maneja isProcessing
       showNotification(normalized);
     }
 
-    function showNotification(data) {
+    async function showNotification(data) {
+      isProcessing = true; // Bloquear cola mientras se prepara
       isShowing = true;
       currentCardData = data;
 
-      // Rellenar datos
+      // Rellenar datos básicos
       songEl.textContent = data.cancion || 'Desconocida';
       artistEl.textContent = data.artista || 'Desconocido';
-      userEl.textContent = data.displayName || data.usuario || 'Anónimo';
+      const uname = data.displayName || data.usuario || 'Anónimo';
+      userEl.textContent = uname;
+      
+      // Intentar obtener foto de perfil de Firestore
+      const headerEl = card.querySelector('.header');
+      // Limpiar estado previo
+      headerEl.classList.remove('has-profile-pic');
+      const oldImg = headerEl.querySelector('.header-profile-pic');
+      if (oldImg) oldImg.remove();
+      
+      let profilePicUrl = null;
+      if (db && data.usuario) {
+          try {
+             // Buscar documento de usuario (intentar normalizar clave)
+             const normUser = String(data.usuario).trim().replace(/^@/, '').toLowerCase();
+             // Intentamos obtener el doc directamente
+             const userDoc = await db.collection('userStats').doc(normUser).get();
+             if (userDoc.exists) {
+                 const uData = userDoc.data();
+                 if (uData && uData.profilePic) {
+                     profilePicUrl = uData.profilePic;
+                 } else if (uData && uData.gamification && uData.gamification.profilePic) {
+                     profilePicUrl = uData.gamification.profilePic;
+                 }
+             }
+          } catch (e) {
+             console.warn('Error fetching profile pic for overlay:', e);
+          }
+      }
+      
+      if (profilePicUrl) {
+          headerEl.classList.add('has-profile-pic');
+          const img = document.createElement('img');
+          img.src = profilePicUrl;
+          img.className = 'header-profile-pic';
+          img.alt = uname;
+          // Insertar al principio
+          headerEl.insertBefore(img, headerEl.firstChild);
+      }
+
       applyBadgeToCard(data);
 
-      // Resetear animación (por si acaso, aunque processQueue espera)
+      // Mostrar tarjeta
       card.classList.remove('show');
       void card.offsetWidth; // Trigger reflow
       card.classList.add('show');
+      
+      isProcessing = false; // Liberar bloqueo
 
       // Limpiar timeout anterior si existe (seguridad)
       if (hideTimeout) clearTimeout(hideTimeout);
