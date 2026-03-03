@@ -11423,43 +11423,78 @@
           if (!dbRef || !username) return;
           const keys = getUserStatsDocKeys(username);
           const latest = {};
+          
           const applyBest = () => {
             try {
               const u = getCurrentSelectedUser();
               const currentNorm = normalizeUserKey(u);
               const lookingFor = normalizeUserKey(username);
+              
+              // Si ya no estamos viendo a este usuario, ignorar actualización
               if (currentNorm !== lookingFor) return;
+              
               const arr = Object.values(latest).filter(Boolean);
               if (!arr.length) return;
+              
+              // Ordenar para encontrar el "mejor" documento
               arr.sort((x, y) => {
                 const px = Number(x.totalPoints || 0);
                 const py = Number(y.totalPoints || 0);
-                const diff = Math.abs(px - py);
-                if (diff >= 5000) return py - px; // Descending (Mayor primero)
+                
+                // MODO ADMIN FIX: Si somos Admin, queremos ver la "Verdad de la Nube".
+                // Pero si hay documentos duplicados (por alias), esto elige el que tiene más puntos.
+                // Si el canje restó puntos en UNO de ellos, pero el otro sigue alto, veremos el alto (incorrecto).
+                // ESTRATEGIA: Priorizar el documento más RECIENTE (updatedAt) si la diferencia es grande.
                 
                 const tx = Math.max(getMillisFromTs(x.updatedAt), getMillisFromTs(x.lastUpdated));
                 const ty = Math.max(getMillisFromTs(y.updatedAt), getMillisFromTs(y.lastUpdated));
-                if (ty !== tx) return ty - tx; // Descending
                 
+                // Si uno se actualizó hace poco (ej. canje reciente), ese es el válido, aunque tenga MENOS puntos.
+                if (Math.abs(tx - ty) > 5000) { // 5 segundos de diferencia
+                    return ty - tx; // El más reciente gana
+                }
+                
+                // Si son simultáneos, usar el de mayor puntaje (comportamiento legacy)
                 return py - px;
               });
+              
               const best = arr[0];
               const cloudPoints = Number(best.totalPoints || 0);
+              
+              // Actualizar cache de memoria y UI
               const local = getGamificationDataForUser(u) || {};
+              
+              // FIX CRÍTICO: Sobrescribir puntos locales con los de la nube
               local.points = cloudPoints;
               local._cloudSyncedPoints = cloudPoints;
+              
+              // Actualizar memoria (y localStorage si corresponde)
               saveGamificationDataForUser(local, u);
+              
+              // Actualizar UI directamente
               const ptsEl = document.getElementById('user-points');
               if (ptsEl) ptsEl.textContent = String(cloudPoints);
+              
               const rewardsPtsEl = document.getElementById('rewards-user-points');
               if (rewardsPtsEl) rewardsPtsEl.textContent = String(cloudPoints);
+              
+              // Forzar actualización del breakdown para asegurar coherencia
+              if (window.renderPointsBreakdownForUser) {
+                  // Pasar cloudPoints explícitamente para evitar recálculos erróneos
+                  local.cloudTotal = cloudPoints;
+                  renderPointsBreakdownForUser(u, true);
+              }
+              
             } catch (_) {}
           };
+          
           keys.forEach((k) => {
             const unsub = dbRef.collection('userStats').doc(k).onSnapshot((doc) => {
               try {
                 if (!doc || !doc.exists) return;
                 const d = doc.data() || {};
+                // Inyectar ID para referencia
+                d._docId = doc.id; 
                 latest[k] = d;
                 applyBest();
               } catch (_) {}
@@ -13662,6 +13697,31 @@
           const date = new Date(request.timestamp);
           const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
           
+          let actionButtons = '';
+          
+          if (request.status === 'pending') {
+              actionButtons = `
+                  <button class="admin-action-btn admin-approve-btn" onclick="approveRewardRequest('${request.id}')">
+                    ✅ Aprobar
+                  </button>
+                  <button class="admin-action-btn admin-reject-btn" onclick="rejectRewardRequest('${request.id}')">
+                    ❌ Rechazar
+                  </button>
+              `;
+          } else if (request.status === 'approved') {
+              actionButtons = `
+                  <button class="admin-action-btn admin-reject-btn" onclick="rejectRewardRequest('${request.id}')">
+                    🚫 Revocar (Devolver Puntos)
+                  </button>
+              `;
+          } else if (request.status === 'rejected') {
+              actionButtons = `
+                  <button class="admin-action-btn admin-approve-btn" onclick="reApproveRequest('${request.id}')">
+                    ✅ Reactivar (Cobrar Puntos)
+                  </button>
+              `;
+          }
+
           return `
             <div class="admin-request-item" data-request-id="${request.id}">
               <div class="admin-request-info">
@@ -13675,14 +13735,7 @@
                 <div class="admin-request-timestamp">📅 ${formattedDate}</div>
               </div>
               <div class="admin-request-actions">
-                ${request.status === 'pending' ? `
-                  <button class="admin-action-btn admin-approve-btn" onclick="approveRewardRequest('${request.id}')">
-                    ✅ Aprobar
-                  </button>
-                  <button class="admin-action-btn admin-reject-btn" onclick="rejectRewardRequest('${request.id}')">
-                    ❌ Rechazar
-                  </button>
-                ` : ''}
+                ${actionButtons}
               </div>
             </div>
           `;
@@ -13839,6 +13892,72 @@
           showErrorNotification('Error al rechazar la solicitud: ' + error.message);
         }
       }
+
+      // Función para REACTIVAR solicitud rechazada (COBRAR PUNTOS DE NUEVO)
+      window.reApproveRequest = async function(requestId) {
+        try {
+          const confirmed = await showConfirmation({
+            icon: '✅',
+            title: 'Reactivar Solicitud',
+            message: '¿Confirmas que quieres CAMBIAR esta solicitud a APROBADA? Se descontarán los puntos al usuario nuevamente.',
+            confirmText: 'Sí, Reactivar',
+            cancelText: 'Cancelar'
+          });
+          
+          if (!confirmed) return;
+          
+          const requestRef = db.collection('rewardRequests').doc(requestId);
+          const doc = await requestRef.get();
+          
+          if (!doc.exists) {
+            showErrorNotification('Solicitud no encontrada');
+            return;
+          }
+          
+          const request = doc.data();
+          const cost = Number(request.cost || 0);
+          
+          // Verificar si el usuario tiene puntos suficientes para volver a pagar
+          const normUser = String(request.userId).toLowerCase().replace(/^@/,'');
+          const userStatsRef = db.collection('userStats').doc(normUser);
+          const userDoc = await userStatsRef.get();
+          const currentPoints = userDoc.exists ? (userDoc.data().totalPoints || 0) : 0;
+          
+          if (currentPoints < cost) {
+              const force = await showConfirmation({
+                icon: '⚠️',
+                title: 'Puntos Insuficientes',
+                message: `El usuario tiene ${currentPoints} puntos y el costo es ${cost}. ¿Quieres forzar el cobro (quedará en negativo)?`,
+                confirmText: 'Forzar',
+                cancelText: 'Cancelar'
+              });
+              if (!force) return;
+          }
+          
+          const batch = db.batch();
+          
+          // Cobrar puntos nuevamente
+          batch.set(userStatsRef, {
+             totalPoints: firebase.firestore.FieldValue.increment(-cost),
+             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          
+          // Cambiar estado a approved
+          batch.update(requestRef, {
+             status: 'approved',
+             processedAt: new Date().toISOString()
+          });
+          
+          await batch.commit();
+          
+          showSuccessNotification(`Solicitud reactivada. Se cobraron ${cost} puntos a ${request.userId}.`);
+          await loadRewardRequests(); // Recargar lista
+          
+        } catch (error) {
+          console.error('Error al reactivar solicitud:', error);
+          showErrorNotification('Error: ' + error.message);
+        }
+      };
 
       // Función para verificar notificaciones de admin
       function checkAdminNotifications() {
