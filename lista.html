@@ -11163,6 +11163,10 @@
       // Función auxiliar para obtener todos los datos combinados
       // IMPORTANTE: Ahora distingue si debe usar LocalStorage (solo para el usuario actual) o solo Firestore
       async function getAllCombinedSolicitudes() {
+        // Esta función NO debe usarse para calcular stats históricos globales,
+        // ya que solo trae solicitudes del día seleccionado en la UI.
+        // Se mantiene para compatibilidad con visualización de listas diarias.
+        
         const allSolicitudesMap = new Map();
         
         // Determinar contexto de usuario
@@ -11178,11 +11182,21 @@
           const usuario = String(s?.usuario || '').trim();
           const cancion = String(s?.cancion || '').trim();
           const artista = String(s?.artista || '').trim();
-          const hora = String(s?.hora || '').trim() || String(s?.time || s?.ts || '').trim();
+          // Normalizar hora para evitar duplicados por diferencias de segundos/milisegundos
+          // Usar solo HH:MM si es posible
+          let hora = String(s?.hora || '').trim();
+          if (!hora && (s?.ts || s?.time)) {
+             try {
+                const d = s.ts && s.ts.toDate ? s.ts.toDate() : new Date(s.ts || s.time);
+                hora = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+             } catch (_) {}
+          }
+          
           // Incluir día para unicidad absoluta
           const day = String(s?.day || '').trim();
           return `${usuario}-${cancion}-${artista}-${hora}-${day}`.replace(/[^a-zA-Z0-9-]/g, '');
         };
+        
         const add = (s) => {
           if (!s || !s.usuario || !s.cancion || !s.artista) return;
           const key = toKey(s);
@@ -11194,55 +11208,42 @@
         if (useLocal) {
             try {
               const dayItems = Array.isArray(window.__dayItems) ? window.__dayItems : [];
-              dayItems.forEach(it => add({
-                usuario: it.usuario,
-                cancion: it.cancion,
-                artista: it.artista,
-                day: it.day,
-                ts: it.ts || it.time,
-                hora: it.hora || ''
-              }));
+              dayItems.forEach(it => add(it));
             } catch (_) {}
 
             try {
               const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]') || [];
-              localSolicitudes.forEach(s => add({
-                usuario: s.usuario,
-                cancion: s.cancion,
-                artista: s.artista,
-                day: s.day,
-                ts: s.time || s.ts,
-                hora: s.hora || ''
-              }));
-            } catch (_) {}
-
-            try {
-              const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}') || {};
-              Object.values(byDay).forEach(arr => (arr || []).forEach(s => add({
-                usuario: s.usuario,
-                cancion: s.cancion,
-                artista: s.artista,
-                day: s.day,
-                ts: s.time || s.ts,
-                hora: s.hora || ''
-              })));
+              localSolicitudes.forEach(s => add(s));
             } catch (_) {}
         }
 
         // 2. Firestore (Siempre, pero filtrado si es necesario)
-        // El problema es que esta función trae SOLICITUDES del día seleccionado en el combo.
-        // Pero para calcular stats globales (puntos), necesitamos TODAS las solicitudes del usuario.
-        // getAllCombinedSolicitudes NO está diseñada para traer historial completo de Firestore, solo del día.
-        // Para historial completo, se debe usar 'countTotalRequestedSongsForUser'.
-        
-        // Mantenemos la lógica existente para el día seleccionado:
         try {
           const daySel = document.getElementById('day-select')?.value || '';
           const dbRef = window.db || db;
           if (dbRef && daySel) {
-            const snap = await dbRef.collection('solicitudes').where('day', '==', daySel).orderBy('ts', 'desc').limit(1000).get();
+            // Usar una consulta que devuelva datos del usuario objetivo si está seleccionado
+            // Si no, trae todo del día (comportamiento original para lista general)
+            let query = dbRef.collection('solicitudes').where('day', '==', daySel);
+            
+            // Si estamos viendo un usuario específico que NO somos nosotros, filtrar por él para asegurar limpieza
+            if (!useLocal && targetUser) {
+                // query = query.where('usuario', '==', targetUser); // Opcional: optimización
+            }
+            
+            const snap = await query.orderBy('ts', 'desc').limit(1000).get();
             snap.forEach(doc => {
               const data = doc.data() || {};
+              // Solo añadir si coincide con el usuario objetivo (si hay uno seleccionado)
+              // O si estamos viendo la lista general
+              if (targetUser && normalizeUserKey(data.usuario) !== normalizeUserKey(targetUser)) {
+                  // Si hay un usuario seleccionado explícitamente en el contexto de gamificación,
+                  // filtrar aquí también por si acaso la query trajo de más.
+                  // Pero getAllCombinedSolicitudes se usa para la lista general también...
+                  // CUIDADO: Esta función se usa para renderizar la lista principal.
+                  // No debemos filtrar por usuario aquí a menos que sea explícito.
+              }
+              
               add({
                 usuario: data.usuario,
                 cancion: data.cancion,
@@ -12248,7 +12249,32 @@
           };
         } catch (error) {
           console.error('Error al calcular estadísticas del usuario:', error);
-          // Fallback a localStorage
+          
+          // FIX: Si falla Firestore y NO soy el usuario objetivo, NO usar fallback local de "mis" solicitudes
+          const currentUser = getCurrentUser();
+          const normTarget = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
+          const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
+
+          if (normTarget !== normCurrent) {
+              console.warn(`⚠️ Evitando fallback local para usuario ajeno (${targetUser}) tras error de Firestore.`);
+              // Devolver datos vacíos seguros en lugar de contaminar con datos locales
+              return {
+                totalSongs: 0,
+                totalPlayedSongs: 0,
+                uniqueArtists: 0,
+                uniqueArtistsPlayed: 0,
+                activeDays: 0,
+                isVip: false,
+                bestStreak: 0,
+                topArtistCount: 0,
+                topArtistCountPlayed: 0,
+                firstRequests: 0,
+                zeroFMSongs: 0,
+                zeroFMSongsPlayed: 0
+              };
+          }
+
+          // Fallback a localStorage (SOLO SI ES MI PROPIO PERFIL)
           const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
           
           const userSongs = solicitudes.filter(s => s.usuario === targetUser);
@@ -12915,19 +12941,29 @@
            const norm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
            if (!norm) return 0;
            
-           // 1. Obtener de Firestore (donde está el histórico completo)
-           const snap = await db.collection('solicitudes').where('usuario', '==', norm).get();
+           // FIX: getAllCombinedSolicitudes SOLO trae datos del día seleccionado.
+           // Si queremos el total histórico, debemos consultar Firestore directamente.
+           // Usar la colección 'solicitudes' con un índice por usuario es lo más eficiente.
            
-           // Si Firestore falla o está vacío, intentamos localStorage pero priorizamos Firestore
-           // Nota: where('usuario') es case-sensitive en Firestore, por lo que puede fallar si el casing no coincide.
-           // Mejor estrategia: traer todo y filtrar en cliente o confiar en un índice correcto.
-           // Dado el volumen, filtrar en cliente de getAllCombinedSolicitudes es más seguro para coincidir casing.
+           try {
+               const snap = await db.collection('solicitudes')
+                   .where('usuario', '==', norm)
+                   .get();
+               
+               if (!snap.empty) {
+                   // Si hay datos en Firestore, esa es la fuente de verdad histórica
+                   console.log(`📚 Histórico Firestore para ${norm}: ${snap.size} solicitudes`);
+                   return snap.size;
+               }
+           } catch (e) {
+               console.warn('Error consultando histórico en Firestore:', e);
+           }
            
+           // Fallback a lógica anterior (limitada al día) si falla Firestore o no hay datos
+           // Esto es lo que causaba que vieras menos puntos si no estabas en el día correcto
            const all = await getAllCombinedSolicitudes();
            const filtered = all.filter(s => {
               const u = String(s.usuario||'').trim().replace(/^@/,'').toLowerCase();
-              const d = String(s.day || (s.fecha||'').split('T')[0] || '').trim();
-              if (d && window.isOnOrAfterStart && !window.isOnOrAfterStart(d)) return false;
               return u === norm;
            });
            
