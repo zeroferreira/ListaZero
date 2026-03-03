@@ -1099,9 +1099,18 @@
       if (db && data.usuario) {
           try {
              // Buscar documento de usuario (intentar normalizar clave)
-             const normUser = String(data.usuario).trim().replace(/^@/, '').toLowerCase();
-             // Intentamos obtener el doc directamente
-             const userDoc = await db.collection('userStats').doc(normUser).get();
+             const rawUser = String(data.usuario).trim().replace(/^@/, '').toLowerCase();
+             // Normalización robusta (la misma que usa el bot para guardar)
+             const normUser = rawUser.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+             
+             // Intentamos obtener el doc directamente usando la clave normalizada
+             let userDoc = await db.collection('userStats').doc(normUser).get();
+             
+             // Fallback: Si no existe con la clave normalizada, intentar con la simple (por compatibilidad)
+             if (!userDoc.exists && rawUser !== normUser) {
+                 userDoc = await db.collection('userStats').doc(rawUser).get();
+             }
+
              if (userDoc.exists) {
                  const uData = userDoc.data();
                  if (uData && uData.profilePic) {

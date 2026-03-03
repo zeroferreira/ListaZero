@@ -11902,12 +11902,19 @@
       // Modificar funciones existentes para usar el usuario seleccionado
       function getGamificationDataForUser(usuario = null) {
         const targetUser = usuario || getCurrentSelectedUser();
-        const normUser = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
+        // Usar la misma lógica de normalización robusta
+        const rawUser = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
+        
         const data = localStorage.getItem('gamificationData');
         const allData = data ? JSON.parse(data) : {};
         
-        // console.log(`📖 Recuperando datos para ${targetUser} de localStorage`);
-        const userData = allData[targetUser.toLowerCase()];
+        // Intentar varias claves para encontrar los datos locales
+        let userData = allData[rawUser];
+        
+        if (!userData) {
+            const normUser = rawUser.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            userData = allData[normUser];
+        }
         
         return userData || {
           points: 0,
