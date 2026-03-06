@@ -3559,7 +3559,11 @@
 
       async function toggleSongPlayed(element, songId, passedDay, options) {
         // Validación inicial rápida: solo DJ puede actuar
+        // FIX: Permitir actuar si es DJ O si es el dispositivo Maestro (isMasterDJDevice)
+        // El check isDJDevice() ya verifica localStorage.getItem('isMasterDJDevice') === 'true'
+        // Pero agregamos un log para debug si falla
         if (!isDJDevice()) { 
+             console.warn('⚠️ Intento de toggleSongPlayed bloqueado: No es dispositivo DJ Maestro');
              const btn = element.querySelector('.play-toggle-btn');
              if (btn) {
                btn.classList.add('clicked-anim');
@@ -3569,7 +3573,10 @@
         }
           
         const currentDay = passedDay || document.getElementById('day-select')?.value || element?.dataset?.day || '';
-        if (!currentDay) return;
+        if (!currentDay) {
+            console.error('❌ Error toggleSongPlayed: No hay día seleccionado');
+            return;
+        }
 
         // Estado actual visual
         const wasPlayed = element.classList.contains('played');
@@ -3589,112 +3596,120 @@
             if (wantsSkip) {
                 // Si se pide skip y ya estaba reproducida, alternamos solo el estado skip
                 // (Mantenemos played = true)
+                // Si ya estaba skippeada, la des-skippeamos (vuelve a ser válida)
                 nextSkipped = !wasSkipped;
             } else {
-                // Si no se pide skip, alternamos el estado played (desmarcamos todo)
+                // Si no se pide skip explícito (click normal), alternamos el estado played
+                // Si estaba played -> unplayed (desmarcar todo)
                 nextPlayed = false;
                 nextSkipped = false;
             }
         }
 
         // --- ACTUALIZACIÓN VISUAL INMEDIATA (Optimistic UI) ---
-        element.classList.toggle('played', nextPlayed);
-        element.classList.toggle('skipped', nextSkipped);
+        // Forzar reflow para asegurar que la clase se aplique visualmente
+        if (nextPlayed) element.classList.add('played'); else element.classList.remove('played');
+        if (nextSkipped) element.classList.add('skipped'); else element.classList.remove('skipped');
         
         const iconEl = element.querySelector('.play-icon');
-        if (iconEl) iconEl.textContent = nextPlayed ? (nextSkipped ? '⏭️' : '▶️') : '▶️';
+        if (iconEl) iconEl.textContent = nextPlayed ? (nextSkipped ? '⏭️' : '▶️') : '▶️'; // Icono estático, CSS maneja el color
 
         // --- PERSISTENCIA LOCAL ---
         try {
-            const localPlayed = getLocalPlayedMap();
-            const localSkipped = getLocalSkippedMap();
+            // Obtener mapas actuales
+            let localPlayedMap = getLocalPlayedMap() || {};
+            let localSkippedMap = getLocalSkippedMap() || {};
             
-            if (!localPlayed[currentDay]) localPlayed[currentDay] = [];
-            if (!localSkipped[currentDay]) localSkipped[currentDay] = [];
+            // Asegurar arrays para el día
+            if (!Array.isArray(localPlayedMap[currentDay])) localPlayedMap[currentDay] = [];
+            if (!Array.isArray(localSkippedMap[currentDay])) localSkippedMap[currentDay] = [];
 
             // Actualizar arrays locales
             if (nextPlayed) {
-                if (!localPlayed[currentDay].includes(songId)) localPlayed[currentDay].push(songId);
+                if (!localPlayedMap[currentDay].includes(songId)) localPlayedMap[currentDay].push(songId);
             } else {
-                localPlayed[currentDay] = localPlayed[currentDay].filter(id => id !== songId);
+                localPlayedMap[currentDay] = localPlayedMap[currentDay].filter(id => id !== songId);
             }
 
             if (nextSkipped) {
-                if (!localSkipped[currentDay].includes(songId)) localSkipped[currentDay].push(songId);
+                if (!localSkippedMap[currentDay].includes(songId)) localSkippedMap[currentDay].push(songId);
             } else {
-                localSkipped[currentDay] = localSkipped[currentDay].filter(id => id !== songId);
+                localSkippedMap[currentDay] = localSkippedMap[currentDay].filter(id => id !== songId);
             }
 
-            setLocalPlayedMap(localPlayed);
-            setLocalSkippedMap(localSkipped);
-            if (window.playedSongsCache) window.playedSongsCache[currentDay] = localPlayed[currentDay];
+            // Guardar en localStorage
+            setLocalPlayedMap(localPlayedMap);
+            setLocalSkippedMap(localSkippedMap);
+            
+            // Actualizar caché global si existe
+            if (window.playedSongsCache) window.playedSongsCache[currentDay] = localPlayedMap[currentDay];
+            
+            console.log(`💾 LocalStorage actualizado para ${songId}: played=${nextPlayed}, skipped=${nextSkipped}`);
         } catch (e) { console.error('Error guardando local:', e); }
 
         // --- SINCRONIZACIÓN FIRESTORE ---
         if (window.db) {
             try {
                 const docRef = window.db.collection('playedSongs').doc(currentDay);
-                
-                // Preparar payload de actualización atómica
                 const batch = window.db.batch();
-                // Usamos set con merge para asegurar que el documento exista
+
+                // Asegurar documento base
                 batch.set(docRef, { 
                     day: currentDay,
                     lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
 
-                const updates = {};
-                
-                // Actualizar lista de reproducidas
-                if (nextPlayed && !wasPlayed) {
-                    updates.songs = firebase.firestore.FieldValue.arrayUnion(songId);
-                } else if (!nextPlayed && wasPlayed) {
-                    updates.songs = firebase.firestore.FieldValue.arrayRemove(songId);
+                // Actualizar arrays en Firestore
+                if (nextPlayed) {
+                     batch.update(docRef, { songs: firebase.firestore.FieldValue.arrayUnion(songId) });
+                } else {
+                     batch.update(docRef, { songs: firebase.firestore.FieldValue.arrayRemove(songId) });
                 }
 
-                // Actualizar lista de saltadas
-                if (nextSkipped && !wasSkipped) {
-                    updates.skipped = firebase.firestore.FieldValue.arrayUnion(songId);
-                } else if (!nextSkipped && wasSkipped) {
-                    updates.skipped = firebase.firestore.FieldValue.arrayRemove(songId);
-                }
-
-                if (Object.keys(updates).length > 0) {
-                    batch.update(docRef, updates);
+                if (nextSkipped) {
+                     batch.update(docRef, { skipped: firebase.firestore.FieldValue.arrayUnion(songId) });
+                } else {
+                     batch.update(docRef, { skipped: firebase.firestore.FieldValue.arrayRemove(songId) });
                 }
 
                 await batch.commit();
+                console.log(`🔥 Firestore actualizado para ${songId}`);
 
-                // Actualizar contadores de usuario si cambió el estado de "reproducida válida" (played y no skipped)
+                // Actualizar contadores de usuario si cambió el estado de "reproducida válida"
+                // (played=true, skipped=false) es el único estado que suma puntos
+                // (played=true, skipped=true) no suma puntos
+                // (played=false) no suma puntos
+                
                 const uname = element.dataset.username;
                 if (uname) {
-                   // Si pasó de NO válida a válida (se reprodujo)
-                   if (nextPlayed && !nextSkipped && (!wasPlayed || wasSkipped)) {
+                   const wasValid = wasPlayed && !wasSkipped;
+                   const isValid = nextPlayed && !nextSkipped;
+                   
+                   if (isValid && !wasValid) {
+                       // Ganó punto (pasó de no-played o skipped a played-valid)
                        updateUserPlayedCounter(uname, 1);
-                   }
-                   // Si pasó de válida a NO válida (se desmarcó o se saltó)
-                   else if ((!nextPlayed || nextSkipped) && (wasPlayed && !wasSkipped)) {
+                   } else if (!isValid && wasValid) {
+                       // Perdió punto (pasó de played-valid a no-played o skipped)
                        updateUserPlayedCounter(uname, -1);
                    }
                 }
 
             } catch (err) {
                 console.error('Error sincronizando con Firestore:', err);
-                // No revertimos UI para no confundir, pero el log queda para debug si es crítico
             }
         }
         
         // Recalcular estadísticas del usuario en tiempo real
-        if (!String(element.dataset.isTest || '') === '1') {
+        if (element.dataset.isTest !== '1') {
             const userForCounter = (element.dataset.username || '').trim();
             if (userForCounter) {
                 try {
-                    // Esperar un poco para que Firestore se propague si es necesario
                     setTimeout(async () => {
+                        // Forzar recálculo de puntos
                         await analyzeAndGrantPointsForUser(userForCounter);
                         await updateUserHeaderUI(userForCounter);
                         
-                        // Si estamos viendo el desglose de este usuario, refrescar
+                        // Refrescar desglose si está abierto
                         const panel = document.getElementById('gamification-breakdown');
                         const curProfile = typeof getCurrentProfileUser === 'function' ? getCurrentProfileUser() : null;
                         if (panel && panel.classList.contains('active') && curProfile && String(curProfile).toLowerCase() === String(userForCounter).toLowerCase()) {
