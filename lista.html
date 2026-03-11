@@ -7521,6 +7521,8 @@
       const POINTS_CONFIG = {
         SONG_REQUEST: 25,
         DAILY_BONUS: 5,
+        CHECKIN_MIN: 1,
+        CHECKIN_MAX: 12,
         STREAK_MULTIPLIER: 2,
         VIP_BONUS: 40
       };
@@ -7613,6 +7615,132 @@
       
       // Cargar al inicio
       setTimeout(loadRewardsConfig, 1500);
+
+      // ===== SISTEMA DE CHECK-IN DIARIO =====
+      async function initCheckInSystem() {
+         const btn = document.createElement('div');
+         btn.id = 'daily-checkin-btn';
+         btn.innerHTML = '🎁';
+         btn.title = 'Reclamar Bono Diario';
+         // Estilos inline para evitar problemas de caché CSS, pero idealmente irían en style
+         Object.assign(btn.style, {
+            position: 'fixed',
+            bottom: '80px', // Encima del player
+            right: '20px',
+            width: '50px',
+            height: '50px',
+            background: 'linear-gradient(135deg, #FFD700, #FFA500)',
+            borderRadius: '50%',
+            boxShadow: '0 4px 15px rgba(255, 215, 0, 0.4)',
+            display: 'none', // Oculto por defecto hasta verificar
+            justifyContent: 'center',
+            alignItems: 'center',
+            fontSize: '24px',
+            cursor: 'pointer',
+            zIndex: '9999',
+            transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+         });
+         
+         // Animación de pulso
+         const style = document.createElement('style');
+         style.innerHTML = `
+           @keyframes checkin-pulse {
+             0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7); }
+             70% { transform: scale(1.1); box-shadow: 0 0 0 15px rgba(255, 215, 0, 0); }
+             100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+           }
+           @keyframes checkin-pop {
+             0% { transform: scale(1); }
+             50% { transform: scale(1.4); opacity: 1; }
+             100% { transform: scale(0); opacity: 0; }
+           }
+           .checkin-available { animation: checkin-pulse 2s infinite; }
+           .checkin-claimed { animation: checkin-pop 0.5s forwards; pointer-events: none; }
+         `;
+         document.head.appendChild(style);
+         document.body.appendChild(btn);
+
+         // Verificar estado
+         const user = getCurrentUser();
+         if (!user || !window.db) return;
+
+         try {
+             // Verificar localStorage primero para feedback instantáneo
+             const lastCheckInStr = localStorage.getItem('lastCheckInDate_' + user);
+             const now = new Date();
+             const todayStr = now.toDateString();
+             
+             if (lastCheckInStr === todayStr) {
+                 return; // Ya reclamado hoy
+             }
+
+             // Verificar Firestore (fuente de verdad)
+             const normUser = normalizeUserKey(user);
+             const doc = await db.collection('userStats').doc(normUser).get();
+             let canClaim = true;
+             
+             if (doc.exists) {
+                 const data = doc.data();
+                 if (data.lastCheckIn) {
+                     const lastDate = data.lastCheckIn.toDate();
+                     if (lastDate.toDateString() === todayStr) {
+                         canClaim = false;
+                         localStorage.setItem('lastCheckInDate_' + user, todayStr); // Sincronizar local
+                     }
+                 }
+             }
+
+             if (canClaim) {
+                 btn.style.display = 'flex';
+                 btn.classList.add('checkin-available');
+                 
+                 btn.onclick = async () => {
+                     // Efecto visual inmediato
+                     btn.classList.remove('checkin-available');
+                     btn.classList.add('checkin-claimed');
+                     
+                     // Calcular puntos aleatorios (1-12)
+                     const points = Math.floor(Math.random() * (POINTS_CONFIG.CHECKIN_MAX - POINTS_CONFIG.CHECKIN_MIN + 1)) + POINTS_CONFIG.CHECKIN_MIN;
+                     
+                     showSuccessNotification(`¡Has ganado ${points} puntos diarios! 🎉`);
+                     
+                     // Persistir
+                     try {
+                         const batch = db.batch();
+                         const ref = db.collection('userStats').doc(normUser);
+                         
+                         batch.set(ref, {
+                             totalCheckInPoints: firebase.firestore.FieldValue.increment(points),
+                             lastCheckIn: firebase.firestore.FieldValue.serverTimestamp(),
+                             totalPoints: firebase.firestore.FieldValue.increment(points) // Sumar al total global también directamente
+                         }, { merge: true });
+                         
+                         await batch.commit();
+                         
+                         // Guardar local
+                         localStorage.setItem('lastCheckInDate_' + user, todayStr);
+                         
+                         // Actualizar UI de puntos
+                         setTimeout(() => {
+                             analyzeAndGrantPointsForUser(user);
+                             updateUserHeaderUI(user);
+                         }, 1000);
+                         
+                     } catch (err) {
+                         console.error('Error claiming check-in:', err);
+                         showErrorNotification('Error al reclamar bono. Intenta de nuevo.');
+                         btn.classList.remove('checkin-claimed');
+                         btn.classList.add('checkin-available');
+                     }
+                 };
+             }
+         } catch (e) {
+             console.error('Error check-in init:', e);
+         }
+      }
+      
+      // Iniciar después de cargar
+      setTimeout(initCheckInSystem, 3000);
 
       // Configuración de logros
       const ACHIEVEMENTS = [
@@ -9324,17 +9452,21 @@
           // Calcular puntos base por canciones reproducidas
           const basePoints = (stats.totalPlayedSongs || 0) * POINTS_CONFIG.SONG_REQUEST;
           
-          // Bonus diario por conexión (basado en días activos)
+          // Bonus diario por conexión (basado en días activos) - LEGACY (Mantenido por compatibilidad)
           const dailyBonusPoints = (stats.activeDays || 0) * POINTS_CONFIG.DAILY_BONUS;
 
+          // Puntos por Check-In Manual
+          const checkInPoints = Number(data.checkInPoints || 0);
+
           console.log(`💰 Puntos base para ${targetUser}: ${basePoints} (${stats.totalPlayedSongs} canciones × ${POINTS_CONFIG.SONG_REQUEST})`);
-          console.log(`💰 Puntos por conexión diaria: ${dailyBonusPoints} (${stats.activeDays} días × ${POINTS_CONFIG.DAILY_BONUS})`);
+          console.log(`💰 Puntos por días activos: ${dailyBonusPoints}`);
+          console.log(`💰 Puntos por Check-In Manual: ${checkInPoints}`);
           
           // Bonus VIP si aplica, sobre canciones reproducidas
           const vipBonus = stats.isVip ? (stats.totalPlayedSongs || 0) * POINTS_CONFIG.VIP_BONUS : 0;
           
           // Calcular puntos totales base (sin logros)
-          const totalBasePoints = basePoints + dailyBonusPoints + vipBonus;
+          const totalBasePoints = basePoints + dailyBonusPoints + vipBonus + checkInPoints;
 
           // Preservar logros existentes antes de actualizar datos base
           const existingAchievements = [...(data.achievements || [])];
@@ -10090,7 +10222,14 @@
             .reduce((sum, r) => sum + Math.max(0, Number(r.cost || 0)), 0);
         } catch (_) {}
 
-        const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus;
+        let checkInPoints = 0;
+        try {
+           const bestStats = await fetchBestUserStatsDoc(usuario);
+           const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
+           checkInPoints = Number(statsDoc.totalCheckInPoints || 0);
+        } catch (_) {}
+
+        const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus + checkInPoints;
         
         // --- MODO ADMIN: Verdad Absoluta de Nube ---
         // Si somos Admin viendo a otro usuario, confiamos en el total de la nube.
