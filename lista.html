@@ -7695,6 +7695,9 @@
                  btn.classList.add('checkin-available');
                  
                  btn.onclick = async () => {
+                     if (btn.classList.contains('processing')) return;
+                     btn.classList.add('processing');
+                     
                      // Efecto visual inmediato
                      btn.classList.remove('checkin-available');
                      btn.classList.add('checkin-claimed');
@@ -7702,23 +7705,57 @@
                      // Calcular puntos aleatorios (1-12)
                      const points = Math.floor(Math.random() * (POINTS_CONFIG.CHECKIN_MAX - POINTS_CONFIG.CHECKIN_MIN + 1)) + POINTS_CONFIG.CHECKIN_MIN;
                      
-                     showSuccessNotification(`¡Has ganado ${points} puntos diarios! 🎉`);
-                     
-                     // Persistir
+                     // Persistir con seguridad
                      try {
                          const batch = db.batch();
-                         const ref = db.collection('userStats').doc(normUser);
+                         const normUser = normalizeUserKey(user); // Asegurar que tenemos normUser aquí
                          
-                         batch.set(ref, {
+                         // A. Actualizar Usuario
+                         const userRef = db.collection('userStats').doc(normUser);
+                         batch.set(userRef, {
                              totalCheckInPoints: firebase.firestore.FieldValue.increment(points),
                              lastCheckIn: firebase.firestore.FieldValue.serverTimestamp(),
-                             totalPoints: firebase.firestore.FieldValue.increment(points) // Sumar al total global también directamente
+                             totalPoints: firebase.firestore.FieldValue.increment(points)
                          }, { merge: true });
+                         
+                         // B. Registrar Dispositivo (Bloqueo Anti-Farming)
+                         if (typeof generateDeviceFingerprint === 'function') {
+                             const fingerprint = generateDeviceFingerprint();
+                             const now = new Date();
+                             const fingerHash = fingerprint.split('').reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0); 
+                             const deviceDocId = `${now.toISOString().split('T')[0]}_${Math.abs(fingerHash)}`;
+                             const deviceRef = db.collection('dailyCheckIns').doc(deviceDocId);
+                             
+                             // Usamos 'create' o verificamos existencia antes, pero aquí confiamos en batch
+                             // Guardamos user y timestamp
+                             batch.set(deviceRef, {
+                                 fingerprint: fingerprint,
+                                 user: user,
+                                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                             });
+                         }
                          
                          await batch.commit();
                          
                          // Guardar local
+                         const todayStr = new Date().toDateString();
                          localStorage.setItem('lastCheckInDate_' + user, todayStr);
+                         
+                         // Mostrar Modal Personalizado (Sin botón cancelar)
+                         const modal = document.createElement('div');
+                         modal.className = 'checkin-modal-overlay';
+                         modal.innerHTML = `
+                            <div class="checkin-modal-content">
+                                <div style="font-size: 60px;">🎁</div>
+                                <div class="checkin-points">+${points} Puntos</div>
+                                <div class="checkin-text">
+                                    ¡Bono diario reclamado con éxito!<br>
+                                    <span style="color:#aaa; font-size:14px; display:block; margin-top:10px;">Vuelve en 24 horas para más premios.</span>
+                                </div>
+                                <button class="checkin-btn" onclick="this.closest('.checkin-modal-overlay').remove()">¡Genial!</button>
+                            </div>
+                         `;
+                         document.body.appendChild(modal);
                          
                          // Actualizar UI de puntos
                          setTimeout(() => {
@@ -7728,9 +7765,10 @@
                          
                      } catch (err) {
                          console.error('Error claiming check-in:', err);
-                         showErrorNotification('Error al reclamar bono. Intenta de nuevo.');
+                         showErrorNotification('Error al reclamar. Es posible que ya se haya reclamado en este dispositivo.');
                          btn.classList.remove('checkin-claimed');
                          btn.classList.add('checkin-available');
+                         btn.classList.remove('processing');
                      }
                  };
              }
