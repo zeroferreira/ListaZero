@@ -773,6 +773,18 @@
           <input type="range" id="inp-secondaryOpacity" min="0" max="100" value="60" oninput="document.getElementById('opacity-val').innerText = this.value + '%'">
           <span id="opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">60%</span>
         </div>
+
+        <div class="settings-group">
+          <label>Máximo de Tarjetas (3-6)</label>
+          <input type="range" id="inp-maxCards" min="3" max="6" value="3" step="1" oninput="document.getElementById('max-cards-val').innerText = this.value">
+          <span id="max-cards-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">3</span>
+        </div>
+
+        <div class="settings-group">
+            <label>Nivelador de Anchura (Ajuste fino)</label>
+            <input type="range" id="inp-widthScale" min="0.5" max="1.5" value="1.0" step="0.05" oninput="document.getElementById('width-scale-val').innerText = this.value + 'x'">
+            <span id="width-scale-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">1.0x</span>
+        </div>
     </div>
 
     <!-- TAB: ANIMACIONES -->
@@ -1175,7 +1187,10 @@
       showAlbumArt: false,
       showWaitTime: true,
       showTotalDuration: true,
-      syncAppleMusic: true
+      syncAppleMusic: true,
+      // Visual Scaling
+      maxCards: 3,
+      widthScale: 1.0
     };
 
     window.appliedSettings = { ...defaultSettings };
@@ -1220,6 +1235,14 @@
       document.getElementById('inp-secondaryOpacity').value = opacityVal;
       document.getElementById('opacity-val').innerText = opacityVal + '%';
 
+      const maxCardsVal = settings.maxCards !== undefined ? settings.maxCards : 3;
+      document.getElementById('inp-maxCards').value = maxCardsVal;
+      document.getElementById('max-cards-val').innerText = maxCardsVal;
+
+      const widthScaleVal = settings.widthScale !== undefined ? settings.widthScale : 1.0;
+      document.getElementById('inp-widthScale').value = widthScaleVal;
+      document.getElementById('width-scale-val').innerText = widthScaleVal + 'x';
+
       document.getElementById('inp-text').value = settings.text;
       
       // New Inputs
@@ -1233,8 +1256,21 @@
     function applySettings(s) {
       window.appliedSettings = s;
       const root = document.documentElement;
-      root.style.setProperty('--queue-width', s.width + 'px');
-      root.style.setProperty('--queue-item-min-height', s.minHeight + 'px');
+      // Aplicar escala de anchura
+      const baseWidth = s.width || 350;
+      const scale = s.widthScale || 1.0;
+      root.style.setProperty('--queue-width', (baseWidth * scale) + 'px');
+      
+      // Ajustar altura mínima dinámicamente según cantidad de tarjetas
+      // Si hay más de 3 tarjetas, reducimos la altura proporcionalmente para que quepan mejor
+      let baseMinHeight = s.minHeight || 80;
+      if (s.maxCards > 3) {
+          // Factor de reducción: 0.9x para 4, 0.8x para 5, 0.7x para 6
+          const reductionFactor = 1 - ((s.maxCards - 3) * 0.1);
+          baseMinHeight = Math.floor(baseMinHeight * reductionFactor);
+      }
+      root.style.setProperty('--queue-item-min-height', baseMinHeight + 'px');
+      
       root.style.setProperty('--queue-item-spacing', (s.spacing !== undefined ? s.spacing : 15) + 'px');
       root.style.setProperty('--queue-padding', (s.padding !== undefined ? s.padding : 15) + 'px');
       root.style.setProperty('--queue-text-gap', (s.textGap !== undefined ? s.textGap : 4) + 'px');
@@ -1325,6 +1361,8 @@
         bg: document.getElementById('inp-bg').value,
         primaryOpacity: document.getElementById('inp-primaryOpacity').value,
         secondaryOpacity: document.getElementById('inp-secondaryOpacity').value,
+        maxCards: document.getElementById('inp-maxCards').value,
+        widthScale: document.getElementById('inp-widthScale').value,
         text: document.getElementById('inp-text').value,
         // New inputs
         autocorrect: document.getElementById('inp-autocorrect').checked,
@@ -1335,31 +1373,11 @@
       };
     }
 
-    function previewSettings() {
-      const settings = getSettingsFromInputs();
-      applySettings(settings);
-    }
-
-    function saveSettings() {
-      const settings = getSettingsFromInputs();
-      localStorage.setItem('queue_overlay_settings', JSON.stringify(settings));
-      applySettings(settings);
-
-      // Sync to Firestore
-      if (db) {
-        db.collection('userSettings').doc('global_queue_config').set(settings)
-          .then(() => console.log("Configuración guardada en la nube"))
-          .catch(err => console.error("Error guardando configuración:", err));
-      }
-
-      toggleSettings(); // close panel
-    }
-    
     // Listeners para vista previa en tiempo real
     document.addEventListener('DOMContentLoaded', () => {
         // Text/Number inputs
         ['inp-width', 'inp-minHeight', 'inp-spacing', 'inp-padding', 'inp-textGap', 'inp-borderRadius', 'inp-animEntry', 'inp-animExit', 
-         'inp-font', 'inp-fontSize', 'inp-accent', 'inp-bg', 'inp-primaryOpacity', 'inp-secondaryOpacity', 'inp-text'].forEach(id => {
+         'inp-font', 'inp-fontSize', 'inp-accent', 'inp-bg', 'inp-primaryOpacity', 'inp-secondaryOpacity', 'inp-text', 'inp-maxCards', 'inp-widthScale'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('input', previewSettings);
@@ -1386,6 +1404,28 @@
            }
         });
     });
+
+    function previewSettings() {
+      const settings = getSettingsFromInputs();
+      applySettings(settings);
+      // Forzar re-render de la cola si cambia el límite de tarjetas para verlo en vivo
+      renderQueue();
+    }
+
+    function saveSettings() {
+      const settings = getSettingsFromInputs();
+      localStorage.setItem('queue_overlay_settings', JSON.stringify(settings));
+      applySettings(settings);
+
+      // Sync to Firestore
+      if (db) {
+        db.collection('userSettings').doc('global_queue_config').set(settings)
+          .then(() => console.log("Configuración guardada en la nube"))
+          .catch(err => console.error("Error guardando configuración:", err));
+      }
+
+      toggleSettings(); // close panel
+    }
 
     function resetSettings() {
       if(confirm('¿Restablecer valores por defecto?')) {
@@ -1792,9 +1832,10 @@
       // 1.5 Aplicar orden manual si existe
       pendingRequests = applyOrder(pendingRequests, currentManualOrder);
 
-      // 2. Tomar las primeras 3 (o settings limit)
-      // Hardcoded to 3 for now based on visibleQueue logic, but could be dynamic
-      const itemsToShow = pendingRequests.slice(0, 3);
+      // 2. Tomar las primeras X (config limit)
+      // Dynamic limit based on settings
+      const maxCards = (window.appliedSettings && window.appliedSettings.maxCards) ? window.appliedSettings.maxCards : 3;
+      const itemsToShow = pendingRequests.slice(0, maxCards);
       
       // 3. Diffing Inteligente: Solo animar elementos NUEVOS
       const container = document.getElementById('queue-container');
