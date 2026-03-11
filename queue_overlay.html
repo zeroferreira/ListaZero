@@ -1282,12 +1282,20 @@
        }
        // Aplicar escala de altura final
        const heightScale = s.heightScale || 1.0;
+       // Aplicar min-height ajustado
        root.style.setProperty('--queue-item-min-height', Math.floor(baseMinHeight * heightScale) + 'px');
        
+       // FIX: Escalar también los paddings y espacios verticales para permitir tarjetas más delgadas
+       const padding = (s.padding !== undefined ? s.padding : 15);
+       const textGap = (s.textGap !== undefined ? s.textGap : 4);
+       
+       // Si reducimos la altura (< 1.0), reducimos proporcionalmente los espacios internos
+       const verticalScale = heightScale < 1.0 ? heightScale : 1.0;
+       
        root.style.setProperty('--queue-item-spacing', (s.spacing !== undefined ? s.spacing : 15) + 'px');
-      root.style.setProperty('--queue-padding', (s.padding !== undefined ? s.padding : 15) + 'px');
-      root.style.setProperty('--queue-text-gap', (s.textGap !== undefined ? s.textGap : 4) + 'px');
-      root.style.setProperty('--queue-border-radius', s.borderRadius + 'px');
+       root.style.setProperty('--queue-padding', Math.floor(padding * verticalScale) + 'px');
+       root.style.setProperty('--queue-text-gap', Math.floor(textGap * verticalScale) + 'px');
+       root.style.setProperty('--queue-border-radius', s.borderRadius + 'px');
       
       // Set Global Animation Classes on Container
       const container = document.getElementById('queue-container');
@@ -1327,7 +1335,14 @@
       }
 
       root.style.setProperty('--queue-font-family', s.font);
-      root.style.setProperty('--queue-font-size', s.fontSize + 'px');
+      
+      // FIX: Escalar fuente si reducimos mucho la altura para que no se corte
+      const baseFontSize = s.fontSize || 16;
+      let fontScale = 1.0;
+      if (heightScale < 0.8) fontScale = heightScale * 1.2; // Reducción suave
+      if (fontScale > 1.0) fontScale = 1.0;
+      
+      root.style.setProperty('--queue-font-size', Math.floor(baseFontSize * fontScale) + 'px');
       root.style.setProperty('--queue-accent-color', s.accent);
       root.style.setProperty('--queue-text-color', s.text);
       
