@@ -743,11 +743,13 @@
         
         <div class="admin-sections-tabs" role="tablist" aria-label="Secciones de administración">
           <button type="button" class="admin-menu-tab admin-section-tab active" data-section="badges" role="tab" aria-selected="true">👑 Insignias</button>
-          <button type="button" class="admin-menu-tab admin-section-tab" data-section="rewards" role="tab" aria-selected="false">🎁 Recompensas</button>
+          <button type="button" class="admin-menu-tab admin-section-tab" data-section="rewards" role="tab" aria-selected="false">🎁 Solicitudes</button>
+          <button type="button" class="admin-menu-tab admin-section-tab" data-section="rewards-config" role="tab" aria-selected="false">⚙️ Config. Canjes</button>
           <button type="button" class="admin-menu-tab admin-section-tab" data-section="maintenance" role="tab" aria-selected="false">🔧 Mantenimiento</button>
           <select id="admin-section-select" class="admin-select" hidden aria-hidden="true" tabindex="-1">
             <option value="badges">👑 Gestión de Insignias</option>
-            <option value="rewards">🎁 Administración de Recompensas</option>
+            <option value="rewards">🎁 Solicitudes de Canje</option>
+            <option value="rewards-config">⚙️ Configuración de Canjes</option>
             <option value="maintenance">🔧 Mantenimiento</option>
           </select>
         </div>
@@ -861,7 +863,7 @@
         <!-- Sección de Administración de Recompensas -->
         <div id="rewards-section" class="admin-section" hidden>
           <div class="admin-rewards-section">
-            <h3>🎁 Administración de Recompensas</h3>
+            <h3>🎁 Solicitudes de Canje</h3>
             
             <!-- Estadísticas de Recompensas -->
             <div class="admin-rewards-stats">
@@ -900,6 +902,22 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Sección de Configuración de Recompensas (NUEVA) -->
+        <div id="rewards-config-section" class="admin-section" hidden>
+           <div class="admin-card">
+             <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+               <h3>⚙️ Configuración del Catálogo de Recompensas</h3>
+               <button type="button" class="btn btn-sm btn-success" onclick="saveRewardsConfig()">💾 Guardar Cambios</button>
+             </div>
+             <div class="card-body">
+               <p class="help-text">Edita los costos y descripciones de las tarjetas. Los cambios se aplicarán a todos los usuarios.</p>
+               <div id="rewards-config-list" class="rewards-config-list" style="display:flex; flex-direction:column; gap:15px; margin-top:15px;">
+                 <!-- Se llena dinámicamente -->
+               </div>
+             </div>
+           </div>
         </div>
 
         <!-- Sección de Mantenimiento -->
@@ -7519,7 +7537,8 @@
       ];
 
       // Configuración de recompensas
-      const REWARDS = [
+      // Se carga inicialmente con valores por defecto, pero se sobrescribe con lo que haya en Firestore si existe
+      let REWARDS = [
         {
           id: 'next',
           name: 'NEXT',
@@ -7570,6 +7589,30 @@
           icon: '🏆'
         }
       ];
+
+      // Función para cargar configuración de recompensas desde Firestore
+      async function loadRewardsConfig() {
+        if (!window.db) return;
+        try {
+          const doc = await db.collection('systemConfig').doc('rewardsConfig').get();
+          if (doc.exists) {
+            const data = doc.data();
+            if (Array.isArray(data.list)) {
+              console.log('📦 Configuración de recompensas cargada desde Firestore');
+              REWARDS = data.list;
+              // Si el modal está abierto, refrescarlo
+              if (document.getElementById('rewards-modal').style.display === 'flex') {
+                  renderRewardsModal();
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Error cargando configuración de recompensas:', e);
+        }
+      }
+      
+      // Cargar al inicio
+      setTimeout(loadRewardsConfig, 1500);
 
       // Configuración de logros
       const ACHIEVEMENTS = [
@@ -10818,11 +10861,7 @@
                     location.reload();
                 } catch (e) {
                     console.error(e);
-                    // Fallback local si falla la nube
-                    localStorage.setItem('masterDJFingerprint', generateDeviceFingerprint());
-                    localStorage.setItem('isMasterDJDevice', 'true');
-                    alert('⚠️ Control DJ asignado localmente (Error de red). Modo "Admin" activo.');
-                    location.reload();
+                    alert('❌ Error al asignar control: ' + e.message);
                 }
             }
         });
@@ -14069,6 +14108,79 @@
          }
       }
 
+      // ===== FUNCIONES PARA CONFIGURACIÓN DE RECOMPENSAS =====
+      
+      function renderRewardsConfig() {
+          const container = document.getElementById('rewards-config-list');
+          if (!container) return;
+          
+          container.innerHTML = REWARDS.map((r, index) => `
+            <div class="reward-config-item" style="border:1px solid #ddd; padding:15px; border-radius:8px; display:flex; gap:15px; background:#fff; align-items:flex-start;">
+               <div style="font-size:24px;">${r.icon}</div>
+               <div style="flex:1;">
+                   <div style="display:flex; gap:10px; margin-bottom:5px;">
+                       <input type="text" class="form-control" value="${r.name}" onchange="REWARDS[${index}].name = this.value" placeholder="Nombre" style="font-weight:bold;">
+                       <input type="number" class="form-control" value="${r.cost}" onchange="REWARDS[${index}].cost = Number(this.value)" placeholder="Costo" style="width:100px;">
+                   </div>
+                   <textarea class="form-control" onchange="REWARDS[${index}].description = this.value" placeholder="Descripción" rows="2" style="width:100%; font-size:12px;">${r.description}</textarea>
+                   <div style="margin-top:5px; font-size:10px; color:#666;">ID: ${r.id} (No editable)</div>
+               </div>
+            </div>
+          `).join('');
+      }
+      
+      window.saveRewardsConfig = async function() {
+         if (!confirm('¿Guardar cambios en las recompensas? Esto actualizará el catálogo para todos los usuarios.')) return;
+         
+         try {
+             if (window.db) {
+                 await window.db.collection('systemConfig').doc('rewardsConfig').set({
+                     list: REWARDS,
+                     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                     updatedBy: getCurrentUser()
+                 });
+                 alert('✅ Configuración guardada exitosamente.');
+             } else {
+                 alert('❌ Error: No hay conexión a base de datos.');
+             }
+         } catch (e) {
+             console.error(e);
+             alert('❌ Error al guardar: ' + e.message);
+         }
+      };
+
+      // Listener para cambiar tabs (versión robusta)
+      // Asegurarse de limpiar listeners anteriores si los hubiera (aunque es script inline)
+      document.querySelectorAll('.admin-section-tab').forEach(tab => {
+          tab.addEventListener('click', (e) => {
+              const target = e.currentTarget;
+              const sectionId = target.dataset.section;
+              
+              // 1. UI Tabs Update
+              document.querySelectorAll('.admin-section-tab').forEach(t => {
+                  t.classList.remove('active');
+                  t.setAttribute('aria-selected', 'false');
+              });
+              target.classList.add('active');
+              target.setAttribute('aria-selected', 'true');
+              
+              // 2. Hide All Sections
+              document.getElementById('badges-section').hidden = true;
+              document.getElementById('rewards-section').hidden = true;
+              document.getElementById('rewards-config-section').hidden = true;
+              document.getElementById('maintenance-section').hidden = true;
+              
+              // 3. Show Target Section
+              if (sectionId === 'badges') document.getElementById('badges-section').hidden = false;
+              else if (sectionId === 'rewards') document.getElementById('rewards-section').hidden = false;
+              else if (sectionId === 'rewards-config') {
+                  document.getElementById('rewards-config-section').hidden = false;
+                  renderRewardsConfig();
+              }
+              else if (sectionId === 'maintenance') document.getElementById('maintenance-section').hidden = false;
+          });
+      });
+
       // Inicializar notificaciones al cargar
       setTimeout(checkAdminNotifications, 2000);
 
@@ -14130,10 +14242,14 @@
           
           let btnText = canAfford ? 'Canjear' : 'Insuficiente';
           let btnDisabled = !canAfford;
+          let extraInfo = '';
           
           if (isOnCooldown) {
               btnText = `Espera ${remainingHours}h`;
               btnDisabled = true;
+              extraInfo = `<div class="reward-cooldown-info">⚠️ Esta recompensa tiene un tiempo de espera de 36 horas entre usos.</div>`;
+          } else if (reward.description && (reward.description.includes('prioridad') || reward.description.includes('siguiente'))) {
+              extraInfo = `<div class="reward-hint-info">ℹ️ Esta acción puede tardar unos minutos en procesarse.</div>`;
           }
 
           rewardCard.innerHTML = `
@@ -14142,7 +14258,7 @@
               <h4 class="reward-title">${reward.name}</h4>
               <p class="reward-description">${reward.description}</p>
               <div class="reward-cost">${reward.cost} puntos</div>
-              ${isOnCooldown ? `<div class="cooldown-badge">⏳ Cooldown activo</div>` : ''}
+              ${extraInfo}
             </div>
             <button class="reward-btn" ${btnDisabled ? 'disabled' : ''} 
                     onclick="requestReward('${reward.id}', '${targetUser}', ${reward.cost})">
