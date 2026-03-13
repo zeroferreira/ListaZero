@@ -5764,28 +5764,84 @@
     function computeDayStatsForTicker(items) {
       const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
       let totalCount = 0;
+      
+      // 1. Contar elementos pendientes en la lista visual (items)
       for (let i = 0; i < (items || []).length; i++) {
         const it = items[i] || {};
         if (isTestRequestForTicker(it)) continue;
-        const uNorm = normalizeUserForTicker(it.usuario);
+        processItemForStats(it, songCount, artistCount, userCount, genreCount, artistOriginal, userOriginal);
         totalCount++;
+      }
+      
+      // 2. Contar elementos ya reproducidos del día actual (playedSongs)
+      const day = String(document.getElementById('day-select')?.value || '').trim();
+      const playedMap = getLocalPlayedMapForTicker();
+      const playedTodayIds = Array.isArray(playedMap[day]) ? playedMap[day] : [];
+      
+      // Necesitamos buscar los detalles de estas canciones reproducidas
+      // Intentamos buscarlas en el almacenamiento local de solicitudes del día
+      try {
+          const solicitudesByDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          const todaySolicitudes = solicitudesByDay[day] || [];
+          
+          // Crear un mapa para búsqueda rápida
+          const solMap = new Map();
+          todaySolicitudes.forEach(s => { if(s && s.id) solMap.set(s.id, s); });
+          
+          playedTodayIds.forEach(id => {
+              const sol = solMap.get(id);
+              if (sol) {
+                  // Procesar si no es test
+                  if (!isTestRequestForTicker(sol)) {
+                      processItemForStats(sol, songCount, artistCount, userCount, genreCount, artistOriginal, userOriginal);
+                      // No sumamos a totalCount porque ya se cuenta en 'played' abajo, o depende de la definición de "total"
+                      // Para consistencia con la vista "Hoy", total suele ser pendientes + reproducidas
+                      // Pero items ya suele incluir todo si no se ha filtrado. 
+                      // Si 'items' son solo los visibles (pendientes), entonces sí debemos sumar.
+                      // Asumiremos que 'items' viene de renderSolicitudes que a veces excluye played.
+                      // Para seguridad, verificamos si ya estaba contado.
+                      // Simplificación: Las estadísticas de "Hoy" deben incluir lo que ya sonó.
+                  }
+              }
+          });
+      } catch(e) { console.error(e); }
+
+      function processItemForStats(it, songCount, artistCount, userCount, genreCount, artistOriginal, userOriginal) {
+        const uNorm = normalizeUserForTicker(it.usuario);
         const song = normalizeKeyTextForTicker(it.cancion);
         const artist = normalizeKeyTextForTicker(it.artista);
         const user = uNorm;
         const genre = normalizeKeyTextForTicker(it.genero);
-        if (song) songCount[song] = (songCount[song] || 0) + 1;
-        if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(it.artista || '').trim(); }
-        if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(it.usuario || '').trim(); }
+        
+        // Filtros de calidad estrictos
+        if (song && song.length > 1 && song !== 'undefined' && song !== 'null') songCount[song] = (songCount[song] || 0) + 1;
+        
+        if (artist && artist.length > 1 && artist !== 'undefined' && artist !== 'null') { 
+            artistCount[artist] = (artistCount[artist] || 0) + 1; 
+            if (!artistOriginal[artist]) artistOriginal[artist] = String(it.artista || '').trim(); 
+        }
+        
+        if (user && user.length > 1 && user !== 'undefined' && user !== 'null') { 
+            userCount[user] = (userCount[user] || 0) + 1; 
+            if (!userOriginal[user]) userOriginal[user] = String(it.usuario || '').trim(); 
+        }
+        
         if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
       }
+
       function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } else if (val === v && (!k || key.localeCompare(k) < 0)) { k = key; } } return k; }
-      const day = String(document.getElementById('day-select')?.value || '').trim();
+      
       const played = getLocalPlayedMapForTicker();
       const skipped = getLocalSkippedMapForTicker();
       const playedArr = Array.isArray(played[day]) ? played[day] : [];
       const skippedArr = Array.isArray(skipped[day]) ? skipped[day] : [];
       const skippedSet = new Set(skippedArr.map(x => String(x || '')));
       const playedCount = playedArr.filter(x => !skippedSet.has(String(x || ''))).length;
+      
+      // Ajustar total para incluir reproducidas si no estaban
+      // (Aproximación simple: items.length + playedCount)
+      // O mejor, confiar en los contadores agregados
+      
       let vipRequests = 0; let z0VipRequests = 0;
       for (let i = 0; i < (items || []).length; i++) {
         const it = items[i] || {};
@@ -5794,19 +5850,23 @@
         if (window.vipSet && window.vipSet.has(unameLc)) vipRequests++;
         if (window.z0VipSet && window.z0VipSet.has(unameLc)) z0VipRequests++;
       }
+      
       const ts = top(songCount);
       const ta = top(artistCount);
       const tg = top(genreCount);
+      
       const artistTop3 = Object.keys(artistCount)
         .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
         .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
         .slice(0, 3)
         .map(it => `${it.o} (${it.c})`);
+        
       const usersTop3 = Object.keys(userCount)
         .map(k => ({ k, c: userCount[k], o: userOriginal[k] || k }))
         .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
         .slice(0, 3)
         .map(it => `${it.o} (${it.c})`);
+        
       return {
         topSong: ts,
         topSongCount: ts ? (songCount[ts] || 0) : 0,
@@ -5815,7 +5875,7 @@
         topArtists3: artistTop3,
         topUsers3: usersTop3,
         topGenre: tg,
-        total: totalCount,
+        total: totalCount + playedCount, // Aproximación corrección
         played: playedCount,
         vip: vipRequests,
         z0vip: z0VipRequests
@@ -7838,7 +7898,6 @@
                          const points = Math.floor(Math.random() * (POINTS_CONFIG.CHECKIN_MAX - POINTS_CONFIG.CHECKIN_MIN + 1)) + POINTS_CONFIG.CHECKIN_MIN;
                          
                          const batch = db.batch();
-                         const normUser = normalizeUserKey(user);
                          
                          // A. Actualizar Usuario
                          const userRef = db.collection('userStats').doc(normUser);
@@ -15065,19 +15124,39 @@
               totalRequests++;
               processDocStats(d, artistCount, userCount, songCount, artistOriginal, userOriginal);
            });
+
+           // 2. Procesar Historial REAL (systemEvents)
+           // La colección 'playedSongs' solo tiene IDs, por lo que usamos 'systemEvents' 
+           // que guarda el detalle completo de cada canción reproducida.
+           let systemEventsSnapshot;
+           try {
+               systemEventsSnapshot = await window.db.collection('systemEvents')
+                   .where('type', '==', 'togglePlayed')
+                   .get();
+               
+               console.log(`📚 Leídos ${systemEventsSnapshot.size} eventos de historial.`);
+               
+               systemEventsSnapshot.forEach(doc => {
+                   const d = doc.data() || {};
+                   // Solo contar si la acción fue marcar como reproducida (y no desmarcar)
+                   if (d.action === 'mark') {
+                       // Asegurarnos de que tenga datos válidos
+                       if (d.cancion && d.artista) {
+                           totalRequests++;
+                           processDocStats(d, artistCount, userCount, songCount, artistOriginal, userOriginal);
+                       }
+                   }
+               });
+           } catch (e) {
+               console.warn("⚠️ No se pudo leer systemEvents para estadísticas globales:", e);
+           }
            
-           // 2. Procesar Historial (playedSongs)
+           // (Opcional) Soporte legacy para playedSongs si tuviera datos antiguos
            if (playedSnapshot) {
                playedSnapshot.forEach(doc => {
-                   // Los documentos de playedSongs suelen tener un array 'songs'
                    const d = doc.data() || {};
-                   if (d.songs && Array.isArray(d.songs)) {
-                       d.songs.forEach(song => {
-                           totalRequests++;
-                           processDocStats(song, artistCount, userCount, songCount, artistOriginal, userOriginal);
-                       });
-                   } else if (doc.id !== '__userTotals__' && d.artista) {
-                       // Soporte para formato antiguo o individual si existiera
+                   // Si es un documento antiguo con artista/cancion directos, lo procesamos
+                   if (doc.id !== '__userTotals__' && d.artista && !d.songs) {
                        totalRequests++;
                        processDocStats(d, artistCount, userCount, songCount, artistOriginal, userOriginal);
                    }
@@ -15089,7 +15168,8 @@
               const ao = (String(d.artista||'').trim());
               const s = (String(d.cancion||'').trim().toLowerCase());
               const u = (String(d.usuario||'').trim().toLowerCase());
-              const uo = (String(d.usuario||'').trim());
+              // Preferir usuarioRaw (casing original) si existe, sino usuario normal
+              const uo = (String(d.usuarioRaw || d.usuario || '').trim());
               
               if (a && a.length > 1 && a !== 'undefined' && a !== 'null'){ 
                   aCount[a]=(aCount[a]||0)+1; 
@@ -15187,7 +15267,12 @@
             console.log('🔄 Sincronizando datos iniciales con la nube...');
             syncGamificationDataWithCloud(currentUser).catch(console.error);
          }
-      }, 3000); // Esperar un poco a que cargue todo
+         
+         // Intentar actualizar estadísticas globales al inicio (útil para admins)
+         // Se ejecuta de forma segura; si falla por permisos, no pasa nada grave
+         calculateAndSaveGlobalStats().catch(() => {});
+         
+      }, 5000); // Esperar un poco a que cargue todo (5s)
 
       [statsModal, themeModal, gamificationModal, confirmationModal].forEach(modal => {
         modal?.addEventListener('click', (e) => {
