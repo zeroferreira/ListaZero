@@ -7827,7 +7827,18 @@
                              });
                          }
                          
-                         await batch.commit();
+                         // C. Actualizar datos locales de gamificación para evitar sobrescritura
+                        try {
+                            const localData = getGamificationDataForUser(user);
+                            localData.checkInPoints = (Number(localData.checkInPoints) || 0) + points;
+                            // También sumar al total local temporalmente para reflejo inmediato
+                            localData.points = (Number(localData.points) || 0) + points;
+                            saveGamificationDataForUser(localData, user);
+                        } catch (e) {
+                            console.error('Error actualizando datos locales de check-in:', e);
+                        }
+                        
+                        await batch.commit();
                          
                          // Guardar local
                          localStorage.setItem('lastCheckInDate_' + user, new Date().toDateString());
@@ -9880,16 +9891,19 @@
         const correctTotalPoints = songPoints + vipBonus + achievementPoints;
         
         // Solo corregir si hay una diferencia significativa
-        if (Math.abs(data.points - correctTotalPoints) > 5) {
-          console.log(`🔧 CORRIGIENDO PUNTOS para ${username}:`);
+        // IMPORTANTE: Solo corregir hacia ARRIBA. Si los puntos locales son mayores, asumimos que hay historial
+        // o bonos que no estamos viendo en este momento (partial load). No borrar puntos.
+        if (correctTotalPoints > data.points) {
+          console.log(`🔧 CORRIGIENDO PUNTOS (Subiendo) para ${username}:`);
           console.log(`   - Puntos actuales: ${data.points}`);
-          console.log(`   - Puntos por canciones reproducidas: ${songPoints} (${safeStats.totalPlayedSongs || 0} × 25)`);
-          console.log(`   - Bonus VIP: ${vipBonus}`);
-          console.log(`   - Puntos por logros: ${achievementPoints}`);
-          console.log(`   - Total correcto: ${correctTotalPoints}`);
+          console.log(`   - Total calculado correcto: ${correctTotalPoints}`);
           
           data.points = correctTotalPoints;
           data.xp = correctTotalPoints; // XP debe ser igual a puntos totales
+        } else if (data.points > correctTotalPoints + 5000) {
+           // Solo si la discrepancia es absurda (más de 5000 puntos de diferencia), sospechar y loguear,
+           // pero aun así ser conservadores para no borrar puntos legítimos de historial antiguo.
+           console.warn(`⚠️ Discrepancia de puntos para ${username}: Tiene ${data.points} pero el cálculo local da ${correctTotalPoints}. Posible historial no cargado.`);
         }
         
         console.log(`✅ Validación completada para ${username}: ${data.achievements.length} logros, ${achievementPoints} puntos de logros, ${data.points} puntos totales`);
@@ -10438,7 +10452,11 @@
           // FIX: Si somos Admin viendo a otro, NO sobrescribir la nube con nuestros cálculos locales potencialmente incompletos
           if (window.__ALLOW_BREAKDOWN_WRITE__ && isOwner) {
             const diff = Math.abs(Number(cloudTotal || 0) - displayTotal);
-            if (diff > 0.1 || !cloudTotal) {
+            // Solo escribir si hay una diferencia y el nuevo total es MAYOR (o muy similar).
+            // Si el nuevo total es mucho menor, asumimos que nos falta historial local y NO sobrescribimos.
+            const isHigher = displayTotal >= Number(cloudTotal || 0);
+            
+            if ((diff > 0.1 || !cloudTotal) && isHigher) {
                 const docRef = db.collection('userStats').doc(norm(usuario));
                 // Guardamos desglose completo para debugging y coherencia
                 await docRef.set({
@@ -10457,6 +10475,8 @@
                   updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
                 cloudTotal = displayTotal;
+            } else if (diff > 100 && !isHigher) {
+                console.warn(`⚠️ Evitando sobrescritura de puntos a la baja para ${usuario}: Cloud(${cloudTotal}) vs Local(${displayTotal}). Falta historial local.`);
             }
           }
         } catch (e) { console.error('Error syncing points to cloud:', e); }
