@@ -96,6 +96,7 @@ let config = {
     mockCider: false,
     requireVipForSr: false,
     allowPointsCommand: true, // Nuevo: Permitir !puntos
+    likesPerPoint: 120, // Nuevo: Configuración de likes por punto (Default 120)
     commandAliases: ["!zr", "!sr", "!pedir", "!cancion"],
     ignoreExampleQuery: "artista cancion"
 };
@@ -1110,8 +1111,9 @@ setInterval(async () => {
             const userKey = resolved.userKey || key; // Usar el vinculado si existe
             const finalName = resolved.displayName || data.displayName;
 
-            // Calcular puntos: 1 punto por cada 120 likes
-            const pointsToAdd = Math.floor(data.likes / 120);
+            // Calcular puntos: usar config.likesPerPoint o default 120
+            const likesPerPoint = config.likesPerPoint || 120;
+            const pointsToAdd = Math.floor(data.likes / likesPerPoint);
             
             // Actualizar Firestore
             const userRef = doc(db, 'userStats', userKey);
