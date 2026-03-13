@@ -7882,12 +7882,31 @@
                          
                      } catch (err) {
                          console.error('Error claiming check-in:', err);
-                         showErrorNotification('Error al reclamar. Es posible que ya se haya reclamado en este dispositivo.');
-                         // Revertir estado visual si falla
-                         btn.classList.remove('checkin-disabled');
-                         btn.classList.add('checkin-available');
-                         btn.classList.remove('processing');
-                         btn.title = 'Reclamar Bono Diario';
+                         
+                         let userMsg = 'Error al reclamar. Inténtalo de nuevo.';
+                         const isDeviceError = err.message && err.message.includes('dispositivo');
+                         const isDateError = err.message && err.message.includes('mañana');
+
+                         if (isDeviceError || isDateError) {
+                             userMsg = err.message;
+                         }
+                         
+                         showErrorNotification(userMsg);
+
+                         // Si es error de validación (ya reclamado), mantener estado deshabilitado
+                         if (isDeviceError || isDateError) {
+                             btn.classList.remove('checkin-available');
+                             btn.classList.add('checkin-disabled');
+                             btn.classList.remove('processing');
+                             btn.title = userMsg;
+                             btn.onclick = () => showErrorNotification(userMsg);
+                         } else {
+                             // Si es error de red u otro, permitir reintentar
+                             btn.classList.remove('checkin-disabled');
+                             btn.classList.add('checkin-available');
+                             btn.classList.remove('processing');
+                             btn.title = 'Reclamar Bono Diario';
+                         }
                      }
                  };
              } else {
