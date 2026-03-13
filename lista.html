@@ -5965,6 +5965,10 @@
       if (el.getAttribute('data-react-root') === 'true') return;
       function fmt(x) { return x && x.length ? x : 'N/D'; }
       const items = window.__dayItems || [];
+      const g = window.__globalStats || computeGlobalStats();
+      const top3Txt = Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D';
+      const usersTop3Txt = Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D';
+      
       let dayText = '';
       try {
         const daySel = String(document.getElementById('day-select')?.value || '').trim();
@@ -5983,11 +5987,9 @@
           ' • <strong>▶️ Reproducidas:</strong> ' + (ds.played || 0) +
           ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3TxtDay +
           ' • <strong>🎤 Top 3 artistas:</strong> ' + top3TxtDay +
+          ' • <strong>❤️ Top Liker:</strong> ' + fmt(g.topLiker) + (g.topLikerCount ? ' (' + g.topLikerCount + ')' : '') +
           ' • <strong>📝 Solicitudes:</strong> ' + (ds.total || 0);
       } catch (_) {}
-      const g = window.__globalStats || computeGlobalStats();
-      const top3Txt = Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D';
-      const usersTop3Txt = Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D';
       
       let avgTxt = 'N/D';
       if (typeof window.__globalTotalSolicitudes === 'number' && typeof window.__globalDistinctUsers === 'number' && window.__globalDistinctUsers > 0) {
@@ -6031,7 +6033,7 @@
                 topSong: data.topSong || 'N/D',
                 topSongCount: data.topSongCount || 0,
                 topArtist: (data.topArtists && data.topArtists[0]) ? data.topArtists[0].split('(')[0].trim() : 'N/D',
-                topArtistCount: 0, 
+                topArtistCount: (data.topArtists && data.topArtists[0]) ? parseInt(data.topArtists[0].match(/\((\d+)\)/)?.[1] || 0) : 0, 
                 topArtists3: data.topArtists || [],
                 topUser: (data.topUsers && data.topUsers[0]) ? data.topUsers[0].split('(')[0].trim() : 'N/D',
                 topUsers3: data.topUsers || [],
@@ -7697,7 +7699,7 @@
       async function loadRewardsConfig() {
         if (!window.db) return;
         try {
-          const doc = await db.collection('systemConfig').doc('rewardsConfig').get();
+          const doc = await window.db.collection('systemConfig').doc('rewardsConfig').get();
           if (doc.exists) {
             const data = doc.data();
             if (Array.isArray(data.list)) {
@@ -14769,7 +14771,7 @@
           console.log('📊 Obteniendo datos del usuario...');
           // Obtener puntos actuales de Firestore para asegurar consistencia
           const normUser = normalizeUserKey(username);
-          const userDocRef = db.collection('userStats').doc(normUser);
+          const userDocRef = window.db.collection('userStats').doc(normUser);
           const userDoc = await userDocRef.get();
           
           let currentPoints = 0;
