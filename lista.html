@@ -15039,11 +15039,18 @@
         try {
            console.log("📊 Calculando estadísticas globales maestras...");
            
-           // Leemos la colección completa de solicitudes (solo metadatos si es posible, o todo)
-           // NOTA: Esto es pesado, así que solo lo hacemos si somos "Admin" y ha pasado tiempo.
-           // Para simplificar, asumiremos que si estamos en modo admin o es un dispositivo de confianza, lo hacemos.
-           
+           // Leemos la colección completa de solicitudes (PENDIENTES)
            const snapshot = await window.db.collection('solicitudes').get();
+           
+           // NUEVO: Leer historial de canciones reproducidas (HISTORIA REAL)
+           let playedSnapshot;
+           try {
+               // Intentamos leer la colección de historial
+               playedSnapshot = await window.db.collection('playedSongs').get();
+               console.log(`📚 Leídos ${playedSnapshot.size} documentos de historial.`);
+           } catch (e) {
+               console.warn("⚠️ No se pudo leer playedSongs para estadísticas globales:", e);
+           }
            
            let totalRequests = 0;
            const artistCount = {};
@@ -15052,20 +15059,50 @@
            const artistOriginal = {};
            const userOriginal = {};
            
+           // 1. Procesar Solicitudes Pendientes
            snapshot.forEach(doc => {
               const d = doc.data() || {};
               totalRequests++;
-              
+              processDocStats(d, artistCount, userCount, songCount, artistOriginal, userOriginal);
+           });
+           
+           // 2. Procesar Historial (playedSongs)
+           if (playedSnapshot) {
+               playedSnapshot.forEach(doc => {
+                   // Los documentos de playedSongs suelen tener un array 'songs'
+                   const d = doc.data() || {};
+                   if (d.songs && Array.isArray(d.songs)) {
+                       d.songs.forEach(song => {
+                           totalRequests++;
+                           processDocStats(song, artistCount, userCount, songCount, artistOriginal, userOriginal);
+                       });
+                   } else if (doc.id !== '__userTotals__' && d.artista) {
+                       // Soporte para formato antiguo o individual si existiera
+                       totalRequests++;
+                       processDocStats(d, artistCount, userCount, songCount, artistOriginal, userOriginal);
+                   }
+               });
+           }
+           
+           function processDocStats(d, aCount, uCount, sCount, aOrig, uOrig) {
               const a = (String(d.artista||'').trim().toLowerCase());
               const ao = (String(d.artista||'').trim());
               const s = (String(d.cancion||'').trim().toLowerCase());
               const u = (String(d.usuario||'').trim().toLowerCase());
               const uo = (String(d.usuario||'').trim());
               
-              if (a){ artistCount[a]=(artistCount[a]||0)+1; if(!artistOriginal[a]) artistOriginal[a]=ao; }
-              if (s){ songCount[s]=(songCount[s]||0)+1; }
-              if (u){ userCount[u]=(userCount[u]||0)+1; if(!userOriginal[u]) userOriginal[u]=uo; }
-           });
+              if (a && a.length > 1 && a !== 'undefined' && a !== 'null'){ 
+                  aCount[a]=(aCount[a]||0)+1; 
+                  if(!aOrig[a]) aOrig[a]=ao; 
+              }
+              if (s && s.length > 1 && s !== 'undefined' && s !== 'null'){ 
+                  sCount[s]=(sCount[s]||0)+1; 
+              }
+              if (u && u.length > 1 && u !== 'undefined' && u !== 'null'){ 
+                  uCount[u]=(uCount[u]||0)+1; 
+                  if(!uOrig[u]) uOrig[u]=uo; 
+              }
+           }
            
            // Calcular Tops
            // Para el Top Usuarios: Solo contar si el usuario tiene nombre válido
