@@ -9768,16 +9768,20 @@
 
           // Puntos por Check-In Manual
           const checkInPoints = Number(data.checkInPoints || 0);
+          
+          // Puntos por Likes (Nuevo)
+          const likesPoints = Number(data.likesPoints || 0);
 
           console.log(`💰 Puntos base para ${targetUser}: ${basePoints} (${stats.totalPlayedSongs} canciones × ${POINTS_CONFIG.SONG_REQUEST})`);
           console.log(`💰 Puntos por días activos: ${dailyBonusPoints}`);
           console.log(`💰 Puntos por Check-In Manual: ${checkInPoints}`);
+          console.log(`💰 Puntos por Likes: ${likesPoints}`);
           
           // Bonus VIP si aplica, sobre canciones reproducidas
           const vipBonus = stats.isVip ? (stats.totalPlayedSongs || 0) * POINTS_CONFIG.VIP_BONUS : 0;
           
           // Calcular puntos totales base (sin logros)
-          const totalBasePoints = basePoints + dailyBonusPoints + vipBonus + checkInPoints;
+          const totalBasePoints = basePoints + dailyBonusPoints + vipBonus + checkInPoints + likesPoints;
 
           // Preservar logros existentes antes de actualizar datos base
           const existingAchievements = [...(data.achievements || [])];
@@ -10537,13 +10541,27 @@
         } catch (_) {}
 
         let checkInPoints = 0;
+        let likesPoints = 0;
+        let likesCount = 0;
+        let likesPerPoint = 1;
+
         try {
            const bestStats = await fetchBestUserStatsDoc(usuario);
            const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
            checkInPoints = Number(statsDoc.totalCheckInPoints || 0);
+           
+           // Extraer puntos de Likes
+           likesCount = Number(statsDoc.totalLikes || 0);
+           likesPerPoint = Number(statsDoc.likesPerPoint || 1); // Valor por defecto 1 si no existe
+           likesPoints = Number(statsDoc.totalLikesPoints || 0);
+           
+           // Si tenemos likes pero no puntos calculados (legacy), calculamos
+           if (likesCount > 0 && likesPoints === 0) {
+               likesPoints = Math.floor(likesCount * likesPerPoint);
+           }
         } catch (_) {}
 
-        const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus + checkInPoints;
+        const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus + checkInPoints + likesPoints;
         
         // --- MODO ADMIN: Verdad Absoluta de Nube ---
         // Si somos Admin viendo a otro usuario, confiamos en el total de la nube.
@@ -10658,7 +10676,10 @@
           total: Math.max(0, Number(displayTotal || 0)),
           detail,
           achievementsList,
-          redemptions
+          redemptions,
+          likesPoints,
+          likesCount,
+          likesPerPoint
         };
       }
       async function renderPointsBreakdownForUser(u, force=false) {
@@ -10710,7 +10731,7 @@
                  bd.base = totalPlayed * 25;
                  bd.vipBonus = bd.isVip ? (totalPlayed * 40) : 0;
                  
-                 const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0);
+                 const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0) + (bd.likesPoints||0);
                  const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
                  bd.earnedTotal = earnedTotal;
                  bd.adjustment = 0; 
@@ -10731,7 +10752,7 @@
         setNum('breakdown-played-base', Number(bd.base||0));
         setNum('breakdown-vip-bonus', Number(bd.vipBonus||0));
         setNum('breakdown-daily-bonus', Number(bd.dailyBonus||0));
-        const achPlus = Number(bd.achievements||0) + Number(bd.streakBonus||0) + Number(bd.top1Bonus||0) + Number(bd.manualBonus||0) + Number(bd.adjustment||0);
+        const achPlus = Number(bd.achievements||0) + Number(bd.streakBonus||0) + Number(bd.top1Bonus||0) + Number(bd.manualBonus||0) + Number(bd.likesPoints||0) + Number(bd.adjustment||0);
         setNum('breakdown-achievements', Number(achPlus||0));
         const red = -Math.max(0, Number(bd.redemptionsSpent || 0));
         setNum('breakdown-streak-residual', String(red));
@@ -10756,6 +10777,11 @@
           // Diario
           lines.push(`<div class="genre-chip"><span>📅 Diario </span><span>${bd.activeDaysValid} × 5 = ${bd.dailyBonus}</span></div>`);
           
+          // Likes (Nuevo)
+          if (bd.likesPoints > 0) {
+             lines.push(`<div class="genre-chip"><span>❤️ Likes </span><span>${bd.likesCount} × ${bd.likesPerPoint || 1} = ${bd.likesPoints}</span></div>`);
+          }
+
           // Top 1 Diario (Nuevo)
           if (bd.top1Bonus > 0) {
              lines.push(`<div class="genre-chip"><span>🏆 Top 1 Diario </span><span>${bd.top1Count} × 150 = ${bd.top1Bonus}</span></div>`);
@@ -14601,15 +14627,16 @@
           const container = document.getElementById('rewards-config-list');
           if (!container) return;
           
+          // Renderizar inputs sin onchange inline, usando data attributes
           container.innerHTML = REWARDS.map((r, index) => `
-            <div class="reward-config-item" style="border:1px solid #ddd; padding:15px; border-radius:8px; display:flex; gap:15px; background:#fff; align-items:flex-start;">
+            <div class="reward-config-item" data-index="${index}" style="border:1px solid #ddd; padding:15px; border-radius:8px; display:flex; gap:15px; background:#fff; align-items:flex-start;">
                <div style="font-size:24px;">${r.icon}</div>
                <div style="flex:1;">
                    <div style="display:flex; gap:10px; margin-bottom:5px;">
-                       <input type="text" class="form-control" value="${r.name}" onchange="REWARDS[${index}].name = this.value" placeholder="Nombre" style="font-weight:bold;">
-                       <input type="number" class="form-control" value="${r.cost}" onchange="REWARDS[${index}].cost = Number(this.value)" placeholder="Costo" style="width:100px;">
+                       <input type="text" class="form-control reward-name" value="${r.name}" placeholder="Nombre" style="font-weight:bold;">
+                       <input type="number" class="form-control reward-cost" value="${r.cost}" placeholder="Costo" style="width:100px;">
                    </div>
-                   <textarea class="form-control" onchange="REWARDS[${index}].description = this.value" placeholder="Descripción" rows="2" style="width:100%; font-size:12px;">${r.description}</textarea>
+                   <textarea class="form-control reward-desc" placeholder="Descripción" rows="2" style="width:100%; font-size:12px;">${r.description}</textarea>
                    <div style="margin-top:5px; font-size:10px; color:#666;">ID: ${r.id} (No editable)</div>
                </div>
             </div>
@@ -14620,12 +14647,36 @@
          if (!confirm('¿Guardar cambios en las recompensas? Esto actualizará el catálogo para todos los usuarios.')) return;
          
          try {
+             // Reconstruir lista desde el DOM para asegurar que guardamos lo que se ve
+             const container = document.getElementById('rewards-config-list');
+             const items = container.querySelectorAll('.reward-config-item');
+             const newRewards = [];
+             
+             items.forEach(item => {
+                 const index = parseInt(item.dataset.index);
+                 const original = REWARDS[index];
+                 if (original) {
+                     newRewards.push({
+                         ...original,
+                         name: item.querySelector('.reward-name').value,
+                         cost: Number(item.querySelector('.reward-cost').value),
+                         description: item.querySelector('.reward-desc').value
+                     });
+                 }
+             });
+             
+             if (newRewards.length === 0) {
+                 throw new Error("No se pudieron leer los datos del formulario.");
+             }
+
              if (window.db) {
                  await window.db.collection('systemConfig').doc('rewardsConfig').set({
-                     list: REWARDS,
+                     list: newRewards,
                      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                      updatedBy: getCurrentUser()
                  });
+                 // Actualizar localmente también
+                 REWARDS = newRewards;
                  alert('✅ Configuración guardada exitosamente.');
              } else {
                  alert('❌ Error: No hay conexión a base de datos.');
