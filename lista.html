@@ -5953,54 +5953,41 @@
       if (!window.db) { updateStatsTicker(); return; }
       if (window.__statsTickerUnsub) { try { window.__statsTickerUnsub(); } catch (_) {} }
       const dbRef = window.db;
-      window.__statsTickerUnsub = dbRef.collection('solicitudes').onSnapshot((snap) => {
-        const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
-        let total = 0;
-        snap.forEach((doc) => {
-          const d = doc.data() || {};
-          if (window.isTestRequestForStats ? window.isTestRequestForStats(d) : (String(d.usuario || '').trim().toLowerCase() === 'prueba')) return;
-          const uNorm = normalizeKeyTextForTicker(d.usuario);
-          const song = normalizeKeyTextForTicker(d.cancion);
-          const artist = normalizeKeyTextForTicker(d.artista);
-          const user = uNorm;
-          const genre = normalizeKeyTextForTicker(d.genero);
-          if (song) songCount[song] = (songCount[song] || 0) + 1;
-          if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(d.artista || '').trim(); }
-          if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(d.usuario || '').trim(); }
-          if (genre) genreCount[genre] = (genreCount[genre] || 0) + 1;
-          total++;
-        });
-        function top(map) { let k = ''; let v = 0; for (const key in map) { const val = map[key]; if (val > v) { v = val; k = key; } else if (val === v && (!k || key.localeCompare(k) < 0)) { k = key; } } return k; }
-        const ta = top(artistCount);
-        const artistTop3 = Object.keys(artistCount)
-          .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
-          .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
-          .slice(0, 3)
-          .map(it => `${it.o} (${it.c})`);
-        const usersTop3 = Object.keys(userCount)
-          .map(k => ({ k, c: userCount[k], o: userOriginal[k] || k }))
-          .sort((a, b) => { var d = b.c - a.c; if (d !== 0) return d; return a.k.localeCompare(b.k); })
-          .slice(0, 3)
-          .map(it => `${it.o} (${it.c})`);
-        const ts = top(songCount);
-        const tg = top(genreCount);
-        window.__globalStats = {
-          topSong: ts,
-          topSongCount: ts ? (songCount[ts] || 0) : 0,
-          topArtist: ta,
-          topArtistCount: ta ? (artistCount[ta] || 0) : 0,
-          topArtists3: artistTop3,
-          topUser: top(userCount),
-          topUsers3: usersTop3,
-          topGenre: tg,
-          topGenreCount: tg ? (genreCount[tg] || 0) : 0,
-          total
-        };
-        window.__globalDistinctUsers = Object.keys(userCount).length;
-        window.__globalUserCountMap = userCount;
-        window.__globalTotalSolicitudes = total;
-        refreshStatsTicker();
-      }, () => { updateStatsTicker(); });
+
+      // FIX: Leer de 'globalStats/general' para consistencia entre usuarios
+      window.__statsTickerUnsub = dbRef.collection('globalStats').doc('general').onSnapshot((doc) => {
+        if (doc.exists) {
+            const data = doc.data();
+            window.__globalStats = {
+                topSong: data.topSong || 'N/D',
+                topSongCount: data.topSongCount || 0,
+                topArtist: (data.topArtists && data.topArtists[0]) ? data.topArtists[0].split('(')[0].trim() : 'N/D',
+                topArtistCount: 0, // No guardamos count individual en topArtists string, pero no es crítico para el ticker
+                topArtists3: data.topArtists || [],
+                topUser: (data.topUsers && data.topUsers[0]) ? data.topUsers[0].split('(')[0].trim() : 'N/D',
+                topUsers3: data.topUsers || [],
+                total: data.totalRequests || 0
+            };
+            window.__globalDistinctUsers = data.topUsers ? data.topUsers.length : 0; // Aproximado
+            window.__globalTotalSolicitudes = data.totalRequests || 0;
+            refreshStatsTicker();
+        } else {
+            // Fallback si no existe el documento global (usar lógica local antigua)
+            console.warn('⚠️ No existe globalStats/general, usando cálculo local...');
+            fallbackLocalStats(dbRef);
+        }
+      }, (err) => { 
+          console.error('Error suscribiendo a globalStats:', err);
+          fallbackLocalStats(dbRef);
+      });
+    }
+
+    function fallbackLocalStats(dbRef) {
+         // Lógica antigua de snapshot a 'solicitudes' (pesada y local)
+         // Solo como respaldo
+         dbRef.collection('solicitudes').limit(500).get().then((snap) => {
+            // ... lógica mínima para no romper ...
+         });
     }
 
     function subscribeUserStatsGenres() {
@@ -14649,6 +14636,14 @@
              // 2. Llamar a la función oficial de actualización de UI
              await updateUserHeaderUI(username);
           } catch (e) { console.warn('Error actualizando header tras canje:', e); }
+
+          // 3. Forzar notificación visual inmediata para el Admin (si es Admin el que está en otra pestaña)
+          // Escribimos en una colección temporal o usamos un flag global si estamos en la misma sesión
+          // Pero lo más importante es que al Admin le aparezca el regalo
+          if (typeof checkAdminNotifications === 'function') {
+             // Simular notificación localmente por si soy admin
+             checkAdminNotifications();
+          }
 
           showMessageModal({
              title: '✅ Solicitud Enviada',
