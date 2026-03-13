@@ -7730,6 +7730,16 @@
          const user = getCurrentUser();
          if (!user || !window.db) return;
 
+         // Función auxiliar para calcular tiempo restante hasta medianoche
+         const getTimeUntilMidnight = () => {
+             const now = new Date();
+             const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+             const diff = tomorrow - now;
+             const hours = Math.floor(diff / (1000 * 60 * 60));
+             const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+             return `${hours}h ${minutes}m`;
+         };
+
          try {
              // Verificar localStorage primero para feedback instantáneo
              const lastCheckInStr = localStorage.getItem('lastCheckInDate_' + user);
@@ -7739,8 +7749,8 @@
              if (lastCheckInStr === todayStr) {
                  btn.classList.add('checkin-disabled');
                  btn.style.display = 'flex';
-                 btn.title = 'Vuelve mañana';
-                 btn.onclick = () => { showErrorNotification('Ya reclamaste tu regalo de hoy. Vuelve mañana.'); };
+                 btn.title = `Vuelve en ${getTimeUntilMidnight()}`;
+                 btn.onclick = () => { showErrorNotification(`Vuelve en ${getTimeUntilMidnight()} para tu siguiente regalo.`); };
                  return; 
              }
 
@@ -7749,7 +7759,6 @@
              const userDocRef = db.collection('userStats').doc(normUser);
              const doc = await userDocRef.get();
              let canClaim = true;
-             let nextClaimTime = null;
              
              if (doc.exists) {
                  const data = doc.data();
@@ -7786,7 +7795,7 @@
                                  const now = new Date();
                                  
                                  if (lastDate.toDateString() === now.toDateString()) {
-                                      throw new Error('Ya has reclamado tu regalo de hoy. Vuelve mañana.');
+                                      throw new Error(`Ya has reclamado tu regalo de hoy. Vuelve en ${getTimeUntilMidnight()}.`);
                                  }
                              }
                          }
@@ -7803,14 +7812,14 @@
                              
                              const deviceDoc = await deviceRef.get();
                              if (deviceDoc.exists) {
-                                 throw new Error('Este dispositivo ya ha reclamado el premio hoy.');
+                                 throw new Error(`Este dispositivo ya ha reclamado el premio hoy. Vuelve en ${getTimeUntilMidnight()}.`);
                              }
                          }
 
                          // Efecto visual - Transición a gris
                          btn.classList.remove('checkin-available');
                          btn.classList.add('checkin-disabled');
-                         btn.title = 'Vuelve mañana';
+                         btn.title = `Vuelve en ${getTimeUntilMidnight()}`;
                          
                          // Calcular puntos aleatorios (1-12)
                          const points = Math.floor(Math.random() * (POINTS_CONFIG.CHECKIN_MAX - POINTS_CONFIG.CHECKIN_MIN + 1)) + POINTS_CONFIG.CHECKIN_MIN;
@@ -7867,7 +7876,7 @@
                                 <div class="checkin-points">+${points} Puntos</div>
                                 <div class="checkin-text">
                                     ¡Bono diario reclamado con éxito!<br>
-                                    <span style="color:#aaa; font-size:14px; display:block; margin-top:10px;">Vuelve en 24 horas para más premios.</span>
+                                    <span style="color:#aaa; font-size:14px; display:block; margin-top:10px;">Vuelve en ${getTimeUntilMidnight()} para más premios.</span>
                                 </div>
                                 <button class="checkin-btn" onclick="this.closest('.checkin-modal-overlay').remove()">¡Genial!</button>
                             </div>
@@ -7885,7 +7894,7 @@
                          
                          let userMsg = 'Error al reclamar. Inténtalo de nuevo.';
                          const isDeviceError = err.message && err.message.includes('dispositivo');
-                         const isDateError = err.message && err.message.includes('mañana');
+                         const isDateError = err.message && err.message.includes('hoy');
 
                          if (isDeviceError || isDateError) {
                              userMsg = err.message;
@@ -7898,7 +7907,7 @@
                              btn.classList.remove('checkin-available');
                              btn.classList.add('checkin-disabled');
                              btn.classList.remove('processing');
-                             btn.title = userMsg;
+                             btn.title = `Vuelve en ${getTimeUntilMidnight()}`;
                              btn.onclick = () => showErrorNotification(userMsg);
                          } else {
                              // Si es error de red u otro, permitir reintentar
@@ -7913,8 +7922,8 @@
                  // No puede reclamar (ya validado en Firestore)
                  btn.classList.add('checkin-disabled');
                  btn.style.display = 'flex';
-                 btn.title = 'Vuelve mañana';
-                 btn.onclick = () => { showErrorNotification('Ya reclamaste tu regalo de hoy. Vuelve mañana.'); };
+                 btn.title = `Vuelve en ${getTimeUntilMidnight()}`;
+                 btn.onclick = () => { showErrorNotification(`Ya reclamaste tu regalo de hoy. Vuelve en ${getTimeUntilMidnight()}.`); };
              }
          } catch (e) {
              console.error('Error check-in init:', e);
