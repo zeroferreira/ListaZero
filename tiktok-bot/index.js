@@ -59,6 +59,23 @@ function updateLiveStatus(isLive) {
         .catch(err => console.error("Error updating live status:", err));
     } catch(e) { console.error("Update live status failed:", e); }
 }
+
+const { 
+    getFirestore, 
+    doc, 
+    getDoc, 
+    setDoc, 
+    updateDoc, 
+    arrayUnion, 
+    collection, 
+    addDoc, 
+    onSnapshot, 
+    serverTimestamp,
+    query,
+    where,
+    getDocs,
+    deleteDoc 
+} = require('firebase/firestore');
 // -----------------------------------
 
 // --- CONFIGURACIÓN ESTATICA ---
@@ -915,6 +932,70 @@ function setupListeners() {
                 console.error(`Error consultando puntos de ${dn}:`, e);
             }
             return; 
+        }
+
+        // --- COMANDO DE VINCULACIÓN (!link o !vincular) ---
+        const isLinkCmd = lowerMsg.startsWith('!link ') || lowerMsg.startsWith('!vincular ');
+        if (isLinkCmd) {
+            const code = msg.split(' ')[1]; // Obtener código (ej: ZR-1234)
+            if (!code || !code.startsWith('ZR-')) {
+                console.log(`❌ Código de vinculación inválido recibido de ${displayName}: ${code}`);
+                return;
+            }
+
+            const cleanCode = code.trim().toUpperCase();
+            console.log(`🔗 Intento de vinculación de @${displayName} con código: ${cleanCode}`);
+
+            try {
+                if (db && typeof getDoc === 'function' && typeof doc === 'function' && typeof setDoc === 'function') {
+                    const linkDocRef = doc(db, 'pendingLinks', cleanCode);
+                    const linkSnap = await getDoc(linkDocRef);
+
+                    if (!linkSnap.exists()) {
+                        console.log(`⚠️ Código ${cleanCode} no existe o ya fue usado.`);
+                        // Opcional: Feedback visual al overlay
+                        return;
+                    }
+
+                    const linkData = linkSnap.data();
+                    const now = new Date();
+                    const expiresAt = linkData.expiresAt ? linkData.expiresAt.toDate() : null;
+
+                    if (expiresAt && now > expiresAt) {
+                        console.log(`⏳ Código ${cleanCode} expirado.`);
+                        return;
+                    }
+
+                    const webUser = linkData.webUser;
+                    // El usuario de TikTok es el userId (o displayName, pero userId es más seguro)
+                    const tiktokAlias = displayName.replace(/^@/, '').toLowerCase(); 
+
+                    // 1. Crear el vínculo en systemConfig/userAliases
+                    await setDoc(doc(db, 'systemConfig', 'userAliases'), {
+                        [tiktokAlias]: webUser
+                    }, { merge: true });
+
+                    // 2. Eliminar el código usado para que no se pueda reutilizar (seguridad)
+                    if (typeof deleteDoc === 'function') {
+                        await deleteDoc(linkDocRef);
+                    }
+
+                    // 3. Notificar éxito
+                    console.log(`✅ ¡VINCULACIÓN EXITOSA! @${tiktokAlias} -> ${webUser}`);
+                    
+                    if (db && typeof addDoc === 'function' && typeof collection === 'function') {
+                        await addDoc(collection(db, 'notifications'), {
+                            type: 'success',
+                            user: displayName,
+                            message: `✅ Cuenta vinculada con ${webUser}`,
+                            timestamp: serverTimestamp()
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error(`Error procesando vinculación de ${displayName}:`, e);
+            }
+            return;
         }
 
         const aliases = Array.isArray(config.commandAliases) && config.commandAliases.length > 0 
