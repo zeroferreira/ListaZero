@@ -7732,16 +7732,24 @@
 
              // Verificar Firestore (fuente de verdad)
              const normUser = normalizeUserKey(user);
-             const doc = await db.collection('userStats').doc(normUser).get();
+             const userDocRef = db.collection('userStats').doc(normUser);
+             const doc = await userDocRef.get();
              let canClaim = true;
+             let nextClaimTime = null;
              
              if (doc.exists) {
                  const data = doc.data();
                  if (data.lastCheckIn) {
                      const lastDate = data.lastCheckIn.toDate();
-                     if (lastDate.toDateString() === todayStr) {
+                     const now = new Date();
+                     // Verificar si es el mismo día local (reset a medianoche)
+                     const lastDateStr = lastDate.toDateString();
+                     const todayStr = now.toDateString();
+                     
+                     if (lastDateStr === todayStr) {
                          canClaim = false;
-                         localStorage.setItem('lastCheckInDate_' + user, todayStr); // Sincronizar local
+                         // No hay "nextClaimTime" exacto, es "mañana"
+                         localStorage.setItem('lastCheckInDate_' + user, todayStr); // Actualizar local
                      }
                  }
              }
@@ -7754,17 +7762,46 @@
                      if (btn.classList.contains('processing')) return;
                      btn.classList.add('processing');
                      
-                     // Efecto visual inmediato
-                     btn.classList.remove('checkin-available');
-                     btn.classList.add('checkin-claimed');
-                     
-                     // Calcular puntos aleatorios (1-12)
-                     const points = Math.floor(Math.random() * (POINTS_CONFIG.CHECKIN_MAX - POINTS_CONFIG.CHECKIN_MIN + 1)) + POINTS_CONFIG.CHECKIN_MIN;
-                     
-                     // Persistir con seguridad
                      try {
+                         // 1. Re-verificar Cooldown de Usuario (Evitar exploit de pestaña abierta)
+                         const latestUserDoc = await db.collection('userStats').doc(normUser).get();
+                         if (latestUserDoc.exists) {
+                             const data = latestUserDoc.data();
+                             if (data.lastCheckIn) {
+                                 const lastDate = data.lastCheckIn.toDate();
+                                 const now = new Date();
+                                 
+                                 if (lastDate.toDateString() === now.toDateString()) {
+                                      throw new Error('Ya has reclamado tu regalo de hoy. Vuelve mañana.');
+                                 }
+                             }
+                         }
+
+                         // 2. Verificar dispositivo primero (Anti-farming)
+                         if (typeof generateDeviceFingerprint === 'function') {
+                             const fingerprint = generateDeviceFingerprint();
+                             const now = new Date();
+                             // Usar fecha local para el ID del dispositivo (reset diario local)
+                             const dateStr = now.getFullYear() + '-' + (now.getMonth()+1).toString().padStart(2, '0') + '-' + now.getDate().toString().padStart(2, '0');
+                             const fingerHash = fingerprint.split('').reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0); 
+                             const deviceDocId = `${dateStr}_${Math.abs(fingerHash)}`;
+                             const deviceRef = db.collection('dailyCheckIns').doc(deviceDocId);
+                             
+                             const deviceDoc = await deviceRef.get();
+                             if (deviceDoc.exists) {
+                                 throw new Error('Este dispositivo ya ha reclamado el premio hoy.');
+                             }
+                         }
+
+                         // Efecto visual
+                         btn.classList.remove('checkin-available');
+                         btn.classList.add('checkin-claimed');
+                         
+                         // Calcular puntos aleatorios (1-12)
+                         const points = Math.floor(Math.random() * (POINTS_CONFIG.CHECKIN_MAX - POINTS_CONFIG.CHECKIN_MIN + 1)) + POINTS_CONFIG.CHECKIN_MIN;
+                         
                          const batch = db.batch();
-                         const normUser = normalizeUserKey(user); // Asegurar que tenemos normUser aquí
+                         const normUser = normalizeUserKey(user);
                          
                          // A. Actualizar Usuario
                          const userRef = db.collection('userStats').doc(normUser);
@@ -7774,16 +7811,15 @@
                              totalPoints: firebase.firestore.FieldValue.increment(points)
                          }, { merge: true });
                          
-                         // B. Registrar Dispositivo (Bloqueo Anti-Farming)
+                         // B. Registrar Dispositivo
                          if (typeof generateDeviceFingerprint === 'function') {
                              const fingerprint = generateDeviceFingerprint();
                              const now = new Date();
+                             const dateStr = now.getFullYear() + '-' + (now.getMonth()+1).toString().padStart(2, '0') + '-' + now.getDate().toString().padStart(2, '0');
                              const fingerHash = fingerprint.split('').reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0); 
-                             const deviceDocId = `${now.toISOString().split('T')[0]}_${Math.abs(fingerHash)}`;
+                             const deviceDocId = `${dateStr}_${Math.abs(fingerHash)}`;
                              const deviceRef = db.collection('dailyCheckIns').doc(deviceDocId);
                              
-                             // Usamos 'create' o verificamos existencia antes, pero aquí confiamos en batch
-                             // Guardamos user y timestamp
                              batch.set(deviceRef, {
                                  fingerprint: fingerprint,
                                  user: user,
@@ -7794,10 +7830,9 @@
                          await batch.commit();
                          
                          // Guardar local
-                         const todayStr = new Date().toDateString();
-                         localStorage.setItem('lastCheckInDate_' + user, todayStr);
+                         localStorage.setItem('lastCheckInDate_' + user, new Date().toDateString());
                          
-                         // Mostrar Modal Personalizado (Sin botón cancelar)
+                         // Mostrar Modal
                          const modal = document.createElement('div');
                          modal.className = 'checkin-modal-overlay';
                          modal.innerHTML = `
