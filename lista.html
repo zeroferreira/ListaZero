@@ -926,6 +926,7 @@
              <button type="button" class="points-tab active" data-tab="system">🔧 Sistema</button>
              <button type="button" class="points-tab" data-tab="compensation">💰 Compensación</button>
              <button type="button" class="points-tab" data-tab="links">🔗 Enlaces</button>
+             <button type="button" class="points-tab" data-tab="aliases">👥 Alias</button>
           </div>
 
           <div class="admin-tab-content">
@@ -1027,6 +1028,36 @@
                       </button>
                    </div>
                    <p class="help-text" style="margin-top: 10px;">Copia estos enlaces y pégalos como "Fuente de Navegador" en OBS.</p>
+                  </div>
+                </div>
+             </div>
+
+             <!-- Panel Alias -->
+             <div id="admin-tab-aliases" class="admin-tab-panel">
+                <div class="admin-card">
+                  <div class="card-header">
+                    <h3>🔗 Unificar Usuarios (Alias)</h3>
+                  </div>
+                  <div class="card-body">
+                   <p class="help-text">Vincula nombres alternativos (ej. TikTok) al nombre principal para que sumen puntos en una sola cuenta.</p>
+                   
+                   <div class="form-grid" style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 15px;">
+                      <div class="field flex-grow">
+                        <label style="font-size: 12px; color: #aaa;">Alias (ej. @jenngarcia123)</label>
+                        <input type="text" id="alias-input-alias" class="admin-input" placeholder="@usuario_tiktok" style="width: 100%;">
+                      </div>
+                      <div class="field flex-grow">
+                        <label style="font-size: 12px; color: #aaa;">Usuario Principal (ej. Jenn Garcia)</label>
+                        <input type="text" id="alias-input-real" class="admin-input" placeholder="Nombre en Web" style="width: 100%;">
+                      </div>
+                      <div class="field">
+                        <button type="button" onclick="addAdminAlias()" class="btn btn-primary" style="height: 38px;">➕ Vincular</button>
+                      </div>
+                   </div>
+
+                   <div id="admin-alias-list-container" style="max-height: 300px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 4px; padding: 10px;">
+                      <p style="text-align: center; color: #666; font-size: 12px;">Cargando alias...</p>
+                   </div>
                   </div>
                 </div>
              </div>
@@ -7629,6 +7660,8 @@
           // Intentar cargar configuración inmediatamente si db está listo, o reintentar brevemente
           const initRewards = async () => {
               if (window.db) {
+                  // Cargar alias primero para que normalización funcione
+                  await loadUserAliases();
                   await loadRewardsConfig();
               } else {
                   setTimeout(initRewards, 500);
@@ -11625,9 +11658,37 @@
         return currentSelectedUser || getCurrentUser();
       }
 
+      // Variables globales para Alias
+      let USER_ALIASES_MAP = {};
+
+      async function loadUserAliases() {
+          if (!window.db) return;
+          try {
+              const doc = await window.db.collection('systemConfig').doc('userAliases').get();
+              if (doc.exists) {
+                  USER_ALIASES_MAP = doc.data() || {};
+                  console.log('🔗 Alias de usuarios cargados:', Object.keys(USER_ALIASES_MAP).length);
+              }
+          } catch (e) {
+              console.error('Error cargando alias:', e);
+          }
+      }
+
       function normalizeUserKey(username) {
-        // Normalización robusta: minúsculas, trim, sin @ y sin acentos (NFD)
-        return String(username || '').trim().replace(/^@/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        if (!username) return '';
+        const raw = String(username).trim();
+        // 1. Normalización base para buscar en alias (sin @, minúsculas)
+        const key = raw.replace(/^@/, '').toLowerCase();
+        
+        // 2. Verificar si es un alias conocido
+        if (USER_ALIASES_MAP && USER_ALIASES_MAP[key]) {
+            // Si existe alias, devolver el nombre REAL ya normalizado del destino
+            // (Llamada recursiva para asegurar que el destino también esté limpio)
+            return normalizeUserKey(USER_ALIASES_MAP[key]);
+        }
+        
+        // 3. Normalización estándar si no es alias
+        return raw.replace(/^@/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
       }
 
       function normalizeUserKeyLoose(username) {
@@ -14915,6 +14976,100 @@
             modal.hidden = true;
           }
         });
+      });
+
+      // ===== GESTIÓN DE ALIAS (ADMIN) =====
+      async function addAdminAlias() {
+          const aliasInput = document.getElementById('alias-input-alias');
+          const realInput = document.getElementById('alias-input-real');
+          
+          const alias = aliasInput.value.trim().replace(/^@/, '').toLowerCase();
+          const real = realInput.value.trim();
+          
+          if (!alias || !real) {
+              alert('Por favor ingresa ambos nombres.');
+              return;
+          }
+          
+          if (alias === real.toLowerCase()) {
+              alert('El alias y el usuario principal no pueden ser iguales.');
+              return;
+          }
+
+          if (!confirm(`¿Vincular "${alias}" -> "${real}"? \nLos puntos de "${alias}" se sumarán a "${real}".`)) return;
+
+          try {
+              // Actualizar mapa local
+              USER_ALIASES_MAP[alias] = real;
+              
+              // Guardar en Firestore (solo el campo nuevo)
+              if (window.db) {
+                  await window.db.collection('systemConfig').doc('userAliases').set({
+                      [alias]: real
+                  }, { merge: true });
+                  
+                  alert('✅ Usuario vinculado correctamente.');
+                  aliasInput.value = '';
+                  realInput.value = '';
+                  renderAdminAliasList();
+              }
+          } catch (e) {
+              console.error(e);
+              alert('Error al guardar: ' + e.message);
+          }
+      }
+
+      async function deleteAdminAlias(aliasKey) {
+          if (!confirm(`¿Eliminar vinculación para "${aliasKey}"?`)) return;
+          
+          try {
+              delete USER_ALIASES_MAP[aliasKey];
+              if (window.db) {
+                  await window.db.collection('systemConfig').doc('userAliases').update({
+                      [aliasKey]: firebase.firestore.FieldValue.delete()
+                  });
+                  renderAdminAliasList();
+              }
+          } catch (e) {
+              console.error(e);
+              alert('Error al eliminar: ' + e.message);
+          }
+      }
+
+      function renderAdminAliasList() {
+          const container = document.getElementById('admin-alias-list-container');
+          if (!container) return;
+          
+          const aliases = Object.keys(USER_ALIASES_MAP).sort();
+          
+          if (aliases.length === 0) {
+              container.innerHTML = '<p style="text-align: center; color: #666; font-size: 12px;">No hay usuarios vinculados.</p>';
+              return;
+          }
+          
+          let html = '<table style="width:100%; font-size:12px; border-collapse: collapse;">';
+          html += '<thead><tr style="text-align:left; color:#aaa; border-bottom:1px solid #444;"><th>Alias (TikTok/Otro)</th><th>Usuario Principal</th><th>Acción</th></tr></thead><tbody>';
+          
+          aliases.forEach(alias => {
+              const real = USER_ALIASES_MAP[alias];
+              html += `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 8px; color: #facc15;">@${alias}</td>
+                  <td style="padding: 8px; font-weight: bold;">${real}</td>
+                  <td style="padding: 8px;">
+                    <button onclick="deleteAdminAlias('${alias}')" style="background:none; border:none; cursor:pointer; font-size:14px;" title="Desvincular">🗑️</button>
+                  </td>
+                </tr>
+              `;
+          });
+          
+          html += '</tbody></table>';
+          container.innerHTML = html;
+      }
+      
+      // Listener para cargar la lista al abrir el tab
+      document.querySelectorAll('.points-tab[data-tab="aliases"]').forEach(btn => {
+         btn.addEventListener('click', renderAdminAliasList);
       });
 
       // Cargar tema al iniciar
