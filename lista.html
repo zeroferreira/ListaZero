@@ -7746,12 +7746,15 @@
              const now = new Date();
              const todayStr = now.toDateString();
              
+             // Si localStorage dice que ya reclamó hoy, mostrar estado gris
+             // PERO no hacer return para permitir verificación con Firestore al hacer click
              if (lastCheckInStr === todayStr) {
                  btn.classList.add('checkin-disabled');
+                 btn.classList.remove('checkin-available');
                  btn.style.display = 'flex';
                  btn.title = `Vuelve en ${getTimeUntilMidnight()}`;
                  btn.onclick = () => { showErrorNotification(`Vuelve en ${getTimeUntilMidnight()} para tu siguiente regalo.`); };
-                 return; 
+                 // NO RETURN: Permitir que el flujo siga
              }
 
              // Verificar Firestore (fuente de verdad)
@@ -7773,13 +7776,23 @@
                          canClaim = false;
                          // No hay "nextClaimTime" exacto, es "mañana"
                          localStorage.setItem('lastCheckInDate_' + user, todayStr); // Actualizar local
+                         
+                         // Reforzar estado visual
+                         btn.classList.add('checkin-disabled');
+                         btn.classList.remove('checkin-available');
+                         btn.style.display = 'flex';
+                         btn.title = `Vuelve en ${getTimeUntilMidnight()}`;
+                         btn.onclick = () => { showErrorNotification(`Ya reclamaste tu regalo de hoy. Vuelve en ${getTimeUntilMidnight()}.`); };
                      }
                  }
              }
 
              if (canClaim) {
+                 // Si Firestore dice que sí puede, forzamos estado disponible
                  btn.style.display = 'flex';
                  btn.classList.add('checkin-available');
+                 btn.classList.remove('checkin-disabled');
+                 btn.title = 'Reclamar Bono Diario';
                  
                  btn.onclick = async () => {
                      if (btn.classList.contains('processing')) return;
