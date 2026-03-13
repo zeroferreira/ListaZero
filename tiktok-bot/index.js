@@ -74,7 +74,8 @@ const {
     query,
     where,
     getDocs,
-    deleteDoc 
+    deleteDoc,
+    increment 
 } = require('firebase/firestore');
 // -----------------------------------
 
@@ -1066,7 +1067,86 @@ function setupListeners() {
         // Recalcular rangos
         recalculateDonorRanks();
     });
+
+    // --- MANEJO DE LIKES (NUEVO) ---
+    tiktokLiveConnection.on('like', (data) => {
+        const { uniqueId, nickname, likeCount } = data;
+        // Acumular likes en buffer para no saturar Firestore
+        processLikeBuffer(uniqueId, nickname, likeCount);
+    });
 }
+
+// --- BUFFER DE LIKES ---
+const likeBuffer = new Map();
+
+function processLikeBuffer(userId, displayName, count) {
+    // userId es el uniqueId de TikTok (ej. jenngarcia123)
+    // Usamos normalizeUserKeyForBadges para consistencia
+    const key = normalizeUserKeyForBadges(userId);
+    
+    const current = likeBuffer.get(key) || { 
+        userId, // Guardamos el original para referencias
+        displayName, 
+        likes: 0 
+    };
+    current.likes += count;
+    likeBuffer.set(key, current);
+}
+
+// Flush periódico de likes (cada 15 segundos)
+setInterval(async () => {
+    if (likeBuffer.size === 0) return;
+
+    console.log(`❤️ Procesando likes de ${likeBuffer.size} usuarios...`);
+    
+    // Convertir buffer a array para iterar
+    const entries = Array.from(likeBuffer.entries());
+    likeBuffer.clear(); // Limpiar buffer inmediatamente
+
+    for (const [key, data] of entries) {
+        try {
+            // Resolver usuario canónico (por si tiene alias vinculado)
+            const resolved = await getCanonicalUserKey(data.userId, data.displayName);
+            const userKey = resolved.userKey || key; // Usar el vinculado si existe
+            const finalName = resolved.displayName || data.displayName;
+
+            // Calcular puntos: 1 punto por cada 120 likes
+            const pointsToAdd = Math.floor(data.likes / 120);
+            
+            // Actualizar Firestore
+            const userRef = doc(db, 'userStats', userKey);
+            
+            // Datos a actualizar
+            const updateData = {
+                totalLikes: increment(data.likes),
+                lastLikeActivity: serverTimestamp(),
+                displayName: finalName // Asegurar nombre actualizado
+            };
+
+            // Solo sumar puntos si alcanzó el umbral
+            if (pointsToAdd > 0) {
+                updateData.totalPoints = increment(pointsToAdd);
+                console.log(`✨ @${finalName} ganó ${pointsToAdd} puntos por ${data.likes} likes!`);
+                
+                // Notificar visualmente si ganó puntos
+                if (pointsToAdd >= 1) {
+                    addDoc(collection(db, 'notifications'), {
+                        type: 'points',
+                        user: finalName,
+                        points: pointsToAdd,
+                        message: `+${pointsToAdd} pts por likes ❤️`,
+                        timestamp: serverTimestamp()
+                    }).catch(e => console.error(e));
+                }
+            }
+
+            await setDoc(userRef, updateData, { merge: true });
+
+        } catch (err) {
+            console.error(`Error guardando likes para ${data.userId}:`, err);
+        }
+    }
+}, 15000); // 15 segundos
 
 // Mapa de donaciones de la sesión
 const sessionDonations = new Map();
