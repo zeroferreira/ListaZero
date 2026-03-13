@@ -1079,6 +1079,9 @@ function setupListeners() {
 
 // --- BUFFER DE LIKES ---
 const likeBuffer = new Map();
+// Tracking de sesión para Top Liker
+const sessionLikes = new Map();
+let currentTopLiker = { name: 'N/D', count: 0 };
 
 function processLikeBuffer(userId, displayName, count) {
     // userId es el uniqueId de TikTok (ej. jenngarcia123)
@@ -1092,6 +1095,30 @@ function processLikeBuffer(userId, displayName, count) {
     };
     current.likes += count;
     likeBuffer.set(key, current);
+    
+    // Actualizar Top Liker de la sesión en memoria
+    const sessionTotal = (sessionLikes.get(key) || 0) + count;
+    sessionLikes.set(key, sessionTotal);
+    
+    if (sessionTotal > currentTopLiker.count) {
+        currentTopLiker = { name: displayName, count: sessionTotal };
+        console.log(`🔥 Nuevo Top Liker: ${displayName} con ${sessionTotal} likes!`);
+        // Actualizar Firestore inmediatamente si hay nuevo récord significativo (>100 dif)
+        updateGlobalTopLiker(displayName, sessionTotal);
+    }
+}
+
+async function updateGlobalTopLiker(name, count) {
+    try {
+        if (!db) return;
+        await setDoc(doc(db, 'globalStats', 'general'), {
+            topLiker: name,
+            topLikerCount: count,
+            lastUpdate: serverTimestamp()
+        }, { merge: true });
+    } catch (e) {
+        console.error('Error actualizando Top Liker:', e);
+    }
 }
 
 // Flush periódico de likes (cada 15 segundos)
@@ -1147,6 +1174,11 @@ setInterval(async () => {
         } catch (err) {
             console.error(`Error guardando likes para ${data.userId}:`, err);
         }
+    }
+    
+    // Sincronizar Top Liker periódicamente también (para asegurar persistencia)
+    if (currentTopLiker.count > 0) {
+        updateGlobalTopLiker(currentTopLiker.name, currentTopLiker.count);
     }
 }, 15000); // 15 segundos
 

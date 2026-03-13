@@ -7892,14 +7892,13 @@
                      } catch (err) {
                          console.error('Error claiming check-in:', err);
                          
-                         let userMsg = 'Error al reclamar. Inténtalo de nuevo.';
-                         const isDeviceError = err.message && err.message.includes('dispositivo');
-                         const isDateError = err.message && err.message.includes('hoy');
-
-                         if (isDeviceError || isDateError) {
-                             userMsg = err.message;
-                         }
+                         // Mostrar siempre el mensaje de error real para debugging si es necesario, 
+                         // o formatearlo si es uno de los conocidos.
+                         let userMsg = err.message || 'Error al reclamar. Inténtalo de nuevo.';
                          
+                         const isDeviceError = err.message && err.message.includes('dispositivo');
+                         const isDateError = err.message && (err.message.includes('hoy') || err.message.includes('mañana'));
+
                          showErrorNotification(userMsg);
 
                          // Si es error de validación (ya reclamado), mantener estado deshabilitado
@@ -15095,7 +15094,8 @@
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
            };
            
-           await window.db.collection('globalStats').doc('general').set(globalStatsData);
+           // Usar merge: true para no borrar datos que otros procesos (como el bot) hayan escrito (ej: topLiker)
+           await window.db.collection('globalStats').doc('general').set(globalStatsData, { merge: true });
            console.log("✅ Estadísticas globales guardadas en 'globalStats/general'");
            
         } catch (e) {
