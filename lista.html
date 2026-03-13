@@ -1395,6 +1395,9 @@
                 <span id="user-level-name">Novato</span>
                 <span id="user-level-number">Nivel 1</span>
               </div>
+              <button type="button" id="link-tiktok-btn" class="btn btn-sm btn-outline-secondary" style="margin-top: 5px; font-size: 11px; padding: 2px 8px; display: none;">
+                🔗 Vincular TikTok
+              </button>
             </div>
             <div class="user-points">
               <div class="points-display">
@@ -9131,12 +9134,28 @@
       });
 
       // Event listeners para modal de gamificación
+      let linkTikTokBtn = null; // Variable global para el botón
+
       gamificationOpenBtn?.addEventListener('click', async () => {
         // Cerrar el menú
         closeMenu();
         hideSearchResults();
         // Inicializar con el usuario actual
         currentSelectedUser = getCurrentUser();
+        
+        // Inicializar botón de link si no se ha hecho
+        if (!linkTikTokBtn) {
+            linkTikTokBtn = document.getElementById('link-tiktok-btn');
+            if (linkTikTokBtn) {
+                linkTikTokBtn.addEventListener('click', generateLinkCode);
+            }
+        }
+        
+        // Mostrar botón solo si es MI perfil (no viendo a otro usuario)
+        if (linkTikTokBtn) {
+            const isMe = !currentSelectedUser || currentSelectedUser === getCurrentUser();
+            linkTikTokBtn.style.display = isMe ? 'inline-block' : 'none';
+        }
         
         // Poblar selector de usuarios
         if (typeof populateUserSelector === 'function') {
@@ -9166,6 +9185,37 @@
         if (gamificationModal) gamificationModal.hidden = false;
       });
       
+      // Función para generar código de vinculación
+      async function generateLinkCode() {
+          const user = getCurrentUser();
+          if (!user) return;
+          
+          try {
+              // Generar código simple: ZR-XXXX
+              const code = 'ZR-' + Math.floor(1000 + Math.random() * 9000);
+              
+              // Guardar en Firestore con expiración (ej. 10 minutos)
+              if (window.db) {
+                  await window.db.collection('pendingLinks').doc(code).set({
+                      webUser: user,
+                      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                      expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10 min
+                  });
+                  
+                  // Mostrar instrucciones con estilo
+                  showMessageModal({
+                      title: '🔗 Vincular con TikTok',
+                      message: `Para unificar tus puntos, ve al chat del Live en TikTok y escribe:\n\n!link ${code}\n\n⚠️ Este código expira en 10 minutos.`
+                  });
+              } else {
+                  alert('Error de conexión con base de datos.');
+              }
+          } catch (e) {
+              console.error(e);
+              alert('Error generando código: ' + e.message);
+          }
+      }
+
       // Función para cargar solicitudes basada en el día seleccionado
       window.loadSolicitudes = function() {
         const daySelect = document.getElementById('day-select');
