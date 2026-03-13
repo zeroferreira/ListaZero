@@ -5811,7 +5811,8 @@
         const song = normalizeKeyTextForTicker(it.cancion);
         const artist = normalizeKeyTextForTicker(it.artista);
         const user = uNorm;
-        const genre = normalizeKeyTextForTicker(it.genero);
+        // Compatibilidad: 'genre' (nuevo) o 'genero' (posible antiguo)
+        const genre = normalizeKeyTextForTicker(it.genre || it.genero);
         
         // Filtros de calidad estrictos
         if (song && song.length > 1 && song !== 'undefined' && song !== 'null') songCount[song] = (songCount[song] || 0) + 1;
@@ -5984,6 +5985,7 @@
           ' • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) +
           ' • <strong>🎵 Canción más pedida:</strong> ' + fmt(ds.topSong) + ' (' + (ds.topSongCount || 0) + ')' +
           ' • <strong>🎤 Artista más pedido:</strong> ' + fmt(ds.topArtist) + ' (' + (ds.topArtistCount || 0) + ')' +
+          ' • <strong>🎹 Género Top:</strong> ' + fmt(ds.topGenre || 'N/D') + // Nuevo
           ' • <strong>▶️ Reproducidas:</strong> ' + (ds.played || 0) +
           ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3TxtDay +
           ' • <strong>🎤 Top 3 artistas:</strong> ' + top3TxtDay +
@@ -6040,8 +6042,12 @@
                 total: data.totalRequests || 0,
                 // --- NUEVO: Top Liker ---
                 topLiker: (data.topLiker || 'N/D'),
-                topLikerCount: (data.topLikerCount || 0)
+                topLikerCount: (data.topLikerCount || 0),
+                // --- NUEVO: Top Género ---
+                topGenre: (data.topGenre || 'N/D'),
+                topGenreCount: (data.topGenreCount || 0)
             };
+            window.__globalGenreTop = data.topGenre || 'N/D';
             window.__globalDistinctUsers = data.topUsers ? data.topUsers.length : 0; // Aproximado
             window.__globalTotalSolicitudes = data.totalRequests || 0;
             refreshStatsTicker();
@@ -10544,6 +10550,8 @@
         let likesPoints = 0;
         let likesCount = 0;
         let likesPerPoint = 1;
+        let giftPoints = 0;
+        let totalCoinsDonated = 0;
 
         try {
            const bestStats = await fetchBestUserStatsDoc(usuario);
@@ -10552,16 +10560,20 @@
            
            // Extraer puntos de Likes
            likesCount = Number(statsDoc.totalLikes || 0);
-           likesPerPoint = Number(statsDoc.likesPerPoint || 1); // Valor por defecto 1 si no existe
+           likesPerPoint = Number(statsDoc.likesPerPoint || 1); 
            likesPoints = Number(statsDoc.totalLikesPoints || 0);
            
-           // Si tenemos likes pero no puntos calculados (legacy), calculamos
            if (likesCount > 0 && likesPoints === 0) {
                likesPoints = Math.floor(likesCount * likesPerPoint);
            }
+
+           // Extraer puntos de Regalos (NUEVO)
+           giftPoints = Number(statsDoc.totalGiftPoints || 0);
+           totalCoinsDonated = Number(statsDoc.totalCoinsDonated || 0);
+
         } catch (_) {}
 
-        const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus + checkInPoints + likesPoints;
+        const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus + checkInPoints + likesPoints + giftPoints;
         
         // --- MODO ADMIN: Verdad Absoluta de Nube ---
         // Si somos Admin viendo a otro usuario, confiamos en el total de la nube.
@@ -10679,7 +10691,9 @@
           redemptions,
           likesPoints,
           likesCount,
-          likesPerPoint
+          likesPerPoint,
+          giftPoints,
+          totalCoinsDonated
         };
       }
       async function renderPointsBreakdownForUser(u, force=false) {
@@ -10731,7 +10745,7 @@
                  bd.base = totalPlayed * 25;
                  bd.vipBonus = bd.isVip ? (totalPlayed * 40) : 0;
                  
-                 const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0) + (bd.likesPoints||0);
+                 const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0) + (bd.likesPoints||0) + (bd.giftPoints||0);
                  const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
                  bd.earnedTotal = earnedTotal;
                  bd.adjustment = 0; 
@@ -10752,7 +10766,7 @@
         setNum('breakdown-played-base', Number(bd.base||0));
         setNum('breakdown-vip-bonus', Number(bd.vipBonus||0));
         setNum('breakdown-daily-bonus', Number(bd.dailyBonus||0));
-        const achPlus = Number(bd.achievements||0) + Number(bd.streakBonus||0) + Number(bd.top1Bonus||0) + Number(bd.manualBonus||0) + Number(bd.likesPoints||0) + Number(bd.adjustment||0);
+        const achPlus = Number(bd.achievements||0) + Number(bd.streakBonus||0) + Number(bd.top1Bonus||0) + Number(bd.manualBonus||0) + Number(bd.likesPoints||0) + Number(bd.giftPoints||0) + Number(bd.adjustment||0);
         setNum('breakdown-achievements', Number(achPlus||0));
         const red = -Math.max(0, Number(bd.redemptionsSpent || 0));
         setNum('breakdown-streak-residual', String(red));
@@ -10780,6 +10794,11 @@
           // Likes (Nuevo)
           if (bd.likesPoints > 0) {
              lines.push(`<div class="genre-chip"><span>❤️ Likes </span><span>${bd.likesCount} × ${bd.likesPerPoint || 1} = ${bd.likesPoints}</span></div>`);
+          }
+          
+          // Regalos (Nuevo)
+          if (bd.giftPoints > 0) {
+             lines.push(`<div class="genre-chip"><span>🎁 Regalos </span><span>${bd.totalCoinsDonated} 🪙 = ${bd.giftPoints}</span></div>`);
           }
 
           // Top 1 Diario (Nuevo)
@@ -15168,6 +15187,7 @@
            const artistCount = {};
            const userCount = {};
            const songCount = {};
+           const genreCount = {}; // Nuevo: Conteo de géneros
            const artistOriginal = {};
            const userOriginal = {};
            
@@ -15178,7 +15198,7 @@
               if (typeof isTestRequestForStats === 'function' && isTestRequestForStats(d)) return;
               
               totalRequests++;
-              processDocStats(d, artistCount, userCount, songCount, artistOriginal, userOriginal);
+              processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
            });
 
            // 2. Procesar Historial REAL (systemEvents)
@@ -15202,7 +15222,7 @@
                        // Asegurarnos de que tenga datos válidos
                        if (d.cancion && d.artista) {
                            totalRequests++;
-                           processDocStats(d, artistCount, userCount, songCount, artistOriginal, userOriginal);
+                           processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
                        }
                    }
                });
@@ -15219,19 +15239,20 @@
                    // Si es un documento antiguo con artista/cancion directos, lo procesamos
                    if (doc.id !== '__userTotals__' && d.artista && !d.songs) {
                        totalRequests++;
-                       processDocStats(d, artistCount, userCount, songCount, artistOriginal, userOriginal);
+                       processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
                    }
                });
            }
            
-           function processDocStats(d, aCount, uCount, sCount, aOrig, uOrig) {
+           function processDocStats(d, aCount, uCount, sCount, gCount, aOrig, uOrig) {
               const a = (String(d.artista||'').trim().toLowerCase());
               const ao = (String(d.artista||'').trim());
               const s = (String(d.cancion||'').trim().toLowerCase());
               const u = (String(d.usuario||'').trim().toLowerCase());
-              // Preferir usuarioRaw (casing original) si existe, sino usuario normal
               const uo = (String(d.usuarioRaw || d.usuario || '').trim());
-              
+              const g = (String(d.genre||'').trim().toLowerCase()); // Género
+              const go = (String(d.genre||'').trim());
+
               if (a && a.length > 1 && a !== 'undefined' && a !== 'null'){ 
                   aCount[a]=(aCount[a]||0)+1; 
                   if(!aOrig[a]) aOrig[a]=ao; 
@@ -15242,6 +15263,9 @@
               if (u && u.length > 1 && u !== 'undefined' && u !== 'null'){ 
                   uCount[u]=(uCount[u]||0)+1; 
                   if(!uOrig[u]) uOrig[u]=uo; 
+              }
+              if (g && g.length > 1 && g !== 'undefined' && g !== 'null' && g !== 'unknown' && g !== 'n/d'){ 
+                  gCount[go]=(gCount[go]||0)+1; 
               }
            }
            
@@ -15285,12 +15309,30 @@
               topSongCountVal = maxS;
            }
            
+           // Calcular Top Género
+           let topGenreName = 'N/D';
+           let topGenreCountVal = 0;
+           let maxG = 0;
+           let maxGk = '';
+           for (let k in genreCount) {
+               if (genreCount[k] > maxG) {
+                   maxG = genreCount[k];
+                   maxGk = k;
+               }
+           }
+           if (maxGk) {
+               topGenreName = maxGk;
+               topGenreCountVal = maxG;
+           }
+           
            const globalStatsData = {
               totalRequests,
               topArtists,
               topUsers,
               topSong: topSongName,
               topSongCount: topSongCountVal,
+              topGenre: topGenreName, // Nuevo
+              topGenreCount: topGenreCountVal, // Nuevo
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
            };
            

@@ -1048,9 +1048,6 @@ function setupListeners() {
     // REGALOS
     tiktokLiveConnection.on('gift', async (data) => {
         const coins = data.diamondCount;
-        const minCoins = config.minCoinsForVip; 
-        
-        // Registrar donación acumulada
         const uid = data.uniqueId;
         const displayName = data.nickname;
         const profilePic = data.profilePictureUrl;
@@ -1065,7 +1062,42 @@ function setupListeners() {
         
         console.log(`🎁 ${displayName} donó ${coins} (Total: ${sessionDonations.get(uid)})`);
 
-        // Recalcular rangos
+        // --- SISTEMA DE PUNTOS POR DONACIÓN ---
+        // 1 punto por cada 10 monedas
+        const pointsFromGift = Math.floor(coins / 10);
+        
+        if (pointsFromGift > 0 && db) {
+            try {
+                const resolved = await getCanonicalUserKey(uid, displayName);
+                const userKey = resolved.userKey || uid;
+                const userRef = doc(db, 'userStats', userKey);
+                
+                // Usamos increment para sumar de forma atómica
+                await setDoc(userRef, {
+                    totalPoints: increment(pointsFromGift),
+                    totalGiftPoints: increment(pointsFromGift),
+                    totalCoinsDonated: increment(coins),
+                    lastActiveAt: serverTimestamp(),
+                    displayName: displayName // Actualizar nombre por si acaso
+                }, { merge: true });
+                
+                console.log(`💎 Puntos otorgados a ${displayName}: +${pointsFromGift} (por ${coins} monedas)`);
+                
+                // Notificar visualmente
+                await addDoc(collection(db, 'notifications'), {
+                    type: 'points_gift',
+                    user: displayName,
+                    points: pointsFromGift,
+                    message: `+${pointsFromGift} puntos por regalo`,
+                    timestamp: serverTimestamp()
+                });
+
+            } catch (e) {
+                console.error(`Error otorgando puntos por regalo a ${displayName}:`, e);
+            }
+        }
+
+        // Recalcular rangos (VIP, etc.)
         recalculateDonorRanks();
     });
 
@@ -1313,10 +1345,12 @@ async function resolveTrackFromQuery(query) {
     const artworkUrl = String(track.artworkUrl100 || '').replace('100x100', '600x600');
     const appleMusicId = track.trackId;
     const trackViewUrl = track.trackViewUrl || '';
+    const genre = track.primaryGenreName || ''; // Extract Genre
+
     if (!songName || !artistName || !appleMusicId) {
         return null;
     }
-    return { songName, artistName, artworkUrl, appleMusicId: String(appleMusicId), trackViewUrl };
+    return { songName, artistName, artworkUrl, appleMusicId: String(appleMusicId), trackViewUrl, genre };
 }
 
 function parseRawQueryToTrack(rawQuery) {
@@ -1338,10 +1372,10 @@ function parseRawQueryToTrack(rawQuery) {
             if (p.length >= 2) { parts = p; break; }
         }
     }
-    if (!parts) return { songName: raw, artistName: '', artworkUrl: '', appleMusicId: '', trackViewUrl: '' };
+    if (!parts) return { songName: raw, artistName: '', artworkUrl: '', appleMusicId: '', trackViewUrl: '', genre: '' };
     const artistName = parts[0] || '';
     const songName = parts.slice(1).join(' - ').trim();
-    return { songName: songName || raw, artistName, artworkUrl: '', appleMusicId: '', trackViewUrl: '' };
+    return { songName: songName || raw, artistName, artworkUrl: '', appleMusicId: '', trackViewUrl: '', genre: '' };
 }
 
 async function resolveTrackFromSeparatedRaw(rawQuery) {
@@ -1448,8 +1482,9 @@ async function handleSongRequest(user, query, options = {}) {
         const artworkUrl = resolved.artworkUrl;
         const appleMusicId = resolved.appleMusicId;
         const trackViewUrl = resolved.trackViewUrl;
+        const genre = resolved.genre || '';
 
-        console.log(`🎵 Canción encontrada: ${songName} - ${artistName}`);
+        console.log(`🎵 Canción encontrada: ${songName} - ${artistName} (${genre || 'Sin género'})`);
 
         const now = new Date();
         const hh = String(now.getHours()).padStart(2, '0');
@@ -1468,7 +1503,8 @@ async function handleSongRequest(user, query, options = {}) {
             appleMusicId: appleMusicId || '',
             ts: serverTimestamp(),
             status: 'pending',
-            day: currentDay
+            day: currentDay,
+            genre: genre // Save Genre
         };
         if (userId) requestData.userId = userId;
         const badge = getBadgeForUser(user, userId, displayName);
