@@ -7712,6 +7712,16 @@
            }
            .checkin-available { animation: checkin-pulse 2s infinite; }
            .checkin-claimed { animation: checkin-pop 0.5s forwards; pointer-events: none; }
+           .checkin-disabled { 
+             background: #ccc !important; 
+             background-image: none !important; 
+             box-shadow: none !important; 
+             cursor: default !important; 
+             transform: scale(0.9) !important; 
+             animation: none !important; 
+             opacity: 0.8; 
+             filter: grayscale(100%);
+           }
          `;
          document.head.appendChild(style);
          document.body.appendChild(btn);
@@ -7727,7 +7737,11 @@
              const todayStr = now.toDateString();
              
              if (lastCheckInStr === todayStr) {
-                 return; // Ya reclamado hoy
+                 btn.classList.add('checkin-disabled');
+                 btn.style.display = 'flex';
+                 btn.title = 'Vuelve mañana';
+                 btn.onclick = () => { showErrorNotification('Ya reclamaste tu regalo de hoy. Vuelve mañana.'); };
+                 return; 
              }
 
              // Verificar Firestore (fuente de verdad)
@@ -7793,9 +7807,10 @@
                              }
                          }
 
-                         // Efecto visual
+                         // Efecto visual - Transición a gris
                          btn.classList.remove('checkin-available');
-                         btn.classList.add('checkin-claimed');
+                         btn.classList.add('checkin-disabled');
+                         btn.title = 'Vuelve mañana';
                          
                          // Calcular puntos aleatorios (1-12)
                          const points = Math.floor(Math.random() * (POINTS_CONFIG.CHECKIN_MAX - POINTS_CONFIG.CHECKIN_MIN + 1)) + POINTS_CONFIG.CHECKIN_MIN;
@@ -7868,11 +7883,19 @@
                      } catch (err) {
                          console.error('Error claiming check-in:', err);
                          showErrorNotification('Error al reclamar. Es posible que ya se haya reclamado en este dispositivo.');
-                         btn.classList.remove('checkin-claimed');
+                         // Revertir estado visual si falla
+                         btn.classList.remove('checkin-disabled');
                          btn.classList.add('checkin-available');
                          btn.classList.remove('processing');
+                         btn.title = 'Reclamar Bono Diario';
                      }
                  };
+             } else {
+                 // No puede reclamar (ya validado en Firestore)
+                 btn.classList.add('checkin-disabled');
+                 btn.style.display = 'flex';
+                 btn.title = 'Vuelve mañana';
+                 btn.onclick = () => { showErrorNotification('Ya reclamaste tu regalo de hoy. Vuelve mañana.'); };
              }
          } catch (e) {
              console.error('Error check-in init:', e);
