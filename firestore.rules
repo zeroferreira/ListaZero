@@ -250,20 +250,6 @@ service cloud.firestore {
          request.resource.data.cost > 0);
     }
 
-    // Configuración global del sistema
-    match /systemConfig/{doc} {
-      allow read: if true;
-      allow create, update, delete: if isAuthorizedDevice();
-      
-      // Validar estructura para configuración DJ
-      allow write: if doc == 'djConfig' && 
-        isAuthorizedDevice() &&
-        (resource == null || 
-         (request.resource.data.keys().hasAll(['masterFingerprint']) &&
-          request.resource.data.masterFingerprint is string &&
-          request.resource.data.masterFingerprint.size() > 0));
-    }
-
     // Logs de actividad del sistema (opcional, para debugging)
     match /activityLogs/{doc} {
       allow read: if true;
@@ -298,7 +284,14 @@ service cloud.firestore {
       allow update, delete: if true;
     }
 
-    // Notificaciones globales del sistema (opcional para futuras funcionalidades)
+    // Notificaciones globales del sistema (para alertas de puntos, likes, etc.)
+    match /notifications/{doc} {
+      allow read: if true;
+      allow create: if true; // Permite al bot crear notificaciones
+      allow delete: if true; // Permite limpieza
+    }
+
+    // Notificaciones antiguas (compatibilidad)
     match /globalNotifications/{doc} {
       allow read: if true;
       allow create, update, delete: if true;
@@ -330,10 +323,12 @@ service cloud.firestore {
       allow update, delete: if true;
     }
 
-    // Config global (djConfig con masterFingerprint, userAliases, rewardsConfig)
+    // Configuración global del sistema (Unificada)
     match /systemConfig/{doc} {
       allow read: if true;
-      allow create, update, delete: if true;
+      // Permitimos escritura general para soportar admin panel y bot
+      // Idealmente esto debería restringirse por auth, pero mantenemos compatibilidad actual
+      allow write: if true; 
     }
 
     // Regla para permitir que el bot y el admin cambien el estado del sistema LIVE
