@@ -7635,6 +7635,8 @@
       console.log('Botón cerrar:', rewardsCloseBtn ? '✅' : '❌');
 
       // Configuración del sistema de puntos
+      // NOTA: Esta es la configuración global para la UI.
+      // Los valores reales deben coincidir con lo que el bot usa.
       const POINTS_CONFIG = {
         SONG_REQUEST: 25,
         DAILY_BONUS: 5,
@@ -7642,7 +7644,7 @@
         CHECKIN_MAX: 12,
         STREAK_MULTIPLIER: 2,
         VIP_BONUS: 40,
-        LIKES_PER_POINT: 300 // Configuración visual
+        LIKES_PER_POINT: 300 // Este valor es solo para visualización
       };
 
       // Configuración de niveles
@@ -10659,15 +10661,17 @@
 
         try {
           // Sincronizar con Firebase si hay discrepancia para que otros dispositivos vean el dato actualizado
-          // FIX: Si somos Admin viendo a otro, NO sobrescribir la nube con nuestros cálculos locales potencialmente incompletos
-          if (window.__ALLOW_BREAKDOWN_WRITE__ && isOwner) {
+          // FIX: Ahora permitimos escribir incluso si somos Admin (para corregir datos corruptos de otros usuarios)
+          // siempre y cuando estemos seguros de que es una corrección (bajada masiva de puntos) o si somos el dueño.
+          const shouldWrite = (window.__ALLOW_BREAKDOWN_WRITE__ && isOwner) || (isAdminMode && isCorrection);
+
+          if (shouldWrite) {
             const diff = Math.abs(Number(cloudTotal || 0) - displayTotal);
             // ANTES: const isHigher = displayTotal >= Number(cloudTotal || 0);
             // AHORA: Permitimos bajar puntos si la diferencia es masiva (indicador de corrección de bug)
             // o si estamos seguros de que el cálculo local es completo.
             
             // Si la diferencia es > 1000 puntos hacia abajo, asumimos corrección de bug de likes y permitimos escritura.
-            const isCorrection = (Number(cloudTotal || 0) - displayTotal) > 1000;
             const isHigher = displayTotal >= Number(cloudTotal || 0);
             
             if ((diff > 0.1 || !cloudTotal) && (isHigher || isCorrection)) {
