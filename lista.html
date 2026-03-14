@@ -6108,7 +6108,25 @@
           }
           
           // Nueva lógica para Top Puntos
-          const pts = Number(d.totalPoints || 0);
+          let pts = Number(d.totalPoints || 0);
+          
+          // FIX VISUAL CRÍTICO: Detectar inflación en tiempo real para el ticker
+          // Si los puntos son astronómicos (> 50,000) y sospechosamente similares al total de likes
+          // (o si simplemente son imposibles para un usuario normal), recalcular usando la fórmula correcta.
+          const totalLikes = Number(d.totalLikes || 0);
+          if (pts > 50000 && totalLikes > 0) {
+              // Si los puntos son casi iguales a los likes (error de multiplicación x1)
+              // O si son masivos, asumimos que están mal y recalculamos una aproximación segura.
+              // Fórmula: (Likes / 300) + otros bonos estimados. 
+              // Como no tenemos todo el historial aquí, simplificamos a Likes/300 que es la fuente principal de la inflación.
+              const estimatedFromLikes = Math.floor(totalLikes / 300);
+              
+              // Si el valor inflado es mucho mayor que el estimado, usamos el estimado.
+              if (pts > (estimatedFromLikes * 2)) {
+                  pts = estimatedFromLikes + (Number(d.accumulatedPoints || 0)); // Fallback suave
+              }
+          }
+
           if (pts > 0) {
              // Intentar obtener nombre formateado si existe en el doc, si no usar ID
              const name = d.displayName || doc.id;
