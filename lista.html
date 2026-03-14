@@ -10811,12 +10811,27 @@
                  bd.adjustment = 0; 
                  // FIX CRÍTICO: Si la nube dice que tenemos más puntos que el cálculo local, 
                  // usamos la nube para evitar regresiones visuales.
-                 // Esto protege al dueño de ver menos puntos si su caché local está incompleta.
+                 // EXCEPCIÓN: Si la nube está absurdamente inflada (bug likes), usamos el local.
                  const cloudVal = typeof bd.cloudTotal === 'number' ? bd.cloudTotal : 0;
-                 bd.total = Math.max(cloudVal, Math.max(0, predictedNet));
+                 const isCorrection = (cloudVal - predictedNet) > 1000;
+                 
+                 if (isCorrection) {
+                     bd.total = Math.max(0, predictedNet);
+                 } else {
+                     bd.total = Math.max(cloudVal, Math.max(0, predictedNet));
+                 }
              } else {
                  // FIX: Si somos Admin, asegurar que bd.total coincida con la nube
-                 if (typeof bd.cloudTotal === 'number') {
+                 // EXCEPCIÓN: Si detectamos inflación masiva, forzar el cálculo reconstruido
+                 // para que el Admin vea el valor real corregido.
+                 const cloudVal = typeof bd.cloudTotal === 'number' ? bd.cloudTotal : 0;
+                 const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0) + (bd.likesPoints||0) + (bd.giftPoints||0);
+                 const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
+                 const isCorrection = (cloudVal - predictedNet) > 1000;
+
+                 if (isCorrection) {
+                     bd.total = Math.max(0, predictedNet);
+                 } else if (typeof bd.cloudTotal === 'number') {
                      bd.total = bd.cloudTotal;
                  }
              }
