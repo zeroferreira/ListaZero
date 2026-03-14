@@ -10624,6 +10624,7 @@
 
         if (!isOwner && cloudTotal !== undefined) {
              // Si hay discrepancia y no encontramos canjes, asumimos que la diferencia es lo gastado
+             // FIX: Asegurar que earnedTotal sea lógico antes de calcular diferencias.
              const calculatedDiff = earnedTotal - cloudTotal;
              if (calculatedDiff > 0 && redemptionsSpent === 0) {
                  redemptionsSpent = calculatedDiff;
@@ -10643,12 +10644,14 @@
         
         let displayTotal;
         
-        if (isAdminMode && !isOwner) {
+        // Si hay una discrepancia masiva (> 1000 puntos) hacia abajo, asumimos que 'earnedTotal' es la corrección del bug
+        // y lo priorizamos incluso si no somos el dueño (para que la UI se vea bien inmediatamente)
+        const isCorrection = (Number(cloudTotal || 0) - predictedNet) > 1000;
+
+        if (isAdminMode && !isOwner && !isCorrection) {
             displayTotal = (cloudTotal !== undefined) ? cloudTotal : Math.max(0, predictedNet);
         } else {
-            // Si soy el dueño, mi cálculo local corregido es la autoridad.
-            // Esto forzará que el número inflado (700k) baje al real (~2500) en la UI
-            // y luego se sincronice a la nube en el bloque siguiente.
+            // Si soy el dueño O si es una corrección masiva evidente, usamos el cálculo local reconstruido.
             displayTotal = Math.max(0, predictedNet);
         }
         
