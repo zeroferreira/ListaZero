@@ -601,8 +601,18 @@ function startBot() {
     }
 
     // Inicializar Firebase
-    const firebaseApp = initializeApp(firebaseConfig);
-    db = getFirestore(firebaseApp);
+    let firebaseApp;
+    try {
+        const { getApps, getApp } = require('firebase/app');
+        if (getApps().length === 0) {
+            firebaseApp = initializeApp(firebaseConfig);
+        } else {
+            firebaseApp = getApp();
+        }
+        db = getFirestore(firebaseApp);
+    } catch (e) {
+        console.error("Error inicializando Firebase en startBot:", e);
+    }
     try { refreshBadgeSets(); } catch (_) {}
     try { setInterval(() => { refreshBadgeSets().catch(() => {}); }, 5 * 60 * 1000); } catch (_) {}
 
