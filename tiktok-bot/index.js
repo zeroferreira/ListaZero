@@ -1192,9 +1192,26 @@ function setupListeners() {
         likeBuffer.set(uniqueId, current);
         
         // Actualizar Top Liker de sesión (memoria)
-        const sessionTotal = (sessionLikes.get(uniqueId) || 0) + likeCount;
-        sessionLikes.set(uniqueId, sessionTotal);
+        // FIX: La librería tiktok-live-connector a veces envía `likeCount` como el total de la ráfaga
+        // pero también emite `totalLikeCount` que es el total de la sesión.
+        // Para evitar números inflados, usaremos `totalLikeCount` si está disponible, 
+        // o acumularemos con cuidado.
+        // En la versión actual, `likeCount` es incremental por evento.
         
+        let sessionTotal = 0;
+        
+        // Si la librería nos da el total acumulado de la sesión, lo usamos directamente
+        if (data.totalLikeCount && typeof data.totalLikeCount === 'number') {
+             sessionTotal = data.totalLikeCount;
+             // Actualizar nuestro mapa local para sincronizar
+             sessionLikes.set(uniqueId, sessionTotal);
+        } else {
+             // Si no, sumamos manualmente (fallback)
+             sessionTotal = (sessionLikes.get(uniqueId) || 0) + likeCount;
+             sessionLikes.set(uniqueId, sessionTotal);
+        }
+        
+        // Solo actualizar si supera al actual líder
         if (sessionTotal > currentTopLiker.count) {
             currentTopLiker = { name: nickname, count: sessionTotal };
             updateGlobalTopLiker(nickname, sessionTotal);
@@ -1211,9 +1228,11 @@ let currentTopLiker = { name: 'N/D', count: 0 };
 async function updateGlobalTopLiker(name, count) {
     try {
         if (!db) return;
+        // FIX: Asegurar que count sea número
+        const safeCount = Number(count) || 0;
         await setDoc(doc(db, 'globalStats', 'general'), {
             topLiker: name,
-            topLikerCount: count,
+            topLikerCount: safeCount,
             lastUpdate: serverTimestamp()
         }, { merge: true });
     } catch (e) {
