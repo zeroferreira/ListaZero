@@ -77,6 +77,8 @@ const {
     increment 
 } = require('firebase/firestore');
 
+let db; // RESTORED
+
 // Asignar a variables globales
 getFirestore = getFirestoreFn; // RESTORED
 doc = docFn;
@@ -169,7 +171,7 @@ let TIKTOK_USERNAME = config.tiktokUsername;
 let tiktokLiveConnection;
 let isConnecting = false;
 let ciderSocket;
-let db; // RESTORED
+// let db; // REDUNDANT
 const recentSrEvents = [];
 const pendingCiderQueue = [];
 let ciderFlushInProgress = false;
