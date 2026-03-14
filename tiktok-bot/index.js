@@ -1205,6 +1205,19 @@ const likeBuffer = new Map();
 const sessionLikes = new Map();
 let currentTopLiker = { name: 'N/D', count: 0 };
 
+async function updateGlobalTopLiker(name, count) {
+    try {
+        if (!db) return;
+        await setDoc(doc(db, 'globalStats', 'general'), {
+            topLiker: name,
+            topLikerCount: count,
+            lastUpdate: serverTimestamp()
+        }, { merge: true });
+    } catch (e) {
+        console.error('Error actualizando Top Liker:', e);
+    }
+}
+
 // Flush periódico de likes (cada 30 segundos para dar tiempo a acumular)
 setInterval(async () => {
     if (likeBuffer.size === 0) return;
