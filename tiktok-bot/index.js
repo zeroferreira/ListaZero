@@ -588,7 +588,6 @@ function startBot() {
             firebaseConfig = require('./firebase-config');
         } else {
             // Fallback si no existe el archivo (usar credenciales por defecto)
-            console.warn("⚠️ No se encontró firebase-config.js. Usando configuración por defecto.");
             firebaseConfig = {
               apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
               authDomain: "zero-strom-web.firebaseapp.com",
@@ -932,9 +931,10 @@ function setupListeners() {
         setTimeout(connectToLive, 10000); 
     });
     
-    tiktokLiveConnection.on('error', (err) => {
-        console.error('⚠️ Error de conexión TikTok:', err);
-    });
+    // Ocultado intencionalmente para no ensuciar la consola
+    // tiktokLiveConnection.on('error', (err) => {
+    //     console.error('⚠️ Error de conexión TikTok:', err);
+    // });
 
     tiktokLiveConnection.on('streamEnd', () => {
         console.log('🏁 El stream ha terminado.');
