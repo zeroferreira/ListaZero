@@ -10636,7 +10636,22 @@
         // Si el historial (playedSongs + requests) dice X, entonces es X.
         // Ignoramos el valor cacheado 'cloudTotal' para el display, pero lo actualizamos si difiere.
         // EXCEPCIÓN: Si somos Admin viendo a otro, 'cloudTotal' ES la verdad.
-        const displayTotal = (!isOwner && cloudTotal !== undefined) ? cloudTotal : Math.max(0, predictedNet);
+        
+        // FIX CRÍTICO: Si el cloudTotal es mucho mayor que el earnedTotal calculado (por ejemplo, por el bug de likes),
+        // debemos confiar en earnedTotal (el recalculado corregido) para sanear el dato inflado.
+        // Antes usábamos 'cloudTotal' si era mayor, lo que perpetuaba el error.
+        
+        let displayTotal;
+        
+        if (isAdminMode && !isOwner) {
+            displayTotal = (cloudTotal !== undefined) ? cloudTotal : Math.max(0, predictedNet);
+        } else {
+            // Si soy el dueño, mi cálculo local corregido es la autoridad.
+            // Esto forzará que el número inflado (700k) baje al real (~2500) en la UI
+            // y luego se sincronice a la nube en el bloque siguiente.
+            displayTotal = Math.max(0, predictedNet);
+        }
+        
         const adjustment = 0; 
 
         try {
@@ -10644,11 +10659,15 @@
           // FIX: Si somos Admin viendo a otro, NO sobrescribir la nube con nuestros cálculos locales potencialmente incompletos
           if (window.__ALLOW_BREAKDOWN_WRITE__ && isOwner) {
             const diff = Math.abs(Number(cloudTotal || 0) - displayTotal);
-            // Solo escribir si hay una diferencia y el nuevo total es MAYOR (o muy similar).
-            // Si el nuevo total es mucho menor, asumimos que nos falta historial local y NO sobrescribimos.
+            // ANTES: const isHigher = displayTotal >= Number(cloudTotal || 0);
+            // AHORA: Permitimos bajar puntos si la diferencia es masiva (indicador de corrección de bug)
+            // o si estamos seguros de que el cálculo local es completo.
+            
+            // Si la diferencia es > 1000 puntos hacia abajo, asumimos corrección de bug de likes y permitimos escritura.
+            const isCorrection = (Number(cloudTotal || 0) - displayTotal) > 1000;
             const isHigher = displayTotal >= Number(cloudTotal || 0);
             
-            if ((diff > 0.1 || !cloudTotal) && isHigher) {
+            if ((diff > 0.1 || !cloudTotal) && (isHigher || isCorrection)) {
                 const docRef = db.collection('userStats').doc(norm(usuario));
                 // Guardamos desglose completo para debugging y coherencia
                 await docRef.set({
