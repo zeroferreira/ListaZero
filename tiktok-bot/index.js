@@ -605,13 +605,33 @@ function startBot() {
     try {
         const { getApps, getApp } = require('firebase/app');
         if (getApps().length === 0) {
+            // Si no hay ninguna app, inicializarla
             firebaseApp = initializeApp(firebaseConfig);
         } else {
-            firebaseApp = getApp();
+            // Si hay alguna, buscar si existe la default '[DEFAULT]'
+            const existingDefault = getApps().find(app => app.name === '[DEFAULT]');
+            if (existingDefault) {
+                firebaseApp = existingDefault;
+            } else {
+                // Si hay apps pero no la default, inicializarla
+                firebaseApp = initializeApp(firebaseConfig);
+            }
         }
         db = getFirestore(firebaseApp);
     } catch (e) {
-        console.error("Error inicializando Firebase en startBot:", e);
+        // Fallback final: si todo falla, intentar recuperar la app existente por nombre
+        if (e.code === 'app/duplicate-app') {
+             console.log("⚠️ Detectada app duplicada en startBot, recuperando instancia existente...");
+             try {
+                 const { getApp } = require('firebase/app');
+                 firebaseApp = getApp();
+                 db = getFirestore(firebaseApp);
+             } catch (err2) {
+                 console.error("Error FATAL recuperando Firebase:", err2);
+             }
+        } else {
+             console.error("Error inicializando Firebase en startBot:", e);
+        }
     }
     try { refreshBadgeSets(); } catch (_) {}
     try { setInterval(() => { refreshBadgeSets().catch(() => {}); }, 5 * 60 * 1000); } catch (_) {}
