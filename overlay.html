@@ -451,6 +451,10 @@
         <div class="requested-by">
           Pedida por: <span class="user-badge"><span class="user-name" id="user">Usuario</span><span class="user-insignia" id="user-insignia" hidden></span></span>
         </div>
+        <!-- Contador de Likes para transparencia (oculto por defecto) -->
+        <div class="likes-counter" id="likes-counter" style="display: none; font-size: 0.8em; margin-top: 5px; color: rgba(255,255,255,0.7);">
+           ❤️ Puntos por Likes: <span id="likes-points-val">0</span>
+        </div>
       </div>
     </div>
   </div>
@@ -1134,6 +1138,40 @@
           headerEl.insertBefore(img, headerEl.firstChild);
       }
 
+      // Manejo del contador de Likes
+      const likesCounterEl = document.getElementById('likes-counter');
+      const likesPointsValEl = document.getElementById('likes-points-val');
+      
+      if (db && data.usuario) {
+          try {
+             const rawUser = String(data.usuario).trim().replace(/^@/, '').toLowerCase();
+             const normUser = rawUser.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+             let userDoc = await db.collection('userStats').doc(normUser).get();
+             
+             if (!userDoc.exists && rawUser !== normUser) {
+                 userDoc = await db.collection('userStats').doc(rawUser).get();
+             }
+
+             if (userDoc.exists) {
+                 const uData = userDoc.data();
+                 const likesPoints = uData.totalLikesPoints || 0;
+                 if (likesPoints > 0) {
+                     likesPointsValEl.textContent = likesPoints;
+                     likesCounterEl.style.display = 'block';
+                 } else {
+                     likesCounterEl.style.display = 'none';
+                 }
+             } else {
+                 likesCounterEl.style.display = 'none';
+             }
+          } catch (e) {
+             console.warn('Error fetching likes for overlay:', e);
+             likesCounterEl.style.display = 'none';
+          }
+      } else {
+          likesCounterEl.style.display = 'none';
+      }
+
       applyBadgeToCard(data);
 
       // Mostrar tarjeta
@@ -1247,10 +1285,23 @@
       else userInsigniaEl.textContent = badge;
     }
 
+    let globalTopLikerOverlay = { name: 'N/D', count: 0 };
+    
     let overlayRealtimeStarted = false;
     function startOverlayRealtime() {
       if (!db || overlayRealtimeStarted) return;
       overlayRealtimeStarted = true;
+
+      // Escuchar el Top Liker global
+      db.collection('globalStats').doc('general').onSnapshot(doc => {
+          if(doc.exists) {
+              const data = doc.data();
+              if(data.topLiker && data.topLikerCount) {
+                  globalTopLikerOverlay = { name: data.topLiker, count: data.topLikerCount };
+                  console.log(`[Overlay] Top Liker actualizado: ${data.topLiker} (${data.topLikerCount})`);
+              }
+          }
+      }, err => console.warn('Overlay: error leyendo globalStats:', err));
 
       db.collection('userSettings').doc('global_overlay_config')
         .onSnapshot((doc) => {

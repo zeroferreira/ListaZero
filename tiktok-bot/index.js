@@ -1242,27 +1242,42 @@ setInterval(async () => {
             const LIKES_PER_POINT = 300; 
             const totalLikesInBatch = data.likes;
             
-            // Puntos ganados en este lote
-            // Usamos Math.floor para solo dar puntos completos
-            const pointsToAdd = Math.floor(totalLikesInBatch / LIKES_PER_POINT);
-            
-            // Actualizar Firestore
+            // Obtener el estado actual del usuario para saber cuántos likes acumulados tiene
+            // Esto es crucial porque si envía 150 likes ahora y 150 después, debe ganar 1 punto.
+            // Actualmente se calculaba solo sobre el "batch" (totalLikesInBatch), lo cual hace que se pierdan los likes sobrantes.
             const userRef = doc(db, 'userStats', userKey);
+            const userSnap = await getDoc(userRef);
+            let currentTotalLikes = 0;
+            let currentTotalLikesPoints = 0;
+            
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
+                currentTotalLikes = userData.totalLikes || 0;
+                currentTotalLikesPoints = userData.totalLikesPoints || 0;
+            }
+
+            const newTotalLikes = currentTotalLikes + totalLikesInBatch;
+            
+            // Calcular cuántos puntos *debería* tener en total basándose en los likes históricos
+            const expectedTotalPoints = Math.floor(newTotalLikes / LIKES_PER_POINT);
+            
+            // Los puntos a añadir son la diferencia entre lo que debería tener y lo que ya se le dio
+            const pointsToAdd = expectedTotalPoints - currentTotalLikesPoints;
             
             // Datos a actualizar
             const updateData = {
-                totalLikes: increment(totalLikesInBatch), // Sumar likes totales
+                totalLikes: newTotalLikes, // Actualizar total absoluto
                 lastLikeActivity: serverTimestamp(),
                 displayName: finalName,
                 likesPerPoint: LIKES_PER_POINT // Guardar configuración usada
             };
 
-            // Solo sumar puntos y registrar puntos de likes si alcanzó el umbral
+            // Solo sumar puntos y registrar puntos de likes si ganó nuevos puntos en este cálculo
             if (pointsToAdd > 0) {
                 updateData.totalPoints = increment(pointsToAdd);
-                updateData.totalLikesPoints = increment(pointsToAdd); // Guardar desglose específico
+                updateData.totalLikesPoints = expectedTotalPoints; // Guardar nuevo total de puntos por likes
                 
-                console.log(`✨ @${finalName} ganó ${pointsToAdd} puntos por ${totalLikesInBatch} likes!`);
+                console.log(`✨ @${finalName} ganó ${pointsToAdd} puntos! (Total Likes: ${newTotalLikes})`);
                 
                 // Notificar visualmente
                 await addDoc(collection(db, 'notifications'), {
@@ -1275,10 +1290,11 @@ setInterval(async () => {
             } else {
                 // Solo log si hubo muchos likes pero no alcanzaron para punto
                 if (totalLikesInBatch > 50) {
-                   console.log(`❤️ @${finalName} envió ${totalLikesInBatch} likes (Faltan ${LIKES_PER_POINT - (totalLikesInBatch % LIKES_PER_POINT)} para punto)`);
+                   console.log(`❤️ @${finalName} envió ${totalLikesInBatch} likes (Acumulados: ${newTotalLikes}, Faltan ${LIKES_PER_POINT - (newTotalLikes % LIKES_PER_POINT)} para el siguiente punto)`);
                 }
             }
 
+            // Usamos setDoc con merge en lugar de updateDoc para crear el doc si no existe
             await setDoc(userRef, updateData, { merge: true });
 
         } catch (e) {
