@@ -635,6 +635,48 @@ function startBot() {
              console.error("Error inicializando Firebase en startBot:", e);
         }
     }
+    
+    // --- SANEAMIENTO AUTOMÁTICO DE PUNTOS INFLADOS ---
+    // Ejecutar una vez al inicio para corregir usuarios con puntos de likes astronómicos
+    setTimeout(async () => {
+        try {
+            console.log("🧹 Ejecutando verificación de puntos inflados...");
+            // Buscar usuarios con más de 5000 puntos de likes (1.5M likes), lo cual es sospechoso
+            const snapshot = await getDocs(query(collection(db, 'userStats'), where('totalLikesPoints', '>', 5000)));
+            
+            if (!snapshot.empty) {
+                console.log(`⚠️ Encontrados ${snapshot.size} usuarios con posibles puntos inflados. Corrigiendo...`);
+                const batch = require('firebase/firestore').writeBatch(db);
+                
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const inflatedLikesPoints = data.totalLikesPoints || 0;
+                    const totalPoints = data.totalPoints || 0;
+                    
+                    // Asumimos que los puntos de likes están mal y los reseteamos
+                    // Recalculamos el total restando la parte inflada
+                    // Dejamos totalLikes en 0 para evitar que vuelva a calcular mal si el origen estaba corrupto
+                    const newTotalPoints = Math.max(0, totalPoints - inflatedLikesPoints);
+                    
+                    console.log(`🔧 Corrigiendo @${doc.id}: LikesPoints ${inflatedLikesPoints} -> 0 | Total ${totalPoints} -> ${newTotalPoints}`);
+                    
+                    batch.update(doc.ref, {
+                        totalLikesPoints: 0,
+                        totalLikes: 0, // Resetear contador de likes para empezar limpio
+                        totalPoints: newTotalPoints
+                    });
+                });
+                
+                await batch.commit();
+                console.log("✅ Corrección masiva completada.");
+            } else {
+                console.log("✅ No se encontraron usuarios con puntos inflados.");
+            }
+        } catch (e) {
+            console.error("Error en saneamiento automático:", e);
+        }
+    }, 5000); // Esperar 5s a que la conexión se estabilice
+
     try { refreshBadgeSets(); } catch (_) {}
     try { setInterval(() => { refreshBadgeSets().catch(() => {}); }, 5 * 60 * 1000); } catch (_) {}
 
