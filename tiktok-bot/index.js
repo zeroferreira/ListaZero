@@ -617,6 +617,7 @@ function startBot() {
                 firebaseApp = initializeApp(firebaseConfig);
             }
         }
+        // Usar la función importada al principio, no la global
         db = getFirestore(firebaseApp);
     } catch (e) {
         // Fallback final: si todo falla, intentar recuperar la app existente por nombre
