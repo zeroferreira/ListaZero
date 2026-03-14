@@ -92,16 +92,26 @@ limit = require('firebase/firestore').limit;
 
 // Inicializar Firebase DB Principal
 try {
-    const app = initializeApp({
-      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-      authDomain: "zero-strom-web.firebaseapp.com",
-      projectId: "zero-strom-web",
-      storageBucket: "zero-strom-web.appspot.com",
-      messagingSenderId: "758369466349",
-      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
-    });
+    // Verificar si ya existe la app por defecto para evitar "app/duplicate-app"
+    let app;
+    const { getApps, getApp } = require('firebase/app');
+    
+    if (getApps().length === 0) {
+        app = initializeApp({
+          apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+          authDomain: "zero-strom-web.firebaseapp.com",
+          projectId: "zero-strom-web",
+          storageBucket: "zero-strom-web.appspot.com",
+          messagingSenderId: "758369466349",
+          appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+        });
+        console.log("🔥 Firebase inicializado correctamente.");
+    } else {
+        app = getApp(); // Usar la existente
+        console.log("🔥 Reutilizando instancia de Firebase existente.");
+    }
+    
     db = getFirestoreFn(app);
-    console.log("🔥 Firebase inicializado correctamente.");
 } catch (e) {
     console.error("Error inicializando Firebase:", e);
 }
