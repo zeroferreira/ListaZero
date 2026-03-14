@@ -1293,6 +1293,13 @@ setInterval(async () => {
 
             // Solo sumar puntos y registrar puntos de likes si ganó nuevos puntos
             if (pointsToAdd > 0) {
+                // FIX: Usamos increment para totalPoints, pero para totalLikesPoints 
+                // debemos usar el valor absoluto calculado (expectedTotalPoints) 
+                // o incrementar solo la diferencia. 
+                // El problema es que si el usuario ya tenía puntos erróneos inflados,
+                // esto podría no corregirlos hacia abajo.
+                // Mejor: Recalcular totalLikesPoints basado estrictamente en totalLikes / 300
+                
                 updateData.totalPoints = increment(pointsToAdd);
                 updateData.totalLikesPoints = expectedTotalPoints; 
                 
@@ -1307,6 +1314,9 @@ setInterval(async () => {
                     timestamp: serverTimestamp()
                 });
             } else {
+                // Asegurar consistencia incluso si no ganó puntos nuevos
+                updateData.totalLikesPoints = expectedTotalPoints;
+                
                 // Solo log si hubo muchos likes pero no alcanzaron para punto
                 if (totalLikesInBatch > 50) {
                    console.log(`❤️ @${finalName} envió ${totalLikesInBatch} likes (Acumulados: ${newTotalLikes}, Faltan ${LIKES_PER_POINT - (newTotalLikes % LIKES_PER_POINT)} para el siguiente punto)`);
