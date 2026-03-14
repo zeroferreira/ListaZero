@@ -17,7 +17,6 @@ try {
 let initializeApp, getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, query, where, limit;
 try {
     ({ initializeApp } = require('firebase/app'));
-    ({ getFirestore, collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, query, where, limit } = require('firebase/firestore'));
 } catch (e) {
     console.error('Critical Error loading Firebase libraries:', e);
     console.error('Solución: ejecuta "npm install" dentro de la carpeta tiktok-bot y usa Node 18+.');
@@ -61,22 +60,51 @@ function updateLiveStatus(isLive) {
 }
 
 const { 
-    getFirestore, 
-    doc, 
-    getDoc, 
+    getFirestore: getFirestoreFn, 
+    doc: docFn, 
+    getDoc: getDocFn, 
     setDoc, 
-    updateDoc, 
+    updateDoc: updateDocFn, 
     arrayUnion, 
-    collection, 
-    addDoc, 
+    collection: collectionFn, 
+    addDoc: addDocFn, 
     onSnapshot, 
-    serverTimestamp,
-    query,
-    where,
-    getDocs,
+    serverTimestamp: serverTimestampFn,
+    query: queryFn,
+    where: whereFn,
+    getDocs: getDocsFn,
     deleteDoc,
     increment 
 } = require('firebase/firestore');
+
+// Asignar a variables globales
+// getFirestore = getFirestoreFn; // REMOVED: db is initialized below via initializeApp
+doc = docFn;
+getDoc = getDocFn;
+updateDoc = updateDocFn;
+collection = collectionFn;
+addDoc = addDocFn;
+serverTimestamp = serverTimestampFn;
+query = queryFn;
+where = whereFn;
+getDocs = getDocsFn;
+limit = require('firebase/firestore').limit;
+
+// Inicializar Firebase DB Principal
+try {
+    const app = initializeApp({
+      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+      authDomain: "zero-strom-web.firebaseapp.com",
+      projectId: "zero-strom-web",
+      storageBucket: "zero-strom-web.appspot.com",
+      messagingSenderId: "758369466349",
+      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+    });
+    db = getFirestoreFn(app);
+    console.log("🔥 Firebase inicializado correctamente.");
+} catch (e) {
+    console.error("Error inicializando Firebase:", e);
+}
 // -----------------------------------
 
 // --- CONFIGURACIÓN ESTATICA ---
@@ -131,7 +159,7 @@ let TIKTOK_USERNAME = config.tiktokUsername;
 let tiktokLiveConnection;
 let isConnecting = false;
 let ciderSocket;
-let db; // Firebase DB reference
+// let db; // REMOVED: db is initialized above
 const recentSrEvents = [];
 const pendingCiderQueue = [];
 let ciderFlushInProgress = false;
@@ -1105,7 +1133,29 @@ function setupListeners() {
     tiktokLiveConnection.on('like', (data) => {
         const { uniqueId, nickname, likeCount } = data;
         // Acumular likes en buffer para no saturar Firestore
-        processLikeBuffer(uniqueId, nickname, likeCount);
+        // El 'likeCount' que llega de TikTok suele ser el acumulado de esa ráfaga, o incremental.
+        // La librería suele emitir el total de la ráfaga. 
+        // Vamos a asumir que es incremental para el buffer.
+        // OJO: data.likeCount es el número de likes enviados en este evento (ej: 15 likes)
+        // No es el total de la sesión.
+        
+        // Vamos a sumar al buffer.
+        const current = likeBuffer.get(uniqueId) || { 
+            userId: uniqueId, 
+            displayName: nickname, 
+            likes: 0 
+        };
+        current.likes += likeCount; // Sumar likes
+        likeBuffer.set(uniqueId, current);
+        
+        // Actualizar Top Liker de sesión (memoria)
+        const sessionTotal = (sessionLikes.get(uniqueId) || 0) + likeCount;
+        sessionLikes.set(uniqueId, sessionTotal);
+        
+        if (sessionTotal > currentTopLiker.count) {
+            currentTopLiker = { name: nickname, count: sessionTotal };
+            updateGlobalTopLiker(nickname, sessionTotal);
+        }
     });
 }
 
@@ -1115,104 +1165,71 @@ const likeBuffer = new Map();
 const sessionLikes = new Map();
 let currentTopLiker = { name: 'N/D', count: 0 };
 
-function processLikeBuffer(userId, displayName, count) {
-    // userId es el uniqueId de TikTok (ej. jenngarcia123)
-    // Usamos normalizeUserKeyForBadges para consistencia
-    const key = normalizeUserKeyForBadges(userId);
-    
-    const current = likeBuffer.get(key) || { 
-        userId, // Guardamos el original para referencias
-        displayName, 
-        likes: 0 
-    };
-    current.likes += count;
-    likeBuffer.set(key, current);
-    
-    // Actualizar Top Liker de la sesión en memoria
-    const sessionTotal = (sessionLikes.get(key) || 0) + count;
-    sessionLikes.set(key, sessionTotal);
-    
-    if (sessionTotal > currentTopLiker.count) {
-        currentTopLiker = { name: displayName, count: sessionTotal };
-        console.log(`🔥 Nuevo Top Liker: ${displayName} con ${sessionTotal} likes!`);
-        // Actualizar Firestore inmediatamente si hay nuevo récord significativo (>100 dif)
-        updateGlobalTopLiker(displayName, sessionTotal);
-    }
-}
-
-async function updateGlobalTopLiker(name, count) {
-    try {
-        if (!db) return;
-        await setDoc(doc(db, 'globalStats', 'general'), {
-            topLiker: name,
-            topLikerCount: count,
-            lastUpdate: serverTimestamp()
-        }, { merge: true });
-    } catch (e) {
-        console.error('Error actualizando Top Liker:', e);
-    }
-}
-
-// Flush periódico de likes (cada 15 segundos)
+// Flush periódico de likes (cada 30 segundos para dar tiempo a acumular)
 setInterval(async () => {
     if (likeBuffer.size === 0) return;
 
-    console.log(`❤️ Procesando likes de ${likeBuffer.size} usuarios...`);
+    console.log(`❤️ Procesando buffer de likes (${likeBuffer.size} usuarios)...`);
     
-    // Convertir buffer a array para iterar
+    // Copiar y limpiar buffer
     const entries = Array.from(likeBuffer.entries());
-    likeBuffer.clear(); // Limpiar buffer inmediatamente
+    likeBuffer.clear(); 
 
-    for (const [key, data] of entries) {
+    for (const [uid, data] of entries) {
         try {
-            // Resolver usuario canónico (por si tiene alias vinculado)
+            // Resolver usuario canónico
             const resolved = await getCanonicalUserKey(data.userId, data.displayName);
-            const userKey = resolved.userKey || key; // Usar el vinculado si existe
+            const userKey = resolved.userKey || uid; 
             const finalName = resolved.displayName || data.displayName;
 
-            // Calcular puntos: usar config.likesPerPoint o default 120
-            const likesPerPoint = config.likesPerPoint || 120;
-            const pointsToAdd = Math.floor(data.likes / likesPerPoint);
+            // Calcular puntos: 1 punto cada 300 likes (configurado aquí)
+            const LIKES_PER_POINT = 300; 
+            const totalLikesInBatch = data.likes;
+            
+            // Puntos ganados en este lote
+            // Usamos Math.floor para solo dar puntos completos
+            const pointsToAdd = Math.floor(totalLikesInBatch / LIKES_PER_POINT);
             
             // Actualizar Firestore
             const userRef = doc(db, 'userStats', userKey);
             
             // Datos a actualizar
             const updateData = {
-                totalLikes: increment(data.likes),
+                totalLikes: increment(totalLikesInBatch), // Sumar likes totales
                 lastLikeActivity: serverTimestamp(),
-                displayName: finalName // Asegurar nombre actualizado
+                displayName: finalName,
+                likesPerPoint: LIKES_PER_POINT // Guardar configuración usada
             };
 
-            // Solo sumar puntos si alcanzó el umbral
+            // Solo sumar puntos y registrar puntos de likes si alcanzó el umbral
             if (pointsToAdd > 0) {
                 updateData.totalPoints = increment(pointsToAdd);
-                console.log(`✨ @${finalName} ganó ${pointsToAdd} puntos por ${data.likes} likes!`);
+                updateData.totalLikesPoints = increment(pointsToAdd); // Guardar desglose específico
                 
-                // Notificar visualmente si ganó puntos
-                if (pointsToAdd >= 1) {
-                    addDoc(collection(db, 'notifications'), {
-                        type: 'points',
-                        user: finalName,
-                        points: pointsToAdd,
-                        message: `+${pointsToAdd} pts por likes ❤️`,
-                        timestamp: serverTimestamp()
-                    }).catch(e => console.error(e));
+                console.log(`✨ @${finalName} ganó ${pointsToAdd} puntos por ${totalLikesInBatch} likes!`);
+                
+                // Notificar visualmente
+                await addDoc(collection(db, 'notifications'), {
+                    type: 'points_like',
+                    user: finalName,
+                    points: pointsToAdd,
+                    message: `+${pointsToAdd} pts por likes ❤️`,
+                    timestamp: serverTimestamp()
+                });
+            } else {
+                // Solo log si hubo muchos likes pero no alcanzaron para punto
+                if (totalLikesInBatch > 50) {
+                   console.log(`❤️ @${finalName} envió ${totalLikesInBatch} likes (Faltan ${LIKES_PER_POINT - (totalLikesInBatch % LIKES_PER_POINT)} para punto)`);
                 }
             }
 
             await setDoc(userRef, updateData, { merge: true });
 
-        } catch (err) {
-            console.error(`Error guardando likes para ${data.userId}:`, err);
+        } catch (e) {
+            console.error(`Error procesando likes para ${data.displayName}:`, e);
         }
     }
-    
-    // Sincronizar Top Liker periódicamente también (para asegurar persistencia)
-    if (currentTopLiker.count > 0) {
-        updateGlobalTopLiker(currentTopLiker.name, currentTopLiker.count);
-    }
-}, 15000); // 15 segundos
+}, 30000); // 30 segundos
 
 // Mapa de donaciones de la sesión
 const sessionDonations = new Map();
