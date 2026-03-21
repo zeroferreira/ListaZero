@@ -78,6 +78,7 @@ const {
 } = require('firebase/firestore');
 
 let db; // RESTORED
+let firebaseAuthPromise = Promise.resolve();
 
 // Asignar a variables globales
 getFirestore = getFirestoreFn; // RESTORED
@@ -114,6 +115,15 @@ try {
     }
     
     db = getFirestoreFn(app);
+    try {
+        const { getAuth, signInAnonymously } = require('firebase/auth');
+        const auth = getAuth(app);
+        firebaseAuthPromise = signInAnonymously(auth).catch((e) => {
+            console.warn('⚠️ No se pudo autenticar Firebase (anon):', e && e.message ? e.message : String(e));
+        });
+    } catch (_) {
+        firebaseAuthPromise = Promise.resolve();
+    }
 } catch (e) {
     console.error("Error inicializando Firebase:", e);
 }
@@ -188,6 +198,7 @@ const badgeSets = {
     donador: new Set(),
     z0Fan: new Set(),
     z0Platinum: new Set(),
+    superfan: new Set(),
     selected: new Map()
 };
 let badgeSetsUpdatedAt = 0;
@@ -218,6 +229,7 @@ function getBadgeForUser(userKey, userId, displayName) {
     }
     for (let i = 0; i < candidates.length; i++) {
         const k = candidates[i];
+        if (badgeSets.superfan.has(k)) return 'superfan';
         if (badgeSets.z0Platinum.has(k)) return 'z0-platino';
         if (badgeSets.z0Vip.has(k)) return 'z0-vip';
         if (badgeSets.vip.has(k)) return 'vip';
@@ -249,7 +261,8 @@ async function refreshBadgeSets() {
             { col: 'z0VipUsers', set: badgeSets.z0Vip, field: 'name' },
             { col: 'donadorUsers', set: badgeSets.donador, field: 'name' },
             { col: 'z0FanUsers', set: badgeSets.z0Fan, field: 'name' },
-            { col: 'z0PlatinumUsers', set: badgeSets.z0Platinum, field: 'name' }
+            { col: 'z0PlatinumUsers', set: badgeSets.z0Platinum, field: 'name' },
+            { col: 'superfanUsers', set: badgeSets.superfan, field: 'name' }
         ];
         for (let i = 0; i < targets.length; i++) {
             const t = targets[i];
@@ -276,7 +289,7 @@ async function refreshBadgeSets() {
         });
         badgeSets.selected = nextMap;
         badgeSetsUpdatedAt = Date.now();
-        console.log(`🏷️ Insignias sincronizadas: vip=${badgeSets.vip.size} z0Vip=${badgeSets.z0Vip.size} donador=${badgeSets.donador.size} z0Fan=${badgeSets.z0Fan.size} z0Platino=${badgeSets.z0Platinum.size} selected=${badgeSets.selected.size}`);
+        console.log(`🏷️ Insignias sincronizadas: superfan=${badgeSets.superfan.size} vip=${badgeSets.vip.size} z0Vip=${badgeSets.z0Vip.size} donador=${badgeSets.donador.size} z0Fan=${badgeSets.z0Fan.size} z0Platino=${badgeSets.z0Platinum.size} selected=${badgeSets.selected.size}`);
     } catch (e) {
         console.warn('⚠️ No se pudieron actualizar insignias (vip/z0/donador):', e && e.message ? e.message : String(e));
     } finally {
@@ -620,6 +633,15 @@ function startBot() {
         }
         // Usar la función importada al principio, no la global
         db = getFirestore(firebaseApp);
+        try {
+            const { getAuth, signInAnonymously } = require('firebase/auth');
+            const auth = getAuth(firebaseApp);
+            firebaseAuthPromise = signInAnonymously(auth).catch((e) => {
+                console.warn('⚠️ No se pudo autenticar Firebase (anon):', e && e.message ? e.message : String(e));
+            });
+        } catch (_) {
+            firebaseAuthPromise = Promise.resolve();
+        }
     } catch (e) {
         // Fallback final: si todo falla, intentar recuperar la app existente por nombre
         if (e.code === 'app/duplicate-app') {
@@ -628,6 +650,11 @@ function startBot() {
                  const { getApp } = require('firebase/app');
                  firebaseApp = getApp();
                  db = getFirestore(firebaseApp);
+                 try {
+                     const { getAuth, signInAnonymously } = require('firebase/auth');
+                     const auth = getAuth(firebaseApp);
+                     firebaseAuthPromise = signInAnonymously(auth).catch(() => {});
+                 } catch (_) { firebaseAuthPromise = Promise.resolve(); }
              } catch (err2) {
                  console.error("Error FATAL recuperando Firebase:", err2);
              }
@@ -1574,6 +1601,7 @@ async function handleSongRequest(user, query, options = {}) {
         const displayName = options.displayName ? String(options.displayName).trim() : '';
         const rawQuery = options.rawQuery ? String(options.rawQuery).trim() : '';
         try { await ensureBadgeSetsFresh(); } catch (_) {}
+        try { await firebaseAuthPromise; } catch (_) {}
 
         let resolved = null;
         const overrideSong = String(options.songName || '').trim();
@@ -1665,6 +1693,7 @@ async function handleSongRequest(user, query, options = {}) {
             day: currentDay,
             genre: genre // Save Genre
         };
+        requestData.source = source || 'tiktok';
         if (userId) requestData.userId = userId;
         const badge = getBadgeForUser(user, userId, displayName);
         if (badge) requestData.badge = badge;
@@ -1672,7 +1701,7 @@ async function handleSongRequest(user, query, options = {}) {
         if (isTest) {
             requestData.isSimulation = true;
             requestData.isTest = true;
-            if (source) requestData.source = source;
+            requestData.source = 'test';
         }
         if (usedFallback) requestData.unresolved = true;
 

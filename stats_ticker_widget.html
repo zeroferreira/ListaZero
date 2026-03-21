@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stats Ticker</title>
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: transparent;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+    }
+
+    :root {
+      --ticker-height: 92px;
+      --ticker-font-size: 22px;
+      --ticker-speed: 30s;
+      --ticker-padding-x: 16px;
+      --ticker-bg: rgba(0, 0, 0, 0.35);
+      --ticker-color: #fff;
+      --ticker-border: rgba(255, 255, 255, 0.10);
+    }
+
+    #ticker {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: var(--ticker-height);
+      display: flex;
+      align-items: center;
+      padding: 0 var(--ticker-padding-x);
+      box-sizing: border-box;
+      overflow: hidden;
+      background: var(--ticker-bg);
+      color: var(--ticker-color);
+      border-top: 1px solid var(--ticker-border);
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+    }
+
+    #ticker.top {
+      top: 0;
+      bottom: auto;
+      border-top: 0;
+      border-bottom: 1px solid var(--ticker-border);
+    }
+
+    #content {
+      white-space: nowrap;
+      display: inline-block;
+      padding-left: 100%;
+      animation: ticker-scroll var(--ticker-speed) linear infinite;
+      font-size: var(--ticker-font-size);
+      font-weight: 800;
+      letter-spacing: 0.2px;
+    }
+
+    #content strong { font-weight: 900; }
+
+    @keyframes ticker-scroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-100%); }
+    }
+  </style>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <div id="ticker" class="bottom" aria-label="Banda de estadísticas">
+    <div id="content">Cargando estadísticas…</div>
+  </div>
+
+  <script>
+    (function () {
+      const qs = new URLSearchParams(location.search);
+
+      function n(v, d) {
+        const x = Number(v);
+        return Number.isFinite(x) ? x : d;
+      }
+
+      const pos = String(qs.get('pos') || 'bottom').trim().toLowerCase();
+      const height = n(qs.get('height'), null);
+      const fontSize = n(qs.get('fontSize'), null);
+      const speed = n(qs.get('speed'), null);
+      const theme = String(qs.get('theme') || 'dark').trim().toLowerCase();
+
+      if (height && height > 10) document.documentElement.style.setProperty('--ticker-height', `${height}px`);
+      if (fontSize && fontSize > 6) document.documentElement.style.setProperty('--ticker-font-size', `${fontSize}px`);
+      if (speed && speed > 3) document.documentElement.style.setProperty('--ticker-speed', `${speed}s`);
+
+      const tickerEl = document.getElementById('ticker');
+      const contentEl = document.getElementById('content');
+      if (tickerEl) {
+        tickerEl.classList.toggle('top', pos === 'top');
+      }
+      if (theme === 'light') {
+        document.documentElement.style.setProperty('--ticker-bg', 'rgba(255, 255, 255, 0.65)');
+        document.documentElement.style.setProperty('--ticker-color', '#111');
+        document.documentElement.style.setProperty('--ticker-border', 'rgba(0, 0, 0, 0.10)');
+      }
+
+      function safeText(v) {
+        return String(v || '').trim() || 'N/D';
+      }
+
+      function parseNameCount(entry) {
+        const raw = String(entry || '').trim();
+        if (!raw) return { name: 'N/D', count: 0 };
+        const m = raw.match(/\((\d+)\)\s*$/);
+        const count = m ? Number(m[1] || 0) : 0;
+        const name = raw.replace(/\s*\(\d+\)\s*$/, '').trim();
+        return { name: name || 'N/D', count: Number.isFinite(count) ? count : 0 };
+      }
+
+      function buildHtml(stats) {
+        const topArtists = Array.isArray(stats.topArtists3) ? stats.topArtists3 : [];
+        const topUsers = Array.isArray(stats.topUsers3) ? stats.topUsers3 : [];
+
+        const parts = [
+          '<strong>HISTORIA:</strong>',
+          '• <strong>🎵 Canción más pedida:</strong> ' + safeText(stats.topSong) + ' (' + (Number(stats.topSongCount || 0) || 0) + ')',
+          '• <strong>🎤 Artista más pedido:</strong> ' + safeText(stats.topArtist) + ' (' + (Number(stats.topArtistCount || 0) || 0) + ')',
+          '• <strong>👥 Top 3 usuarios:</strong> ' + (topUsers.length ? topUsers.join(', ') : 'N/D'),
+          '• <strong>🎤 Top 3 artistas:</strong> ' + (topArtists.length ? topArtists.join(', ') : 'N/D')
+        ];
+
+        if (stats.topLiker && stats.topLiker !== 'N/D') {
+          parts.push('• <strong>❤️ Top Liker:</strong> ' + safeText(stats.topLiker) + (stats.topLikerCount ? ' (' + stats.topLikerCount + ')' : ''));
+        }
+        if (stats.topGenre && stats.topGenre !== 'N/D') {
+          parts.push('• <strong>🎹 Género Top:</strong> ' + safeText(stats.topGenre) + (stats.topGenreCount ? ' (' + stats.topGenreCount + ')' : ''));
+        }
+        if (typeof stats.total === 'number') {
+          parts.push('• <strong>📊 Total solicitudes:</strong> ' + String(stats.total || 0));
+        }
+
+        return parts.join(' ');
+      }
+
+      function setUnavailable() {
+        if (!contentEl) return;
+        contentEl.innerHTML = '<strong>HISTORIA:</strong> • N/D';
+      }
+
+      function setFromDoc(data) {
+        const topArtistsArr = Array.isArray(data.topArtists) ? data.topArtists : [];
+        const topUsersArr = Array.isArray(data.topUsers) ? data.topUsers : [];
+        const topArtistParsed = parseNameCount(topArtistsArr[0]);
+        const topUserParsed = parseNameCount(topUsersArr[0]);
+
+        const stats = {
+          topSong: data.topSong || 'N/D',
+          topSongCount: data.topSongCount || 0,
+          topArtist: topArtistParsed.name,
+          topArtistCount: topArtistParsed.count,
+          topArtists3: topArtistsArr,
+          topUser: topUserParsed.name,
+          topUsers3: topUsersArr,
+          total: Number(data.totalRequests || 0) || 0,
+          topLiker: data.topLiker || 'N/D',
+          topLikerCount: Number(data.topLikerCount || 0) || 0,
+          topGenre: data.topGenre || 'N/D',
+          topGenreCount: Number(data.topGenreCount || 0) || 0
+        };
+        if (contentEl) contentEl.innerHTML = buildHtml(stats);
+      }
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+        authDomain: "zero-strom-web.firebaseapp.com",
+        projectId: "zero-strom-web",
+        storageBucket: "zero-strom-web.firebasestorage.app",
+        messagingSenderId: "758369466349",
+        appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+      };
+
+      let db = null;
+      try {
+        if (typeof firebase !== 'undefined' && firebase.apps) {
+          if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+          db = firebase.firestore();
+        }
+      } catch (_) {
+        db = null;
+      }
+
+      function start() {
+        if (!db) { setUnavailable(); return; }
+        const ref = db.collection('globalStats').doc('general');
+
+        try {
+          ref.get({ source: 'server' }).then((doc) => {
+            if (doc && doc.exists) setFromDoc(doc.data() || {});
+            else setUnavailable();
+          }).catch(() => {
+            setUnavailable();
+          });
+        } catch (_) {
+          setUnavailable();
+        }
+
+        ref.onSnapshot({ includeMetadataChanges: true }, (doc) => {
+          if (!doc || !doc.exists) return;
+          if (doc.metadata && doc.metadata.fromCache) return;
+          setFromDoc(doc.data() || {});
+        }, () => {
+          setUnavailable();
+        });
+      }
+
+      if (typeof firebase !== 'undefined' && firebase.auth) {
+        firebase.auth().onAuthStateChanged((user) => {
+          if (user) { start(); return; }
+          firebase.auth().signInAnonymously().then(start).catch(start);
+        });
+      } else {
+        start();
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -225,6 +225,7 @@
     }
 
     .user-insignia.vip { background: #000; color: #fff; }
+    .user-insignia.superfan { background: linear-gradient(135deg, #ff0050, #00f2ea); color: #fff; box-shadow: 0 2px 10px rgba(255, 0, 80, 0.25); }
     .user-insignia.z0-vip { background: #e91e63; color: #fff; }
     .user-insignia.donador { background: #ffa500; color: #fff; }
     .user-insignia.z0-fan {
@@ -1179,6 +1180,7 @@
     const donadorSet = new Set();
     const z0FanSet = new Set();
     const z0PlatinumSet = new Set();
+    const superfanSet = new Set();
     let selectedBadgeMap = {};
     let currentCardData = null;
 
@@ -1220,6 +1222,7 @@
       }
       for (let i = 0; i < candidates.length; i++) {
         const key = candidates[i];
+        if (superfanSet.has(key)) return 'superfan';
         if (z0PlatinumSet.has(key)) return 'z0-platino';
         if (z0VipSet.has(key)) return 'z0-vip';
         if (vipSet.has(key)) return 'vip';
@@ -1238,7 +1241,8 @@
       userInsigniaEl.hidden = !badge;
       userInsigniaEl.className = 'user-insignia' + (badge ? ` ${badge}` : '');
       if (!badge) { userInsigniaEl.textContent = ''; return; }
-      if (badge === 'vip') userInsigniaEl.textContent = 'VIP';
+      if (badge === 'superfan') userInsigniaEl.textContent = 'SF';
+      else if (badge === 'vip') userInsigniaEl.textContent = 'VIP';
       else if (badge === 'z0-vip') userInsigniaEl.textContent = 'z0Vip';
       else if (badge === 'donador') userInsigniaEl.textContent = '🪙';
       else if (badge === 'z0-fan') userInsigniaEl.textContent = 'z0';
@@ -1330,6 +1334,16 @@
         });
         if (currentCardData) applyBadgeToCard(currentCardData);
       }, (err) => console.warn('Overlay: error leyendo vipUsers:', err));
+
+      db.collection('superfanUsers').onSnapshot((snap) => {
+        superfanSet.clear();
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          const name = normalizeUserKey(d.name || doc.id || '');
+          if (name) superfanSet.add(name);
+        });
+        if (currentCardData) applyBadgeToCard(currentCardData);
+      }, (err) => console.warn('Overlay: error leyendo superfanUsers:', err));
 
       db.collection('z0VipUsers').onSnapshot((snap) => {
         z0VipSet.clear();

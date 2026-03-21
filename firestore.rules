@@ -24,19 +24,26 @@ service cloud.firestore {
     // Solicitudes de canciones (colección principal)
     match /solicitudes/{doc} {
       allow read: if true;
-      allow create: if true;
-      allow delete: if true;
-      allow update: if true; // Permitir actualizaciones para timestamps y metadatos
-      
-      // Validaciones para nuevas solicitudes
-      allow create: if request.resource.data.keys().hasAll(['usuario', 'cancion', 'artista', 'timestamp']) &&
+      allow create: if request.auth != null &&
+        request.resource.data.keys().hasAll(['usuario', 'cancion', 'artista', 'day', 'ts']) &&
         request.resource.data.usuario is string &&
         request.resource.data.cancion is string &&
         request.resource.data.artista is string &&
-        request.resource.data.timestamp is timestamp &&
+        request.resource.data.day is string &&
+        request.resource.data.ts is timestamp &&
         request.resource.data.usuario.size() > 0 &&
+        request.resource.data.usuario.size() <= 64 &&
         request.resource.data.cancion.size() > 0 &&
-        request.resource.data.artista.size() > 0;
+        request.resource.data.cancion.size() <= 140 &&
+        request.resource.data.artista.size() > 0 &&
+        request.resource.data.artista.size() <= 140 &&
+        request.resource.data.day.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        request.resource.data.ts == request.time &&
+        (!('status' in request.resource.data) || request.resource.data.status in ['pending', 'approved', 'rejected', 'played']) &&
+        (!('badge' in request.resource.data) || request.resource.data.badge is string) &&
+        (!('displayName' in request.resource.data) || request.resource.data.displayName is string) &&
+        (!('source' in request.resource.data) || (request.resource.data.source is string && request.resource.data.source in ['web', 'tiktok', 'test']));
+      allow update, delete: if request.auth != null;
     }
 
     // Colección alternativa: requests (para compatibilidad)
@@ -117,6 +124,16 @@ service cloud.firestore {
       allow create, update, delete: if true;
       
       // Validar estructura de usuario z0-Platino
+      allow write: if resource == null ||
+        (request.resource.data.keys().hasAll(['name']) &&
+         request.resource.data.name is string &&
+         request.resource.data.name.size() > 0);
+    }
+
+    // Usuarios Superfan (TikTok) (nuevo tipo de insignia)
+    match /superfanUsers/{doc} {
+      allow read: if true;
+      allow create, update, delete: if true;
       allow write: if resource == null ||
         (request.resource.data.keys().hasAll(['name']) &&
          request.resource.data.name is string &&

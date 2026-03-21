@@ -674,6 +674,9 @@
           <button id="theme-btn" class="theme-btn" type="button" aria-label="Cambiar tema" title="Cambiar tema">
             🎨
           </button>
+          <button id="vip-hierarchy-btn" class="theme-btn" type="button" aria-label="Jerarquía VIP" title="Jerarquía VIP">
+            👑
+          </button>
           <!-- Botón de lápiz para modo edición (visible solo en modo admin) -->
           <button id="edit-toggle-btn" class="edit-toggle-btn" type="button" title="Editar lista (eliminar / mover)" aria-pressed="false" hidden>
             ✏️
@@ -760,6 +763,7 @@
           <div class="admin-row badge-selector">
             <div class="badge-selector-title">Selecciona tipo de insignia</div>
             <div class="badge-tabs" role="tablist" aria-label="Tipos de insignia">
+              <button type="button" class="points-tab badge-tab" data-badge="superfan" role="tab" aria-selected="false">⭐ Superfan</button>
               <button type="button" class="points-tab badge-tab active" data-badge="vip" role="tab" aria-selected="true">👑 VIP</button>
               <button type="button" class="points-tab badge-tab" data-badge="z0-vip" role="tab" aria-selected="false">⭐ Z0-VIP</button>
               <button type="button" class="points-tab badge-tab" data-badge="donador" role="tab" aria-selected="false">💎 Donador</button>
@@ -767,12 +771,29 @@
               <button type="button" class="points-tab badge-tab" data-badge="z0-platino" role="tab" aria-selected="false">🥈 z0-Platino</button>
             </div>
             <select id="badge-type-select" class="admin-select" hidden aria-hidden="true" tabindex="-1">
+              <option value="superfan">⭐ Superfan</option>
               <option value="vip">👑 VIP</option>
               <option value="z0-vip">⭐ Z0-VIP</option>
               <option value="donador">💎 Donador</option>
               <option value="z0-fan">🤍 z0-Fan</option>
               <option value="z0-platino">🥈 z0-Platino</option>
             </select>
+          </div>
+
+          <div id="superfan-management" class="badge-management" hidden>
+            <div class="admin-row">
+              <label for="all-users-select-superfan">Selecciona usuario para Superfan (TikTok):</label>
+              <select id="all-users-select-superfan" class="user-select" aria-label="Usuarios registrados para Superfan">
+                <option value="">Selecciona un usuario</option>
+              </select>
+              <div class="admin-btns">
+                <button type="button" id="superfan-add" class="btn">Agregar Superfan</button>
+              </div>
+              <div class="admin-list-section">
+                <strong>Usuarios Superfan:</strong>
+                <ul id="superfan-list" class="vip-list"></ul>
+              </div>
+            </div>
           </div>
 
           <!-- Gestión de VIP -->
@@ -1380,6 +1401,17 @@
         </div>
       </div>
 
+      <div id="vip-hierarchy-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="vip-hierarchy-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="vip-hierarchy-modal-title">👑 Jerarquía VIP</h2>
+          <div id="vip-hierarchy-content"></div>
+          <div class="actions modal-actions">
+            <button type="button" id="vip-hierarchy-close" class="btn">Cerrar</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Modal de Gamificación -->
       <div id="gamification-modal" class="modal-overlay" hidden>
         <div class="modal gamification-modal" role="dialog" aria-modal="true" aria-labelledby="gamification-modal-title">
@@ -1424,6 +1456,7 @@
             <label for="badge-select">🎖️ Insignia a mostrar:</label>
             <select id="badge-select" class="user-select">
               <option value="">Ninguna</option>
+              <option value="superfan">Superfan</option>
               <option value="z0-fan">z0-Fan</option>
               <option value="z0-vip">z0Vip</option>
               <option value="z0-platino">VIP Platino</option>
@@ -3024,6 +3057,7 @@
         items.forEach((it, index) => {
           const unameLc = String(it.usuario||'').trim().toLowerCase();
           const displayUser = String(it.displayName || it.usuario || '').trim();
+          const isSuperfan = window.superfanSet && window.superfanSet.has(unameLc);
           const isVip = vipSet.has(unameLc);
           const isZ0Vip = z0VipSet.has(unameLc);
           const isDonador = donadorSet.has(unameLc);
@@ -3041,7 +3075,9 @@
           // Verificar insignias especiales de donador (si vienen en el objeto 'it' desde backend)
           const badgeType = it.badge || '';
 
-          if (badgeType === 'donador-oro') {
+          if (badgeType === 'superfan' || isSuperfan) {
+             li.className = 'item superfan';
+          } else if (badgeType === 'donador-oro') {
              li.className = 'item donador-oro';
           } else if (badgeType === 'donador-plata') {
              li.className = 'item donador-plata';
@@ -3072,7 +3108,7 @@
 
           const selectedBadge = typeof window.getSelectedBadgeFor === 'function' ? window.getSelectedBadgeFor(it.usuario) : '';
           if (selectedBadge) {
-            li.classList.remove('vip','z0-vip','donador','z0-fan','z0-platino');
+            li.classList.remove('superfan','vip','z0-vip','donador','z0-fan','z0-platino');
             li.classList.add(selectedBadge);
           }
 
@@ -4352,10 +4388,12 @@
         const end = new Date(start);
         end.setDate(end.getDate() + 1);
 
-        const applyItems = (items) => {
+        const applyItems = (itemsObj) => {
+          const { items, allItems } = itemsObj;
           const visibleItems = applyDisplayOrder(items);
           currentDayItems = visibleItems;
           window.__dayItems = visibleItems;
+          window.__allDayItems = allItems; // NUEVO: Guardar el array sin filtrar globalmente
           renderSolicitudes(visibleItems);
           try { if (window.refreshStatsTicker) window.refreshStatsTicker(); } catch (_) {}
           try {
@@ -4369,12 +4407,13 @@
 
         const itemsFromSnap = (snap) => {
           let items = [];
+          let allItems = []; // NUEVO: Guardar todos los items sin filtrar
           snap.forEach((doc) => {
             const data = doc.data();
             if (window.isDummyRequestForList ? window.isDummyRequestForList(data) : (String(data?.usuario || '').trim().toLowerCase() === 'prueba')) return;
             const isVip = vipSet.has(data.usuario) || z0VipSet.has(data.usuario);
-            if (vipOnly.checked && !isVip) return;
-            items.push({
+            
+            const itemObj = {
               id: doc.id,
               requestId: data.id,
               usuario: data.usuario,
@@ -4387,14 +4426,18 @@
               ts: data.ts,
               hora: toHour(data.ts),
               day: dayValue
-            });
+            };
+            
+            allItems.push(itemObj); // Siempre guardamos el item completo
+            
+            if (vipOnly.checked && !isVip) return;
+            items.push(itemObj);
           });
-          if (items.length === 0) {
+          if (allItems.length === 0) {
             const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
             const arr = Array.isArray(byDay[dayValue]) ? byDay[dayValue] : [];
-            items = arr
+            const mappedArr = arr
               .filter(it => !(window.isDummyRequestForList ? window.isDummyRequestForList(it) : (String(it?.usuario || '').trim().toLowerCase() === 'prueba')))
-              .filter(it => !vipOnly.checked || vipSet.has(it.usuario) || z0VipSet.has(it.usuario))
               .map(it => ({
                 requestId: it.id,
                 usuario: it.usuario,
@@ -4407,8 +4450,11 @@
                 time: it.time,
                 day: dayValue
               }));
+              
+            allItems = mappedArr;
+            items = mappedArr.filter(it => !vipOnly.checked || vipSet.has(it.usuario) || z0VipSet.has(it.usuario));
           }
-          return items;
+          return { items, allItems };
         };
 
         let didFallbackToTs = false;
@@ -4660,12 +4706,40 @@
         return results;
       };
 
+      function subscribeSuperfanUsers() {
+        db.collection('superfanUsers').onSnapshot((snap) => {
+          window.superfanSet = new Set();
+          window.__badgeUserLists = window.__badgeUserLists || {};
+          window.__badgeUserLists.superfan = [];
+          const listEl = document.getElementById('superfan-list');
+          if (listEl) listEl.innerHTML = '';
+          snap.forEach((doc) => {
+            const d = doc.data() || {};
+            const name = String(d.name || doc.id || '').trim();
+            if (!name) return;
+            window.superfanSet.add(name.toLowerCase());
+            window.__badgeUserLists.superfan.push(name);
+            if (listEl) {
+              const li = document.createElement('li');
+              li.innerHTML = `<span>${name}</span><button type="button" class="remove-btn" data-user="${name}" data-type="superfan" aria-label="Quitar Superfan">×</button>`;
+              listEl.appendChild(li);
+            }
+          });
+          if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
+          applySelectedBadgeToAll();
+          refreshBadgeSelectUI();
+          try { renderVipHierarchyIfOpen(); } catch (_) {}
+        }, (err) => console.error('❌ Error suscripción Superfan:', err));
+      }
+
       function subscribeVipUsers() {
         console.log('🔄 Iniciando suscripción VIP...');
         db.collection('vipUsers').onSnapshot((snap) => {
           console.log(`📊 VIP snapshot recibido: ${snap.size} documentos`);
           window.vipSet = new Set();
           window.vipMap = new Map();
+          window.__badgeUserLists = window.__badgeUserLists || {};
+          window.__badgeUserLists.vip = [];
           vipSet = window.vipSet;
           vipListEl.innerHTML = '';
           snap.forEach((doc) => {
@@ -4683,6 +4757,7 @@
             if (name) {
               const normalizedName = String(name).trim().toLowerCase();
               vipSet.add(normalizedName);
+              window.__badgeUserLists.vip.push(String(name).trim());
               
               let activationDate = null;
               if (activatedAt) {
@@ -4713,6 +4788,7 @@
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
           applySelectedBadgeToAll();
           refreshBadgeSelectUI();
+          try { renderVipHierarchyIfOpen(); } catch (_) {}
         }, (err) => {
           console.error('❌ Error suscripción VIP:', err);
         });
@@ -4724,6 +4800,8 @@
         db.collection('z0VipUsers').onSnapshot((snap) => {
           console.log(`📊 Z0-VIP snapshot recibido: ${snap.size} documentos`);
           window.z0VipSet = new Set();
+          window.__badgeUserLists = window.__badgeUserLists || {};
+          window.__badgeUserLists['z0-vip'] = [];
           z0VipSet = window.z0VipSet;
           if (z0VipListEl) {
             z0VipListEl.innerHTML = '';
@@ -4732,6 +4810,7 @@
             const { name } = doc.data();
             if (name) {
               z0VipSet.add(String(name).trim().toLowerCase());
+              window.__badgeUserLists['z0-vip'].push(String(name).trim());
               if (z0VipListEl) {
                 const li = document.createElement('li');
                 li.innerHTML = `
@@ -4754,6 +4833,7 @@
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
           applySelectedBadgeToAll();
           refreshBadgeSelectUI();
+          try { renderVipHierarchyIfOpen(); } catch (_) {}
         }, (err) => {
           console.error('❌ Error suscripción Z0-VIP:', err);
         });
@@ -4764,6 +4844,8 @@
         db.collection('donadorUsers').onSnapshot((snap) => {
           console.log(`📊 Donador snapshot recibido: ${snap.size} documentos`);
           window.donadorSet = new Set();
+          window.__badgeUserLists = window.__badgeUserLists || {};
+          window.__badgeUserLists.donador = [];
           donadorSet = window.donadorSet;
           if (donadorListEl) {
             donadorListEl.innerHTML = '';
@@ -4785,6 +4867,7 @@
               }
               
               donadorSet.add(String(name).trim().toLowerCase());
+              window.__badgeUserLists.donador.push(`${String(name).trim()} (hasta ${expireDate})`);
               if (donadorListEl) {
                 const li = document.createElement('li');
                 li.innerHTML = `
@@ -4807,6 +4890,7 @@
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
           applySelectedBadgeToAll();
           refreshBadgeSelectUI();
+          try { renderVipHierarchyIfOpen(); } catch (_) {}
         }, (err) => {
           console.error('❌ Error suscripción Donadores:', err);
         });
@@ -4816,11 +4900,14 @@
         const listEl = document.getElementById('z0-fan-list');
         db.collection('z0FanUsers').onSnapshot((snap) => {
           window.z0FanSet = new Set();
+          window.__badgeUserLists = window.__badgeUserLists || {};
+          window.__badgeUserLists['z0-fan'] = [];
           if (listEl) listEl.innerHTML = '';
           snap.forEach((doc) => {
             const { name } = doc.data();
             if (name) {
               window.z0FanSet.add(String(name).trim().toLowerCase());
+              window.__badgeUserLists['z0-fan'].push(String(name).trim());
               if (listEl) {
                 const li = document.createElement('li');
                 li.innerHTML = `<span>${name}</span><button type="button" class="remove-btn" data-user="${name}" data-type="z0-fan" aria-label="Quitar z0-Fan">×</button>`;
@@ -4842,6 +4929,7 @@
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
           applySelectedBadgeToAll();
           refreshBadgeSelectUI();
+          try { renderVipHierarchyIfOpen(); } catch (_) {}
         }, (err) => { console.error('❌ Error suscripción z0-Fan:', err); });
       }
 
@@ -4849,11 +4937,14 @@
         const listEl = document.getElementById('z0-platino-list');
         db.collection('z0PlatinumUsers').onSnapshot((snap) => {
           window.z0PlatinumSet = new Set();
+          window.__badgeUserLists = window.__badgeUserLists || {};
+          window.__badgeUserLists['z0-platino'] = [];
           if (listEl) listEl.innerHTML = '';
           snap.forEach((doc) => {
             const { name } = doc.data();
             if (name) {
               window.z0PlatinumSet.add(String(name).trim().toLowerCase());
+              window.__badgeUserLists['z0-platino'].push(String(name).trim());
               if (listEl) {
                 const li = document.createElement('li');
                 li.innerHTML = `<span>${name}</span><button type="button" class="remove-btn" data-user="${name}" data-type="z0-platino" aria-label="Quitar z0-Platino">×</button>`;
@@ -4875,6 +4966,7 @@
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
           applySelectedBadgeToAll();
           refreshBadgeSelectUI();
+          try { renderVipHierarchyIfOpen(); } catch (_) {}
         }, (err) => { console.error('❌ Error suscripción z0-Platino:', err); });
       }
 
@@ -5089,18 +5181,13 @@
         ' • <strong>📝 Solicitudes:</strong> ' + (s.total || 0) +
         ' • <strong>⭐ VIP:</strong> ' + (s.vip || 0) +
         ' • <strong>👑 z0Vip:</strong> ' + (s.z0vip || 0);
-      const g = window.__globalStats || computeGlobalStats();
+      const g = window.__globalStats || { topSong: 'N/D', topSongCount: 0, topArtist: 'N/D', topArtistCount: 0, topArtists3: [], topUsers3: [], topLiker: 'N/D', topLikerCount: 0, total: 0 };
       function fmtG(x) { return x && x.length ? x : 'N/D'; }
       const top3TxtGlobal = Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D';
       const usersTop3TxtGlobal = Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D';
       let avgTxtGlobal = 'N/D';
       if (typeof window.__globalTotalSolicitudes === 'number' && typeof window.__globalDistinctUsers === 'number' && window.__globalDistinctUsers > 0) {
         avgTxtGlobal = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
-      } else {
-        const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-        const filtered = (solicitudes || []).filter(x => !isTestRequestForStats(x));
-        const usersSet = new Set(filtered.map(x => String(x.usuario||'').trim()).filter(Boolean));
-        avgTxtGlobal = usersSet.size ? (filtered.length / usersSet.size).toFixed(1) : '0.0';
       }
       const globalText = '<strong>HISTORIA:</strong>' +
         ' • <strong>🎵 Canción más pedida:</strong> ' + fmtG(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') +
@@ -5121,7 +5208,7 @@
         if (!container) return;
         if (container.getAttribute('data-react-root') === 'true') return;
         function fmt(x){ return x && x.length ? x : 'N/D'; }
-        const items = window.__dayItems || [];
+        const items = window.__allDayItems || window.__dayItems || []; // NUEVO: Usar items sin filtrar
         if (Array.isArray(items) && items.length) {
           const s = computeDayStatsFromItems(items);
           const chips = [
@@ -5343,6 +5430,7 @@
         fillSelect(document.getElementById('all-users-select-donador'));
         fillSelect(document.getElementById('all-users-select-z0-fan'));
         fillSelect(document.getElementById('all-users-select-z0-platino'));
+        fillSelect(document.getElementById('all-users-select-superfan'));
       }
       window.renderAllUsersSelect = renderAllUsersSelect;
 
@@ -5360,6 +5448,22 @@
         } catch (err) {
           console.error('Error al agregar VIP:', err);
           alert('No se pudo agregar el usuario a VIP. Revisa reglas/permisos.');
+        }
+      });
+
+      const superfanAddBtn = document.getElementById('superfan-add');
+      superfanAddBtn?.addEventListener('click', async () => {
+        const sel = document.getElementById('all-users-select-superfan');
+        const name = sel?.value.trim();
+        if (!name) {
+          alert('Selecciona un usuario del listado.');
+          return;
+        }
+        try {
+          await db.collection('superfanUsers').doc(name).set({ name }, { merge: true });
+        } catch (err) {
+          console.error('Error al agregar Superfan:', err);
+          alert('No se pudo agregar el usuario a Superfan. Revisa reglas/permisos.');
         }
       });
 
@@ -5436,6 +5540,19 @@
         vipRemoveModal.hidden = false;
       });
 
+      const superfanListEl = document.getElementById('superfan-list');
+      superfanListEl?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.remove-btn');
+        if (!btn) return;
+        const user = btn.getAttribute('data-user');
+        const type = btn.getAttribute('data-type');
+        if (!user) return;
+        pendingVipRemoveUser = user;
+        pendingVipRemoveType = type || 'superfan';
+        vipRemoveUserSpan.textContent = user;
+        vipRemoveModal.hidden = false;
+      });
+
       const z0VipListEl = document.getElementById('z0-vip-list');
       const z0FanListEl = document.getElementById('z0-fan-list');
       const z0PlatinoListEl = document.getElementById('z0-platino-list');
@@ -5499,7 +5616,9 @@
         if (!pendingVipRemoveUser) return;
         try {
           let collection = 'vipUsers';
-          if (pendingVipRemoveType === 'z0') {
+          if (pendingVipRemoveType === 'superfan') {
+            collection = 'superfanUsers';
+          } else if (pendingVipRemoveType === 'z0') {
             collection = 'z0VipUsers';
           } else if (pendingVipRemoveType === 'donador') {
             collection = 'donadorUsers';
@@ -5632,6 +5751,7 @@
         // Mostrar estado inicial aunque no haya datos todavía
         try { renderSolicitudes([]); } catch (_) {}
         console.log('📅 Días cargados, iniciando suscripciones...');
+        subscribeSuperfanUsers();
         subscribeVipUsers();
         subscribeZ0VipUsers();
         subscribeDonadorUsers();
@@ -5765,7 +5885,7 @@
       const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
       let totalCount = 0;
       
-      // 1. Contar elementos pendientes en la lista visual (items)
+      // 1. Contar TODOS los elementos del día (items ya incluye pendientes y reproducidas)
       for (let i = 0; i < (items || []).length; i++) {
         const it = items[i] || {};
         if (isTestRequestForTicker(it)) continue;
@@ -5773,38 +5893,10 @@
         totalCount++;
       }
       
-      // 2. Contar elementos ya reproducidos del día actual (playedSongs)
+      // 2. Contar elementos ya reproducidos del día actual (playedSongs) solo para la métrica "Reproducidas"
       const day = String(document.getElementById('day-select')?.value || '').trim();
       const playedMap = getLocalPlayedMapForTicker();
       const playedTodayIds = Array.isArray(playedMap[day]) ? playedMap[day] : [];
-      
-      // Necesitamos buscar los detalles de estas canciones reproducidas
-      // Intentamos buscarlas en el almacenamiento local de solicitudes del día
-      try {
-          const solicitudesByDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          const todaySolicitudes = solicitudesByDay[day] || [];
-          
-          // Crear un mapa para búsqueda rápida
-          const solMap = new Map();
-          todaySolicitudes.forEach(s => { if(s && s.id) solMap.set(s.id, s); });
-          
-          playedTodayIds.forEach(id => {
-              const sol = solMap.get(id);
-              if (sol) {
-                  // Procesar si no es test
-                  if (!isTestRequestForTicker(sol)) {
-                      processItemForStats(sol, songCount, artistCount, userCount, genreCount, artistOriginal, userOriginal);
-                      // No sumamos a totalCount porque ya se cuenta en 'played' abajo, o depende de la definición de "total"
-                      // Para consistencia con la vista "Hoy", total suele ser pendientes + reproducidas
-                      // Pero items ya suele incluir todo si no se ha filtrado. 
-                      // Si 'items' son solo los visibles (pendientes), entonces sí debemos sumar.
-                      // Asumiremos que 'items' viene de renderSolicitudes que a veces excluye played.
-                      // Para seguridad, verificamos si ya estaba contado.
-                      // Simplificación: Las estadísticas de "Hoy" deben incluir lo que ya sonó.
-                  }
-              }
-          });
-      } catch(e) { console.error(e); }
 
       function processItemForStats(it, songCount, artistCount, userCount, genreCount, artistOriginal, userOriginal) {
         const uNorm = normalizeUserForTicker(it.usuario);
@@ -5876,12 +5968,35 @@
         topArtists3: artistTop3,
         topUsers3: usersTop3,
         topGenre: tg,
-        total: totalCount + playedCount, // Aproximación corrección
+        total: totalCount, // FIX: items ya incluye todas las solicitudes del día
         played: playedCount,
         vip: vipRequests,
         z0vip: z0VipRequests
       };
     }
+
+    (function(){
+      try {
+        const cacheVersion = 'statsTicker-v3';
+        const cacheKey = '__cache_version_stats_ticker';
+        const qs = new URLSearchParams(location.search);
+        const force = qs.get('purge') === '1' || qs.get('purgeCache') === '1' || qs.get('reset') === '1';
+        const current = localStorage.getItem(cacheKey);
+        if (force || current !== cacheVersion) {
+          localStorage.removeItem('solicitudes');
+          localStorage.removeItem('solicitudes_by_day');
+          localStorage.setItem(cacheKey, cacheVersion);
+          if (force) {
+            try {
+              qs.delete('purge'); qs.delete('purgeCache'); qs.delete('reset');
+              const newUrl = location.pathname + (qs.toString() ? `?${qs.toString()}` : '') + location.hash;
+              history.replaceState(null, '', newUrl);
+            } catch (_) {}
+            try { location.reload(); } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    })();
 
     function computeGlobalStats() {
       let solicitudes = [];
@@ -5965,8 +6080,8 @@
       if (!el) return;
       if (el.getAttribute('data-react-root') === 'true') return;
       function fmt(x) { return x && x.length ? x : 'N/D'; }
-      const items = window.__dayItems || [];
-      const g = window.__globalStats || computeGlobalStats();
+      const items = window.__allDayItems || window.__dayItems || []; // NUEVO: Usar items sin filtrar
+      const g = window.__globalStats || { topSong: 'N/D', topSongCount: 0, topArtist: 'N/D', topArtistCount: 0, topArtists3: [], topUsers3: [], topLiker: 'N/D', topLikerCount: 0, total: 0 };
       const top3Txt = Array.isArray(g.topArtists3) && g.topArtists3.length ? g.topArtists3.join(', ') : 'N/D';
       const usersTop3Txt = Array.isArray(g.topUsers3) && g.topUsers3.length ? g.topUsers3.join(', ') : 'N/D';
       
@@ -5996,11 +6111,6 @@
       let avgTxt = 'N/D';
       if (typeof window.__globalTotalSolicitudes === 'number' && typeof window.__globalDistinctUsers === 'number' && window.__globalDistinctUsers > 0) {
         avgTxt = (window.__globalTotalSolicitudes / window.__globalDistinctUsers).toFixed(1);
-      } else {
-        const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-        const filtered = (solicitudes || []).filter(x => (window.isTestRequestForStats ? !window.isTestRequestForStats(x) : (String(x?.usuario || '').trim().toLowerCase() !== 'prueba')));
-        const usersSet = new Set(filtered.map(x => String(x.usuario||'').trim()).filter(Boolean));
-        avgTxt = usersSet.size ? (filtered.length / usersSet.size).toFixed(1) : '0.0';
       }
       const globalText = '<strong>HISTORIA:</strong>' +
         ' • <strong>🎵 Canción más pedida:</strong> ' + fmt(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') +
@@ -6028,46 +6138,56 @@
       const dbRef = window.db;
 
       // FIX: Leer de 'globalStats/general' para consistencia entre usuarios
-      window.__statsTickerUnsub = dbRef.collection('globalStats').doc('general').onSnapshot((doc) => {
-        if (doc.exists) {
-            const data = doc.data();
-            window.__globalStats = {
-                topSong: data.topSong || 'N/D',
-                topSongCount: data.topSongCount || 0,
-                topArtist: (data.topArtists && data.topArtists[0]) ? data.topArtists[0].split('(')[0].trim() : 'N/D',
-                topArtistCount: (data.topArtists && data.topArtists[0]) ? parseInt(data.topArtists[0].match(/\((\d+)\)/)?.[1] || 0) : 0, 
-                topArtists3: data.topArtists || [],
-                topUser: (data.topUsers && data.topUsers[0]) ? data.topUsers[0].split('(')[0].trim() : 'N/D',
-                topUsers3: data.topUsers || [],
-                total: data.totalRequests || 0,
-                // --- NUEVO: Top Liker ---
-                topLiker: (data.topLiker || 'N/D'),
-                topLikerCount: (data.topLikerCount || 0),
-                // --- NUEVO: Top Género ---
-                topGenre: (data.topGenre || 'N/D'),
-                topGenreCount: (data.topGenreCount || 0)
-            };
-            window.__globalGenreTop = data.topGenre || 'N/D';
-            window.__globalDistinctUsers = data.topUsers ? data.topUsers.length : 0; // Aproximado
-            window.__globalTotalSolicitudes = data.totalRequests || 0;
-            refreshStatsTicker();
-        } else {
-            // Fallback si no existe el documento global (usar lógica local antigua)
-            console.warn('⚠️ No existe globalStats/general, usando cálculo local...');
-            fallbackLocalStats(dbRef);
-        }
-      }, (err) => { 
-          console.error('Error suscribiendo a globalStats:', err);
-          fallbackLocalStats(dbRef);
-      });
-    }
+      const docRef = dbRef.collection('globalStats').doc('general');
+      const setFromData = (data) => {
+        window.__globalStats = {
+          topSong: data.topSong || 'N/D',
+          topSongCount: data.topSongCount || 0,
+          topArtist: (data.topArtists && data.topArtists[0]) ? data.topArtists[0].split('(')[0].trim() : 'N/D',
+          topArtistCount: (data.topArtists && data.topArtists[0]) ? parseInt(data.topArtists[0].match(/\((\d+)\)/)?.[1] || 0) : 0,
+          topArtists3: data.topArtists || [],
+          topUser: (data.topUsers && data.topUsers[0]) ? data.topUsers[0].split('(')[0].trim() : 'N/D',
+          topUsers3: data.topUsers || [],
+          total: data.totalRequests || 0,
+          topLiker: (data.topLiker || 'N/D'),
+          topLikerCount: (data.topLikerCount || 0),
+          topGenre: (data.topGenre || 'N/D'),
+          topGenreCount: (data.topGenreCount || 0)
+        };
+        window.__globalGenreTop = data.topGenre || 'N/D';
+        window.__globalDistinctUsers = Number(data.distinctUsers || 0) || (data.topUsers ? data.topUsers.length : 0);
+        window.__globalTotalSolicitudes = data.totalRequests || 0;
+      };
+      const setUnavailable = () => {
+        window.__globalStats = { topSong: 'N/D', topSongCount: 0, topArtist: 'N/D', topArtistCount: 0, topArtists3: [], topUsers3: [], topLiker: 'N/D', topLikerCount: 0, total: 0 };
+        window.__globalGenreTop = 'N/D';
+        window.__globalDistinctUsers = 0;
+        window.__globalTotalSolicitudes = 0;
+      };
 
-    function fallbackLocalStats(dbRef) {
-         // Lógica antigua de snapshot a 'solicitudes' (pesada y local)
-         // Solo como respaldo
-         dbRef.collection('solicitudes').limit(500).get().then((snap) => {
-            // ... lógica mínima para no romper ...
-         });
+      try {
+        docRef.get({ source: 'server' }).then((doc) => {
+          if (doc && doc.exists) setFromData(doc.data() || {});
+          else setUnavailable();
+          refreshStatsTicker();
+        }).catch(() => {
+          setUnavailable();
+          refreshStatsTicker();
+        });
+      } catch (_) {
+        setUnavailable();
+        refreshStatsTicker();
+      }
+
+      window.__statsTickerUnsub = docRef.onSnapshot({ includeMetadataChanges: true }, (doc) => {
+        if (!doc || !doc.exists) return;
+        if (doc.metadata && doc.metadata.fromCache) return;
+        setFromData(doc.data() || {});
+        refreshStatsTicker();
+      }, () => {
+        setUnavailable();
+        refreshStatsTicker();
+      });
     }
 
     function subscribeUserStatsGenres() {
@@ -6115,23 +6235,15 @@
           // (o si simplemente son imposibles para un usuario normal), recalcular usando la fórmula correcta.
           const totalLikes = Number(d.totalLikes || 0);
           if (pts > 50000 && totalLikes > 0) {
-              // Si el valor inflado es mucho mayor que el estimado por likes,
-              // es porque ocurrió el bug de la multiplicación.
-              // En lugar de hacer cálculos raros, simplemente forzamos el cálculo estricto:
-              // Total Puntos Reales = (Puntos base sin likes) + (Likes / 300)
-              const likesPointsReales = Math.floor(totalLikes / 300);
-              const puntosBase = Number(d.accumulatedPoints || 0); // O un estimado si no lo tenemos
+              // Si los puntos son casi iguales a los likes (error de multiplicación x1)
+              // O si son masivos, asumimos que están mal y recalculamos una aproximación segura.
+              // Fórmula: (Likes / 300) + otros bonos estimados. 
+              // Como no tenemos todo el historial aquí, simplificamos a Likes/300 que es la fuente principal de la inflación.
+              const estimatedFromLikes = Math.floor(totalLikes / 300);
               
-              // Si no tenemos accumulatedPoints, usamos una heurística:
-              // Asumimos que los puntos inflados = puntosBase + (totalLikes * likesPerPoint_bug)
-              // Así que recalculamos restando la inflación.
-              const currentInflatedLikesPoints = Number(d.totalLikesPoints || 0);
-              if (currentInflatedLikesPoints > likesPointsReales * 10) {
-                  const base = pts - currentInflatedLikesPoints;
-                  pts = Math.max(0, base) + likesPointsReales;
-              } else {
-                  // Fallback extremo
-                  pts = likesPointsReales;
+              // Si el valor inflado es mucho mayor que el estimado, usamos el estimado.
+              if (pts > (estimatedFromLikes * 2)) {
+                  pts = estimatedFromLikes + (Number(d.accumulatedPoints || 0)); // Fallback suave
               }
           }
 
@@ -6261,6 +6373,7 @@
       
       // Variables para el selector de insignias
       const badgeTypeSelect = document.getElementById('badge-type-select');
+      const superfanManagement = document.getElementById('superfan-management');
       const vipManagement = document.getElementById('vip-management');
       const z0VipManagement = document.getElementById('z0-vip-management');
       const donadorManagement = document.getElementById('donador-management');
@@ -6423,6 +6536,7 @@
 
       // Función para mostrar la gestión de una insignia específica
       function showBadgeManagement(badgeType) {
+        if (superfanManagement) superfanManagement.hidden = true;
         if (vipManagement) vipManagement.hidden = true;
         if (z0VipManagement) z0VipManagement.hidden = true;
         if (donadorManagement) donadorManagement.hidden = true;
@@ -6432,6 +6546,9 @@
         if (z0PlatinoManagement) z0PlatinoManagement.hidden = true;
 
         switch(badgeType) {
+          case 'superfan':
+            if (superfanManagement) superfanManagement.hidden = false;
+            break;
           case 'vip':
             if (vipManagement) vipManagement.hidden = false;
             break;
@@ -6603,6 +6720,7 @@
           }
         } else {
           window.__dayItems = [];
+          window.__allDayItems = [];
           try { refreshStatsTicker(); } catch (_) {}
         }
         hideSearchResults();
@@ -7499,13 +7617,63 @@
         if (e.key === 'Escape') {
           if (!statsModal.hidden) statsModal.hidden = true;
           if (!themeModal.hidden) themeModal.hidden = true;
+          const vipHierarchyModal = document.getElementById('vip-hierarchy-modal');
+          if (vipHierarchyModal && !vipHierarchyModal.hidden) vipHierarchyModal.hidden = true;
         }
       });
+
+      function renderVipHierarchyIfOpen() {
+        const modal = document.getElementById('vip-hierarchy-modal');
+        if (!modal || modal.hidden) return;
+        renderVipHierarchyModal();
+      }
+
+      function renderVipHierarchyModal() {
+        const content = document.getElementById('vip-hierarchy-content');
+        if (!content) return;
+
+        const lists = window.__badgeUserLists || {};
+        const getList = (k) => Array.isArray(lists[k]) ? lists[k].slice() : [];
+        const sortNames = (arr) => arr.map(x => String(x || '').trim()).filter(Boolean).sort((a, b) => a.localeCompare(b, 'es'));
+
+        const superfan = sortNames(getList('superfan'));
+        const z0Platino = sortNames(getList('z0-platino'));
+        const z0Vip = sortNames(getList('z0-vip'));
+        const vip = sortNames(getList('vip'));
+        const donador = sortNames(getList('donador'));
+        const z0Fan = sortNames(getList('z0-fan'));
+
+        const blocks = [
+          '<div style="display:flex; flex-direction:column; gap:12px;">',
+          '<div style="opacity:0.85;">Esta es la jerarquía que se usa como referencia para prioridad y para entender las insignias.</div>',
+          `<details open><summary style="cursor:pointer; font-weight:900;">⭐ Superfan (TikTok) (${superfan.length})</summary><div style="margin-top:8px;">${superfan.length ? superfan.join(', ') : 'N/D'}</div><div style="margin-top:8px; opacity:0.85;">Nivel máximo del live. Esta lista se gestiona en la web para reflejarlo en overlays y en la lista.</div></details>`,
+          `<details><summary style="cursor:pointer; font-weight:900;">z0‑Platino (${z0Platino.length})</summary><div style="margin-top:8px;">${z0Platino.length ? z0Platino.join(', ') : 'N/D'}</div></details>`,
+          `<details><summary style="cursor:pointer; font-weight:900;">z0‑VIP (${z0Vip.length})</summary><div style="margin-top:8px;">${z0Vip.length ? z0Vip.join(', ') : 'N/D'}</div></details>`,
+          `<details><summary style="cursor:pointer; font-weight:900;">VIP (${vip.length})</summary><div style="margin-top:8px;">${vip.length ? vip.join(', ') : 'N/D'}</div></details>`,
+          `<details><summary style="cursor:pointer; font-weight:900;">Donador (temporal) (${donador.length})</summary><div style="margin-top:8px;">${donador.length ? donador.join(', ') : 'N/D'}</div></details>`,
+          `<details><summary style="cursor:pointer; font-weight:900;">z0‑Fan (${z0Fan.length})</summary><div style="margin-top:8px;">${z0Fan.length ? z0Fan.join(', ') : 'N/D'}</div></details>`,
+          '<div style="opacity:0.85;">Nota: “donador‑oro/plata/bronce” son insignias de sesión (Top 3 donadores) y no forman parte de la membresía permanente.</div>',
+          '</div>'
+        ];
+        content.innerHTML = blocks.join('');
+      }
 
       // ===== SISTEMA DE GAMIFICACIÓN =====
       const gamificationModal = document.getElementById('gamification-modal');
       const gamificationOpenBtn = document.getElementById('menu-gamification-open');
       const gamificationCloseBtn = document.getElementById('gamification-close');
+      const vipHierarchyBtn = document.getElementById('vip-hierarchy-btn');
+      const vipHierarchyModal = document.getElementById('vip-hierarchy-modal');
+      const vipHierarchyClose = document.getElementById('vip-hierarchy-close');
+
+      vipHierarchyBtn?.addEventListener('click', () => {
+        if (vipHierarchyModal) vipHierarchyModal.hidden = false;
+        renderVipHierarchyModal();
+      });
+      vipHierarchyClose?.addEventListener('click', () => {
+        if (vipHierarchyModal) vipHierarchyModal.hidden = true;
+      });
+
 
       // ===== SISTEMA DE CANJE DE PUNTOS =====
       const rewardsModal = document.getElementById('rewards-modal');
@@ -13974,6 +14142,7 @@
       function getEarnedBadgesForUser(username) {
         const key = String(username || '').trim().replace(/^@/, '').toLowerCase();
         const res = [];
+        if (window.superfanSet && window.superfanSet.has(key)) res.push('superfan');
         if (window.vipSet && window.vipSet.has(key)) res.push('vip');
         if (window.z0VipSet && window.z0VipSet.has(key)) res.push('z0-vip');
         if (window.donadorSet && window.donadorSet.has(key)) res.push('donador');
@@ -13987,7 +14156,7 @@
         if (!select) return;
         const earned = getEarnedBadgesForUser(username);
         select.innerHTML = '';
-        const titles = { '':'Ninguna','vip':'VIP','z0-vip':'z0Vip','donador':'Donador','z0-fan':'z0','z0-platino':'VIP Platino' };
+        const titles = { '':'Ninguna','superfan':'Superfan','vip':'VIP','z0-vip':'z0Vip','donador':'Donador','z0-fan':'z0','z0-platino':'VIP Platino' };
         const noneOpt = document.createElement('option');
         noneOpt.value = '';
         noneOpt.textContent = titles[''];
@@ -14002,9 +14171,10 @@
 
       function getCurrentMembership(username) {
         const key = String(username || '').trim().replace(/^@/, '').toLowerCase();
-        if (window.vipSet && window.vipSet.has(key)) return 'vip';
-        if (window.z0VipSet && window.z0VipSet.has(key)) return 'z0-vip';
+        if (window.superfanSet && window.superfanSet.has(key)) return 'superfan';
         if (window.z0PlatinumSet && window.z0PlatinumSet.has(key)) return 'z0-platino';
+        if (window.z0VipSet && window.z0VipSet.has(key)) return 'z0-vip';
+        if (window.vipSet && window.vipSet.has(key)) return 'vip';
         if (window.donadorSet && window.donadorSet.has(key)) return 'donador';
         if (window.z0FanSet && window.z0FanSet.has(key)) return 'z0-fan';
         return '';
@@ -14012,6 +14182,7 @@
 
       async function setUserBadgeInFirestore(username, badge) {
         const map = {
+          'superfan': 'superfanUsers',
           'vip': 'vipUsers',
           'z0-vip': 'z0VipUsers',
           'z0-fan': 'z0FanUsers',
@@ -14057,7 +14228,7 @@
           const liUser = String(liUserRaw || '').trim().toLowerCase();
           const key = String(username || '').trim().toLowerCase();
           if (liUser === key) {
-            li.classList.remove('vip','z0-vip','donador','z0-fan','z0-platino');
+            li.classList.remove('superfan','vip','z0-vip','donador','z0-fan','z0-platino');
             if (badge) li.classList.add(badge);
           }
         });
