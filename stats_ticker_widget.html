@@ -22,6 +22,7 @@
       --ticker-bg: rgba(0, 0, 0, 0.35);
       --ticker-color: #fff;
       --ticker-border: rgba(255, 255, 255, 0.10);
+      --ticker-blur: 10px;
     }
 
     #ticker {
@@ -38,8 +39,8 @@
       background: var(--ticker-bg);
       color: var(--ticker-color);
       border-top: 1px solid var(--ticker-border);
-      -webkit-backdrop-filter: blur(10px);
-      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(var(--ticker-blur));
+      backdrop-filter: blur(var(--ticker-blur));
     }
 
     #ticker.top {
@@ -65,6 +66,93 @@
       0% { transform: translateX(0); }
       100% { transform: translateX(-100%); }
     }
+
+    body.config-mode #config-btn { display: inline-flex; }
+    body.config-mode #config-panel { display: block; }
+
+    #config-btn {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      width: 38px;
+      height: 38px;
+      border-radius: 9999px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 5;
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+    }
+
+    #config-panel {
+      position: fixed;
+      top: 58px;
+      right: 10px;
+      width: 320px;
+      max-width: calc(100vw - 20px);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.70);
+      color: #fff;
+      padding: 12px;
+      box-sizing: border-box;
+      z-index: 6;
+      display: none;
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+    }
+
+    #config-panel h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0.2px;
+    }
+
+    .cfg-row {
+      display: grid;
+      grid-template-columns: 1fr 120px;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 12px;
+      opacity: 0.95;
+    }
+    .cfg-row input[type="number"],
+    .cfg-row select {
+      width: 120px;
+      padding: 6px 8px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      box-sizing: border-box;
+      outline: none;
+    }
+    .cfg-row input[type="range"] {
+      width: 120px;
+    }
+
+    .cfg-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 10px;
+    }
+    .cfg-actions button {
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-weight: 800;
+      cursor: pointer;
+    }
   </style>
 
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -74,6 +162,23 @@
 <body>
   <div id="ticker" class="bottom" aria-label="Banda de estadísticas">
     <div id="content">Cargando estadísticas…</div>
+  </div>
+  <button id="config-btn" type="button" aria-label="Configurar widget" title="Configurar widget">⚙️</button>
+  <div id="config-panel" role="dialog" aria-label="Configuración del widget" hidden>
+    <h3>Configuración (Widget Banda)</h3>
+    <div class="cfg-row"><div>Posición</div><select id="cfg-pos"><option value="bottom">Abajo</option><option value="top">Arriba</option></select></div>
+    <div class="cfg-row"><div>Tema</div><select id="cfg-theme"><option value="dark">Oscuro</option><option value="light">Claro</option></select></div>
+    <div class="cfg-row"><div>Alto (px)</div><input id="cfg-height" type="number" min="40" max="220" step="1" value="92" /></div>
+    <div class="cfg-row"><div>Tamaño letra (px)</div><input id="cfg-fontSize" type="number" min="10" max="60" step="1" value="22" /></div>
+    <div class="cfg-row"><div>Velocidad (s)</div><input id="cfg-speed" type="number" min="5" max="180" step="1" value="30" /></div>
+    <div class="cfg-row"><div>Padding X (px)</div><input id="cfg-paddingX" type="number" min="0" max="80" step="1" value="16" /></div>
+    <div class="cfg-row"><div>Opacidad fondo (%)</div><input id="cfg-opacity" type="range" min="0" max="100" value="35" /></div>
+    <div class="cfg-row"><div>Blur (px)</div><input id="cfg-blur" type="number" min="0" max="40" step="1" value="10" /></div>
+    <div class="cfg-actions">
+      <button id="cfg-reset" type="button">Reset</button>
+      <button id="cfg-save" type="button">Guardar</button>
+      <button id="cfg-close" type="button">Cerrar</button>
+    </div>
   </div>
 
   <script>
@@ -85,25 +190,181 @@
         return Number.isFinite(x) ? x : d;
       }
 
-      const pos = String(qs.get('pos') || 'bottom').trim().toLowerCase();
-      const height = n(qs.get('height'), null);
-      const fontSize = n(qs.get('fontSize'), null);
-      const speed = n(qs.get('speed'), null);
-      const theme = String(qs.get('theme') || 'dark').trim().toLowerCase();
-
-      if (height && height > 10) document.documentElement.style.setProperty('--ticker-height', `${height}px`);
-      if (fontSize && fontSize > 6) document.documentElement.style.setProperty('--ticker-font-size', `${fontSize}px`);
-      if (speed && speed > 3) document.documentElement.style.setProperty('--ticker-speed', `${speed}s`);
-
       const tickerEl = document.getElementById('ticker');
       const contentEl = document.getElementById('content');
-      if (tickerEl) {
-        tickerEl.classList.toggle('top', pos === 'top');
+      const docEl = document.documentElement;
+      const STORAGE_KEY = 'stats_ticker_settings';
+      const isConfig = String(qs.get('config') || '') === '1';
+
+      const defaults = {
+        pos: 'bottom',
+        theme: 'dark',
+        height: 92,
+        fontSize: 22,
+        speed: 30,
+        paddingX: 16,
+        opacity: 35,
+        blur: 10
+      };
+
+      const urlOverrides = {
+        pos: String(qs.get('pos') || '').trim().toLowerCase() || null,
+        theme: String(qs.get('theme') || '').trim().toLowerCase() || null,
+        height: n(qs.get('height'), null),
+        fontSize: n(qs.get('fontSize'), null),
+        speed: n(qs.get('speed'), null),
+        paddingX: n(qs.get('paddingX'), null),
+        opacity: n(qs.get('opacity'), null),
+        blur: n(qs.get('blur'), null)
+      };
+
+      function clampNum(v, min, max, fallback) {
+        const x = Number(v);
+        if (!Number.isFinite(x)) return fallback;
+        return Math.min(max, Math.max(min, x));
       }
-      if (theme === 'light') {
-        document.documentElement.style.setProperty('--ticker-bg', 'rgba(255, 255, 255, 0.65)');
-        document.documentElement.style.setProperty('--ticker-color', '#111');
-        document.documentElement.style.setProperty('--ticker-border', 'rgba(0, 0, 0, 0.10)');
+
+      function normalizeSettings(input) {
+        const s = input || {};
+        const pos = (s.pos === 'top' || s.pos === 'bottom') ? s.pos : defaults.pos;
+        const theme = (s.theme === 'light' || s.theme === 'dark') ? s.theme : defaults.theme;
+        return {
+          pos,
+          theme,
+          height: clampNum(s.height, 40, 220, defaults.height),
+          fontSize: clampNum(s.fontSize, 10, 60, defaults.fontSize),
+          speed: clampNum(s.speed, 5, 180, defaults.speed),
+          paddingX: clampNum(s.paddingX, 0, 80, defaults.paddingX),
+          opacity: clampNum(s.opacity, 0, 100, defaults.opacity),
+          blur: clampNum(s.blur, 0, 40, defaults.blur)
+        };
+      }
+
+      function computeBg(theme, opacityPct) {
+        const a = clampNum(opacityPct, 0, 100, defaults.opacity) / 100;
+        if (theme === 'light') return `rgba(255, 255, 255, ${Math.min(1, a)})`;
+        return `rgba(0, 0, 0, ${Math.min(1, a)})`;
+      }
+
+      function applyTheme(theme) {
+        if (theme === 'light') {
+          docEl.style.setProperty('--ticker-color', '#111');
+          docEl.style.setProperty('--ticker-border', 'rgba(0, 0, 0, 0.10)');
+        } else {
+          docEl.style.setProperty('--ticker-color', '#fff');
+          docEl.style.setProperty('--ticker-border', 'rgba(255, 255, 255, 0.10)');
+        }
+      }
+
+      function applySettings(base) {
+        const merged = { ...base };
+        Object.keys(urlOverrides).forEach((k) => {
+          const v = urlOverrides[k];
+          if (v === null || v === '') return;
+          if (k === 'pos' || k === 'theme') merged[k] = v;
+          else merged[k] = v;
+        });
+        const s = normalizeSettings(merged);
+        if (tickerEl) tickerEl.classList.toggle('top', s.pos === 'top');
+        applyTheme(s.theme);
+        docEl.style.setProperty('--ticker-height', `${s.height}px`);
+        docEl.style.setProperty('--ticker-font-size', `${s.fontSize}px`);
+        docEl.style.setProperty('--ticker-speed', `${s.speed}s`);
+        docEl.style.setProperty('--ticker-padding-x', `${s.paddingX}px`);
+        docEl.style.setProperty('--ticker-blur', `${s.blur}px`);
+        docEl.style.setProperty('--ticker-bg', computeBg(s.theme, s.opacity));
+        return s;
+      }
+
+      let currentSettings = defaults;
+      let remoteSettings = null;
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) currentSettings = { ...defaults, ...JSON.parse(saved) };
+      } catch (_) {}
+      currentSettings = applySettings(currentSettings);
+
+      function updateConfigUI(s) {
+        const posEl = document.getElementById('cfg-pos');
+        const themeEl = document.getElementById('cfg-theme');
+        const heightEl = document.getElementById('cfg-height');
+        const fontEl = document.getElementById('cfg-fontSize');
+        const speedEl = document.getElementById('cfg-speed');
+        const padEl = document.getElementById('cfg-paddingX');
+        const opEl = document.getElementById('cfg-opacity');
+        const blurEl = document.getElementById('cfg-blur');
+        if (posEl) posEl.value = s.pos;
+        if (themeEl) themeEl.value = s.theme;
+        if (heightEl) heightEl.value = String(s.height);
+        if (fontEl) fontEl.value = String(s.fontSize);
+        if (speedEl) speedEl.value = String(s.speed);
+        if (padEl) padEl.value = String(s.paddingX);
+        if (opEl) opEl.value = String(s.opacity);
+        if (blurEl) blurEl.value = String(s.blur);
+      }
+
+      function readConfigUI() {
+        return normalizeSettings({
+          pos: String(document.getElementById('cfg-pos')?.value || '').trim().toLowerCase(),
+          theme: String(document.getElementById('cfg-theme')?.value || '').trim().toLowerCase(),
+          height: n(document.getElementById('cfg-height')?.value, defaults.height),
+          fontSize: n(document.getElementById('cfg-fontSize')?.value, defaults.fontSize),
+          speed: n(document.getElementById('cfg-speed')?.value, defaults.speed),
+          paddingX: n(document.getElementById('cfg-paddingX')?.value, defaults.paddingX),
+          opacity: n(document.getElementById('cfg-opacity')?.value, defaults.opacity),
+          blur: n(document.getElementById('cfg-blur')?.value, defaults.blur)
+        });
+      }
+
+      function saveLocal(s) {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch (_) {}
+      }
+
+      if (isConfig) {
+        document.body.classList.add('config-mode');
+        const panel = document.getElementById('config-panel');
+        if (panel) panel.hidden = false;
+        updateConfigUI(currentSettings);
+        const cfgBtn = document.getElementById('config-btn');
+        const closeBtn = document.getElementById('cfg-close');
+        const saveBtn = document.getElementById('cfg-save');
+        const resetBtn = document.getElementById('cfg-reset');
+        cfgBtn?.addEventListener('click', () => {
+          const p = document.getElementById('config-panel');
+          if (!p) return;
+          p.hidden = !p.hidden;
+        });
+        closeBtn?.addEventListener('click', () => {
+          const p = document.getElementById('config-panel');
+          if (p) p.hidden = true;
+        });
+        ['cfg-pos','cfg-theme','cfg-height','cfg-fontSize','cfg-speed','cfg-paddingX','cfg-opacity','cfg-blur'].forEach((id) => {
+          document.getElementById(id)?.addEventListener('input', () => {
+            const next = readConfigUI();
+            currentSettings = applySettings(next);
+            saveLocal(currentSettings);
+          });
+          document.getElementById(id)?.addEventListener('change', () => {
+            const next = readConfigUI();
+            currentSettings = applySettings(next);
+            saveLocal(currentSettings);
+          });
+        });
+        resetBtn?.addEventListener('click', () => {
+          currentSettings = applySettings(defaults);
+          updateConfigUI(currentSettings);
+          saveLocal(currentSettings);
+        });
+        saveBtn?.addEventListener('click', () => {
+          const next = readConfigUI();
+          currentSettings = applySettings(next);
+          saveLocal(currentSettings);
+          try {
+            if (db) {
+              db.collection('userSettings').doc('global_stats_ticker_config').set(currentSettings, { merge: true });
+            }
+          } catch (_) {}
+        });
       }
 
       function safeText(v) {
@@ -189,6 +450,19 @@
         }
       } catch (_) {
         db = null;
+      }
+
+      if (db) {
+        try {
+          db.collection('userSettings').doc('global_stats_ticker_config').onSnapshot((doc) => {
+            if (!doc || !doc.exists) return;
+            const data = doc.data() || {};
+            remoteSettings = normalizeSettings(data);
+            currentSettings = applySettings({ ...defaults, ...currentSettings, ...remoteSettings });
+            saveLocal(currentSettings);
+            if (isConfig) updateConfigUI(currentSettings);
+          }, () => {});
+        } catch (_) {}
       }
 
       function start() {

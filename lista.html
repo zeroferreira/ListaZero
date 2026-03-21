@@ -5800,6 +5800,178 @@
       el.hidden = !shouldShowStatsTicker();
     }
 
+    function initListStatsTickerConfig(){
+      const STORAGE_KEY = 'list_stats_ticker_settings';
+      const DOC_ID = 'global_list_stats_ticker_config';
+
+      function n(v, d) {
+        const x = Number(v);
+        return Number.isFinite(x) ? x : d;
+      }
+
+      function clamp(v, min, max, d) {
+        const x = n(v, d);
+        return Math.max(min, Math.min(max, x));
+      }
+
+      const defaults = {
+        height: 36,
+        fontSize: 14,
+        speed: 30,
+        paddingX: 12,
+        opacityDark: 35,
+        opacityLight: 60,
+        blur: 6
+      };
+
+      function normalize(input) {
+        const s = input || {};
+        return {
+          height: clamp(s.height, 24, 120, defaults.height),
+          fontSize: clamp(s.fontSize, 10, 26, defaults.fontSize),
+          speed: clamp(s.speed, 10, 180, defaults.speed),
+          paddingX: clamp(s.paddingX, 0, 40, defaults.paddingX),
+          opacityDark: clamp(s.opacityDark, 0, 100, defaults.opacityDark),
+          opacityLight: clamp(s.opacityLight, 0, 100, defaults.opacityLight),
+          blur: clamp(s.blur, 0, 24, defaults.blur)
+        };
+      }
+
+      function apply(s) {
+        const d = document.documentElement;
+        d.style.setProperty('--list-ticker-height', `${s.height}px`);
+        d.style.setProperty('--list-ticker-font-size', `${s.fontSize}px`);
+        d.style.setProperty('--list-ticker-speed', `${s.speed}s`);
+        d.style.setProperty('--list-ticker-padding-x', `${s.paddingX}px`);
+        d.style.setProperty('--list-ticker-alpha-dark', String(s.opacityDark / 100));
+        d.style.setProperty('--list-ticker-alpha-light', String(s.opacityLight / 100));
+        d.style.setProperty('--list-ticker-blur', `${s.blur}px`);
+      }
+
+      function loadLocal() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          return normalize(parsed);
+        } catch (_) { return null; }
+      }
+
+      function saveLocal(s) {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch (_) {}
+      }
+
+      function getDb() {
+        try { return window.db || (typeof db !== 'undefined' ? db : null); } catch (_) { return null; }
+      }
+
+      let current = normalize({ ...defaults, ...(loadLocal() || {}) });
+      apply(current);
+
+      function fillModalValues(s) {
+        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
+        setVal('stc-height', s.height);
+        setVal('stc-fontSize', s.fontSize);
+        setVal('stc-speed', s.speed);
+        setVal('stc-paddingX', s.paddingX);
+        setVal('stc-opacityDark', s.opacityDark);
+        setVal('stc-opacityLight', s.opacityLight);
+        setVal('stc-blur', s.blur);
+      }
+
+      function readModalValues() {
+        return normalize({
+          height: n(document.getElementById('stc-height')?.value, defaults.height),
+          fontSize: n(document.getElementById('stc-fontSize')?.value, defaults.fontSize),
+          speed: n(document.getElementById('stc-speed')?.value, defaults.speed),
+          paddingX: n(document.getElementById('stc-paddingX')?.value, defaults.paddingX),
+          opacityDark: n(document.getElementById('stc-opacityDark')?.value, defaults.opacityDark),
+          opacityLight: n(document.getElementById('stc-opacityLight')?.value, defaults.opacityLight),
+          blur: n(document.getElementById('stc-blur')?.value, defaults.blur),
+        });
+      }
+
+      function openModal() {
+        const modal = document.getElementById('stats-ticker-config-modal');
+        if (!modal) return;
+        fillModalValues(current);
+        modal.hidden = false;
+      }
+
+      function closeModal() {
+        const modal = document.getElementById('stats-ticker-config-modal');
+        if (!modal) return;
+        modal.hidden = true;
+      }
+
+      const cfgBtn = document.getElementById('stats-ticker-config-btn');
+      cfgBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openModal();
+      });
+
+      document.querySelector('#stats-ticker-config-modal .modal-close-btn')?.addEventListener('click', closeModal);
+      document.getElementById('stc-close')?.addEventListener('click', closeModal);
+      document.getElementById('stc-reset')?.addEventListener('click', () => {
+        current = normalize(defaults);
+        apply(current);
+        saveLocal(current);
+        fillModalValues(current);
+      });
+      document.getElementById('stc-save')?.addEventListener('click', async () => {
+        const next = readModalValues();
+        current = next;
+        apply(current);
+        saveLocal(current);
+        const dbase = getDb();
+        if (dbase) {
+          try { await dbase.collection('userSettings').doc(DOC_ID).set(current, { merge: true }); } catch (_) {}
+        }
+      });
+
+      ['stc-height','stc-fontSize','stc-speed','stc-paddingX','stc-opacityDark','stc-opacityLight','stc-blur'].forEach((id) => {
+        document.getElementById(id)?.addEventListener('input', () => {
+          const next = readModalValues();
+          current = next;
+          apply(current);
+          saveLocal(current);
+        });
+      });
+
+      const dbase = getDb();
+      if (dbase) {
+        try {
+          dbase.collection('userSettings').doc(DOC_ID).onSnapshot((doc) => {
+            if (!doc || !doc.exists) return;
+            const data = doc.data() || {};
+            const remote = normalize(data);
+            current = normalize({ ...current, ...remote });
+            apply(current);
+            saveLocal(current);
+          }, () => {});
+        } catch (_) {}
+      }
+
+      document.addEventListener('click', (e) => {
+        const modal = document.getElementById('stats-ticker-config-modal');
+        if (!modal || modal.hidden) return;
+        const inner = modal.querySelector('.modal');
+        if (!inner) return;
+        if (!inner.contains(e.target)) closeModal();
+      });
+    }
+
+    (function(){
+      if (window.__listStatsTickerConfigInit) return;
+      window.__listStatsTickerConfigInit = true;
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => { try { initListStatsTickerConfig(); } catch (_) {} });
+      } else {
+        try { initListStatsTickerConfig(); } catch (_) {}
+      }
+    })();
+
     function getLocalPlayedMapForTicker() {
       try { return JSON.parse(localStorage.getItem('playedSongs') || '{}'); } catch (_) { return {}; }
     }
@@ -7619,6 +7791,8 @@
           if (!themeModal.hidden) themeModal.hidden = true;
           const vipHierarchyModal = document.getElementById('vip-hierarchy-modal');
           if (vipHierarchyModal && !vipHierarchyModal.hidden) vipHierarchyModal.hidden = true;
+          const listTickerCfg = document.getElementById('stats-ticker-config-modal');
+          if (listTickerCfg && !listTickerCfg.hidden) listTickerCfg.hidden = true;
         }
       });
 
@@ -17695,6 +17869,49 @@
   <canvas id="orb-background" class="immersive-layer orb-background-canvas"></canvas>
   <div id="stats-ticker" class="stats-ticker" hidden>
     <div class="ticker-content">Cargando estadísticas…</div>
+    <button id="stats-ticker-config-btn" class="ticker-config-btn" type="button" aria-label="Configurar banda" title="Configurar banda">⚙️</button>
+  </div>
+
+  <div id="stats-ticker-config-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="stats-ticker-config-title">
+      <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+      <h2 id="stats-ticker-config-title">⚙️ Configurar banda</h2>
+      <div class="admin-row" style="gap:12px;">
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Alto (px)</span>
+          <input id="stc-height" type="number" min="24" max="120" step="1" class="admin-input" value="36" style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Tamaño letra (px)</span>
+          <input id="stc-fontSize" type="number" min="10" max="26" step="1" class="admin-input" value="14" style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Velocidad (s)</span>
+          <input id="stc-speed" type="number" min="10" max="180" step="1" class="admin-input" value="30" style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Padding X (px)</span>
+          <input id="stc-paddingX" type="number" min="0" max="40" step="1" class="admin-input" value="12" style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Opacidad (oscuro %)</span>
+          <input id="stc-opacityDark" type="number" min="0" max="100" step="1" class="admin-input" value="35" style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Opacidad (claro %)</span>
+          <input id="stc-opacityLight" type="number" min="0" max="100" step="1" class="admin-input" value="60" style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Blur (px)</span>
+          <input id="stc-blur" type="number" min="0" max="24" step="1" class="admin-input" value="6" style="width:120px;">
+        </label>
+      </div>
+      <div class="actions modal-actions">
+        <button type="button" id="stc-reset" class="btn">Reset</button>
+        <button type="button" id="stc-save" class="btn">Guardar</button>
+        <button type="button" id="stc-close" class="btn">Cerrar</button>
+      </div>
+    </div>
   </div>
 </body>
 <script>

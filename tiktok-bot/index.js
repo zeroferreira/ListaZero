@@ -1693,7 +1693,10 @@ async function handleSongRequest(user, query, options = {}) {
             day: currentDay,
             genre: genre // Save Genre
         };
-        requestData.source = source || 'tiktok';
+        requestData.source = 'tiktok';
+        if (source && String(source).trim() && String(source).trim().toLowerCase() !== 'tiktok') {
+            requestData.subsource = String(source).trim();
+        }
         if (userId) requestData.userId = userId;
         const badge = getBadgeForUser(user, userId, displayName);
         if (badge) requestData.badge = badge;
