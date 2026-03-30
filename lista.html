@@ -8122,32 +8122,47 @@
 
       // ===== SISTEMA DE CHECK-IN DIARIO =====
       async function initCheckInSystem() {
-         const btn = document.createElement('div');
-         btn.id = 'daily-checkin-btn';
-         btn.innerHTML = '🎁';
-         btn.title = 'Reclamar Bono Diario';
-         // Estilos inline para evitar problemas de caché CSS, pero idealmente irían en style
-         Object.assign(btn.style, {
-            position: 'fixed',
-            bottom: '80px', // Encima del player
-            right: '20px',
-            width: '50px',
-            height: '50px',
-            background: 'linear-gradient(135deg, #FFD700, #FFA500)',
-            borderRadius: '50%',
-            boxShadow: '0 4px 15px rgba(255, 215, 0, 0.4)',
-            display: 'none', // Oculto por defecto hasta verificar
-            justifyContent: 'center',
-            alignItems: 'center',
-            fontSize: '24px',
-            cursor: 'pointer',
-            zIndex: '9999',
-            transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-         });
-         
-         // Animación de pulso
-         const style = document.createElement('style');
-         style.innerHTML = `
+         if (window.__checkInInitRunning) return;
+         window.__checkInInitRunning = true;
+         try {
+           const userRaw = getCurrentUser();
+           const userKey = userRaw ? normalizeUserKey(userRaw) : '';
+           if (!userRaw || !userKey) return;
+           if (!window.db) {
+             setTimeout(initCheckInSystem, 1000);
+             return;
+           }
+
+           let btn = document.getElementById('daily-checkin-btn');
+           if (!btn) {
+             btn = document.createElement('div');
+             btn.id = 'daily-checkin-btn';
+             btn.innerHTML = '🎁';
+             btn.title = 'Reclamar Bono Diario';
+             Object.assign(btn.style, {
+               position: 'fixed',
+               bottom: '80px',
+               right: '20px',
+               width: '50px',
+               height: '50px',
+               background: 'linear-gradient(135deg, #FFD700, #FFA500)',
+               borderRadius: '50%',
+               boxShadow: '0 4px 15px rgba(255, 215, 0, 0.4)',
+               display: 'none',
+               justifyContent: 'center',
+               alignItems: 'center',
+               fontSize: '24px',
+               cursor: 'pointer',
+               zIndex: '9999',
+               transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+             });
+             document.body.appendChild(btn);
+           }
+
+           if (!document.getElementById('checkin-style')) {
+             const style = document.createElement('style');
+             style.id = 'checkin-style';
+             style.innerHTML = `
            @keyframes checkin-pulse {
              0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7); }
              70% { transform: scale(1.1); box-shadow: 0 0 0 15px rgba(255, 215, 0, 0); }
@@ -8171,12 +8186,8 @@
              filter: grayscale(100%);
            }
          `;
-         document.head.appendChild(style);
-         document.body.appendChild(btn);
-
-         // Verificar estado
-         const user = getCurrentUser();
-         if (!user || !window.db) return;
+             document.head.appendChild(style);
+           }
 
          // Función auxiliar para calcular tiempo restante hasta medianoche
          const getTimeUntilMidnight = () => {
@@ -8190,7 +8201,8 @@
 
          try {
              // Verificar localStorage primero para feedback instantáneo
-             const lastCheckInStr = localStorage.getItem('lastCheckInDate_' + user);
+             const storageKey = 'lastCheckInDate_' + userKey;
+             const lastCheckInStr = localStorage.getItem(storageKey);
              const now = new Date();
              const todayStr = now.toDateString();
              
@@ -8201,12 +8213,12 @@
                  btn.classList.remove('checkin-available');
                  btn.style.display = 'flex';
                  btn.title = `Vuelve en ${getTimeUntilMidnight()}`;
-                 btn.onclick = () => { showErrorNotification(`Vuelve en ${getTimeUntilMidnight()} para tu siguiente regalo.`); };
+                 btn.onclick = () => { showErrorNotification(`Ya reclamaste tu regalo de hoy. Vuelve en ${getTimeUntilMidnight()}.`); };
                  // NO RETURN: Permitir que el flujo siga
              }
 
              // Verificar Firestore (fuente de verdad)
-             const normUser = normalizeUserKey(user);
+             const normUser = userKey;
              const userDocRef = db.collection('userStats').doc(normUser);
              const doc = await userDocRef.get();
              let canClaim = true;
@@ -8223,7 +8235,7 @@
                      if (lastDateStr === todayStr) {
                          canClaim = false;
                          // No hay "nextClaimTime" exacto, es "mañana"
-                         localStorage.setItem('lastCheckInDate_' + user, todayStr); // Actualizar local
+                         localStorage.setItem(storageKey, todayStr); // Actualizar local
                          
                          // Reforzar estado visual
                          btn.classList.add('checkin-disabled');
@@ -8306,18 +8318,18 @@
                              
                              batch.set(deviceRef, {
                                  fingerprint: fingerprint,
-                                 user: user,
+                                 user: userRaw,
                                  timestamp: firebase.firestore.FieldValue.serverTimestamp()
                              });
                          }
                          
                          // C. Actualizar datos locales de gamificación para evitar sobrescritura
                         try {
-                            const localData = getGamificationDataForUser(user);
+                            const localData = getGamificationDataForUser(userRaw);
                             localData.checkInPoints = (Number(localData.checkInPoints) || 0) + points;
                             // También sumar al total local temporalmente para reflejo inmediato
                             localData.points = (Number(localData.points) || 0) + points;
-                            saveGamificationDataForUser(localData, user);
+                            saveGamificationDataForUser(localData, userRaw);
                         } catch (e) {
                             console.error('Error actualizando datos locales de check-in:', e);
                         }
@@ -8325,29 +8337,15 @@
                         await batch.commit();
                          
                          // Guardar local
-                         localStorage.setItem('lastCheckInDate_' + user, new Date().toDateString());
-                         
-                         // Mostrar Modal
-                         const modal = document.createElement('div');
-                         modal.className = 'checkin-modal-overlay';
-                         modal.innerHTML = `
-                            <div class="checkin-modal-content">
-                                <div style="font-size: 60px;">🎁</div>
-                                <div class="checkin-points">+${points} Puntos</div>
-                                <div class="checkin-text">
-                                    ¡Bono diario reclamado con éxito!<br>
-                                    <span style="color:#aaa; font-size:14px; display:block; margin-top:10px;">Vuelve en ${getTimeUntilMidnight()} para más premios.</span>
-                                </div>
-                                <button class="checkin-btn" onclick="this.closest('.checkin-modal-overlay').remove()">¡Genial!</button>
-                            </div>
-                         `;
-                         document.body.appendChild(modal);
+                        localStorage.setItem(storageKey, new Date().toDateString());
+                        showSuccessNotification(`¡Bono diario reclamado! +${points} puntos. Vuelve en ${getTimeUntilMidnight()}.`);
                          
                          // Actualizar UI de puntos
                          setTimeout(() => {
-                             analyzeAndGrantPointsForUser(user);
-                             updateUserHeaderUI(user);
+                             analyzeAndGrantPointsForUser(userRaw);
+                             updateUserHeaderUI(userRaw);
                          }, 1000);
+                        btn.classList.remove('processing');
                          
                      } catch (err) {
                          console.error('Error claiming check-in:', err);
@@ -8387,10 +8385,10 @@
          } catch (e) {
              console.error('Error check-in init:', e);
          }
+         } finally {
+           window.__checkInInitRunning = false;
+         }
       }
-      
-      // Iniciar después de cargar
-      setTimeout(initCheckInSystem, 3000);
 
       // Configuración de logros
       const ACHIEVEMENTS = [
