@@ -82,5 +82,6 @@ Este documento concentra ideas, decisiones pendientes y criterios para que el si
 ## 6) Ideas futuras (pendientes de diseño)
 
 - Tandas con intercalado por niveles + cupos por usuario.
+- Ruleta: VIP y Superfan tienen 1 canción en prioridad; luego entran a la ruleta como todos. Solo Superfan puede “tirar” 2 veces (doble probabilidad).
 - Vista pública de jerarquía con listas por insignia (para transparencia).
 - Integración real de TikTok Superfan a Firestore para poder listarlo y usarlo en prioridad.
