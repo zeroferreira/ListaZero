@@ -2455,6 +2455,7 @@
 
       db.collection('playedSongs').doc(currentDay)
         .onSnapshot((doc) => {
+          const prevSkippedSongIds = new Set(skippedSongIds);
           if (doc.exists) {
             const data = doc.data();
             const songs = data.songs || data.list || [];
@@ -2482,7 +2483,19 @@
             } catch (_) {}
           }
           playedSongsLoaded = true; // Marcar como cargado para habilitar renderizado
+          let addedSkip = false;
+          for (const id of skippedSongIds) {
+            if (!prevSkippedSongIds.has(id)) { addedSkip = true; break; }
+          }
+          if (addedSkip) clearRouletteWinnerLabel();
           renderQueue();
+          try {
+            const view = document.getElementById('roulette-view');
+            if (view && rouletteMode === 'list') {
+              const isOpen = (view.style.display === 'flex') || (getComputedStyle(view).display !== 'none');
+              if (isOpen) loadRouletteParticipants();
+            }
+          } catch (_) {}
         }, (error) => {
           console.error("Error en playedSongs:", error);
           // En caso de error, permitir renderizar igual para no bloquear la UI
@@ -3323,6 +3336,15 @@
                 winnerLabel.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
             }, 100);
         }
+    }
+
+    function clearRouletteWinnerLabel() {
+        const winnerLabel = document.getElementById('winner-label');
+        if (!winnerLabel) return;
+        winnerLabel.innerText = '';
+        winnerLabel.style.display = 'none';
+        winnerLabel.style.transition = 'none';
+        winnerLabel.style.transform = 'translate(-50%, -50%)';
     }
 
     // --- Drag & Drop for Roulette Button ---
