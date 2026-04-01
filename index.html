@@ -580,6 +580,7 @@
       let db = null;
       let liveCodeRequired = false;
       let authReadyPromise = Promise.resolve(true);
+      let statusReadyPromise = Promise.resolve(true);
       try {
         if (typeof firebase !== 'undefined' && firebase.apps) {
           if (!firebase.apps.length) {
@@ -618,12 +619,18 @@
       }
       try {
         if (db) {
-          db.collection('system').doc('status').onSnapshot((doc) => {
-            const data = doc && doc.exists ? (doc.data() || {}) : {};
-            const code = String(data.liveCode || '').trim();
-            liveCodeRequired = code.length >= 4;
-            if (liveCodeField) liveCodeField.hidden = !liveCodeRequired;
-            if (liveCodeInput) liveCodeInput.required = liveCodeRequired;
+          statusReadyPromise = new Promise((resolve) => {
+            let done = false;
+            db.collection('system').doc('status').onSnapshot((doc) => {
+              const data = doc && doc.exists ? (doc.data() || {}) : {};
+              const code = String(data.liveCode || '').trim();
+              liveCodeRequired = code.length >= 4;
+              if (liveCodeField) liveCodeField.hidden = !liveCodeRequired;
+              if (liveCodeInput) liveCodeInput.required = liveCodeRequired;
+              if (!done) { done = true; resolve(true); }
+            }, () => {
+              if (!done) { done = true; resolve(false); }
+            });
           });
         }
       } catch (_) {}
@@ -783,6 +790,13 @@
           const usuarioKey = usuario.toLowerCase();
           const badge = await resolveBadgeForUserKey(usuarioKey);
 
+          try {
+            await Promise.race([
+              statusReadyPromise,
+              new Promise((resolve) => setTimeout(() => resolve(false), 3000))
+            ]);
+          } catch (_) {}
+
           const liveCode = String((liveCodeInput && liveCodeInput.value) || localStorage.getItem('liveCode') || '').trim();
           if (liveCodeRequired && !liveCode) {
             alert('Falta el Código del Live. Escríbelo y vuelve a intentar.');
@@ -829,6 +843,7 @@
           } catch (err) {
             console.error('Error guardando en Firestore:', err);
             const msg = String(err && err.message ? err.message : err);
+            const code = String(err && err.code ? err.code : '');
             const isPerm = msg.includes('PERMISSION_DENIED') || msg.includes('permission');
             if (isPerm && db) {
               try {
@@ -839,7 +854,16 @@
                   alert('Tu solicitud no se pudo enviar: falta Código del Live.');
                   return;
                 }
+                if (code.length >= 4 && liveCode && liveCode !== code) {
+                  alert('Tu solicitud no se pudo enviar: Código del Live incorrecto.');
+                  return;
+                }
               } catch (_) {}
+            }
+            const isOffline = msg.toLowerCase().includes('offline') || msg.toLowerCase().includes('unavailable') || code === 'unavailable';
+            if (isOffline) {
+              alert('No se pudo enviar: sin conexión con Firestore. Revisa Internet y vuelve a intentar.');
+              return;
             }
             alert('Tu solicitud no se pudo enviar. Intenta de nuevo.');
             return;
