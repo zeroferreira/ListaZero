@@ -579,6 +579,7 @@
 
       let db = null;
       let liveCodeRequired = false;
+      let authReadyPromise = Promise.resolve(true);
       try {
         if (typeof firebase !== 'undefined' && firebase.apps) {
           if (!firebase.apps.length) {
@@ -588,12 +589,13 @@
           
           // Autenticación anónima para permitir reglas basadas en usuarios no registrados
           if (firebase.auth) {
-             firebase.auth().onAuthStateChanged((user) => {
-              if (!user) {
+            authReadyPromise = new Promise((resolve) => {
+              firebase.auth().onAuthStateChanged((user) => {
+                if (user) return resolve(true);
                 firebase.auth().signInAnonymously().catch((err) => {
                   console.error('Error al autenticar anónimamente:', err);
                 });
-              }
+              });
             });
           }
         } else {
@@ -781,19 +783,29 @@
           const usuarioKey = usuario.toLowerCase();
           const badge = await resolveBadgeForUserKey(usuarioKey);
 
-          // Guardar en localStorage (compatibilidad/local)
-          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
-          localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
-
-          const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          arr.push({ usuario, cancion, artista, time: ts });
-          localStorage.setItem('solicitudes', JSON.stringify(arr));
+          const liveCode = String((liveCodeInput && liveCodeInput.value) || localStorage.getItem('liveCode') || '').trim();
+          if (liveCodeRequired && !liveCode) {
+            alert('Falta el Código del Live. Escríbelo y vuelve a intentar.');
+            return;
+          }
 
           // Guardar en Firestore (sincronización multi-dispositivo)
           try {
             if (db) {
-              const liveCode = String((liveCodeInput && liveCodeInput.value) || localStorage.getItem('liveCode') || '').trim();
+              if (firebase?.auth) {
+                const hasUser = !!firebase.auth().currentUser;
+                if (!hasUser) {
+                  const ok = await Promise.race([
+                    authReadyPromise,
+                    new Promise((resolve) => setTimeout(() => resolve(false), 6000))
+                  ]);
+                  if (!ok || !firebase.auth().currentUser) {
+                    alert('No se pudo autenticar. Intenta de nuevo en unos segundos.');
+                    return;
+                  }
+                }
+              }
+
               await db.collection('solicitudes').add({
                 usuario,
                 displayName: usuario,
@@ -816,8 +828,32 @@
             }
           } catch (err) {
             console.error('Error guardando en Firestore:', err);
-            // Fallo silencioso en Firestore, ya que se guardó localmente
+            const msg = String(err && err.message ? err.message : err);
+            const isPerm = msg.includes('PERMISSION_DENIED') || msg.includes('permission');
+            if (isPerm && db) {
+              try {
+                const st = await db.collection('system').doc('status').get();
+                const d = st && st.exists ? (st.data() || {}) : {};
+                const code = String(d.liveCode || '').trim();
+                if (code.length >= 4 && !liveCode) {
+                  alert('Tu solicitud no se pudo enviar: falta Código del Live.');
+                  return;
+                }
+              } catch (_) {}
+            }
+            alert('Tu solicitud no se pudo enviar. Intenta de nuevo.');
+            return;
           }
+
+          // Guardar en localStorage (compatibilidad/local)
+          try {
+            const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+            (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
+            localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+            const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+            arr.push({ usuario, cancion, artista, time: ts });
+            localStorage.setItem('solicitudes', JSON.stringify(arr));
+          } catch (_) {}
 
           // Guardar el último usuario utilizado para facilitar próximas solicitudes
           localStorage.setItem('currentUser', usuario);

@@ -2436,43 +2436,77 @@
     console.log("Queue Overlay v2.2 - Fix Empty Match. Listening for day:", currentDay);
 
     if (db) {
-      db.collection('solicitudes')
-        .where('day', '==', currentDay)
-        .onSnapshot((snapshot) => {
-          const temp = [];
-          snapshot.forEach(doc => {
-            const data = doc.data();
-            if (!firstSeenOrder.has(doc.id)) firstSeenOrder.set(doc.id, ++firstSeenCounter);
-            const item = { ...data, docId: doc.id, _seen: firstSeenOrder.get(doc.id) };
-            if (!item.id) item.id = doc.id;
-            temp.push(item);
-          });
-          
-          // Sort in memory (Oldest First / FIFO)
-          temp.sort((a, b) => {
-             const tA = a.ts && a.ts.toMillis ? a.ts.toMillis() : (new Date(a.ts).getTime() || 0);
-             const tB = b.ts && b.ts.toMillis ? b.ts.toMillis() : (new Date(b.ts).getTime() || 0);
+      let unsubscribeRequests = null;
+      function applyRequestsSnapshot(snapshot) {
+        const temp = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          if (!firstSeenOrder.has(doc.id)) firstSeenOrder.set(doc.id, ++firstSeenCounter);
+          const item = { ...data, docId: doc.id, _seen: firstSeenOrder.get(doc.id) };
+          if (!item.id) item.id = doc.id;
+          temp.push(item);
+        });
+        temp.sort((a, b) => {
+           const tA = a.ts && a.ts.toMillis ? a.ts.toMillis() : (new Date(a.ts).getTime() || 0);
+           const tB = b.ts && b.ts.toMillis ? b.ts.toMillis() : (new Date(b.ts).getTime() || 0);
 
-             const aHasTime = Number.isFinite(tA) && tA > 0;
-             const bHasTime = Number.isFinite(tB) && tB > 0;
-             if (aHasTime && bHasTime && tA !== tB) return tA - tB;
-             if (aHasTime && !bHasTime) return -1;
-             if (!aHasTime && bHasTime) return 1;
+           const aHasTime = Number.isFinite(tA) && tA > 0;
+           const bHasTime = Number.isFinite(tB) && tB > 0;
+           if (aHasTime && bHasTime && tA !== tB) return tA - tB;
+           if (aHasTime && !bHasTime) return -1;
+           if (!aHasTime && bHasTime) return 1;
 
-             const sA = Number(a?._seen || 0);
-             const sB = Number(b?._seen || 0);
-             if (sA !== sB) return sA - sB;
+           const sA = Number(a?._seen || 0);
+           const sB = Number(b?._seen || 0);
+           if (sA !== sB) return sA - sB;
 
-             const idA = String(a?.docId || a?.id || generateSongId(a) || '');
-             const idB = String(b?.docId || b?.id || generateSongId(b) || '');
-             if (idA && idB && idA !== idB) return idA.localeCompare(idB);
-             return 0;
-          });
+           const idA = String(a?.docId || a?.id || generateSongId(a) || '');
+           const idB = String(b?.docId || b?.id || generateSongId(b) || '');
+           if (idA && idB && idA !== idB) return idA.localeCompare(idB);
+           return 0;
+        });
+        console.log(`Loaded ${temp.length} requests for day ${currentDay}`);
+        allRequests = temp;
+        renderQueue();
+        checkCurrentTrackAgainstQueue();
+      }
 
-          console.log(`Loaded ${temp.length} requests for day ${currentDay}`);
-          allRequests = temp;
-          renderQueue();
-          checkCurrentTrackAgainstQueue();
+      function subscribeRequestsForDay(dayValue) {
+        try { if (unsubscribeRequests) unsubscribeRequests(); } catch (_) {}
+        unsubscribeRequests = null;
+
+        const start = new Date(`${dayValue}T00:00:00`);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 1);
+
+        let didFallbackToTs = false;
+        const qDay = db.collection('solicitudes').where('day', '==', dayValue);
+        unsubscribeRequests = qDay.onSnapshot((snap) => {
+          applyRequestsSnapshot(snap);
+          if (snap.size === 0 && !didFallbackToTs) {
+            didFallbackToTs = true;
+            db.collection('solicitudes')
+              .where('ts', '>=', start)
+              .where('ts', '<', end)
+              .orderBy('ts', 'asc')
+              .limit(1)
+              .get()
+              .then((testSnap) => {
+                if (testSnap && !testSnap.empty) {
+                  try { if (unsubscribeRequests) unsubscribeRequests(); } catch (_) {}
+                  const qTs = db.collection('solicitudes')
+                    .where('ts', '>=', start)
+                    .where('ts', '<', end)
+                    .orderBy('ts', 'asc');
+                  unsubscribeRequests = qTs.onSnapshot((s2) => {
+                    applyRequestsSnapshot(s2);
+                  }, (err) => {
+                    console.error("Error en solicitudes (ts):", err);
+                  });
+                }
+              })
+              .catch(() => {});
+          }
         }, (error) => {
           console.error("Error en solicitudes:", error);
           try {
@@ -2480,6 +2514,9 @@
             if (empty) empty.innerHTML = '<div style="font-size: 40px; margin-bottom: 10px;">⚠️</div><div>Error leyendo solicitudes</div><div style="opacity:0.8; font-size:12px; margin-top:6px;">Revisa Firebase/Internet</div>';
           } catch (_) {}
         });
+      }
+
+      subscribeRequestsForDay(currentDay);
 
       db.collection('playedSongs').doc(currentDay)
         .onSnapshot((doc) => {
