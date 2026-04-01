@@ -207,6 +207,23 @@ let TIKTOK_USERNAME = config.tiktokUsername;
 let tiktokLiveConnection;
 let isConnecting = false;
 let ciderSocket;
+let tiktokWebsocketUpgradeEnabled = true;
+let tiktokConnectionOptions = null;
+
+function buildTikTokConnectionOptions() {
+    const opts = {
+        processInitialData: false,
+        enableExtendedGiftInfo: true,
+        enableWebsocketUpgrade: tiktokWebsocketUpgradeEnabled,
+        requestPollingIntervalMs: 2000,
+        clientParams: {
+            app_language: 'es-ES',
+            device_platform: 'web_cast'
+        }
+    };
+    if (config.sessionId) opts.sessionId = config.sessionId;
+    return opts;
+}
 
 function getSrAliases() {
     const base = Array.isArray(config.commandAliases) && config.commandAliases.length > 0
@@ -965,25 +982,14 @@ function startBot() {
     // Inicializar conexión TikTok
     console.log(`🔌 Configurando conexión para @${TIKTOK_USERNAME}...`);
     
-    const connectionOptions = {
-        processInitialData: false,
-        enableExtendedGiftInfo: true,
-        enableWebsocketUpgrade: true,
-        requestPollingIntervalMs: 2000,
-        clientParams: {
-            app_language: 'es-ES',
-            device_platform: 'web_cast'
-        }
-    };
-
     if (config.sessionId) {
         console.log("🔑 Usando Session ID configurado.");
-        connectionOptions.sessionId = config.sessionId;
     } else {
         console.log("⚠️ No se ha configurado Session ID. Si falla la conexión (error 521), agrégalo en config.json");
     }
 
-    tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, connectionOptions);
+    tiktokConnectionOptions = buildTikTokConnectionOptions();
+    tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
 
     setupListeners();
     
@@ -1476,8 +1482,22 @@ async function connectToLive() {
             isConnecting = false;
         })
         .catch(err => {
-            console.error('❌ Error al conectar:', err.message || err);
+            const msg = String(err && err.message ? err.message : err);
+            console.error('❌ Error al conectar:', msg);
             isConnecting = false;
+            const isWsUrlIssue = msg.includes('Invalid URL') || msg.includes('Unexpected server response: 200');
+            if (isWsUrlIssue && tiktokWebsocketUpgradeEnabled) {
+                try {
+                    console.warn('⚠️ Falló WebSocket. Cambiando a modo polling (sin upgrade) y reintentando...');
+                    tiktokWebsocketUpgradeEnabled = false;
+                    tiktokConnectionOptions = buildTikTokConnectionOptions();
+                    try { if (tiktokLiveConnection) tiktokLiveConnection.disconnect(); } catch (_) {}
+                    tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
+                    setupListeners();
+                    setTimeout(connectToLive, 1500);
+                    return;
+                } catch (_) {}
+            }
             setTimeout(connectToLive, 10000);
         });
 }
