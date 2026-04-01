@@ -82,9 +82,10 @@ let firebaseAuthPromise = Promise.resolve();
 
 let _liveCodeCache = '';
 let _liveCodeCacheAt = 0;
-async function getLiveCodeCached() {
+async function getLiveCodeCached(opts = {}) {
+    const force = !!(opts && opts.force === true);
     const now = Date.now();
-    if (_liveCodeCacheAt && (now - _liveCodeCacheAt) < 15000) return _liveCodeCache;
+    if (!force && _liveCodeCacheAt && (now - _liveCodeCacheAt) < 15000) return _liveCodeCache;
     _liveCodeCacheAt = now;
     try {
         if (!db) return _liveCodeCache;
@@ -94,6 +95,15 @@ async function getLiveCodeCached() {
         _liveCodeCache = code;
     } catch (_) {}
     return _liveCodeCache;
+}
+
+function maskLiveCode(code) {
+    const s = String(code || '');
+    if (!s) return '';
+    if (s.length <= 2) return '*'.repeat(s.length);
+    const first = s.slice(0, 1);
+    const last = s.slice(-1);
+    return `${first}${'*'.repeat(Math.max(0, s.length - 2))}${last}`;
 }
 
 // Asignar a variables globales
@@ -1739,10 +1749,32 @@ async function handleSongRequest(user, query, options = {}) {
         let queueSaved = false;
         let queueDocId = '';
         if (sendToQueue) {
-            const docRef = await addDoc(collection(db, 'solicitudes'), requestData);
-            queueSaved = true;
-            queueDocId = docRef && docRef.id ? docRef.id : '';
-            console.log(`✅ Agregada a la lista visual`);
+            try {
+                const docRef = await addDoc(collection(db, 'solicitudes'), requestData);
+                queueSaved = true;
+                queueDocId = docRef && docRef.id ? docRef.id : '';
+                console.log(`✅ Agregada a la lista visual`);
+            } catch (e) {
+                const code = String(e && (e.code || e.status) ? (e.code || e.status) : '').toLowerCase();
+                const msg = String(e && e.message ? e.message : e);
+                const isPerm = code.includes('permission') || msg.includes('PERMISSION_DENIED');
+                if (isPerm) {
+                    try {
+                        const freshStatus = String(await getLiveCodeCached({ force: true }) || '').trim();
+                        const fresh = (freshStatus || liveCodeEnv || '').trim();
+                        if (fresh && fresh !== String(requestData.liveCode || '')) {
+                            requestData.liveCode = fresh;
+                            const docRef2 = await addDoc(collection(db, 'solicitudes'), requestData);
+                            queueSaved = true;
+                            queueDocId = docRef2 && docRef2.id ? docRef2.id : '';
+                            console.log(`✅ Agregada a la lista visual`);
+                        } else {
+                            console.warn(`🚫 Firestore rechazó escritura (permiso). liveCode usado=${maskLiveCode(requestData.liveCode)} liveCode status=${maskLiveCode(freshStatus)}`);
+                        }
+                    } catch (_) {}
+                }
+                throw e;
+            }
         }
 
         let ciderSent = false;
