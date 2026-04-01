@@ -197,6 +197,18 @@ let TIKTOK_USERNAME = config.tiktokUsername;
 let tiktokLiveConnection;
 let isConnecting = false;
 let ciderSocket;
+
+function getSrAliases() {
+    const base = Array.isArray(config.commandAliases) && config.commandAliases.length > 0
+        ? config.commandAliases
+        : ["!sr", "!pedir", "!cancion"];
+    const set = new Set();
+    ["!zr", ...base].forEach(a => {
+        const v = String(a || '').trim();
+        if (v) set.add(v);
+    });
+    return Array.from(set);
+}
 // let db; // REDUNDANT
 const recentSrEvents = [];
 const pendingCiderQueue = [];
@@ -845,9 +857,7 @@ function startBot() {
             const rawMessage = body.message ? String(body.message).trim() : '';
             let query = body.query ? String(body.query).trim() : '';
             if (rawMessage) {
-                const aliases = Array.isArray(config.commandAliases) && config.commandAliases.length > 0 
-                    ? config.commandAliases 
-                    : ["!sr", "!pedir", "!cancion"];
+                const aliases = getSrAliases();
                 
                 const lower = rawMessage.toLowerCase();
                 let matchedAlias = null;
@@ -1156,9 +1166,7 @@ function setupListeners() {
             return;
         }
 
-        const aliases = Array.isArray(config.commandAliases) && config.commandAliases.length > 0 
-            ? config.commandAliases 
-            : ["!sr", "!pedir", "!cancion"];
+        const aliases = getSrAliases();
         
         let matchedAlias = null;
         for (const alias of aliases) {
