@@ -22,6 +22,15 @@ service cloud.firestore {
     }
 
     // Solicitudes de canciones (colección principal)
+    function getSystemStatus() {
+      return get(/databases/$(database)/documents/system/status);
+    }
+    function isLiveCodeEnforced() {
+      return getSystemStatus().exists && (getSystemStatus().data.liveCode is string) && (getSystemStatus().data.liveCode.size() >= 4);
+    }
+    function isValidLiveCode() {
+      return !isLiveCodeEnforced() || ((request.resource.data.liveCode is string) && (request.resource.data.liveCode == getSystemStatus().data.liveCode) && (request.resource.data.liveCode.size() <= 32));
+    }
     match /solicitudes/{doc} {
       allow read: if true;
       allow create: if (request.auth != null || request.resource.data.source == 'tiktok') &&
@@ -43,7 +52,8 @@ service cloud.firestore {
         (!('badge' in request.resource.data) || request.resource.data.badge is string) &&
         (!('displayName' in request.resource.data) || request.resource.data.displayName is string) &&
         (!('source' in request.resource.data) || (request.resource.data.source is string && request.resource.data.source in ['web', 'tiktok', 'test'])) &&
-        (!('subsource' in request.resource.data) || request.resource.data.subsource is string);
+        (!('subsource' in request.resource.data) || request.resource.data.subsource is string) &&
+        isValidLiveCode();
       allow update, delete: if request.auth != null;
     }
 

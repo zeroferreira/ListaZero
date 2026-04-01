@@ -65,6 +65,11 @@
           <label for="artista">Artista</label>
           <input id="artista" name="artista" type="text" required placeholder="¿Quién interpreta la cancion?" />
         </div>
+        <div class="field" id="live-code-field" hidden>
+          <label for="live-code">Código del Live</label>
+          <input id="live-code" name="live-code" type="text" placeholder="Código compartido en el live" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" />
+          <div id="live-code-hint" style="margin-top: 6px; font-size: 12px; opacity: 0.8;">Si está activo, es necesario para evitar peticiones fantasma.</div>
+        </div>
 
         <div class="actions">
           <button type="submit" class="btn">Enviar solicitud</button>
@@ -573,6 +578,7 @@
       };
 
       let db = null;
+      let liveCodeRequired = false;
       try {
         if (typeof firebase !== 'undefined' && firebase.apps) {
           if (!firebase.apps.length) {
@@ -599,6 +605,26 @@
 
       const form = document.getElementById('formulario');
       const usuarioSelect = document.getElementById('usuario-registrado');
+      const liveCodeField = document.getElementById('live-code-field');
+      const liveCodeInput = document.getElementById('live-code');
+      const savedLiveCode = String(localStorage.getItem('liveCode') || '');
+      if (liveCodeInput && savedLiveCode) liveCodeInput.value = savedLiveCode;
+      if (liveCodeInput) {
+        liveCodeInput.addEventListener('input', () => {
+          try { localStorage.setItem('liveCode', String(liveCodeInput.value || '')); } catch (_) {}
+        });
+      }
+      try {
+        if (db) {
+          db.collection('system').doc('status').onSnapshot((doc) => {
+            const data = doc && doc.exists ? (doc.data() || {}) : {};
+            const code = String(data.liveCode || '').trim();
+            liveCodeRequired = code.length >= 4;
+            if (liveCodeField) liveCodeField.hidden = !liveCodeRequired;
+            if (liveCodeInput) liveCodeInput.required = liveCodeRequired;
+          });
+        }
+      } catch (_) {}
 
       // Poblar lista de usuarios registrados desde localStorage y Firestore
       async function collectRegisteredUsers() {
@@ -767,6 +793,7 @@
           // Guardar en Firestore (sincronización multi-dispositivo)
           try {
             if (db) {
+              const liveCode = String((liveCodeInput && liveCodeInput.value) || localStorage.getItem('liveCode') || '').trim();
               await db.collection('solicitudes').add({
                 usuario,
                 displayName: usuario,
@@ -776,6 +803,7 @@
                 day: dayKey,
                 ts: firebase.firestore.FieldValue.serverTimestamp(),
                 source: 'web',
+                liveCode: liveCode || '',
               });
 
               // Upsert del usuario para que aparezca en el panel Admin (colección users)

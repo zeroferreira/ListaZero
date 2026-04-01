@@ -80,6 +80,22 @@ const {
 let db; // RESTORED
 let firebaseAuthPromise = Promise.resolve();
 
+let _liveCodeCache = '';
+let _liveCodeCacheAt = 0;
+async function getLiveCodeCached() {
+    const now = Date.now();
+    if (_liveCodeCacheAt && (now - _liveCodeCacheAt) < 15000) return _liveCodeCache;
+    _liveCodeCacheAt = now;
+    try {
+        if (!db) return _liveCodeCache;
+        const snap = await getDocFn(docFn(db, 'system', 'status'));
+        const data = snap && typeof snap.exists === 'function' && snap.exists() ? (snap.data() || {}) : {};
+        const code = String(data.liveCode || '').trim();
+        _liveCodeCache = code;
+    } catch (_) {}
+    return _liveCodeCache;
+}
+
 // Asignar a variables globales
 getFirestore = getFirestoreFn; // RESTORED
 doc = docFn;
@@ -1679,6 +1695,9 @@ async function handleSongRequest(user, query, options = {}) {
         const hora = `${hh}:${mm}`;
         const songId = `${user}-${songName}-${artistName}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
         const currentDay = getLocalDateKey();
+        const liveCodeEnv = String(process.env.ZEROFM_LIVE_CODE || '').trim();
+        const liveCodeStatus = String(await getLiveCodeCached() || '').trim();
+        const liveCode = (liveCodeStatus || liveCodeEnv || '').trim();
 
         const requestData = {
             id: songId,
@@ -1691,7 +1710,8 @@ async function handleSongRequest(user, query, options = {}) {
             ts: serverTimestamp(),
             status: 'pending',
             day: currentDay,
-            genre: genre // Save Genre
+            genre: genre,
+            liveCode: liveCode || ''
         };
         requestData.source = 'tiktok';
         if (source && String(source).trim() && String(source).trim().toLowerCase() !== 'tiktok') {

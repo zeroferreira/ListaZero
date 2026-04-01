@@ -973,6 +973,21 @@
                         </div>
                       </div>
                    </div>
+                   
+                   <div class="live-control-box" style="margin-bottom: 20px; padding: 15px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px;">
+                      <h4 style="margin: 0 0 10px 0; font-size: 16px;">🧷 Código anti-fantasma</h4>
+                      <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+                        Si hay código (mín. 4 caracteres), se exige en nuevas solicitudes para reducir peticiones fantasma.
+                      </p>
+                      <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <span id="current-live-code-text" style="font-weight: bold; font-size: 14px;">Código Actual: (desactivado)</span>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                          <input id="live-code-admin" type="text" placeholder="Ej: Z0-2026" style="flex: 1; padding: 8px 10px; border: 1px solid rgba(0,0,0,0.15); border-radius: 8px;" />
+                          <button type="button" id="set-live-code" class="btn btn-sm btn-primary">Guardar</button>
+                          <button type="button" id="clear-live-code" class="btn btn-sm btn-outline-secondary">Quitar</button>
+                        </div>
+                      </div>
+                   </div>
 
                    <div class="action-grid">
                       <button type="button" id="recalculate-users" class="btn btn-outline-success" title="Recalcular puntos de todos los usuarios">
@@ -9805,6 +9820,10 @@
         const forceLiveOnBtn = document.getElementById('force-live-on');
         const forceLiveOffBtn = document.getElementById('force-live-off');
         const liveStatusText = document.getElementById('current-live-status-text');
+        const liveCodeText = document.getElementById('current-live-code-text');
+        const liveCodeAdminInput = document.getElementById('live-code-admin');
+        const setLiveCodeBtn = document.getElementById('set-live-code');
+        const clearLiveCodeBtn = document.getElementById('clear-live-code');
 
         // Función para actualizar estado LIVE manual
         async function setManualLiveStatus(status) {
@@ -9823,13 +9842,32 @@
         }
 
         // Listener para actualizar el texto del panel admin
-        if (liveStatusText) {
+        if (liveStatusText || liveCodeText || liveCodeAdminInput) {
             db.collection('system').doc('status').onSnapshot(doc => {
                 const data = doc.data() || {};
                 const isLive = !!data.isLive;
-                liveStatusText.textContent = `Estado Actual: ${isLive ? 'ONLINE 🟢' : 'OFFLINE 🔴'}`;
-                liveStatusText.style.color = isLive ? '#22c55e' : '#ef4444';
+                if (liveStatusText) {
+                  liveStatusText.textContent = `Estado Actual: ${isLive ? 'ONLINE 🟢' : 'OFFLINE 🔴'}`;
+                  liveStatusText.style.color = isLive ? '#22c55e' : '#ef4444';
+                }
+                const liveCode = String(data.liveCode || '').trim();
+                if (liveCodeText) {
+                  liveCodeText.textContent = liveCode.length >= 4 ? `Código Actual: ${liveCode}` : 'Código Actual: (desactivado)';
+                }
+                if (liveCodeAdminInput) {
+                  const current = String(liveCodeAdminInput.value || '').trim();
+                  if (!current) liveCodeAdminInput.value = liveCode;
+                }
             });
+        }
+
+        async function setLiveCode(value) {
+          const code = String(value || '').trim();
+          await db.collection('system').doc('status').set({
+              liveCode: code,
+              lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
+              forcedBy: 'admin'
+          }, { merge: true });
         }
 
         if (forceLiveOnBtn) {
@@ -9838,6 +9876,29 @@
         
         if (forceLiveOffBtn) {
             forceLiveOffBtn.addEventListener('click', () => setManualLiveStatus(false));
+        }
+
+        if (setLiveCodeBtn && liveCodeAdminInput) {
+          setLiveCodeBtn.addEventListener('click', async () => {
+            try {
+              await setLiveCode(liveCodeAdminInput.value);
+            } catch (e) {
+              console.error("Error guardando liveCode:", e);
+              alert("Error: " + (e && e.message ? e.message : String(e)));
+            }
+          });
+        }
+
+        if (clearLiveCodeBtn && liveCodeAdminInput) {
+          clearLiveCodeBtn.addEventListener('click', async () => {
+            try {
+              liveCodeAdminInput.value = '';
+              await setLiveCode('');
+            } catch (e) {
+              console.error("Error quitando liveCode:", e);
+              alert("Error: " + (e && e.message ? e.message : String(e)));
+            }
+          });
         }
         
         if (recalculateBtn) {
