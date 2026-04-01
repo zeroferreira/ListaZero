@@ -209,6 +209,21 @@ function getSrAliases() {
     });
     return Array.from(set);
 }
+
+function parseSrCommand(message, aliases) {
+    const msg = String(message || '');
+    const lower = msg.toLowerCase();
+    for (const alias of (aliases || [])) {
+        const a = String(alias || '').trim();
+        if (!a) continue;
+        const aLower = a.toLowerCase();
+        if (!lower.startsWith(aLower)) continue;
+        const nextChar = msg.charAt(a.length);
+        if (nextChar && !/\s/.test(nextChar)) continue;
+        return { alias: a, query: msg.substring(a.length).trim() };
+    }
+    return null;
+}
 // let db; // REDUNDANT
 const recentSrEvents = [];
 const pendingCiderQueue = [];
@@ -859,20 +874,8 @@ function startBot() {
             if (rawMessage) {
                 const aliases = getSrAliases();
                 
-                const lower = rawMessage.toLowerCase();
-                let matchedAlias = null;
-                for (const alias of aliases) {
-                    if (lower.startsWith(alias.toLowerCase() + ' ')) {
-                        matchedAlias = alias;
-                        break;
-                    }
-                }
-                
-                if (matchedAlias) {
-                    query = rawMessage.substring(matchedAlias.length).trim();
-                } else {
-                    query = rawMessage;
-                }
+                const parsed = parseSrCommand(rawMessage, aliases);
+                query = parsed ? parsed.query : rawMessage;
             }
             query = query.replace(/\s+-\s+/g, ' ').trim();
             if (!query && !appleMusicId && !(songName && artistName)) {
@@ -1167,16 +1170,8 @@ function setupListeners() {
         }
 
         const aliases = getSrAliases();
-        
-        let matchedAlias = null;
-        for (const alias of aliases) {
-            if (lowerMsg.startsWith(alias.toLowerCase() + ' ')) {
-                matchedAlias = alias;
-                break;
-            }
-        }
-
-        if (matchedAlias) {
+        const parsed = parseSrCommand(msg, aliases);
+        if (parsed) {
             
             console.log(`📝 Comando detectado de ${displayName} (${userId}): ${msg}`);
             
@@ -1188,7 +1183,7 @@ function setupListeners() {
                 return;
             }
 
-            const rawQuery = msg.substring(matchedAlias.length).trim();
+            const rawQuery = parsed.query;
             if (rawQuery.length > 0) {
                 const cleanQuery = rawQuery.trim();
                 
@@ -1225,6 +1220,11 @@ function setupListeners() {
         sessionDonations.set(uid, currentAmount + coins);
         
         console.log(`🎁 ${displayName} donó ${coins} (Total: ${sessionDonations.get(uid)})`);
+        try {
+            const totalCoins = Number(sessionDonations.get(uid) || 0);
+            const minVip = Number(config.minCoinsForVip) || 0;
+            if (minVip > 0 && totalCoins >= minVip) tempVipUsers.add(uid);
+        } catch (_) {}
 
         // --- SISTEMA DE PUNTOS POR DONACIÓN ---
         // 1 punto por cada 10 monedas
