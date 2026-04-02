@@ -640,6 +640,10 @@
                   <input type="checkbox" id="r-allow-duplicates" onchange="updateRoulettePreview()" />
                   Permitir duplicados (ruleta nueva)
                 </label>
+            <label style="display:flex; align-items:center; gap:10px; color:#ddd; font-size: 12px; line-height: 1.2;">
+              <input type="checkbox" id="r-spin-again" onchange="updateRoulettePreview()" />
+              Activar gira de nuevo
+            </label>
             </div>
             <div style="display: flex; gap: 5px; padding-top: 10px;">
                 <input type="text" id="add-participant-input" placeholder="Nombre..." style="flex: 1; padding: 8px; background: #222; border: 1px solid #444; color: white; border-radius: 4px;">
@@ -2949,12 +2953,28 @@
     });
 
     // --- Roulette Logic ---
-    let rouletteParticipants = [];
+    const ROULETTE_SPIN_AGAIN_LABEL = 'Gira de nuevo';
+    let rouletteParticipantsList = [];
+    let rouletteParticipantsNew = [];
+    let rouletteParticipants = rouletteParticipantsList;
     let rouletteMode = 'list'; // 'list' | 'new'
     let rouletteCanvas = document.getElementById('roulette-canvas');
     let rouletteCtx = rouletteCanvas ? rouletteCanvas.getContext('2d') : null;
     let isSpinning = false;
     let currentRotation = 0;
+
+    function computeListParticipantsFromQueue() {
+        const pending = allRequests.filter(req => {
+            const id = generateSongId(req);
+            return !playedSongIds.has(id);
+        });
+        const users = new Set();
+        pending.forEach(req => {
+            const u = req.displayName || req.usuario || req.user || req.username || '';
+            if(u) users.add(u);
+        });
+        return Array.from(users);
+    }
 
     function setRouletteMode(mode) {
         rouletteMode = mode;
@@ -2962,6 +2982,7 @@
         const btnNew = document.getElementById('mode-btn-new');
         
         if(mode === 'list') {
+            rouletteParticipants = rouletteParticipantsList;
             if(btnList) {
                 btnList.style.background = 'var(--queue-accent-color)';
                 btnList.style.color = '#000';
@@ -2972,6 +2993,7 @@
             }
             loadRouletteParticipants();
         } else {
+            rouletteParticipants = rouletteParticipantsNew;
             if(btnList) {
                 btnList.style.background = 'transparent';
                 btnList.style.color = '#aaa';
@@ -2980,8 +3002,9 @@
                 btnNew.style.background = 'var(--queue-accent-color)';
                 btnNew.style.color = '#000';
             }
-            // Clear for new
-            rouletteParticipants = [];
+            rouletteParticipantsNew.length = 0;
+            const seed = computeListParticipantsFromQueue();
+            seed.forEach(n => rouletteParticipantsNew.push(n));
             renderParticipantsList();
         }
     }
@@ -3031,6 +3054,15 @@
             if(rouletteMode === 'list') {
                 loadRouletteParticipants();
             }
+
+            try {
+                const rem = document.getElementById('r-remove-winner');
+                if (rem) rem.checked = !!rouletteConfig.removeWinnerAfterSpin;
+                const dup = document.getElementById('r-allow-duplicates');
+                if (dup) dup.checked = !!rouletteConfig.allowDuplicates;
+                const sa = document.getElementById('r-spin-again');
+                if (sa) sa.checked = !!rouletteConfig.spinAgainEnabled;
+            } catch (_) {}
             
             applyParticipantsVisibility();
             
@@ -3052,18 +3084,8 @@
         if(rouletteMode !== 'list') return; // Should not overwrite if in new mode, unless forced
 
         // Extract unique users from pending requests
-        const pending = allRequests.filter(req => {
-            const id = generateSongId(req);
-            return !playedSongIds.has(id);
-        });
-        
-        const users = new Set();
-        pending.forEach(req => {
-            const u = req.displayName || req.usuario || req.user || req.username || '';
-            if(u) users.add(u);
-        });
-        
-        rouletteParticipants = Array.from(users);
+        rouletteParticipantsList = computeListParticipantsFromQueue();
+        rouletteParticipants = rouletteParticipantsList;
         renderParticipantsList();
     }
 
@@ -3148,6 +3170,7 @@
         showParticipants: true,
         removeWinnerAfterSpin: false,
         allowDuplicates: false,
+        spinAgainEnabled: false,
         spinDurationMs: 5000,
         spinIntensity: 6
     };
@@ -3157,7 +3180,7 @@
         const savedConfig = localStorage.getItem(`widget_config:${location.pathname}:roulette`);
         if(savedConfig) {
             const parsed = JSON.parse(savedConfig);
-            if(parsed) rouletteConfig = { ...rouletteConfig, ...parsed };
+            if(parsed) rouletteConfig = { ...rouletteConfig, ...parsed, removeWinnerAfterSpin: false };
         }
     } catch(_) {}
 
@@ -3216,6 +3239,8 @@
             document.getElementById('r-colors').value = rouletteConfig.colors.join(', ');
             document.getElementById('r-remove-winner').checked = !!rouletteConfig.removeWinnerAfterSpin;
             document.getElementById('r-allow-duplicates').checked = !!rouletteConfig.allowDuplicates;
+            const spinAgainEl = document.getElementById('r-spin-again');
+            if (spinAgainEl) spinAgainEl.checked = !!rouletteConfig.spinAgainEnabled;
             const dur = Math.round(((Number(rouletteConfig.spinDurationMs) || 5000) / 1000) * 2) / 2;
             document.getElementById('r-spin-duration').value = String(dur);
             document.getElementById('r-spin-duration-val').innerText = String(dur);
@@ -3238,6 +3263,7 @@
         const tc = document.getElementById('r-text-color').value || '#ffffff';
         const removeWinner = !!document.getElementById('r-remove-winner').checked;
         const allowDup = !!document.getElementById('r-allow-duplicates').checked;
+        const spinAgain = !!document.getElementById('r-spin-again')?.checked;
         const durSec = parseFloat(document.getElementById('r-spin-duration').value) || 5;
         const intensity = parseInt(document.getElementById('r-spin-intensity').value) || 6
         
@@ -3246,6 +3272,7 @@
         rouletteConfig.textColor = tc;
         rouletteConfig.removeWinnerAfterSpin = removeWinner;
         rouletteConfig.allowDuplicates = allowDup;
+        rouletteConfig.spinAgainEnabled = spinAgain;
         rouletteConfig.spinDurationMs = Math.min(12000, Math.max(2000, Math.round(durSec * 1000)));
         rouletteConfig.spinIntensity = Math.min(10, Math.max(1, intensity));
         const durShow = Math.round((rouletteConfig.spinDurationMs / 1000) * 2) / 2;
@@ -3310,6 +3337,7 @@
         const tc = document.getElementById('r-text-color').value || '#ffffff';
         const removeWinner = !!document.getElementById('r-remove-winner').checked;
         const allowDup = !!document.getElementById('r-allow-duplicates').checked;
+        const spinAgain = !!document.getElementById('r-spin-again')?.checked;
         const durSec = parseFloat(document.getElementById('r-spin-duration').value) || 5;
         const intensity = parseInt(document.getElementById('r-spin-intensity').value) || 6
         
@@ -3326,6 +3354,7 @@
         rouletteConfig.textColor = tc;
         rouletteConfig.removeWinnerAfterSpin = removeWinner;
         rouletteConfig.allowDuplicates = allowDup;
+        rouletteConfig.spinAgainEnabled = spinAgain;
         rouletteConfig.spinDurationMs = Math.min(12000, Math.max(2000, Math.round(durSec * 1000)));
         rouletteConfig.spinIntensity = Math.min(10, Math.max(1, intensity));
         // showParticipants is managed by the toggle tab directly
@@ -3336,6 +3365,22 @@
 
         document.getElementById('roulette-settings-panel').style.display = 'none';
         drawWheel();
+    }
+
+    function getSpinAgainExtraCount(n) {
+        const count = Number(n) || 0;
+        if (count <= 0) return 0;
+        if (count <= 6) return 1;
+        if (count <= 14) return 2;
+        return 3;
+    }
+
+    function getWheelEntries() {
+        const base = Array.isArray(rouletteParticipants) ? rouletteParticipants.slice() : [];
+        if (!rouletteConfig.spinAgainEnabled) return base;
+        const extra = getSpinAgainExtraCount(base.length);
+        for (let i = 0; i < extra; i++) base.push(ROULETTE_SPIN_AGAIN_LABEL);
+        return base;
     }
 
     function drawWheel() {
@@ -3354,7 +3399,8 @@
         
         ctx.clearRect(0, 0, width, height);
         
-        if(rouletteParticipants.length === 0) {
+        const entries = getWheelEntries();
+        if(entries.length === 0) {
              ctx.fillStyle = '#ccc';
              ctx.font = '24px Arial';
              ctx.textAlign = 'center';
@@ -3362,14 +3408,14 @@
              return;
         }
 
-        const arc = (2 * Math.PI) / rouletteParticipants.length;
+        const arc = (2 * Math.PI) / entries.length;
         const colors = rouletteConfig.colors;
 
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(currentRotation);
 
-        rouletteParticipants.forEach((p, i) => {
+        entries.forEach((p, i) => {
             const angle = i * arc;
             ctx.beginPath();
             ctx.moveTo(0, 0);
@@ -3441,7 +3487,8 @@
     }
 
     function determineWinner() {
-        const count = rouletteParticipants.length;
+        const entries = getWheelEntries();
+        const count = entries.length;
         if(count === 0) return;
         
         const normalized = currentRotation % (2 * Math.PI);
@@ -3451,7 +3498,7 @@
         const arc = (2 * Math.PI) / count;
         const index = Math.floor(angleOnWheel / arc);
         
-        const winner = rouletteParticipants[index];
+        const winner = entries[index];
         const winnerLabel = document.getElementById('winner-label');
         if(winnerLabel) {
             winnerLabel.innerText = winner;
@@ -3462,6 +3509,14 @@
                 winnerLabel.style.transform = 'translate(-50%, -50%) scale(1)';
                 winnerLabel.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
             }, 100);
+        }
+
+        if (winner === ROULETTE_SPIN_AGAIN_LABEL) {
+            setTimeout(() => {
+                clearRouletteWinnerLabel();
+                spinWheel();
+            }, 700);
+            return;
         }
 
         if (rouletteConfig.removeWinnerAfterSpin) {
