@@ -631,7 +631,17 @@
                 Participantes <span id="participant-count" style="font-size: 12px; background: #333; padding: 2px 6px; border-radius: 4px; color: #fff;">0</span>
             </h3>
             <div id="participants-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;"></div>
-            <div style="display: flex; gap: 5px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <div id="roulette-options" style="display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <label style="display:flex; align-items:center; gap:10px; color:#ddd; font-size: 12px; line-height: 1.2;">
+                  <input type="checkbox" id="r-remove-winner" onchange="updateRoulettePreview()" />
+                  Quitar al ganador
+                </label>
+                <label style="display:flex; align-items:center; gap:10px; color:#ddd; font-size: 12px; line-height: 1.2;">
+                  <input type="checkbox" id="r-allow-duplicates" onchange="updateRoulettePreview()" />
+                  Permitir duplicados (ruleta nueva)
+                </label>
+            </div>
+            <div style="display: flex; gap: 5px; padding-top: 10px;">
                 <input type="text" id="add-participant-input" placeholder="Nombre..." style="flex: 1; padding: 8px; background: #222; border: 1px solid #444; color: white; border-radius: 4px;">
                 <button id="add-participant-btn" style="background: var(--queue-accent-color); color: #000; border: none; padding: 0 15px; border-radius: 4px; font-weight: bold; cursor: pointer;">+</button>
             </div>
@@ -715,6 +725,16 @@
             </div>
             <!-- Hidden textarea to store current custom colors if needed, or just use state -->
             <textarea id="r-colors" style="display: none;"></textarea>
+        </div>
+
+        <div class="settings-group">
+            <label style="color: #ccc; display: block; margin-bottom: 5px;">Tiempo de giro: <span id="r-spin-duration-val">5.0</span>s</label>
+            <input type="range" id="r-spin-duration" min="2" max="12" step="0.5" value="5" oninput="updateRoulettePreview()" style="width: 100%;">
+        </div>
+
+        <div class="settings-group">
+            <label style="color: #ccc; display: block; margin-bottom: 5px;">Intensidad: <span id="r-spin-intensity-val">6</span></label>
+            <input type="range" id="r-spin-intensity" min="1" max="10" step="1" value="6" oninput="updateRoulettePreview()" style="width: 100%;">
         </div>
     </div>
 
@@ -3088,8 +3108,15 @@
     }
 
     function addParticipant(name) {
-        if(!rouletteParticipants.includes(name)) {
-            rouletteParticipants.push(name);
+        const n = String(name || '').trim();
+        if(!n) return;
+        if(rouletteMode === 'new' && rouletteConfig.allowDuplicates) {
+            rouletteParticipants.push(n);
+            renderParticipantsList();
+            return;
+        }
+        if(!rouletteParticipants.includes(n)) {
+            rouletteParticipants.push(n);
             renderParticipantsList();
         }
     }
@@ -3118,7 +3145,11 @@
         fontSize: 14,
         textColor: '#ffffff',
         colors: ROULETTE_THEMES[0].colors,
-        showParticipants: true
+        showParticipants: true,
+        removeWinnerAfterSpin: false,
+        allowDuplicates: false,
+        spinDurationMs: 5000,
+        spinIntensity: 6
     };
     
     // Load config
@@ -3183,6 +3214,14 @@
             document.getElementById('r-font-size').value = rouletteConfig.fontSize;
             document.getElementById('r-text-color').value = rouletteConfig.textColor;
             document.getElementById('r-colors').value = rouletteConfig.colors.join(', ');
+            document.getElementById('r-remove-winner').checked = !!rouletteConfig.removeWinnerAfterSpin;
+            document.getElementById('r-allow-duplicates').checked = !!rouletteConfig.allowDuplicates;
+            const dur = Math.round(((Number(rouletteConfig.spinDurationMs) || 5000) / 1000) * 2) / 2;
+            document.getElementById('r-spin-duration').value = String(dur);
+            document.getElementById('r-spin-duration-val').innerText = String(dur);
+            const intensity = Math.min(10, Math.max(1, Number(rouletteConfig.spinIntensity) || 6));
+            document.getElementById('r-spin-intensity').value = String(intensity);
+            document.getElementById('r-spin-intensity-val').innerText = String(intensity);
             
             // Removed legacy checkbox population
 
@@ -3197,11 +3236,23 @@
     function updateRoulettePreview() {
         const fs = parseInt(document.getElementById('r-font-size').value) || 14;
         const tc = document.getElementById('r-text-color').value || '#ffffff';
-        // Removed legacy checkbox reading
+        const removeWinner = !!document.getElementById('r-remove-winner').checked;
+        const allowDup = !!document.getElementById('r-allow-duplicates').checked;
+        const durSec = parseFloat(document.getElementById('r-spin-duration').value) || 5;
+        const intensity = parseInt(document.getElementById('r-spin-intensity').value) || 6
         
         // Update temp state
         rouletteConfig.fontSize = fs;
         rouletteConfig.textColor = tc;
+        rouletteConfig.removeWinnerAfterSpin = removeWinner;
+        rouletteConfig.allowDuplicates = allowDup;
+        rouletteConfig.spinDurationMs = Math.min(12000, Math.max(2000, Math.round(durSec * 1000)));
+        rouletteConfig.spinIntensity = Math.min(10, Math.max(1, intensity));
+        const durShow = Math.round((rouletteConfig.spinDurationMs / 1000) * 2) / 2;
+        const durEl = document.getElementById('r-spin-duration-val');
+        if (durEl) durEl.innerText = String(durShow);
+        const intEl = document.getElementById('r-spin-intensity-val');
+        if (intEl) intEl.innerText = String(rouletteConfig.spinIntensity);
         
         drawWheel();
     }
@@ -3257,6 +3308,10 @@
         // But let's re-read to be safe or just persist
         const fs = parseInt(document.getElementById('r-font-size').value) || 14;
         const tc = document.getElementById('r-text-color').value || '#ffffff';
+        const removeWinner = !!document.getElementById('r-remove-winner').checked;
+        const allowDup = !!document.getElementById('r-allow-duplicates').checked;
+        const durSec = parseFloat(document.getElementById('r-spin-duration').value) || 5;
+        const intensity = parseInt(document.getElementById('r-spin-intensity').value) || 6
         
         // We trust rouletteConfig.colors is updated via selection or we can parse from textarea if we kept it editable
         // But since I hid textarea, we rely on state.
@@ -3269,6 +3324,10 @@
 
         rouletteConfig.fontSize = fs;
         rouletteConfig.textColor = tc;
+        rouletteConfig.removeWinnerAfterSpin = removeWinner;
+        rouletteConfig.allowDuplicates = allowDup;
+        rouletteConfig.spinDurationMs = Math.min(12000, Math.max(2000, Math.round(durSec * 1000)));
+        rouletteConfig.spinIntensity = Math.min(10, Math.max(1, intensity));
         // showParticipants is managed by the toggle tab directly
 
         try {
@@ -3350,9 +3409,10 @@
             winnerLabel.style.transition = 'none';
         }
         
-        const minSpins = 5;
-        const maxSpins = 10;
-        const duration = 5000; // ms
+        const intensity = Math.min(10, Math.max(1, Number(rouletteConfig.spinIntensity) || 6));
+        const minSpins = 2 + intensity;
+        const maxSpins = minSpins + 5;
+        const duration = Math.min(12000, Math.max(2000, Number(rouletteConfig.spinDurationMs) || 5000));
         const spinAngle = (minSpins + Math.random() * (maxSpins - minSpins)) * 2 * Math.PI;
         
         const startRotation = currentRotation;
@@ -3402,6 +3462,16 @@
                 winnerLabel.style.transform = 'translate(-50%, -50%) scale(1)';
                 winnerLabel.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
             }, 100);
+        }
+
+        if (rouletteConfig.removeWinnerAfterSpin) {
+            setTimeout(() => {
+                const idx = rouletteParticipants.indexOf(winner);
+                if (idx !== -1) {
+                    rouletteParticipants.splice(idx, 1);
+                    renderParticipantsList();
+                }
+            }, 600);
         }
     }
 
