@@ -2268,6 +2268,7 @@
       let vipSet = window.vipSet;
       let z0VipSet = window.z0VipSet;
       let donadorSet = window.donadorSet;
+      window.__QUEUE_MODE__ = window.__QUEUE_MODE__ || 'default';
       let unsubscribeSolicitudes = null;
       let currentDayItems = [];
       // Orden manual (compartido): suscripción y estado actual
@@ -2313,8 +2314,88 @@
         return arr;
       }
 
+      function getQueueMode() {
+        try { return String(window.__QUEUE_MODE__ || 'default').trim() || 'default'; } catch (_) { return 'default'; }
+      }
+
+      function badgeRankForOrdering(badge) {
+        const b = String(badge || '').trim();
+        if (b === 'superfan') return 0;
+        if (b === 'z0-platino') return 1;
+        if (b === 'z0-vip') return 2;
+        if (b === 'vip') return 3;
+        if (b === 'donador') return 4;
+        if (b === 'z0-fan') return 5;
+        return 6;
+      }
+
+      function getOrderingBadgeForUser(username, itemBadge) {
+        const selected = typeof window.getSelectedBadgeFor === 'function' ? window.getSelectedBadgeFor(username) : '';
+        if (selected) return selected;
+        const membership = typeof getCurrentMembership === 'function' ? getCurrentMembership(username) : '';
+        const direct = String(itemBadge || '').trim();
+        if (membership && badgeRankForOrdering(membership) <= badgeRankForOrdering(direct)) return membership;
+        return direct || membership;
+      }
+
+      function applyTandas15Order(items) {
+        const base = sortItemsStable(items, 'asc');
+        const slotMs = 15 * 60 * 1000;
+        const bySlot = new Map();
+        base.forEach((it) => {
+          const t = getItemTimeMs(it);
+          const slotKey = Math.floor((Number.isFinite(t) ? t : 0) / slotMs);
+          if (!bySlot.has(slotKey)) bySlot.set(slotKey, []);
+          bySlot.get(slotKey).push(it);
+        });
+        const slotKeys = Array.from(bySlot.keys()).sort((a, b) => a - b);
+        const out = [];
+        slotKeys.forEach((slotKey) => {
+          const group = bySlot.get(slotKey) || [];
+          const perUser = new Map();
+          group.forEach((it) => {
+            const u = String(it?.usuario || it?.displayName || '').trim();
+            if (!u) return;
+            if (!perUser.has(u)) perUser.set(u, []);
+            perUser.get(u).push(it);
+          });
+          const users = Array.from(perUser.keys());
+          users.forEach((u) => {
+            const arr = perUser.get(u) || [];
+            arr.sort((a, b) => compareItemsByTime(a, b, 'asc'));
+          });
+          users.sort((a, b) => {
+            const ba = getOrderingBadgeForUser(a, (perUser.get(a)?.[0]?.badge || ''));
+            const bb = getOrderingBadgeForUser(b, (perUser.get(b)?.[0]?.badge || ''));
+            const ra = badgeRankForOrdering(ba);
+            const rb = badgeRankForOrdering(bb);
+            if (ra !== rb) return ra - rb;
+            const ta = getItemTimeMs(perUser.get(a)?.[0]);
+            const tb = getItemTimeMs(perUser.get(b)?.[0]);
+            if (ta !== tb) return ta - tb;
+            return a.localeCompare(b, 'es');
+          });
+          let round = 0;
+          let added = true;
+          while (added) {
+            added = false;
+            for (let i = 0; i < users.length; i++) {
+              const u = users[i];
+              const arr = perUser.get(u) || [];
+              if (arr[round]) {
+                out.push(arr[round]);
+                added = true;
+              }
+            }
+            round++;
+          }
+        });
+        return out;
+      }
+
       function applyDisplayOrder(items) {
         const mode = getSortMode();
+        if (getQueueMode() === 'tandas15' && !isManualSortMode(mode)) return applyTandas15Order(items);
         if (mode === 'oldest') return sortItemsStable(items, 'asc');
         if (mode === 'recent') return sortItemsStable(items, 'desc');
         if (mode === 'manual_fifo') return applyOrder(sortItemsStable(items, 'asc'), currentManualOrder);
@@ -3076,6 +3157,8 @@
           const isVip = vipSet.has(unameLc);
           const isZ0Vip = z0VipSet.has(unameLc);
           const isDonador = donadorSet.has(unameLc);
+          const isZ0Platino = window.z0PlatinumSet && window.z0PlatinumSet.has(unameLc);
+          const isZ0Fan = window.z0FanSet && window.z0FanSet.has(unameLc);
           const hasPendingReward = window.pendingRewardUsers && window.pendingRewardUsers.has(unameLc);
           const li = document.createElement('li');
 
@@ -3098,16 +3181,16 @@
              li.className = 'item donador-plata';
           } else if (badgeType === 'donador-bronce') {
              li.className = 'item donador-bronce';
+          } else if (isZ0Platino) {
+            li.className = 'item z0-platino';
           } else if (isZ0Vip) {
             li.className = 'item z0-vip';
           } else if (isVip) {
             li.className = 'item vip';
-          } else if (window.z0PlatinumSet && window.z0PlatinumSet.has(it.usuario)) {
-            li.className = 'item z0-platino';
-          } else if (window.z0FanSet && window.z0FanSet.has(it.usuario)) {
-            li.className = 'item z0-fan';
           } else if (isDonador) {
             li.className = 'item donador';
+          } else if (isZ0Fan) {
+            li.className = 'item z0-fan';
           } else {
             li.className = 'item';
           }
@@ -3123,7 +3206,7 @@
 
           const selectedBadge = typeof window.getSelectedBadgeFor === 'function' ? window.getSelectedBadgeFor(it.usuario) : '';
           if (selectedBadge) {
-            li.classList.remove('superfan','vip','z0-vip','donador','z0-fan','z0-platino');
+            li.classList.remove('superfan','vip','z0-vip','donador','z0-fan','z0-platino','donador-oro','donador-plata','donador-bronce');
             li.classList.add(selectedBadge);
           }
 
@@ -7836,7 +7919,7 @@
         const blocks = [
           '<div style="display:flex; flex-direction:column; gap:12px;">',
           '<div style="opacity:0.85;">Esta es la jerarquía que se usa como referencia para prioridad y para entender las insignias.</div>',
-          `<details open><summary style="cursor:pointer; font-weight:900;">⭐ Superfan (TikTok) (${superfan.length})</summary><div style="margin-top:8px;">${superfan.length ? superfan.join(', ') : 'N/D'}</div><div style="margin-top:8px; opacity:0.85;">Nivel máximo del live. Esta lista se gestiona en la web para reflejarlo en overlays y en la lista.</div></details>`,
+          `<details open><summary style="cursor:pointer; font-weight:900;">⭐ Superfan (TikTok) (${superfan.length})</summary><div style="margin-top:8px;">${superfan.length ? superfan.join(', ') : 'N/D'}</div><div style="margin-top:8px; opacity:0.85;">Solo es posible obtenerla siendo Superfan en TikTok. Se refleja aquí para que aparezca en la lista y overlays.</div></details>`,
           `<details><summary style="cursor:pointer; font-weight:900;">z0‑Platino (${z0Platino.length})</summary><div style="margin-top:8px;">${z0Platino.length ? z0Platino.join(', ') : 'N/D'}</div></details>`,
           `<details><summary style="cursor:pointer; font-weight:900;">z0‑VIP (${z0Vip.length})</summary><div style="margin-top:8px;">${z0Vip.length ? z0Vip.join(', ') : 'N/D'}</div></details>`,
           `<details><summary style="cursor:pointer; font-weight:900;">VIP (${vip.length})</summary><div style="margin-top:8px;">${vip.length ? vip.join(', ') : 'N/D'}</div></details>`,
@@ -14377,11 +14460,11 @@
         const key = String(username || '').trim().replace(/^@/, '').toLowerCase();
         const res = [];
         if (window.superfanSet && window.superfanSet.has(key)) res.push('superfan');
-        if (window.vipSet && window.vipSet.has(key)) res.push('vip');
+        if (window.z0PlatinumSet && window.z0PlatinumSet.has(key)) res.push('z0-platino');
         if (window.z0VipSet && window.z0VipSet.has(key)) res.push('z0-vip');
+        if (window.vipSet && window.vipSet.has(key)) res.push('vip');
         if (window.donadorSet && window.donadorSet.has(key)) res.push('donador');
         if (window.z0FanSet && window.z0FanSet.has(key)) res.push('z0-fan');
-        if (window.z0PlatinumSet && window.z0PlatinumSet.has(key)) res.push('z0-platino');
         return res;
       }
 
@@ -14390,7 +14473,7 @@
         if (!select) return;
         const earned = getEarnedBadgesForUser(username);
         select.innerHTML = '';
-        const titles = { '':'Ninguna','superfan':'Superfan','vip':'VIP','z0-vip':'z0Vip','donador':'Donador','z0-fan':'z0','z0-platino':'VIP Platino' };
+        const titles = { '':'Ninguna','superfan':'Superfan','z0-platino':'z0‑Platino','z0-vip':'z0‑VIP','vip':'VIP','donador':'Donador','z0-fan':'z0‑Fan' };
         const noneOpt = document.createElement('option');
         noneOpt.value = '';
         noneOpt.textContent = titles[''];
@@ -17973,6 +18056,102 @@
       </div>
     </div>
   </div>
+
+  <button type="button" id="queue-mode-fab" aria-label="Modo de cola" title="Modo de cola" style="position: fixed; bottom: 22px; left: 22px; width: 56px; height: 56px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.22); background: rgba(17,24,39,0.88); color: #f9fafb; font-weight: 900; font-size: 22px; cursor: pointer; z-index: 2147483000; box-shadow: 0 12px 30px rgba(0,0,0,0.35); backdrop-filter: blur(10px); display:none;">Z</button>
+  <div id="queue-mode-panel" hidden style="position: fixed; bottom: 88px; left: 22px; width: 280px; padding: 12px 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.16); background: rgba(17,24,39,0.92); color: #f9fafb; z-index: 2147483001; box-shadow: 0 16px 40px rgba(0,0,0,0.45); backdrop-filter: blur(10px);">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <div style="font-weight: 900;">Tandas (15 min)</div>
+      <button type="button" id="queue-mode-close" aria-label="Cerrar" style="border:none; background:transparent; color:#f87171; font-size: 18px; cursor:pointer;">×</button>
+    </div>
+    <label style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top: 10px;">
+      <span style="opacity:0.9;">Activar orden por tandas</span>
+      <input id="queue-mode-toggle" type="checkbox">
+    </label>
+    <div id="queue-mode-status" style="margin-top: 8px; font-size: 12px; opacity: 0.85;">Estado: (desconocido)</div>
+  </div>
+
+  <script>
+  (function(){
+    function getDb() {
+      try { if (typeof db !== 'undefined' && db) return db; } catch (_) {}
+      try { if (window.db) return window.db; } catch (_) {}
+      return null;
+    }
+    function isAdminMode() {
+      try { return localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true'; } catch (_) { return false; }
+    }
+    function setQueueMode(mode) {
+      const m = String(mode || 'default').trim() || 'default';
+      window.__QUEUE_MODE__ = m;
+      try { localStorage.setItem('queueMode', m); } catch (_) {}
+      try { if (daySelect && daySelect.value) subscribeSolicitudesForDay(daySelect.value); } catch (_) {}
+    }
+    function getQueueModeLocal() {
+      try { return String(window.__QUEUE_MODE__ || localStorage.getItem('queueMode') || 'default').trim() || 'default'; } catch (_) { return 'default'; }
+    }
+    function syncUi() {
+      const fab = document.getElementById('queue-mode-fab');
+      const panel = document.getElementById('queue-mode-panel');
+      const toggle = document.getElementById('queue-mode-toggle');
+      const status = document.getElementById('queue-mode-status');
+      if (fab) fab.style.display = isAdminMode() ? 'inline-flex' : 'none';
+      const mode = getQueueModeLocal();
+      if (toggle) toggle.checked = mode === 'tandas15';
+      if (status) status.textContent = `Estado: ${mode === 'tandas15' ? 'Tandas (15 min)' : 'Normal'}`;
+      if (panel && panel.hidden === false && !isAdminMode()) panel.hidden = true;
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      const fab = document.getElementById('queue-mode-fab');
+      const panel = document.getElementById('queue-mode-panel');
+      const close = document.getElementById('queue-mode-close');
+      const toggle = document.getElementById('queue-mode-toggle');
+      if (fab && panel) {
+        fab.addEventListener('click', function() {
+          if (!isAdminMode()) return;
+          panel.hidden = !panel.hidden;
+          syncUi();
+        });
+      }
+      if (close && panel) close.addEventListener('click', function() { panel.hidden = true; });
+      if (toggle) toggle.addEventListener('change', async function() {
+        if (!isAdminMode()) { toggle.checked = false; return; }
+        const mode = toggle.checked ? 'tandas15' : 'default';
+        setQueueMode(mode);
+        try {
+          const dbRef = getDb();
+          if (dbRef) {
+            await dbRef.collection('system').doc('status').set({
+              queueMode: mode,
+              lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
+              forcedBy: 'admin'
+            }, { merge: true });
+          }
+        } catch (e) {
+          alert('Error guardando modo de cola: ' + (e && e.message ? e.message : String(e)));
+        }
+        syncUi();
+      });
+      try {
+        const dbRef = getDb();
+        if (dbRef) {
+          dbRef.collection('system').doc('status').onSnapshot(function(doc) {
+            const data = doc && doc.exists ? (doc.data() || {}) : {};
+            const mode = String(data.queueMode || '').trim();
+            if (mode) setQueueMode(mode);
+            syncUi();
+          });
+        } else {
+          syncUi();
+        }
+      } catch (_) { syncUi(); }
+      window.addEventListener('storage', function(e) {
+        if (!e) return;
+        if (e.key === 'isAdminMode' || e.key === 'isAdminAuthenticated' || e.key === 'queueMode') syncUi();
+      });
+      syncUi();
+    });
+  })();
+  </script>
 </body>
 <script>
 (function(){

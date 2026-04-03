@@ -1886,7 +1886,7 @@
       if (b === 'donador-plata') return '🥈';
       if (b === 'donador-bronce') return '🥉';
       if (b === 'z0-fan') return 'z0';
-      if (b === 'z0-platino') return 'VIP';
+      if (b === 'z0-platino') return 'PLAT';
       return b;
     }
 
@@ -1925,6 +1925,81 @@
       return div;
     }
 
+    function getQueueMode() {
+      try { return String(window.__QUEUE_MODE__ || localStorage.getItem('queueMode') || 'default').trim() || 'default'; } catch (_) { return String(window.__QUEUE_MODE__ || 'default').trim() || 'default'; }
+    }
+
+    function badgeRankForOrdering(badge) {
+      const b = String(badge || '').trim();
+      if (b === 'superfan') return 0;
+      if (b === 'z0-platino') return 1;
+      if (b === 'z0-vip') return 2;
+      if (b === 'vip') return 3;
+      if (b === 'donador') return 4;
+      if (b === 'z0-fan') return 5;
+      return 6;
+    }
+
+    function getReqTimeMs(req) {
+      try {
+        if (!req) return 0;
+        if (req.ts && typeof req.ts.toMillis === 'function') return req.ts.toMillis();
+        const t = new Date(req.ts || req.time || req.createdAt || req.created_at || 0).getTime();
+        return Number.isFinite(t) ? t : 0;
+      } catch (_) { return 0; }
+    }
+
+    function applyTandas15Order(items) {
+      const base = Array.isArray(items) ? items.slice() : [];
+      base.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+      const slotMs = 15 * 60 * 1000;
+      const bySlot = new Map();
+      base.forEach((it) => {
+        const t = getReqTimeMs(it);
+        const slotKey = Math.floor((Number.isFinite(t) ? t : 0) / slotMs);
+        if (!bySlot.has(slotKey)) bySlot.set(slotKey, []);
+        bySlot.get(slotKey).push(it);
+      });
+      const slotKeys = Array.from(bySlot.keys()).sort((a, b) => a - b);
+      const out = [];
+      slotKeys.forEach((slotKey) => {
+        const group = bySlot.get(slotKey) || [];
+        const perUser = new Map();
+        group.forEach((it) => {
+          const u = String(it?.usuario || it?.displayName || it?.user || it?.username || '').trim();
+          if (!u) return;
+          if (!perUser.has(u)) perUser.set(u, []);
+          perUser.get(u).push(it);
+        });
+        const users = Array.from(perUser.keys());
+        users.forEach((u) => perUser.get(u).sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b)));
+        users.sort((a, b) => {
+          const ra = badgeRankForOrdering(perUser.get(a)?.[0]?.badge || '');
+          const rb = badgeRankForOrdering(perUser.get(b)?.[0]?.badge || '');
+          if (ra !== rb) return ra - rb;
+          const ta = getReqTimeMs(perUser.get(a)?.[0]);
+          const tb = getReqTimeMs(perUser.get(b)?.[0]);
+          if (ta !== tb) return ta - tb;
+          return a.localeCompare(b, 'es');
+        });
+        let round = 0;
+        let added = true;
+        while (added) {
+          added = false;
+          for (let i = 0; i < users.length; i++) {
+            const u = users[i];
+            const arr = perUser.get(u) || [];
+            if (arr[round]) {
+              out.push(arr[round]);
+              added = true;
+            }
+          }
+          round++;
+        }
+      });
+      return out;
+    }
+
     function renderQueue() {
       // Evitar renderizado si no hemos cargado la lista de reproducidas (evita flash de ghost cards)
       if (!playedSongsLoaded && db) {
@@ -1944,6 +2019,10 @@
         }
         return true;
       });
+
+      if (getQueueMode() === 'tandas15' && (!currentManualOrder || currentManualOrder.length === 0)) {
+        pendingRequests = applyTandas15Order(pendingRequests);
+      }
 
       // 1.5 Aplicar orden manual si existe
       pendingRequests = applyOrder(pendingRequests, currentManualOrder);
@@ -2457,6 +2536,7 @@
     }
 
     const currentDay = getLocalDateKey();
+    try { window.__QUEUE_MODE__ = window.__QUEUE_MODE__ || localStorage.getItem('queueMode') || 'default'; } catch (_) { window.__QUEUE_MODE__ = window.__QUEUE_MODE__ || 'default'; }
     console.log("Queue Overlay v2.2 - Fix Empty Match. Listening for day:", currentDay);
 
     if (db) {
@@ -2541,6 +2621,18 @@
       }
 
       subscribeRequestsForDay(currentDay);
+
+      try {
+        db.collection('system').doc('status').onSnapshot((doc) => {
+          const data = doc && doc.exists ? (doc.data() || {}) : {};
+          const mode = String(data.queueMode || '').trim();
+          if (mode) {
+            window.__QUEUE_MODE__ = mode;
+            try { localStorage.setItem('queueMode', mode); } catch (_) {}
+            renderQueue();
+          }
+        });
+      } catch (_) {}
 
       db.collection('playedSongs').doc(currentDay)
         .onSnapshot((doc) => {

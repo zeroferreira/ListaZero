@@ -271,6 +271,8 @@ const badgeSets = {
     superfan: new Set(),
     selected: new Map()
 };
+const runtimeSuperfanUsers = new Set();
+const tempDonadorUsers = new Set();
 let badgeSetsUpdatedAt = 0;
 let badgeSetsRefreshing = false;
 
@@ -299,6 +301,10 @@ function getBadgeForUser(userKey, userId, displayName) {
     }
     for (let i = 0; i < candidates.length; i++) {
         const k = candidates[i];
+        if (runtimeSuperfanUsers.has(k)) return 'superfan';
+    }
+    for (let i = 0; i < candidates.length; i++) {
+        const k = candidates[i];
         if (badgeSets.superfan.has(k)) return 'superfan';
         if (badgeSets.z0Platinum.has(k)) return 'z0-platino';
         if (badgeSets.z0Vip.has(k)) return 'z0-vip';
@@ -316,6 +322,10 @@ function getBadgeForUser(userKey, userId, displayName) {
     for (let i = 0; i < candidates.length; i++) {
         const k = candidates[i];
         if (tempVipUsers.has(k)) return 'donador'; // Default donador (after Top 3)
+    }
+    for (let i = 0; i < candidates.length; i++) {
+        const k = candidates[i];
+        if (tempDonadorUsers.has(k)) return 'donador';
     }
 
     return '';
@@ -1083,6 +1093,13 @@ function setupListeners() {
         const isVip = isSubscriber || isModerator || isSuperFan || isStreamer || tempVipUsers.has(userId);
         const requireVip = config.requireVipForSr === true; // Strict check
 
+        if (isSuperFanRaw) {
+            try {
+                const k = normalizeUserKeyForBadges(userId) || normalizeUserKeyForBadges(displayName);
+                if (k) runtimeSuperfanUsers.add(k);
+            } catch (_) {}
+        }
+
         // Debug Permissions (Solo si falla)
         // console.log(`[AUTH] User: ${displayName} | VIP: ${isVip} | ConfigReq: ${requireVip} | AllowSubs: ${config.allowSubscribers}`);
 
@@ -1185,6 +1202,25 @@ function setupListeners() {
             return;
         }
 
+        const isZ0FanCmd = String(lowerMsg || '').trim() === 'quiereme';
+        if (isZ0FanCmd) {
+            try {
+                if (db) {
+                    const resolved = await getCanonicalUserKey(userId, displayName);
+                    const userKey = String(resolved.userKey || userId || '').trim();
+                    if (userKey) {
+                        await setDoc(docFn(db, 'z0FanUsers', userKey), { name: userKey }, { merge: true });
+                        const norm = normalizeUserKeyForBadges(userKey);
+                        if (norm) badgeSets.z0Fan.add(norm);
+                        console.log(`⚡ z0-Fan otorgado: ${userKey}`);
+                    }
+                }
+            } catch (e) {
+                console.error('Error otorgando z0-Fan:', e);
+            }
+            return;
+        }
+
         const aliases = getSrAliases();
         const parsed = parseSrCommand(msg, aliases);
         if (parsed) {
@@ -1240,6 +1276,10 @@ function setupListeners() {
             const totalCoins = Number(sessionDonations.get(uid) || 0);
             const minVip = Number(config.minCoinsForVip) || 0;
             if (minVip > 0 && totalCoins >= minVip) tempVipUsers.add(uid);
+            if (totalCoins >= 10) {
+                const k = normalizeUserKeyForBadges(uid) || normalizeUserKeyForBadges(displayName);
+                if (k) tempDonadorUsers.add(k);
+            }
         } catch (_) {}
 
         // --- SISTEMA DE PUNTOS POR DONACIÓN ---
