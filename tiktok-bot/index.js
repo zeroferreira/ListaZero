@@ -262,6 +262,15 @@ let mockCiderPort = 0;
 let mockCiderQueue = [];
 let mockCiderNowPlaying = null;
 
+function normalizeComparableText(v) {
+    return String(v || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '')
+        .trim();
+}
+
 const badgeSets = {
     vip: new Set(),
     z0Vip: new Set(),
@@ -329,6 +338,18 @@ function getBadgeForUser(userKey, userId, displayName) {
     }
 
     return '';
+}
+
+async function grantZ0FanFromTikTok(userId, displayName) {
+    if (!db) return false;
+    const resolved = await getCanonicalUserKey(userId, displayName);
+    const userKey = String(resolved.userKey || userId || '').trim();
+    if (!userKey) return false;
+    await setDoc(docFn(db, 'z0FanUsers', userKey), { name: userKey }, { merge: true });
+    const norm = normalizeUserKeyForBadges(userKey);
+    if (norm) badgeSets.z0Fan.add(norm);
+    console.log(`⚡ z0-Fan otorgado: ${userKey}`);
+    return true;
 }
 
 async function refreshBadgeSets() {
@@ -1202,25 +1223,6 @@ function setupListeners() {
             return;
         }
 
-        const isZ0FanCmd = String(lowerMsg || '').trim() === 'quiereme';
-        if (isZ0FanCmd) {
-            try {
-                if (db) {
-                    const resolved = await getCanonicalUserKey(userId, displayName);
-                    const userKey = String(resolved.userKey || userId || '').trim();
-                    if (userKey) {
-                        await setDoc(docFn(db, 'z0FanUsers', userKey), { name: userKey }, { merge: true });
-                        const norm = normalizeUserKeyForBadges(userKey);
-                        if (norm) badgeSets.z0Fan.add(norm);
-                        console.log(`⚡ z0-Fan otorgado: ${userKey}`);
-                    }
-                }
-            } catch (e) {
-                console.error('Error otorgando z0-Fan:', e);
-            }
-            return;
-        }
-
         const aliases = getSrAliases();
         const parsed = parseSrCommand(msg, aliases);
         if (parsed) {
@@ -1258,6 +1260,8 @@ function setupListeners() {
 
     // REGALOS
     tiktokLiveConnection.on('gift', async (data) => {
+        const giftName = data.giftName || data.gift?.name || data.gift?.giftName || '';
+        const giftKey = normalizeComparableText(giftName);
         const coins = data.diamondCount;
         const uid = data.uniqueId;
         const displayName = data.nickname;
@@ -1281,6 +1285,15 @@ function setupListeners() {
                 if (k) tempDonadorUsers.add(k);
             }
         } catch (_) {}
+
+        const isGiftFinal = (data.repeatEnd === undefined) ? true : (data.repeatEnd === true);
+        if (isGiftFinal && giftKey === 'quiereme') {
+            try {
+                await grantZ0FanFromTikTok(uid, displayName);
+            } catch (e) {
+                console.error('Error otorgando z0-Fan por regalo:', e);
+            }
+        }
 
         // --- SISTEMA DE PUNTOS POR DONACIÓN ---
         // 1 punto por cada 10 monedas
