@@ -1972,29 +1972,153 @@
           perUser.get(u).push(it);
         });
         const users = Array.from(perUser.keys());
-        users.forEach((u) => perUser.get(u).sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b)));
+        const badgeByUser = new Map();
+        users.forEach((u) => {
+          const arr = perUser.get(u) || [];
+          arr.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+          badgeByUser.set(u, String(arr?.[0]?.badge || '').trim());
+        });
         users.sort((a, b) => {
-          const ra = badgeRankForOrdering(perUser.get(a)?.[0]?.badge || '');
-          const rb = badgeRankForOrdering(perUser.get(b)?.[0]?.badge || '');
+          const ra = badgeRankForOrdering(badgeByUser.get(a) || '');
+          const rb = badgeRankForOrdering(badgeByUser.get(b) || '');
           if (ra !== rb) return ra - rb;
           const ta = getReqTimeMs(perUser.get(a)?.[0]);
           const tb = getReqTimeMs(perUser.get(b)?.[0]);
           if (ta !== tb) return ta - tb;
           return a.localeCompare(b, 'es');
         });
-        let round = 0;
-        let added = true;
-        while (added) {
-          added = false;
+
+        function hasAnyOtherThan(user) {
           for (let i = 0; i < users.length; i++) {
             const u = users[i];
+            if (u === user) continue;
+            if ((perUser.get(u) || []).length) return true;
+          }
+          return false;
+        }
+
+        function takeOne(user) {
+          const arr = perUser.get(user) || [];
+          if (!arr.length) return null;
+          return arr.shift();
+        }
+
+        function pickGapUser(activeUser) {
+          const candidates = [];
+          for (let i = 0; i < users.length; i++) {
+            const u = users[i];
+            if (u === activeUser) continue;
             const arr = perUser.get(u) || [];
-            if (arr[round]) {
-              out.push(arr[round]);
+            if (!arr.length) continue;
+            const b = badgeByUser.get(u) || '';
+            const r = badgeRankForOrdering(b);
+            const vipTier = (r <= 3) ? 0 : 1;
+            const t = getReqTimeMs(arr[0]);
+            candidates.push({ u, vipTier, r, t });
+          }
+          if (!candidates.length) return '';
+          candidates.sort((a, b) => {
+            if (a.vipTier !== b.vipTier) return a.vipTier - b.vipTier;
+            if (a.r !== b.r) return a.r - b.r;
+            if (a.t !== b.t) return a.t - b.t;
+            return a.u.localeCompare(b.u, 'es');
+          });
+          return candidates[0].u;
+        }
+
+        const superfanBurstRemaining = new Map();
+        users.forEach((u) => {
+          const b = badgeByUser.get(u) || '';
+          if (b === 'superfan') superfanBurstRemaining.set(u, Math.min(3, (perUser.get(u) || []).length));
+        });
+
+        let activeSuperfan = '';
+        let activeStage = 0;
+
+        function stepSuperfanBurst() {
+          if (!activeSuperfan) {
+            for (let i = 0; i < users.length; i++) {
+              const u = users[i];
+              if ((superfanBurstRemaining.get(u) || 0) > 0 && (perUser.get(u) || []).length) {
+                activeSuperfan = u;
+                activeStage = 0;
+                break;
+              }
+            }
+          }
+          if (!activeSuperfan) return false;
+
+          const remaining = superfanBurstRemaining.get(activeSuperfan) || 0;
+          if (remaining <= 0 || !(perUser.get(activeSuperfan) || []).length) {
+            activeSuperfan = '';
+            activeStage = 0;
+            return false;
+          }
+
+          if (activeStage === 0) {
+            const first = takeOne(activeSuperfan);
+            if (first) out.push(first);
+            superfanBurstRemaining.set(activeSuperfan, Math.max(0, remaining - 1));
+            const rem2 = (superfanBurstRemaining.get(activeSuperfan) || 0);
+            if (rem2 > 0 && (perUser.get(activeSuperfan) || []).length) {
+              const second = takeOne(activeSuperfan);
+              if (second) out.push(second);
+              superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem2 - 1));
+              if ((superfanBurstRemaining.get(activeSuperfan) || 0) > 0 && hasAnyOtherThan(activeSuperfan)) {
+                activeStage = 1;
+                return true;
+              }
+            }
+            activeStage = 2;
+            return true;
+          }
+
+          if (activeStage === 1) {
+            const gapUser = pickGapUser(activeSuperfan);
+            if (gapUser) {
+              const it = takeOne(gapUser);
+              if (it) out.push(it);
+              activeStage = 2;
+              return true;
+            }
+            activeStage = 2;
+            return false;
+          }
+
+          if (activeStage === 2) {
+            const rem = superfanBurstRemaining.get(activeSuperfan) || 0;
+            if (rem > 0 && (perUser.get(activeSuperfan) || []).length) {
+              const it = takeOne(activeSuperfan);
+              if (it) out.push(it);
+              superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem - 1));
+            }
+            activeSuperfan = '';
+            activeStage = 0;
+            return true;
+          }
+
+          activeSuperfan = '';
+          activeStage = 0;
+          return false;
+        }
+
+        function hasAnyLeft() {
+          for (let i = 0; i < users.length; i++) if ((perUser.get(users[i]) || []).length) return true;
+          return false;
+        }
+
+        while (hasAnyLeft()) {
+          if (stepSuperfanBurst()) continue;
+          let added = false;
+          for (let i = 0; i < users.length; i++) {
+            const u = users[i];
+            const it = takeOne(u);
+            if (it) {
+              out.push(it);
               added = true;
             }
           }
-          round++;
+          if (!added) break;
         }
       });
       return out;

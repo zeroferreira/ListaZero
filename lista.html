@@ -140,6 +140,48 @@
       position: fixed;
       top: 0; left: 0;
     }
+
+    #queue-mode-fab {
+      position: fixed;
+      bottom: 22px;
+      left: 22px;
+      width: 54px;
+      height: 54px;
+      border-radius: 999px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255,255,255,0.22);
+      color: #0b1220;
+      font-weight: 950;
+      font-size: 20px;
+      letter-spacing: 0.4px;
+      cursor: pointer;
+      z-index: 2147483000;
+      background:
+        radial-gradient(120% 120% at 25% 20%, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 45%),
+        linear-gradient(135deg, var(--accent-color, #22c55e) 0%, rgba(34,197,94,0.65) 100%);
+      box-shadow: 0 12px 28px rgba(0,0,0,0.35), 0 0 0 6px rgba(0,0,0,0.18);
+      backdrop-filter: blur(10px);
+      user-select: none;
+    }
+    #queue-mode-fab:hover { transform: translateY(-1px); }
+    #queue-mode-fab:active { transform: translateY(0px); }
+
+    #queue-mode-panel {
+      position: fixed;
+      bottom: 88px;
+      left: 22px;
+      width: 292px;
+      padding: 12px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(17,24,39,0.92);
+      color: #f9fafb;
+      z-index: 2147483001;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+      backdrop-filter: blur(10px);
+    }
   </style>
   
   <!-- Script de sincronización de temas -->
@@ -2360,13 +2402,15 @@
             perUser.get(u).push(it);
           });
           const users = Array.from(perUser.keys());
+          const badgeByUser = new Map();
           users.forEach((u) => {
             const arr = perUser.get(u) || [];
             arr.sort((a, b) => compareItemsByTime(a, b, 'asc'));
+            badgeByUser.set(u, getOrderingBadgeForUser(u, (arr?.[0]?.badge || '')));
           });
           users.sort((a, b) => {
-            const ba = getOrderingBadgeForUser(a, (perUser.get(a)?.[0]?.badge || ''));
-            const bb = getOrderingBadgeForUser(b, (perUser.get(b)?.[0]?.badge || ''));
+            const ba = badgeByUser.get(a) || '';
+            const bb = badgeByUser.get(b) || '';
             const ra = badgeRankForOrdering(ba);
             const rb = badgeRankForOrdering(bb);
             if (ra !== rb) return ra - rb;
@@ -2375,19 +2419,138 @@
             if (ta !== tb) return ta - tb;
             return a.localeCompare(b, 'es');
           });
-          let round = 0;
-          let added = true;
-          while (added) {
-            added = false;
+
+          function hasAnyOtherThan(user) {
             for (let i = 0; i < users.length; i++) {
               const u = users[i];
+              if (u === user) continue;
+              if ((perUser.get(u) || []).length) return true;
+            }
+            return false;
+          }
+
+          function takeOne(user) {
+            const arr = perUser.get(user) || [];
+            if (!arr.length) return null;
+            return arr.shift();
+          }
+
+          function pickGapUser(activeUser) {
+            const candidates = [];
+            for (let i = 0; i < users.length; i++) {
+              const u = users[i];
+              if (u === activeUser) continue;
               const arr = perUser.get(u) || [];
-              if (arr[round]) {
-                out.push(arr[round]);
+              if (!arr.length) continue;
+              const b = badgeByUser.get(u) || '';
+              const r = badgeRankForOrdering(b);
+              const vipTier = (r <= 3) ? 0 : 1;
+              const t = getItemTimeMs(arr[0]);
+              candidates.push({ u, vipTier, r, t });
+            }
+            if (!candidates.length) return '';
+            candidates.sort((a, b) => {
+              if (a.vipTier !== b.vipTier) return a.vipTier - b.vipTier;
+              if (a.r !== b.r) return a.r - b.r;
+              if (a.t !== b.t) return a.t - b.t;
+              return a.u.localeCompare(b.u, 'es');
+            });
+            return candidates[0].u;
+          }
+
+          const superfanBurstRemaining = new Map();
+          users.forEach((u) => {
+            const b = badgeByUser.get(u) || '';
+            if (b === 'superfan') superfanBurstRemaining.set(u, Math.min(3, (perUser.get(u) || []).length));
+          });
+
+          let activeSuperfan = '';
+          let activeStage = 0;
+
+          function stepSuperfanBurst() {
+            if (!activeSuperfan) {
+              for (let i = 0; i < users.length; i++) {
+                const u = users[i];
+                if ((superfanBurstRemaining.get(u) || 0) > 0 && (perUser.get(u) || []).length) {
+                  activeSuperfan = u;
+                  activeStage = 0;
+                  break;
+                }
+              }
+            }
+            if (!activeSuperfan) return false;
+
+            const remaining = superfanBurstRemaining.get(activeSuperfan) || 0;
+            if (remaining <= 0 || !(perUser.get(activeSuperfan) || []).length) {
+              activeSuperfan = '';
+              activeStage = 0;
+              return false;
+            }
+
+            if (activeStage === 0) {
+              const first = takeOne(activeSuperfan);
+              if (first) out.push(first);
+              superfanBurstRemaining.set(activeSuperfan, Math.max(0, remaining - 1));
+              const rem2 = (superfanBurstRemaining.get(activeSuperfan) || 0);
+              if (rem2 > 0 && (perUser.get(activeSuperfan) || []).length) {
+                const second = takeOne(activeSuperfan);
+                if (second) out.push(second);
+                superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem2 - 1));
+                if ((superfanBurstRemaining.get(activeSuperfan) || 0) > 0 && hasAnyOtherThan(activeSuperfan)) {
+                  activeStage = 1;
+                  return true;
+                }
+              }
+              activeStage = 2;
+              return true;
+            }
+
+            if (activeStage === 1) {
+              const gapUser = pickGapUser(activeSuperfan);
+              if (gapUser) {
+                const it = takeOne(gapUser);
+                if (it) out.push(it);
+                activeStage = 2;
+                return true;
+              }
+              activeStage = 2;
+              return false;
+            }
+
+            if (activeStage === 2) {
+              const rem = superfanBurstRemaining.get(activeSuperfan) || 0;
+              if (rem > 0 && (perUser.get(activeSuperfan) || []).length) {
+                const it = takeOne(activeSuperfan);
+                if (it) out.push(it);
+                superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem - 1));
+              }
+              activeSuperfan = '';
+              activeStage = 0;
+              return true;
+            }
+
+            activeSuperfan = '';
+            activeStage = 0;
+            return false;
+          }
+
+          function hasAnyLeft() {
+            for (let i = 0; i < users.length; i++) if ((perUser.get(users[i]) || []).length) return true;
+            return false;
+          }
+
+          while (hasAnyLeft()) {
+            if (stepSuperfanBurst()) continue;
+            let added = false;
+            for (let i = 0; i < users.length; i++) {
+              const u = users[i];
+              const it = takeOne(u);
+              if (it) {
+                out.push(it);
                 added = true;
               }
             }
-            round++;
+            if (!added) break;
           }
         });
         return out;
@@ -18057,8 +18220,8 @@
     </div>
   </div>
 
-  <button type="button" id="queue-mode-fab" aria-label="Modo de cola" title="Modo de cola" style="position: fixed; bottom: 22px; left: 22px; width: 56px; height: 56px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.22); background: rgba(17,24,39,0.88); color: #f9fafb; font-weight: 900; font-size: 22px; cursor: pointer; z-index: 2147483000; box-shadow: 0 12px 30px rgba(0,0,0,0.35); backdrop-filter: blur(10px); display:none;">Z</button>
-  <div id="queue-mode-panel" hidden style="position: fixed; bottom: 88px; left: 22px; width: 280px; padding: 12px 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.16); background: rgba(17,24,39,0.92); color: #f9fafb; z-index: 2147483001; box-shadow: 0 16px 40px rgba(0,0,0,0.45); backdrop-filter: blur(10px);">
+  <button type="button" id="queue-mode-fab" aria-label="Modo de cola" title="Modo de cola">Z</button>
+  <div id="queue-mode-panel" hidden>
     <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
       <div style="font-weight: 900;">Tandas (15 min)</div>
       <button type="button" id="queue-mode-close" aria-label="Cerrar" style="border:none; background:transparent; color:#f87171; font-size: 18px; cursor:pointer;">×</button>
