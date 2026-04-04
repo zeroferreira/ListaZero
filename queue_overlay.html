@@ -1053,8 +1053,10 @@
 
     function getPendingRequestsForMover() {
       let pending = allRequests.filter(req => {
-        const id = generateSongId(req);
-        return !playedSongIds.has(id);
+        const sid = generateSongId(req);
+        const did = String(req?.docId || '').trim();
+        const rid = String(req?.id || '').trim();
+        return !(playedSongIds.has(sid) || (did && playedSongIds.has(did)) || (rid && playedSongIds.has(rid)));
       });
       pending = applyOrder(pending, currentManualOrder);
       return pending;
@@ -1659,14 +1661,15 @@
       return `${y}-${m}-${dd}`;
     }
 
+    function sanitizeSongId(v) {
+      try { return String(v || '').replace(/[^a-zA-Z0-9-]/g, ''); } catch (_) { return ''; }
+    }
+
     // Utilidad: Generar ID de canción (debe coincidir con lista.html)
     function generateSongId(req) {
-      // 1. Preferir ID compuesto ya existente (generado por el bot/lista)
-      if (req.id && String(req.id).includes('-') && String(req.id).split('-').length >= 3) {
-        return req.id;
-      }
+      const explicit = String(req?.songId || req?.requestId || req?.song_id || '').trim();
+      if (explicit) return sanitizeSongId(explicit);
 
-      // 2. Fallback: Reconstruir ID si falta (lógica legacy)
       // Necesitamos recrear el formato HH:MM desde el timestamp
       let d;
       if (req.ts && typeof req.ts.toDate === 'function') {
@@ -1687,7 +1690,9 @@
       const usuario = req.usuario || req.user || req.username || '';
       const cancion = req.cancion || req.songName || req.song || req.name || '';
       const artista = req.artista || req.artistName || req.artist || '';
-      return `${usuario}-${cancion}-${artista}-${finalHora}`.replace(/[^a-zA-Z0-9-]/g, '');
+      const composed = sanitizeSongId(`${usuario}-${cancion}-${artista}-${finalHora}`);
+      if (composed) return composed;
+      return String(req?.docId || req?.id || '').trim();
     }
 
     function getLocalSkippedMap() {
@@ -2229,8 +2234,10 @@
       
       // 1. Filtrar solicitudes que NO están en playedSongIds
       let pendingRequests = allRequests.filter(req => {
-        const id = generateSongId(req);
-        if (playedSongIds.has(id)) {
+        const sid = generateSongId(req);
+        const did = String(req?.docId || '').trim();
+        const rid = String(req?.id || '').trim();
+        if (playedSongIds.has(sid) || (did && playedSongIds.has(did)) || (rid && playedSongIds.has(rid))) {
             // console.log("Filtered played:", id); // Debug
             return false;
         }
