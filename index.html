@@ -579,6 +579,7 @@
 
       let db = null;
       let liveCodeRequired = false;
+      let liveCodeConfigured = false;
       let authReadyPromise = Promise.resolve(true);
       let statusReadyPromise = Promise.resolve(true);
       try {
@@ -624,9 +625,10 @@
             db.collection('system').doc('status').onSnapshot((doc) => {
               const data = doc && doc.exists ? (doc.data() || {}) : {};
               const code = String(data.liveCode || '').trim();
-              liveCodeRequired = code.length >= 4;
-              if (liveCodeField) liveCodeField.hidden = !liveCodeRequired;
-              if (liveCodeInput) liveCodeInput.required = liveCodeRequired;
+              liveCodeConfigured = code.length >= 4;
+              liveCodeRequired = true;
+              if (liveCodeField) liveCodeField.hidden = false;
+              if (liveCodeInput) liveCodeInput.required = true;
               if (!done) { done = true; resolve(true); }
             }, () => {
               if (!done) { done = true; resolve(false); }
@@ -798,7 +800,11 @@
           } catch (_) {}
 
           const liveCode = String((liveCodeInput && liveCodeInput.value) || localStorage.getItem('liveCode') || '').trim();
-          if (liveCodeRequired && !liveCode) {
+          if (!liveCodeConfigured) {
+            alert('No se aceptan solicitudes ahora: falta configurar el Código del Live.');
+            return;
+          }
+          if (!liveCode) {
             alert('Falta el Código del Live. Escríbelo y vuelve a intentar.');
             return;
           }

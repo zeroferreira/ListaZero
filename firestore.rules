@@ -29,14 +29,13 @@ service cloud.firestore {
       return getSystemStatus().exists && (getSystemStatus().data.liveCode is string) && (getSystemStatus().data.liveCode.size() >= 4);
     }
     function isValidLiveCode() {
-      return request.auth != null || !isLiveCodeEnforced() || ((request.resource.data.liveCode is string) && (request.resource.data.liveCode == getSystemStatus().data.liveCode) && (request.resource.data.liveCode.size() <= 32));
+      return request.auth != null || (isLiveCodeEnforced() && (request.resource.data.liveCode is string) && (request.resource.data.liveCode == getSystemStatus().data.liveCode) && (request.resource.data.liveCode.size() <= 32));
     }
     match /solicitudes/{doc} {
       allow read: if true;
       allow create: if (
-        request.resource.data.source == 'tiktok' ||
-        request.auth != null ||
-        (request.resource.data.source == 'web' && isLiveCodeEnforced())
+        request.resource.data.source in ['web', 'tiktok', 'test'] &&
+        isValidLiveCode()
       ) &&
         request.resource.data.keys().hasAll(['usuario', 'cancion', 'artista', 'day', 'ts']) &&
         request.resource.data.usuario is string &&
