@@ -8600,6 +8600,21 @@
              50% { transform: scale(1.4); opacity: 1; }
              100% { transform: scale(0); opacity: 0; }
            }
+           @keyframes checkin-ripple {
+             0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0.0; }
+             20% { opacity: 0.55; }
+             100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; }
+           }
+           @keyframes checkin-sparkle {
+             0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
+             20% { opacity: 1; }
+             100% { transform: translate(-50%, -50%) scale(1.0); opacity: 0; }
+           }
+           @keyframes checkin-plus {
+             0% { transform: translate(-50%, 0) scale(0.85); opacity: 0; }
+             15% { opacity: 1; }
+             100% { transform: translate(-50%, -22px) scale(1); opacity: 0; }
+           }
            .checkin-available { animation: checkin-pulse 2s infinite; }
            .checkin-claimed { animation: checkin-pop 0.5s forwards; pointer-events: none; }
            .checkin-disabled { 
@@ -8612,8 +8627,99 @@
              opacity: 0.8; 
              filter: grayscale(100%);
            }
+           #checkin-fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; overflow: visible; }
+           .checkin-ripple { position: fixed; width: 120px; height: 120px; border-radius: 999px; border: 2px solid rgba(255,215,0,0.55); box-shadow: 0 0 22px rgba(255,215,0,0.22); animation: checkin-ripple 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+           .checkin-sparkle-dot { position: fixed; width: 8px; height: 8px; border-radius: 999px; background: rgba(255,255,255,0.95); box-shadow: 0 0 10px rgba(255,215,0,0.55); animation: checkin-sparkle 650ms cubic-bezier(0.2, 1, 0.25, 1) forwards; }
+           .checkin-coin { position: fixed; width: 10px; height: 10px; border-radius: 999px; background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.85), rgba(255,215,0,0.9) 50%, rgba(255,165,0,0.95)); box-shadow: 0 8px 16px rgba(0,0,0,0.18), 0 0 14px rgba(255,215,0,0.35); }
+           .checkin-plus { position: fixed; padding: 6px 10px; border-radius: 999px; background: rgba(17,24,39,0.88); color: #fff; font-weight: 900; font-size: 12px; letter-spacing: 0.2px; border: 1px solid rgba(255,255,255,0.18); box-shadow: 0 10px 22px rgba(0,0,0,0.35); animation: checkin-plus 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards; backdrop-filter: blur(10px); }
          `;
              document.head.appendChild(style);
+           }
+
+           if (!window.playCheckinRedeemFx) {
+             window.playCheckinRedeemFx = function(fromEl, points) {
+               try {
+                 const src = fromEl;
+                 const dst = document.getElementById('user-points');
+                 if (!src || !dst) return;
+                 const srcRect = src.getBoundingClientRect();
+                 const dstRect = dst.getBoundingClientRect();
+                 const sx = srcRect.left + srcRect.width / 2;
+                 const sy = srcRect.top + srcRect.height / 2;
+                 const tx = dstRect.left + dstRect.width / 2;
+                 const ty = dstRect.top + dstRect.height / 2;
+
+                 let layer = document.getElementById('checkin-fx-layer');
+                 if (!layer) {
+                   layer = document.createElement('div');
+                   layer.id = 'checkin-fx-layer';
+                   document.body.appendChild(layer);
+                 }
+
+                 const ripple = document.createElement('div');
+                 ripple.className = 'checkin-ripple';
+                 ripple.style.left = sx + 'px';
+                 ripple.style.top = sy + 'px';
+                 layer.appendChild(ripple);
+                 setTimeout(() => { try { ripple.remove(); } catch (_) {} }, 800);
+
+                 for (let i = 0; i < 18; i++) {
+                   const a = Math.random() * Math.PI * 2;
+                   const r = 10 + Math.random() * 22;
+                   const dot = document.createElement('div');
+                   dot.className = 'checkin-sparkle-dot';
+                   dot.style.left = (sx + Math.cos(a) * r) + 'px';
+                   dot.style.top = (sy + Math.sin(a) * r) + 'px';
+                   layer.appendChild(dot);
+                   setTimeout(() => { try { dot.remove(); } catch (_) {} }, 800);
+                 }
+
+                 const n = Math.max(1, Math.min(12, Number(points) || 1));
+                 for (let i = 0; i < n; i++) {
+                   const coin = document.createElement('div');
+                   coin.className = 'checkin-coin';
+                   coin.style.left = sx + 'px';
+                   coin.style.top = sy + 'px';
+                   layer.appendChild(coin);
+                   const jitterX = (Math.random() - 0.5) * 80;
+                   const jitterY = -20 - Math.random() * 90;
+                   const midX = sx + (tx - sx) * 0.35 + jitterX;
+                   const midY = sy + (ty - sy) * 0.35 + jitterY;
+                   const dur = 650 + Math.round(Math.random() * 240);
+                   const delay = Math.round(Math.random() * 110);
+                   coin.animate([
+                     { transform: 'translate(-50%, -50%) translate(0px,0px) scale(1)', opacity: 1 },
+                     { transform: `translate(-50%, -50%) translate(${midX - sx}px,${midY - sy}px) scale(1)`, opacity: 1, offset: 0.62 },
+                     { transform: `translate(-50%, -50%) translate(${tx - sx}px,${ty - sy}px) scale(0.6)`, opacity: 0.0 }
+                   ], { duration: dur, delay, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' }).onfinish = () => { try { coin.remove(); } catch (_) {} };
+                 }
+
+                 const plus = document.createElement('div');
+                 plus.className = 'checkin-plus';
+                 plus.textContent = `+${n} puntos`;
+                 plus.style.left = tx + 'px';
+                 plus.style.top = (ty + 18) + 'px';
+                 layer.appendChild(plus);
+                 setTimeout(() => { try { plus.remove(); } catch (_) {} }, 1100);
+
+                 try {
+                   const raw = String(dst.textContent || '').replace(/[^\d]/g, '');
+                   const base = raw ? parseInt(raw, 10) : 0;
+                   const target = base + n;
+                   const start = performance.now();
+                   const total = 750;
+                   const fmt = (v) => Number(v || 0).toLocaleString('es');
+                   function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+                   function step(now) {
+                     const t = Math.min(1, (now - start) / total);
+                     const val = Math.round(base + (target - base) * easeOutCubic(t));
+                     dst.textContent = fmt(val);
+                     if (t < 1) requestAnimationFrame(step);
+                   }
+                   requestAnimationFrame(step);
+                 } catch (_) {}
+               } catch (_) {}
+             };
            }
 
          // Función auxiliar para calcular tiempo restante hasta medianoche
@@ -8640,7 +8746,10 @@
                  btn.classList.remove('checkin-available');
                  btn.style.display = 'flex';
                  btn.title = `Vuelve en ${getTimeUntilMidnight()}`;
-                 btn.onclick = () => { showErrorNotification(`Ya reclamaste tu regalo de hoy. Vuelve en ${getTimeUntilMidnight()}.`); };
+                 btn.onclick = (e) => {
+                   try { if (e && e.shiftKey && typeof window.playCheckinRedeemFx === 'function') { window.playCheckinRedeemFx(btn, 12); return; } } catch (_) {}
+                   showErrorNotification(`Ya reclamaste tu regalo de hoy. Vuelve en ${getTimeUntilMidnight()}.`);
+                 };
                  // NO RETURN: Permitir que el flujo siga
              }
 
@@ -8669,7 +8778,10 @@
                          btn.classList.remove('checkin-available');
                          btn.style.display = 'flex';
                          btn.title = `Vuelve en ${getTimeUntilMidnight()}`;
-                         btn.onclick = () => { showErrorNotification(`Ya reclamaste tu regalo de hoy. Vuelve en ${getTimeUntilMidnight()}.`); };
+                         btn.onclick = (e) => {
+                           try { if (e && e.shiftKey && typeof window.playCheckinRedeemFx === 'function') { window.playCheckinRedeemFx(btn, 12); return; } } catch (_) {}
+                           showErrorNotification(`Ya reclamaste tu regalo de hoy. Vuelve en ${getTimeUntilMidnight()}.`);
+                         };
                      }
                  }
              }
@@ -8765,6 +8877,7 @@
                          
                          // Guardar local
                         localStorage.setItem(storageKey, new Date().toDateString());
+                        try { if (typeof window.playCheckinRedeemFx === 'function') window.playCheckinRedeemFx(btn, points); } catch (_) {}
                         showSuccessNotification(`¡Bono diario reclamado! +${points} puntos. Vuelve en ${getTimeUntilMidnight()}.`);
                          
                          // Actualizar UI de puntos
