@@ -2419,139 +2419,59 @@
             if (ta !== tb) return ta - tb;
             return a.localeCompare(b, 'es');
           });
-
-          function hasAnyOtherThan(user) {
-            for (let i = 0; i < users.length; i++) {
-              const u = users[i];
-              if (u === user) continue;
-              if ((perUser.get(u) || []).length) return true;
-            }
-            return false;
-          }
-
-          function takeOne(user) {
-            const arr = perUser.get(user) || [];
-            if (!arr.length) return null;
-            return arr.shift();
-          }
-
-          function pickGapUser(activeUser) {
-            const candidates = [];
-            for (let i = 0; i < users.length; i++) {
-              const u = users[i];
-              if (u === activeUser) continue;
-              const arr = perUser.get(u) || [];
-              if (!arr.length) continue;
-              const b = badgeByUser.get(u) || '';
-              if (b === 'superfan') continue;
-              const r = badgeRankForOrdering(b);
-              const vipTier = (r <= 3) ? 0 : 1;
-              const t = getItemTimeMs(arr[0]);
-              candidates.push({ u, vipTier, r, t });
-            }
-            if (!candidates.length) return '';
-            candidates.sort((a, b) => {
-              if (a.vipTier !== b.vipTier) return a.vipTier - b.vipTier;
-              if (a.r !== b.r) return a.r - b.r;
-              if (a.t !== b.t) return a.t - b.t;
-              return a.u.localeCompare(b.u, 'es');
-            });
-            return candidates[0].u;
-          }
-
-          const superfanBurstRemaining = new Map();
-          users.forEach((u) => {
-            const b = badgeByUser.get(u) || '';
-            if (b === 'superfan') superfanBurstRemaining.set(u, Math.min(3, (perUser.get(u) || []).length));
-          });
-
-          let activeSuperfan = '';
-          let activeStage = 0;
-
-          function stepSuperfanBurst() {
-            if (!activeSuperfan) {
-              for (let i = 0; i < users.length; i++) {
-                const u = users[i];
-                if ((superfanBurstRemaining.get(u) || 0) > 0 && (perUser.get(u) || []).length) {
-                  activeSuperfan = u;
-                  activeStage = 0;
-                  break;
-                }
-              }
-            }
-            if (!activeSuperfan) return false;
-
-            const remaining = superfanBurstRemaining.get(activeSuperfan) || 0;
-            if (remaining <= 0 || !(perUser.get(activeSuperfan) || []).length) {
-              activeSuperfan = '';
-              activeStage = 0;
-              return false;
-            }
-
-            if (activeStage === 0) {
-              const first = takeOne(activeSuperfan);
-              if (first) out.push(first);
-              superfanBurstRemaining.set(activeSuperfan, Math.max(0, remaining - 1));
-              const rem2 = (superfanBurstRemaining.get(activeSuperfan) || 0);
-              if (rem2 > 0 && (perUser.get(activeSuperfan) || []).length) {
-                const second = takeOne(activeSuperfan);
-                if (second) out.push(second);
-                superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem2 - 1));
-                if ((superfanBurstRemaining.get(activeSuperfan) || 0) > 0 && hasAnyOtherThan(activeSuperfan)) {
-                  activeStage = 1;
-                  return true;
-                }
-              }
-              activeStage = 2;
-              return true;
-            }
-
-            if (activeStage === 1) {
-              const gapUser = pickGapUser(activeSuperfan);
-              if (gapUser) {
-                const it = takeOne(gapUser);
-                if (it) out.push(it);
-                activeStage = 2;
-                return true;
-              }
-              activeStage = 2;
-              return false;
-            }
-
-            if (activeStage === 2) {
-              const rem = superfanBurstRemaining.get(activeSuperfan) || 0;
-              if (rem > 0 && (perUser.get(activeSuperfan) || []).length) {
-                const it = takeOne(activeSuperfan);
-                if (it) out.push(it);
-                superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem - 1));
-              }
-              activeSuperfan = '';
-              activeStage = 0;
-              return true;
-            }
-
-            activeSuperfan = '';
-            activeStage = 0;
-            return false;
-          }
-
           function hasAnyLeft() {
             for (let i = 0; i < users.length; i++) if ((perUser.get(users[i]) || []).length) return true;
             return false;
           }
 
           while (hasAnyLeft()) {
-            if (stepSuperfanBurst()) continue;
-            let added = false;
+            const served = new Set();
             for (let i = 0; i < users.length; i++) {
               const u = users[i];
-              const it = takeOne(u);
-              if (it) {
-                out.push(it);
-                added = true;
+              const arr = perUser.get(u) || [];
+              if (!arr.length) continue;
+              const b = badgeByUser.get(u) || '';
+              if (b === 'superfan') {
+                let canGap = false;
+                for (let j = 0; j < users.length; j++) {
+                  const v = users[j];
+                  if (v === u) continue;
+                  if (served.has(v)) continue;
+                  const vb = badgeByUser.get(v) || '';
+                  if (vb === 'superfan') continue;
+                  if ((perUser.get(v) || []).length) { canGap = true; break; }
+                }
+                if (arr.length >= 2 && canGap) {
+                  out.push(arr.shift());
+                  out.push(arr.shift());
+                  served.add(u);
+
+                  let gapUser = '';
+                  for (let k = 1; k <= users.length; k++) {
+                    const v = users[(i + k) % users.length];
+                    if (v === u) continue;
+                    if (served.has(v)) continue;
+                    const vb = badgeByUser.get(v) || '';
+                    if (vb === 'superfan') continue;
+                    const vArr = perUser.get(v) || [];
+                    if (!vArr.length) continue;
+                    gapUser = v;
+                    break;
+                  }
+                  if (gapUser) {
+                    const gArr = perUser.get(gapUser) || [];
+                    if (gArr.length) out.push(gArr.shift());
+                    served.add(gapUser);
+                  }
+
+                  if (arr.length) out.push(arr.shift());
+                  continue;
+                }
               }
+
+              out.push(arr.shift());
+              served.add(u);
             }
-            if (!added) break;
           }
         });
         return out;
@@ -2585,121 +2505,7 @@
           return a.localeCompare(b, 'es');
         });
 
-        function hasAnyOtherThan(user) {
-          for (let i = 0; i < users.length; i++) {
-            const u = users[i];
-            if (u === user) continue;
-            if ((perUser.get(u) || []).length) return true;
-          }
-          return false;
-        }
-
-        function takeOne(user) {
-          const arr = perUser.get(user) || [];
-          if (!arr.length) return null;
-          return arr.shift();
-        }
-
-        function pickGapUser(activeUser) {
-          const candidates = [];
-          for (let i = 0; i < users.length; i++) {
-            const u = users[i];
-            if (u === activeUser) continue;
-            const arr = perUser.get(u) || [];
-            if (!arr.length) continue;
-            const b = badgeByUser.get(u) || '';
-            if (b === 'superfan') continue;
-            const r = badgeRankForOrdering(b);
-            const vipTier = (r <= 3) ? 0 : 1;
-            const t = getItemTimeMs(arr[0]);
-            candidates.push({ u, vipTier, r, t });
-          }
-          if (!candidates.length) return '';
-          candidates.sort((a, b) => {
-            if (a.vipTier !== b.vipTier) return a.vipTier - b.vipTier;
-            if (a.r !== b.r) return a.r - b.r;
-            if (a.t !== b.t) return a.t - b.t;
-            return a.u.localeCompare(b.u, 'es');
-          });
-          return candidates[0].u;
-        }
-
         const out = [];
-        const superfanBurstRemaining = new Map();
-        users.forEach((u) => {
-          const b = badgeByUser.get(u) || '';
-          if (b === 'superfan') superfanBurstRemaining.set(u, Math.min(3, (perUser.get(u) || []).length));
-        });
-
-        let activeSuperfan = '';
-        let activeStage = 0;
-
-        function stepSuperfanBurst() {
-          if (!activeSuperfan) {
-            for (let i = 0; i < users.length; i++) {
-              const u = users[i];
-              if ((superfanBurstRemaining.get(u) || 0) > 0 && (perUser.get(u) || []).length) {
-                activeSuperfan = u;
-                activeStage = 0;
-                break;
-              }
-            }
-          }
-          if (!activeSuperfan) return false;
-
-          const remaining = superfanBurstRemaining.get(activeSuperfan) || 0;
-          if (remaining <= 0 || !(perUser.get(activeSuperfan) || []).length) {
-            activeSuperfan = '';
-            activeStage = 0;
-            return false;
-          }
-
-          if (activeStage === 0) {
-            const first = takeOne(activeSuperfan);
-            if (first) out.push(first);
-            superfanBurstRemaining.set(activeSuperfan, Math.max(0, remaining - 1));
-            const rem2 = (superfanBurstRemaining.get(activeSuperfan) || 0);
-            if (rem2 > 0 && (perUser.get(activeSuperfan) || []).length) {
-              const second = takeOne(activeSuperfan);
-              if (second) out.push(second);
-              superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem2 - 1));
-              if ((superfanBurstRemaining.get(activeSuperfan) || 0) > 0 && hasAnyOtherThan(activeSuperfan)) {
-                activeStage = 1;
-                return true;
-              }
-            }
-            activeStage = 2;
-            return true;
-          }
-
-          if (activeStage === 1) {
-            const gapUser = pickGapUser(activeSuperfan);
-            if (gapUser) {
-              const it = takeOne(gapUser);
-              if (it) out.push(it);
-              activeStage = 2;
-              return true;
-            }
-            activeStage = 2;
-            return false;
-          }
-
-          if (activeStage === 2) {
-            const rem = superfanBurstRemaining.get(activeSuperfan) || 0;
-            if (rem > 0 && (perUser.get(activeSuperfan) || []).length) {
-              const it = takeOne(activeSuperfan);
-              if (it) out.push(it);
-              superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem - 1));
-            }
-            activeSuperfan = '';
-            activeStage = 0;
-            return true;
-          }
-
-          activeSuperfan = '';
-          activeStage = 0;
-          return false;
-        }
 
         function hasAnyLeft() {
           for (let i = 0; i < users.length; i++) if ((perUser.get(users[i]) || []).length) return true;
@@ -2707,18 +2513,55 @@
         }
 
         while (hasAnyLeft()) {
-          if (stepSuperfanBurst()) continue;
-          let added = false;
+          const served = new Set();
           for (let i = 0; i < users.length; i++) {
             const u = users[i];
-            const it = takeOne(u);
-            if (it) {
-              out.push(it);
-              added = true;
+            const arr = perUser.get(u) || [];
+            if (!arr.length) continue;
+            const b = badgeByUser.get(u) || '';
+            if (b === 'superfan') {
+              let canGap = false;
+              for (let j = 0; j < users.length; j++) {
+                const v = users[j];
+                if (v === u) continue;
+                if (served.has(v)) continue;
+                const vb = badgeByUser.get(v) || '';
+                if (vb === 'superfan') continue;
+                if ((perUser.get(v) || []).length) { canGap = true; break; }
+              }
+              if (arr.length >= 2 && canGap) {
+                out.push(arr.shift());
+                out.push(arr.shift());
+                served.add(u);
+
+                let gapUser = '';
+                for (let k = 1; k <= users.length; k++) {
+                  const v = users[(i + k) % users.length];
+                  if (v === u) continue;
+                  if (served.has(v)) continue;
+                  const vb = badgeByUser.get(v) || '';
+                  if (vb === 'superfan') continue;
+                  const vArr = perUser.get(v) || [];
+                  if (!vArr.length) continue;
+                  gapUser = v;
+                  break;
+                }
+                if (gapUser) {
+                  const gArr = perUser.get(gapUser) || [];
+                  if (gArr.length) out.push(gArr.shift());
+                  served.add(gapUser);
+                }
+
+                if (arr.length) out.push(arr.shift());
+                continue;
+              }
             }
+
+            out.push(arr.shift());
+            served.add(u);
           }
-          if (!added) break;
         }
+
         return out;
       }
 
