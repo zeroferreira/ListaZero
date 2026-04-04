@@ -1958,6 +1958,7 @@
       const u = normalizeUserForOverride(username);
       return (u && u === forcedUserKey) ? forcedBadgeParam : '';
     }
+    let superfanUsersSet = new Set();
     function badgeLabel(badge) {
       const b = String(badge || '').trim();
       if (!b) return '';
@@ -1978,7 +1979,9 @@
       const artista = req.artista || req.artistName || req.artist || '';
       const usuario = req.displayName || req.usuario || req.user || req.username || '';
       const rawBadge = String((req && req.badge) || '').trim();
-      const badge = rawBadge || getForcedBadgeForUser(usuario);
+      const uKey = normalizeUserForOverride(usuario);
+      const badgeCandidate = (rawBadge === 'superfan' && uKey && !superfanUsersSet.has(uKey)) ? '' : rawBadge;
+      const badge = badgeCandidate || getForcedBadgeForUser(usuario);
       const badgeHtml = badge ? `<span class="user-insignia ${badge}">${badgeLabel(badge)}</span>` : '';
       const div = document.createElement('div');
       // Wrapper con clases de posición
@@ -3015,6 +3018,20 @@
       }
 
       subscribeRequestsForDay(currentDay);
+
+      try {
+        db.collection('superfanUsers').onSnapshot((snap) => {
+          const next = new Set();
+          snap.forEach((doc) => {
+            const d = doc.data() || {};
+            const name = String(d.name || doc.id || '').trim();
+            const k = normalizeUserForOverride(name);
+            if (k) next.add(k);
+          });
+          superfanUsersSet = next;
+          renderQueue();
+        });
+      } catch (_) {}
 
       try {
         db.collection('system').doc('status').onSnapshot((doc) => {

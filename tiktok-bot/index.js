@@ -1105,7 +1105,7 @@ function setupListeners() {
         // --- USAR CONFIGURACIÓN DINÁMICA ---
         const isSubscriber = data.isSubscriber && config.allowSubscribers;
         const isModerator = data.isModerator && config.allowModerators;
-        const isSuperFanRaw = (data.followRole >= 1) || (data.memberLevel > 0);
+        const isSuperFanRaw = (data.isSubscriber === true) || (Number(data.memberLevel || 0) > 0);
         const isSuperFan = isSuperFanRaw && config.allowSuperFans;
         
         // FIX: Comparación de usuario insensible a mayúsculas para el streamer
