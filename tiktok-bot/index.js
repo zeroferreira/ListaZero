@@ -217,11 +217,10 @@ function buildTikTokConnectionOptions() {
         enableWebsocketUpgrade: tiktokWebsocketUpgradeEnabled,
         requestPollingIntervalMs: 2000,
         clientParams: {
-            app_language: 'es-ES',
-            device_platform: 'web_cast'
+            app_language: 'es-ES'
         }
     };
-    if (config.sessionId) opts.sessionId = config.sessionId;
+    if (config.sessionId) opts.sessionId = String(config.sessionId).trim();
     return opts;
 }
 
