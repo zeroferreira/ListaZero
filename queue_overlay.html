@@ -1852,12 +1852,95 @@
       return `${minutes}:${seconds.padStart(2, '0')}`;
     }
 
+    function formatWaitCountdownMs(ms) {
+      const v = Math.max(0, Number(ms) || 0);
+      if (v <= 3000) return "Siguiente";
+      const totalSeconds = Math.ceil(v / 1000);
+      const h = Math.floor(totalSeconds / 3600);
+      const m = Math.floor((totalSeconds % 3600) / 60);
+      const s = totalSeconds % 60;
+      if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
     function formatWaitTime(mins) {
       if (mins <= 0.4) return "Siguiente";
       if (mins < 60) return `en ${Math.round(mins)} min`;
       const h = Math.floor(mins / 60);
       const m = Math.round(mins % 60);
       return `en ${h}h ${m}m`;
+    }
+
+    let waitCountdownTimerId = 0;
+    function tickWaitCountdown() {
+      try {
+        const container = document.getElementById('queue-container');
+        if (!container) return;
+        const waitEls = Array.from(container.querySelectorAll('.item-wait'));
+        const now = Date.now();
+        for (const el of waitEls) {
+          if (!el) continue;
+          const base = Number(el.dataset.waitMsBase || 0);
+          const at = Number(el.dataset.waitMsUpdatedAt || 0);
+          if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(at) || at <= 0) continue;
+          const remaining = Math.max(0, base - (now - at));
+          el.innerText = formatWaitCountdownMs(remaining);
+        }
+      } catch (_) {}
+    }
+
+    function stopWaitCountdownTimer() {
+      try {
+        if (waitCountdownTimerId) clearInterval(waitCountdownTimerId);
+      } catch (_) {}
+      waitCountdownTimerId = 0;
+    }
+
+    function ensureWaitCountdownTimerRunning() {
+      try {
+        if (waitCountdownTimerId) return;
+        waitCountdownTimerId = setInterval(tickWaitCountdown, 1000);
+      } catch (_) {}
+    }
+
+    function getCurrentPlaybackRemainingMsSafe() {
+      try {
+        const settings = window.appliedSettings || getSettingsFromInputs();
+        if (!settings || settings.syncAppleMusic !== true) return 0;
+        const ms = Number(currentCiderPlayback?.remainingMs || 0);
+        const updatedAt = Number(currentCiderPlayback?.updatedAt || 0);
+        if (!Number.isFinite(ms) || ms <= 0) return 0;
+        const age = Date.now() - updatedAt;
+        if (!Number.isFinite(age) || age > 120000) return 0;
+        if (ms < 5000) return 0;
+        return ms;
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    function recomputeWaitCountdownFromDom() {
+      try {
+        const settings = window.appliedSettings || getSettingsFromInputs();
+        const container = document.getElementById('queue-container');
+        if (!container || !settings || settings.showWaitTime !== true) return;
+        const startMs = getCurrentPlaybackRemainingMsSafe();
+        if (!startMs) return;
+        const now = Date.now();
+        let accumulatedMs = startMs;
+        const items = Array.from(container.querySelectorAll('.queue-item:not(.removing)'));
+        for (const item of items) {
+          const waitEl = item ? item.querySelector('.item-wait') : null;
+          if (!waitEl) continue;
+          waitEl.dataset.waitMsBase = String(Math.max(0, accumulatedMs));
+          waitEl.dataset.waitMsUpdatedAt = String(now);
+          waitEl.innerText = formatWaitCountdownMs(accumulatedMs);
+          const dur = Number(waitEl.dataset.durationMs || 0);
+          accumulatedMs += (Number.isFinite(dur) && dur > 0 ? dur : 210000);
+        }
+        ensureWaitCountdownTimerRunning();
+        tickWaitCountdown();
+      } catch (_) {}
     }
 
     // --- Core Render Logic ---
@@ -2124,6 +2207,169 @@
       return out;
     }
 
+    function applySmartOrder(items) {
+      const base = Array.isArray(items) ? items.slice() : [];
+      base.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+      const perUser = new Map();
+      base.forEach((it) => {
+        const u = String(it?.usuario || it?.displayName || it?.user || it?.username || '').trim();
+        if (!u) return;
+        if (!perUser.has(u)) perUser.set(u, []);
+        perUser.get(u).push(it);
+      });
+      const users = Array.from(perUser.keys());
+      const badgeByUser = new Map();
+      users.forEach((u) => {
+        const arr = perUser.get(u) || [];
+        arr.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+        badgeByUser.set(u, String(arr?.[0]?.badge || '').trim());
+      });
+      users.sort((a, b) => {
+        const ra = badgeRankForOrdering(badgeByUser.get(a) || '');
+        const rb = badgeRankForOrdering(badgeByUser.get(b) || '');
+        if (ra !== rb) return ra - rb;
+        const ta = getReqTimeMs(perUser.get(a)?.[0]);
+        const tb = getReqTimeMs(perUser.get(b)?.[0]);
+        if (ta !== tb) return ta - tb;
+        return a.localeCompare(b, 'es');
+      });
+
+      function hasAnyOtherThan(user) {
+        for (let i = 0; i < users.length; i++) {
+          const u = users[i];
+          if (u === user) continue;
+          if ((perUser.get(u) || []).length) return true;
+        }
+        return false;
+      }
+
+      function takeOne(user) {
+        const arr = perUser.get(user) || [];
+        if (!arr.length) return null;
+        return arr.shift();
+      }
+
+      function pickGapUser(activeUser) {
+        const candidates = [];
+        for (let i = 0; i < users.length; i++) {
+          const u = users[i];
+          if (u === activeUser) continue;
+          const arr = perUser.get(u) || [];
+          if (!arr.length) continue;
+          const b = badgeByUser.get(u) || '';
+          const r = badgeRankForOrdering(b);
+          const vipTier = (r <= 3) ? 0 : 1;
+          const t = getReqTimeMs(arr[0]);
+          candidates.push({ u, vipTier, r, t });
+        }
+        if (!candidates.length) return '';
+        candidates.sort((a, b) => {
+          if (a.vipTier !== b.vipTier) return a.vipTier - b.vipTier;
+          if (a.r !== b.r) return a.r - b.r;
+          if (a.t !== b.t) return a.t - b.t;
+          return a.u.localeCompare(b.u, 'es');
+        });
+        return candidates[0].u;
+      }
+
+      const out = [];
+      const superfanBurstRemaining = new Map();
+      users.forEach((u) => {
+        const b = badgeByUser.get(u) || '';
+        if (b === 'superfan') superfanBurstRemaining.set(u, Math.min(3, (perUser.get(u) || []).length));
+      });
+
+      let activeSuperfan = '';
+      let activeStage = 0;
+
+      function stepSuperfanBurst() {
+        if (!activeSuperfan) {
+          for (let i = 0; i < users.length; i++) {
+            const u = users[i];
+            if ((superfanBurstRemaining.get(u) || 0) > 0 && (perUser.get(u) || []).length) {
+              activeSuperfan = u;
+              activeStage = 0;
+              break;
+            }
+          }
+        }
+        if (!activeSuperfan) return false;
+
+        const remaining = superfanBurstRemaining.get(activeSuperfan) || 0;
+        if (remaining <= 0 || !(perUser.get(activeSuperfan) || []).length) {
+          activeSuperfan = '';
+          activeStage = 0;
+          return false;
+        }
+
+        if (activeStage === 0) {
+          const first = takeOne(activeSuperfan);
+          if (first) out.push(first);
+          superfanBurstRemaining.set(activeSuperfan, Math.max(0, remaining - 1));
+          const rem2 = (superfanBurstRemaining.get(activeSuperfan) || 0);
+          if (rem2 > 0 && (perUser.get(activeSuperfan) || []).length) {
+            const second = takeOne(activeSuperfan);
+            if (second) out.push(second);
+            superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem2 - 1));
+            if ((superfanBurstRemaining.get(activeSuperfan) || 0) > 0 && hasAnyOtherThan(activeSuperfan)) {
+              activeStage = 1;
+              return true;
+            }
+          }
+          activeStage = 2;
+          return true;
+        }
+
+        if (activeStage === 1) {
+          const gapUser = pickGapUser(activeSuperfan);
+          if (gapUser) {
+            const it = takeOne(gapUser);
+            if (it) out.push(it);
+            activeStage = 2;
+            return true;
+          }
+          activeStage = 2;
+          return false;
+        }
+
+        if (activeStage === 2) {
+          const rem = superfanBurstRemaining.get(activeSuperfan) || 0;
+          if (rem > 0 && (perUser.get(activeSuperfan) || []).length) {
+            const it = takeOne(activeSuperfan);
+            if (it) out.push(it);
+            superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem - 1));
+          }
+          activeSuperfan = '';
+          activeStage = 0;
+          return true;
+        }
+
+        activeSuperfan = '';
+        activeStage = 0;
+        return false;
+      }
+
+      function hasAnyLeft() {
+        for (let i = 0; i < users.length; i++) if ((perUser.get(users[i]) || []).length) return true;
+        return false;
+      }
+
+      while (hasAnyLeft()) {
+        if (stepSuperfanBurst()) continue;
+        let added = false;
+        for (let i = 0; i < users.length; i++) {
+          const u = users[i];
+          const it = takeOne(u);
+          if (it) {
+            out.push(it);
+            added = true;
+          }
+        }
+        if (!added) break;
+      }
+      return out;
+    }
+
     function renderQueue() {
       // Evitar renderizado si no hemos cargado la lista de reproducidas (evita flash de ghost cards)
       if (!playedSongsLoaded && db) {
@@ -2144,8 +2390,10 @@
         return true;
       });
 
-      if (getQueueMode() === 'tandas15' && (!currentManualOrder || currentManualOrder.length === 0)) {
-        pendingRequests = applyTandas15Order(pendingRequests);
+      if ((!currentManualOrder || currentManualOrder.length === 0)) {
+        const qm = getQueueMode();
+        if (qm === 'smart') pendingRequests = applySmartOrder(pendingRequests);
+        else if (qm === 'tandas15') pendingRequests = applyTandas15Order(pendingRequests);
       }
 
       // 1.5 Aplicar orden manual si existe
@@ -2155,6 +2403,7 @@
       // Dynamic limit based on settings
       const maxCards = (window.appliedSettings && window.appliedSettings.maxCards) ? window.appliedSettings.maxCards : 3;
       const itemsToShow = pendingRequests.slice(0, maxCards);
+      window.__lastRenderedQueueItems = itemsToShow;
       
       // 3. Diffing Inteligente: Solo animar elementos NUEVOS
       const container = document.getElementById('queue-container');
@@ -2269,17 +2518,10 @@
 
       const getCurrentPlaybackRemainingMinutes = () => {
         try {
-          if (!settings || settings.syncAppleMusic !== true) return 0;
-          const ms = Number(currentCiderPlayback?.remainingMs || 0);
-          const updatedAt = Number(currentCiderPlayback?.updatedAt || 0);
-          if (!Number.isFinite(ms) || ms <= 0) return 0;
-          const age = Date.now() - updatedAt;
-          if (!Number.isFinite(age) || age > 120000) return 0;
-          if (ms < 5000) return 0;
+          const ms = getCurrentPlaybackRemainingMsSafe();
+          if (!ms) return 0;
           return ms / 60000;
-        } catch (_) {
-          return 0;
-        }
+        } catch (_) { return 0; }
       };
 
       const shouldAutocorrectText = (reqArtist, reqSong, correctedArtist, correctedSong) => {
@@ -2308,7 +2550,10 @@
         if (sid && !elBySongId.has(sid)) elBySongId.set(sid, el);
       });
       
+      const liveCountdown = settings.showWaitTime === true && settings.syncAppleMusic === true && getCurrentPlaybackRemainingMsSafe() > 0;
       let accumulatedTime = getCurrentPlaybackRemainingMinutes(); // minutes (incluye canción actual si hay Cider)
+      let accumulatedMs = getCurrentPlaybackRemainingMsSafe();
+      const now = Date.now();
 
       for (const req of items) {
          if (!req) continue;
@@ -2348,19 +2593,41 @@
 
                  if (settings.showWaitTime && data.durationMs) {
                      waitEl.style.display = 'block';
-                     waitEl.innerText = formatWaitTime(accumulatedTime);
-                     accumulatedTime += (data.durationMs / 60000);
+                     waitEl.dataset.durationMs = String(data.durationMs);
+                     if (liveCountdown) {
+                       waitEl.dataset.waitMsBase = String(Math.max(0, accumulatedMs));
+                       waitEl.dataset.waitMsUpdatedAt = String(now);
+                       waitEl.innerText = formatWaitCountdownMs(accumulatedMs);
+                       accumulatedMs += data.durationMs;
+                     } else {
+                       waitEl.innerText = formatWaitTime(accumulatedTime);
+                       accumulatedTime += (data.durationMs / 60000);
+                     }
                  }
              } else {
                  // Fallback for wait time if no data found (assume 3:30 min)
                  if (settings.showWaitTime) {
                      waitEl.style.display = 'block';
-                     waitEl.innerText = formatWaitTime(accumulatedTime);
-                     accumulatedTime += 3.5; 
+                     waitEl.dataset.durationMs = String(210000);
+                     if (liveCountdown) {
+                       waitEl.dataset.waitMsBase = String(Math.max(0, accumulatedMs));
+                       waitEl.dataset.waitMsUpdatedAt = String(now);
+                       waitEl.innerText = formatWaitCountdownMs(accumulatedMs);
+                       accumulatedMs += 210000;
+                     } else {
+                       waitEl.innerText = formatWaitTime(accumulatedTime);
+                       accumulatedTime += 3.5; 
+                     }
                  }
                  if (artEl) artEl.style.display = 'none';
              }
          }
+      }
+      if (liveCountdown) {
+        ensureWaitCountdownTimerRunning();
+        tickWaitCountdown();
+      } else {
+        stopWaitCountdownTimer();
       }
     }
 
@@ -2419,6 +2686,7 @@
     function updateCiderPlaybackTiming(data) {
       try {
         if (!data) return;
+        const prevMs = Number(currentCiderPlayback?.remainingMs || 0);
 
         const remainingCandidates = [
           data.timeRemaining,
@@ -2448,6 +2716,8 @@
 
         if (remainingMs > 0) {
           currentCiderPlayback = { remainingMs, updatedAt: Date.now() };
+          const isJump = (Number.isFinite(prevMs) && prevMs > 0 && remainingMs > prevMs + 45000) || (prevMs < 8000 && remainingMs > 45000);
+          if (isJump) recomputeWaitCountdownFromDom();
         }
       } catch (_) {}
     }

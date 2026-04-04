@@ -2556,9 +2556,175 @@
         return out;
       }
 
+      function applySmartOrder(items) {
+        const base = sortItemsStable(items, 'asc');
+        const perUser = new Map();
+        base.forEach((it) => {
+          const u = String(it?.usuario || it?.displayName || '').trim();
+          if (!u) return;
+          if (!perUser.has(u)) perUser.set(u, []);
+          perUser.get(u).push(it);
+        });
+        const users = Array.from(perUser.keys());
+        const badgeByUser = new Map();
+        users.forEach((u) => {
+          const arr = perUser.get(u) || [];
+          arr.sort((a, b) => compareItemsByTime(a, b, 'asc'));
+          badgeByUser.set(u, getOrderingBadgeForUser(u, (arr?.[0]?.badge || '')));
+        });
+        users.sort((a, b) => {
+          const ba = badgeByUser.get(a) || '';
+          const bb = badgeByUser.get(b) || '';
+          const ra = badgeRankForOrdering(ba);
+          const rb = badgeRankForOrdering(bb);
+          if (ra !== rb) return ra - rb;
+          const ta = getItemTimeMs(perUser.get(a)?.[0]);
+          const tb = getItemTimeMs(perUser.get(b)?.[0]);
+          if (ta !== tb) return ta - tb;
+          return a.localeCompare(b, 'es');
+        });
+
+        function hasAnyOtherThan(user) {
+          for (let i = 0; i < users.length; i++) {
+            const u = users[i];
+            if (u === user) continue;
+            if ((perUser.get(u) || []).length) return true;
+          }
+          return false;
+        }
+
+        function takeOne(user) {
+          const arr = perUser.get(user) || [];
+          if (!arr.length) return null;
+          return arr.shift();
+        }
+
+        function pickGapUser(activeUser) {
+          const candidates = [];
+          for (let i = 0; i < users.length; i++) {
+            const u = users[i];
+            if (u === activeUser) continue;
+            const arr = perUser.get(u) || [];
+            if (!arr.length) continue;
+            const b = badgeByUser.get(u) || '';
+            const r = badgeRankForOrdering(b);
+            const vipTier = (r <= 3) ? 0 : 1;
+            const t = getItemTimeMs(arr[0]);
+            candidates.push({ u, vipTier, r, t });
+          }
+          if (!candidates.length) return '';
+          candidates.sort((a, b) => {
+            if (a.vipTier !== b.vipTier) return a.vipTier - b.vipTier;
+            if (a.r !== b.r) return a.r - b.r;
+            if (a.t !== b.t) return a.t - b.t;
+            return a.u.localeCompare(b.u, 'es');
+          });
+          return candidates[0].u;
+        }
+
+        const out = [];
+        const superfanBurstRemaining = new Map();
+        users.forEach((u) => {
+          const b = badgeByUser.get(u) || '';
+          if (b === 'superfan') superfanBurstRemaining.set(u, Math.min(3, (perUser.get(u) || []).length));
+        });
+
+        let activeSuperfan = '';
+        let activeStage = 0;
+
+        function stepSuperfanBurst() {
+          if (!activeSuperfan) {
+            for (let i = 0; i < users.length; i++) {
+              const u = users[i];
+              if ((superfanBurstRemaining.get(u) || 0) > 0 && (perUser.get(u) || []).length) {
+                activeSuperfan = u;
+                activeStage = 0;
+                break;
+              }
+            }
+          }
+          if (!activeSuperfan) return false;
+
+          const remaining = superfanBurstRemaining.get(activeSuperfan) || 0;
+          if (remaining <= 0 || !(perUser.get(activeSuperfan) || []).length) {
+            activeSuperfan = '';
+            activeStage = 0;
+            return false;
+          }
+
+          if (activeStage === 0) {
+            const first = takeOne(activeSuperfan);
+            if (first) out.push(first);
+            superfanBurstRemaining.set(activeSuperfan, Math.max(0, remaining - 1));
+            const rem2 = (superfanBurstRemaining.get(activeSuperfan) || 0);
+            if (rem2 > 0 && (perUser.get(activeSuperfan) || []).length) {
+              const second = takeOne(activeSuperfan);
+              if (second) out.push(second);
+              superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem2 - 1));
+              if ((superfanBurstRemaining.get(activeSuperfan) || 0) > 0 && hasAnyOtherThan(activeSuperfan)) {
+                activeStage = 1;
+                return true;
+              }
+            }
+            activeStage = 2;
+            return true;
+          }
+
+          if (activeStage === 1) {
+            const gapUser = pickGapUser(activeSuperfan);
+            if (gapUser) {
+              const it = takeOne(gapUser);
+              if (it) out.push(it);
+              activeStage = 2;
+              return true;
+            }
+            activeStage = 2;
+            return false;
+          }
+
+          if (activeStage === 2) {
+            const rem = superfanBurstRemaining.get(activeSuperfan) || 0;
+            if (rem > 0 && (perUser.get(activeSuperfan) || []).length) {
+              const it = takeOne(activeSuperfan);
+              if (it) out.push(it);
+              superfanBurstRemaining.set(activeSuperfan, Math.max(0, rem - 1));
+            }
+            activeSuperfan = '';
+            activeStage = 0;
+            return true;
+          }
+
+          activeSuperfan = '';
+          activeStage = 0;
+          return false;
+        }
+
+        function hasAnyLeft() {
+          for (let i = 0; i < users.length; i++) if ((perUser.get(users[i]) || []).length) return true;
+          return false;
+        }
+
+        while (hasAnyLeft()) {
+          if (stepSuperfanBurst()) continue;
+          let added = false;
+          for (let i = 0; i < users.length; i++) {
+            const u = users[i];
+            const it = takeOne(u);
+            if (it) {
+              out.push(it);
+              added = true;
+            }
+          }
+          if (!added) break;
+        }
+        return out;
+      }
+
       function applyDisplayOrder(items) {
         const mode = getSortMode();
-        if (getQueueMode() === 'tandas15' && !isManualSortMode(mode)) return applyTandas15Order(items);
+        const qMode = getQueueMode();
+        if (qMode === 'smart' && !isManualSortMode(mode)) return applySmartOrder(items);
+        if (qMode === 'tandas15' && !isManualSortMode(mode)) return applyTandas15Order(items);
         if (mode === 'oldest') return sortItemsStable(items, 'asc');
         if (mode === 'recent') return sortItemsStable(items, 'desc');
         if (mode === 'manual_fifo') return applyOrder(sortItemsStable(items, 'asc'), currentManualOrder);
@@ -18223,12 +18389,16 @@
   <button type="button" id="queue-mode-fab" aria-label="Modo de cola" title="Modo de cola">Z</button>
   <div id="queue-mode-panel" hidden>
     <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-      <div style="font-weight: 900;">Tandas (15 min)</div>
+      <div style="font-weight: 900;">Modo de cola</div>
       <button type="button" id="queue-mode-close" aria-label="Cerrar" style="border:none; background:transparent; color:#f87171; font-size: 18px; cursor:pointer;">×</button>
     </div>
-    <label style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top: 10px;">
-      <span style="opacity:0.9;">Activar orden por tandas</span>
-      <input id="queue-mode-toggle" type="checkbox">
+    <label style="display:flex; flex-direction:column; gap:8px; margin-top: 10px;">
+      <span style="opacity:0.9;">Orden</span>
+      <select id="queue-mode-select" style="width:100%; padding:10px 10px; border-radius:10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #f9fafb;">
+        <option value="default">Normal</option>
+        <option value="smart">Inteligente (sin repetidos)</option>
+        <option value="tandas15">Tandas (15 min)</option>
+      </select>
     </label>
     <div id="queue-mode-status" style="margin-top: 8px; font-size: 12px; opacity: 0.85;">Estado: (desconocido)</div>
   </div>
@@ -18255,19 +18425,19 @@
     function syncUi() {
       const fab = document.getElementById('queue-mode-fab');
       const panel = document.getElementById('queue-mode-panel');
-      const toggle = document.getElementById('queue-mode-toggle');
+      const select = document.getElementById('queue-mode-select');
       const status = document.getElementById('queue-mode-status');
       if (fab) fab.style.display = isAdminMode() ? 'inline-flex' : 'none';
       const mode = getQueueModeLocal();
-      if (toggle) toggle.checked = mode === 'tandas15';
-      if (status) status.textContent = `Estado: ${mode === 'tandas15' ? 'Tandas (15 min)' : 'Normal'}`;
+      if (select) select.value = mode;
+      if (status) status.textContent = `Estado: ${mode === 'tandas15' ? 'Tandas (15 min)' : (mode === 'smart' ? 'Inteligente' : 'Normal')}`;
       if (panel && panel.hidden === false && !isAdminMode()) panel.hidden = true;
     }
     document.addEventListener('DOMContentLoaded', function() {
       const fab = document.getElementById('queue-mode-fab');
       const panel = document.getElementById('queue-mode-panel');
       const close = document.getElementById('queue-mode-close');
-      const toggle = document.getElementById('queue-mode-toggle');
+      const select = document.getElementById('queue-mode-select');
       if (fab && panel) {
         fab.addEventListener('click', function() {
           if (!isAdminMode()) return;
@@ -18276,9 +18446,9 @@
         });
       }
       if (close && panel) close.addEventListener('click', function() { panel.hidden = true; });
-      if (toggle) toggle.addEventListener('change', async function() {
-        if (!isAdminMode()) { toggle.checked = false; return; }
-        const mode = toggle.checked ? 'tandas15' : 'default';
+      if (select) select.addEventListener('change', async function() {
+        if (!isAdminMode()) { select.value = 'default'; return; }
+        const mode = String(select.value || 'default').trim() || 'default';
         setQueueMode(mode);
         try {
           const dbRef = getDb();
