@@ -2831,41 +2831,87 @@
         const end = new Date(start);
         end.setDate(end.getDate() + 1);
 
-        let didFallbackToTs = false;
+        const dayDocs = new Map();
+        const tsDocs = new Map();
+        let unsubDay = null;
+        let unsubTs = null;
+
+        function mergeAndApply() {
+          try {
+            const byId = new Map();
+            dayDocs.forEach((v, k) => { if (!byId.has(k)) byId.set(k, v); });
+            tsDocs.forEach((v, k) => { if (!byId.has(k)) byId.set(k, v); });
+
+            const temp = [];
+            byId.forEach((data, docId) => {
+              if (!firstSeenOrder.has(docId)) firstSeenOrder.set(docId, ++firstSeenCounter);
+              const item = { ...(data || {}), docId, _seen: firstSeenOrder.get(docId) };
+              if (!item.id) item.id = docId;
+              temp.push(item);
+            });
+
+            temp.sort((a, b) => {
+              const tA = a.ts && a.ts.toMillis ? a.ts.toMillis() : (new Date(a.ts).getTime() || 0);
+              const tB = b.ts && b.ts.toMillis ? b.ts.toMillis() : (new Date(b.ts).getTime() || 0);
+
+              const aHasTime = Number.isFinite(tA) && tA > 0;
+              const bHasTime = Number.isFinite(tB) && tB > 0;
+              if (aHasTime && bHasTime && tA !== tB) return tA - tB;
+              if (aHasTime && !bHasTime) return -1;
+              if (!aHasTime && bHasTime) return 1;
+
+              const sA = Number(a?._seen || 0);
+              const sB = Number(b?._seen || 0);
+              if (sA !== sB) return sA - sB;
+
+              const idA = String(a?.docId || a?.id || generateSongId(a) || '');
+              const idB = String(b?.docId || b?.id || generateSongId(b) || '');
+              if (idA && idB && idA !== idB) return idA.localeCompare(idB);
+              return 0;
+            });
+
+            console.log(`Loaded ${temp.length} requests for day ${currentDay}`);
+            allRequests = temp;
+            renderQueue();
+            checkCurrentTrackAgainstQueue();
+          } catch (_) {}
+        }
+
+        function stopAll() {
+          try { if (unsubDay) unsubDay(); } catch (_) {}
+          try { if (unsubTs) unsubTs(); } catch (_) {}
+          unsubDay = null;
+          unsubTs = null;
+        }
+
         const qDay = db.collection('solicitudes').where('day', '==', dayValue);
-        unsubscribeRequests = qDay.onSnapshot((snap) => {
-          applyRequestsSnapshot(snap);
-          if (snap.size === 0 && !didFallbackToTs) {
-            didFallbackToTs = true;
-            db.collection('solicitudes')
-              .where('ts', '>=', start)
-              .where('ts', '<', end)
-              .orderBy('ts', 'asc')
-              .limit(1)
-              .get()
-              .then((testSnap) => {
-                if (testSnap && !testSnap.empty) {
-                  try { if (unsubscribeRequests) unsubscribeRequests(); } catch (_) {}
-                  const qTs = db.collection('solicitudes')
-                    .where('ts', '>=', start)
-                    .where('ts', '<', end)
-                    .orderBy('ts', 'asc');
-                  unsubscribeRequests = qTs.onSnapshot((s2) => {
-                    applyRequestsSnapshot(s2);
-                  }, (err) => {
-                    console.error("Error en solicitudes (ts):", err);
-                  });
-                }
-              })
-              .catch(() => {});
-          }
+        unsubDay = qDay.onSnapshot((snap) => {
+          dayDocs.clear();
+          snap.forEach((doc) => dayDocs.set(doc.id, doc.data() || {}));
+          mergeAndApply();
         }, (error) => {
-          console.error("Error en solicitudes:", error);
+          console.error("Error en solicitudes (day):", error);
           try {
             const empty = document.getElementById('empty-state');
             if (empty) empty.innerHTML = '<div style="font-size: 40px; margin-bottom: 10px;">⚠️</div><div>Error leyendo solicitudes</div><div style="opacity:0.8; font-size:12px; margin-top:6px;">Revisa Firebase/Internet</div>';
           } catch (_) {}
         });
+
+        const qTs = db.collection('solicitudes')
+          .where('ts', '>=', start)
+          .where('ts', '<', end)
+          .orderBy('ts', 'asc');
+        try {
+          unsubTs = qTs.onSnapshot((snap) => {
+            tsDocs.clear();
+            snap.forEach((doc) => tsDocs.set(doc.id, doc.data() || {}));
+            mergeAndApply();
+          }, (err) => {
+            console.warn("Error en solicitudes (ts):", err);
+          });
+        } catch (_) {}
+
+        unsubscribeRequests = stopAll;
       }
 
       subscribeRequestsForDay(currentDay);
