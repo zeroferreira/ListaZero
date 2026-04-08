@@ -8391,6 +8391,20 @@
           description: 'Crea una insignia personalizada para tu perfil',
           cost: 12000,
           icon: '🏆'
+        },
+        {
+          id: 'roulette_spin_1',
+          name: 'TIRO DE RULETA',
+          description: 'Compra 1 tiro de ruleta (75 pts). Tu canción solo se tocará si tu nombre sale elegido en la ruleta.',
+          cost: 75,
+          icon: '🎡'
+        },
+        {
+          id: 'roulette_spin_3',
+          name: '3 TIROS DE RULETA',
+          description: 'Compra 3 tiros de ruleta (200 pts). Tu canción solo se tocará si tu nombre sale elegido en la ruleta.',
+          cost: 200,
+          icon: '🎡'
         }
       ];
 
@@ -8403,7 +8417,11 @@
             const data = doc.data();
             if (Array.isArray(data.list)) {
               console.log('📦 Configuración de recompensas cargada desde Firestore');
-              REWARDS = data.list;
+              const remote = data.list;
+              const byId = new Map();
+              remote.forEach((r) => { if (r && r.id) byId.set(String(r.id), r); });
+              REWARDS.forEach((r) => { if (r && r.id && !byId.has(String(r.id))) remote.push(r); });
+              REWARDS = remote;
               // Si el modal está abierto, refrescarlo
               if (document.getElementById('rewards-modal').style.display === 'flex') {
                   renderRewardsModal();
@@ -15809,7 +15827,29 @@
           // Crear solicitud de recompensa en Firestore
           const requestRef = db.collection('rewardRequests').doc();
           const requestId = requestRef.id;
-          
+
+          let extraFields = {};
+          if (rewardId === 'roulette_spin_1' || rewardId === 'roulette_spin_3') {
+            const spins = rewardId === 'roulette_spin_3' ? 3 : 1;
+            const song = String(prompt('¿Qué canción quieres meter a la ruleta? (Título)', '') || '').trim();
+            if (!song) {
+              showErrorNotification('Canje cancelado: falta el título de la canción.');
+              if(btn) { btn.disabled = false; btn.textContent = 'Canjear'; }
+              return;
+            }
+            const artist = String(prompt('¿Qué artista? (Opcional)', '') || '').trim();
+            const dayKey = (typeof getLocalDateKey === 'function') ? getLocalDateKey() : (() => {
+              const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${dd}`;
+            })();
+            extraFields = {
+              day: dayKey,
+              rouletteSpinsTotal: spins,
+              rouletteSpinsRemaining: spins,
+              rouletteSong: song,
+              rouletteArtist: artist
+            };
+          }
+
           const rewardRequest = {
             id: requestId,
             userId: username,
@@ -15819,7 +15859,8 @@
             cost: cost,
             status: 'pending',
             timestamp: new Date().toISOString(),
-            description: reward.description
+            description: reward.description,
+            ...extraFields
           };
           
           // --- ACTUALIZACIÓN OPTIMISTA PREVIA ---
@@ -15875,10 +15916,17 @@
              checkAdminNotifications();
           }
 
-          showMessageModal({
-             title: '✅ Solicitud Enviada',
-             message: `Has solicitado "${reward.name}".\n\nSe han descontado ${cost} puntos. El administrador revisará tu solicitud pronto.`
-          });
+          if (rewardId === 'roulette_spin_1' || rewardId === 'roulette_spin_3') {
+            showMessageModal({
+               title: '🎡 Tiro(s) de ruleta comprado(s)',
+               message: `Tu canje quedó registrado.\n\nTu canción solo se tocará si tu nombre sale elegido en la ruleta.\n\nSe han descontado ${cost} puntos.`
+            });
+          } else {
+            showMessageModal({
+               title: '✅ Solicitud Enviada',
+               message: `Has solicitado "${reward.name}".\n\nSe han descontado ${cost} puntos. El administrador revisará tu solicitud pronto.`
+            });
+          }
           
           // Actualizar el modal
           console.log('🔄 Actualizando modal...');

@@ -624,6 +624,7 @@
             <!-- Mode Switcher -->
             <div style="display: flex; gap: 5px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 6px;">
                 <button id="mode-btn-list" onclick="setRouletteMode('list', { forceReload: true })" style="flex: 1; border: none; background: var(--queue-accent-color); color: #000; padding: 5px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">De la lista</button>
+                <button id="mode-btn-redeem" onclick="setRouletteMode('redeem')" style="flex: 1; border: none; background: transparent; color: #aaa; padding: 5px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">Canjes</button>
                 <button id="mode-btn-new" onclick="setRouletteMode('new', { resetNew: true, clearSession: true })" style="flex: 1; border: none; background: transparent; color: #aaa; padding: 5px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">Ruleta nueva</button>
             </div>
 
@@ -3385,9 +3386,10 @@
     // --- Roulette Logic ---
     const ROULETTE_SPIN_AGAIN_LABEL = 'Gira de nuevo';
     let rouletteParticipantsList = [];
+    let rouletteParticipantsRedeem = [];
     let rouletteParticipantsNew = [];
     let rouletteParticipants = rouletteParticipantsList;
-    let rouletteMode = 'list'; // 'list' | 'new'
+    let rouletteMode = 'list'; // 'list' | 'redeem' | 'new'
     let rouletteCanvas = document.getElementById('roulette-canvas');
     let rouletteCtx = rouletteCanvas ? rouletteCanvas.getContext('2d') : null;
     let isSpinning = false;
@@ -3427,7 +3429,7 @@
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object') return false;
         const mode = String(parsed.mode || '').trim();
-        if (mode !== 'list' && mode !== 'new') return false;
+        if (mode !== 'list' && mode !== 'new' && mode !== 'redeem') return false;
 
         rouletteRestoring = true;
         rouletteMode = mode;
@@ -3435,12 +3437,110 @@
         currentRotation = Number.isFinite(Number(parsed.rot)) ? Number(parsed.rot) : 0;
         rouletteParticipantsList = Array.isArray(parsed.list) ? parsed.list.map(v => String(v || '').trim()).filter(Boolean) : [];
         rouletteParticipantsNew = Array.isArray(parsed.neu) ? parsed.neu.map(v => String(v || '').trim()).filter(Boolean) : [];
-        rouletteParticipants = (rouletteMode === 'new') ? rouletteParticipantsNew : rouletteParticipantsList;
+        rouletteParticipants = (rouletteMode === 'new') ? rouletteParticipantsNew : (rouletteMode === 'redeem' ? rouletteParticipantsRedeem : rouletteParticipantsList);
         rouletteRestoring = false;
         return true;
       } catch (_) {
         rouletteRestoring = false;
         return false;
+      }
+    }
+
+    const ROULETTE_REDEEM_IDS = ['roulette_spin_1', 'roulette_spin_3'];
+    let rouletteRedeemRequests = [];
+    let unsubscribeRouletteRedeems = null;
+
+    function computeRedeemParticipants() {
+      const out = [];
+      rouletteRedeemRequests.forEach((r) => {
+        const name = String(r.userId || r.displayName || '').trim();
+        if (!name) return;
+        const n = Math.max(0, Math.min(50, Number(r.rouletteSpinsRemaining || 0)));
+        for (let i = 0; i < n; i++) out.push(name);
+      });
+      return out;
+    }
+
+    function refreshRouletteRedeemMode() {
+      if (rouletteMode !== 'redeem') return;
+      rouletteParticipantsRedeem = computeRedeemParticipants();
+      rouletteParticipants = rouletteParticipantsRedeem;
+      renderParticipantsList();
+    }
+
+    function subscribeRouletteRedeems() {
+      if (!db) return;
+      try { if (unsubscribeRouletteRedeems) unsubscribeRouletteRedeems(); } catch (_) {}
+      unsubscribeRouletteRedeems = null;
+      try {
+        const q = db.collection('rewardRequests')
+          .where('status', '==', 'pending')
+          .where('day', '==', currentDay);
+        unsubscribeRouletteRedeems = q.onSnapshot((snap) => {
+          const next = [];
+          snap.forEach((doc) => {
+            const d = doc.data() || {};
+            const rid = String(d.rewardId || '').trim();
+            if (!ROULETTE_REDEEM_IDS.includes(rid)) return;
+            const rem = Number(d.rouletteSpinsRemaining || 0);
+            const song = String(d.rouletteSong || '').trim();
+            if (rem <= 0) return;
+            if (!song) return;
+            next.push({ ...d, id: String(d.id || doc.id), _docId: doc.id });
+          });
+          rouletteRedeemRequests = next;
+          refreshRouletteRedeemMode();
+        });
+      } catch (_) {}
+    }
+
+    async function fulfillRouletteRedeemWinner(winnerName) {
+      try {
+        if (!db) return;
+        const w = String(winnerName || '').trim();
+        if (!w) return;
+        const list = (rouletteRedeemRequests || []).slice();
+        list.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+        const req = list.find((r) => String(r.userId || '').trim() === w && Number(r.rouletteSpinsRemaining || 0) > 0);
+        if (!req) return;
+
+        const liveCode = String(localStorage.getItem('liveCode') || '').trim();
+        if (!liveCode) {
+          alert('Falta el Código del Live (liveCode). No se puede ejecutar el canje de ruleta.');
+          return;
+        }
+
+        const usuario = String(req.userKey || '').trim() || normalizeUserForOverride(w) || w;
+        const displayName = String(req.userId || w).trim() || w;
+        const cancion = String(req.rouletteSong || '').trim();
+        const artista = String(req.rouletteArtist || '').trim();
+        if (!cancion) return;
+
+        await db.collection('solicitudes').add({
+          usuario,
+          displayName,
+          badge: '',
+          cancion,
+          artista,
+          day: currentDay,
+          ts: firebase.firestore.FieldValue.serverTimestamp(),
+          source: 'web',
+          subsource: 'roulette',
+          liveCode
+        });
+
+        const remaining = Number(req.rouletteSpinsRemaining || 0);
+        const ref = db.collection('rewardRequests').doc(String(req._docId || req.id));
+        const nextRemaining = Math.max(0, remaining - 1);
+        const payload = {
+          rouletteSpinsRemaining: nextRemaining,
+          rouletteLastWonAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        if (nextRemaining <= 0) payload.status = 'fulfilled';
+        await ref.set(payload, { merge: true });
+      } catch (e) {
+        console.error('Error ejecutando canje de ruleta:', e);
       }
     }
 
@@ -3467,6 +3567,7 @@
         rouletteMode = mode;
         const btnList = document.getElementById('mode-btn-list');
         const btnNew = document.getElementById('mode-btn-new');
+        const btnRedeem = document.getElementById('mode-btn-redeem');
         
         if(mode === 'list') {
             rouletteParticipants = rouletteParticipantsList;
@@ -3475,16 +3576,40 @@
                 btnList.style.background = 'var(--queue-accent-color)';
                 btnList.style.color = '#000';
             }
+            if (btnRedeem) {
+                btnRedeem.style.background = 'transparent';
+                btnRedeem.style.color = '#aaa';
+            }
             if(btnNew) {
                 btnNew.style.background = 'transparent';
                 btnNew.style.color = '#aaa';
             }
             loadRouletteParticipants(forceReload);
+        } else if (mode === 'redeem') {
+            rouletteParticipantsRedeem = computeRedeemParticipants();
+            rouletteParticipants = rouletteParticipantsRedeem;
+            if(btnList) {
+                btnList.style.background = 'transparent';
+                btnList.style.color = '#aaa';
+            }
+            if (btnRedeem) {
+                btnRedeem.style.background = 'var(--queue-accent-color)';
+                btnRedeem.style.color = '#000';
+            }
+            if(btnNew) {
+                btnNew.style.background = 'transparent';
+                btnNew.style.color = '#aaa';
+            }
+            renderParticipantsList();
         } else {
             rouletteParticipants = rouletteParticipantsNew;
             if(btnList) {
                 btnList.style.background = 'transparent';
                 btnList.style.color = '#aaa';
+            }
+            if (btnRedeem) {
+                btnRedeem.style.background = 'transparent';
+                btnRedeem.style.color = '#aaa';
             }
             if(btnNew) {
                 btnNew.style.background = 'var(--queue-accent-color)';
@@ -3545,6 +3670,8 @@
        } else {
          setRouletteMode('list', { forceReload: true });
        }
+
+       try { subscribeRouletteRedeems(); } catch (_) {}
     });
 
     function openRoulette() {
@@ -3622,10 +3749,10 @@
             delBtn.style.color = '#ff4444';
             delBtn.style.fontSize = '18px';
             delBtn.style.cursor = 'pointer';
-            delBtn.onclick = () => removeParticipant(idx);
+            if (rouletteMode !== 'redeem') delBtn.onclick = () => removeParticipant(idx);
 
             row.appendChild(name);
-            row.appendChild(delBtn);
+            if (rouletteMode !== 'redeem') row.appendChild(delBtn);
             list.appendChild(row);
         });
         
@@ -3636,6 +3763,7 @@
     function addParticipant(name) {
         const n = String(name || '').trim();
         if(!n) return;
+        if (rouletteMode === 'redeem') return;
         if(rouletteMode === 'new' && rouletteConfig.allowDuplicates) {
             rouletteParticipants.push(n);
             renderParticipantsList();
@@ -3649,6 +3777,7 @@
     }
 
     function removeParticipant(index) {
+        if (rouletteMode === 'redeem') return;
         rouletteParticipants.splice(index, 1);
         if (rouletteMode === 'list') rouletteListFrozen = true;
         renderParticipantsList();
@@ -4023,6 +4152,12 @@
                 clearRouletteWinnerLabel();
                 spinWheel();
             }, 700);
+            return;
+        }
+
+        if (rouletteMode === 'redeem') {
+            setTimeout(() => { fulfillRouletteRedeemWinner(winner); }, 10);
+            saveRouletteSession();
             return;
         }
 
