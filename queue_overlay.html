@@ -2064,75 +2064,37 @@
           perUser.get(u).push(it);
         });
         const users = Array.from(perUser.keys());
-        const badgeByUser = new Map();
+        const expanded = [];
         users.forEach((u) => {
           const arr = perUser.get(u) || [];
           arr.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
-          badgeByUser.set(u, String(arr?.[0]?.badge || '').trim());
-        });
-        users.sort((a, b) => {
-          const ra = badgeRankForOrdering(badgeByUser.get(a) || '');
-          const rb = badgeRankForOrdering(badgeByUser.get(b) || '');
-          if (ra !== rb) return ra - rb;
-          const ta = getReqTimeMs(perUser.get(a)?.[0]);
-          const tb = getReqTimeMs(perUser.get(b)?.[0]);
-          if (ta !== tb) return ta - tb;
-          return a.localeCompare(b, 'es');
-        });
-        function hasAnyLeft() {
-          for (let i = 0; i < users.length; i++) if ((perUser.get(users[i]) || []).length) return true;
-          return false;
-        }
-
-        while (hasAnyLeft()) {
-          const served = new Set();
-          for (let i = 0; i < users.length; i++) {
-            const u = users[i];
-            const arr = perUser.get(u) || [];
-            if (!arr.length) continue;
-            const b = badgeByUser.get(u) || '';
-            if (b === 'superfan') {
-              let canGap = false;
-              for (let j = 0; j < users.length; j++) {
-                const v = users[j];
-                if (v === u) continue;
-                if (served.has(v)) continue;
-                const vb = badgeByUser.get(v) || '';
-                if (vb === 'superfan') continue;
-                if ((perUser.get(v) || []).length) { canGap = true; break; }
-              }
-              if (arr.length >= 2 && canGap) {
-                out.push(arr.shift());
-                out.push(arr.shift());
-                served.add(u);
-
-                let gapUser = '';
-                for (let k = 1; k <= users.length; k++) {
-                  const v = users[(i + k) % users.length];
-                  if (v === u) continue;
-                  if (served.has(v)) continue;
-                  const vb = badgeByUser.get(v) || '';
-                  if (vb === 'superfan') continue;
-                  const vArr = perUser.get(v) || [];
-                  if (!vArr.length) continue;
-                  gapUser = v;
-                  break;
-                }
-                if (gapUser) {
-                  const gArr = perUser.get(gapUser) || [];
-                  if (gArr.length) out.push(gArr.shift());
-                  served.add(gapUser);
-                }
-
-                if (arr.length) out.push(arr.shift());
-                continue;
-              }
-            }
-
-            out.push(arr.shift());
-            served.add(u);
+          const badge = String(arr?.[0]?.badge || '').trim();
+          const rank = badgeRankForOrdering(badge);
+          const tier = (badge === 'superfan' || badge === 'z0-platino') ? 0 : ((badge === 'z0-vip' || badge === 'vip') ? 1 : 2);
+          for (let idx = 0; idx < arr.length; idx++) {
+            const it = arr[idx];
+            const t = getReqTimeMs(it);
+            let bucket = 5;
+            if (tier === 0 && idx < 2) bucket = 0;
+            else if (tier === 1 && idx === 0) bucket = 1;
+            else if (tier === 2 && idx === 0) bucket = 2;
+            else if (tier === 0) bucket = 3;
+            else if (tier === 1) bucket = 4;
+            expanded.push({ it, bucket, rank, t, u, idx });
           }
-        }
+        });
+
+        expanded.sort((a, b) => {
+          if (a.bucket !== b.bucket) return a.bucket - b.bucket;
+          if (a.rank !== b.rank) return a.rank - b.rank;
+          const ta = Number.isFinite(a.t) ? a.t : 0;
+          const tb = Number.isFinite(b.t) ? b.t : 0;
+          if (ta !== tb) return ta - tb;
+          if (a.u !== b.u) return a.u.localeCompare(b.u, 'es');
+          return a.idx - b.idx;
+        });
+
+        for (let i = 0; i < expanded.length; i++) out.push(expanded[i].it);
       });
       return out;
     }
