@@ -109,6 +109,66 @@
         padding: 12px;
       }
     }
+
+    .tandas-block {
+      list-style: none;
+      margin: 10px 0;
+      padding: 0;
+    }
+    .tandas-block-inner {
+      border-radius: 14px;
+      padding: 10px;
+      background: linear-gradient(180deg, rgba(0, 229, 255, 0.08), rgba(0, 0, 0, 0.02));
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+      backdrop-filter: blur(8px);
+    }
+    body.dark-theme .tandas-block-inner {
+      background: linear-gradient(180deg, rgba(0, 229, 255, 0.10), rgba(255, 255, 255, 0.04));
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+    }
+    .tandas-block-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 6px 10px;
+      font-weight: 900;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(0, 0, 0, 0.55);
+    }
+    body.dark-theme .tandas-block-header {
+      color: rgba(255, 255, 255, 0.72);
+    }
+    .tandas-block-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid rgba(0, 0, 0, 0.10);
+      color: rgba(0, 0, 0, 0.78);
+    }
+    body.dark-theme .tandas-block-chip {
+      background: rgba(0, 0, 0, 0.35);
+      border-color: rgba(255, 255, 255, 0.14);
+      color: rgba(255, 255, 255, 0.82);
+    }
+    .tandas-block-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
   </style>
   <style>
     /* Estilos dinámicos para fondo inmersivo */
@@ -2399,10 +2459,11 @@
           const group = bySlot.get(slotKey) || [];
           const perUser = new Map();
           group.forEach((it) => {
-            const u = String(it?.usuario || it?.displayName || '').trim();
-            if (!u) return;
-            if (!perUser.has(u)) perUser.set(u, []);
-            perUser.get(u).push(it);
+            const raw = String(it?.usuario || it?.displayName || '').trim();
+            const key = (typeof normalizeUserKey === 'function') ? (normalizeUserKey(raw) || raw) : raw;
+            if (!key) return;
+            if (!perUser.has(key)) perUser.set(key, []);
+            perUser.get(key).push(it);
           });
           const users = Array.from(perUser.keys());
           const badgeByUser = new Map();
@@ -2468,10 +2529,11 @@
         function orderBlock(blockItems) {
           const perUser = new Map();
           blockItems.forEach((it) => {
-            const u = String(it?.usuario || it?.displayName || '').trim();
-            if (!u) return;
-            if (!perUser.has(u)) perUser.set(u, []);
-            perUser.get(u).push(it);
+            const raw = String(it?.usuario || it?.displayName || '').trim();
+            const key = (typeof normalizeUserKey === 'function') ? (normalizeUserKey(raw) || raw) : raw;
+            if (!key) return;
+            if (!perUser.has(key)) perUser.set(key, []);
+            perUser.get(key).push(it);
           });
           const users = Array.from(perUser.keys());
           const badgeByUser = new Map();
@@ -3279,6 +3341,60 @@
         }
         emptyEl.hidden = true;
         const isEditing = solicitudesList.classList.contains('editing');
+        const mode = getSortMode();
+        const useTandasBlocks = mode === 'tandas15' && !isEditing;
+        let currentBlockKey = '';
+        let currentBlockList = null;
+        const slotMs = 15 * 60 * 1000;
+        function pad2(n) { return String(n).padStart(2, '0'); }
+        function getTandaKeyAndLabel(it) {
+          const t = getItemTimeMs(it);
+          if (Number.isFinite(t) && t > 0) {
+            const d = new Date(t);
+            const m = d.getMinutes();
+            const startMin = Math.floor(m / 15) * 15;
+            const start = new Date(d);
+            start.setMinutes(startMin, 0, 0);
+            const end = new Date(start.getTime() + slotMs);
+            const key = String(start.getTime());
+            const label = `${pad2(start.getHours())}:${pad2(start.getMinutes())}–${pad2(end.getHours())}:${pad2(end.getMinutes())}`;
+            return { key, label };
+          }
+          const hora = String(it?.hora || '').trim();
+          if (hora && hora.includes(':')) {
+            const parts = hora.split(':');
+            const hh = Number(parts[0]);
+            const mm = Number(parts[1]);
+            const startMin = Math.floor((Number.isFinite(mm) ? mm : 0) / 15) * 15;
+            const endMinAbs = startMin + 15;
+            const endH = (Number.isFinite(hh) ? hh : 0) + Math.floor(endMinAbs / 60);
+            const endM = endMinAbs % 60;
+            const key = `h${hh}-m${startMin}`;
+            const label = `${pad2(hh)}:${pad2(startMin)}–${pad2(endH % 24)}:${pad2(endM)}`;
+            return { key, label };
+          }
+          return { key: 'unknown', label: 'Sin hora' };
+        }
+        function ensureTandaBlock(it) {
+          if (!useTandasBlocks) return;
+          const info = getTandaKeyAndLabel(it);
+          if (info.key === currentBlockKey && currentBlockList) return;
+          currentBlockKey = info.key;
+          const blockLi = document.createElement('li');
+          blockLi.className = 'tandas-block';
+          const inner = document.createElement('div');
+          inner.className = 'tandas-block-inner';
+          const header = document.createElement('div');
+          header.className = 'tandas-block-header';
+          header.innerHTML = `<span>Tanda ${info.label}</span><span class="tandas-block-chip">15 min</span>`;
+          const ul = document.createElement('ul');
+          ul.className = 'tandas-block-list';
+          inner.appendChild(header);
+          inner.appendChild(ul);
+          blockLi.appendChild(inner);
+          solicitudesList.appendChild(blockLi);
+          currentBlockList = ul;
+        }
 
         items.forEach((it, index) => {
           const unameLc = String(it.usuario||'').trim().toLowerCase();
@@ -3563,7 +3679,12 @@
             renderSolicitudes(currentDayItems);
           });
 
-          solicitudesList.appendChild(li);
+          if (useTandasBlocks) {
+            ensureTandaBlock(it);
+            (currentBlockList || solicitudesList).appendChild(li);
+          } else {
+            solicitudesList.appendChild(li);
+          }
         });
 
         // Verificar que los eventos de clic se hayan agregado correctamente
