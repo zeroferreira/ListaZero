@@ -623,8 +623,8 @@
             
             <!-- Mode Switcher -->
             <div style="display: flex; gap: 5px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 6px;">
-                <button id="mode-btn-list" onclick="setRouletteMode('list')" style="flex: 1; border: none; background: var(--queue-accent-color); color: #000; padding: 5px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">De la lista</button>
-                <button id="mode-btn-new" onclick="setRouletteMode('new')" style="flex: 1; border: none; background: transparent; color: #aaa; padding: 5px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">Ruleta nueva</button>
+                <button id="mode-btn-list" onclick="setRouletteMode('list', { forceReload: true })" style="flex: 1; border: none; background: var(--queue-accent-color); color: #000; padding: 5px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">De la lista</button>
+                <button id="mode-btn-new" onclick="setRouletteMode('new', { resetNew: true, clearSession: true })" style="flex: 1; border: none; background: transparent; color: #aaa; padding: 5px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">Ruleta nueva</button>
             </div>
 
             <h3 style="color: var(--queue-accent-color); margin: 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
@@ -2139,86 +2139,112 @@
     function applySmartOrder(items) {
       const base = Array.isArray(items) ? items.slice() : [];
       base.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
-      const perUser = new Map();
-      base.forEach((it) => {
-        const u = String(it?.usuario || it?.displayName || it?.user || it?.username || '').trim();
-        if (!u) return;
-        if (!perUser.has(u)) perUser.set(u, []);
-        perUser.get(u).push(it);
-      });
-      const users = Array.from(perUser.keys());
-      const badgeByUser = new Map();
-      users.forEach((u) => {
-        const arr = perUser.get(u) || [];
-        arr.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
-        badgeByUser.set(u, String(arr?.[0]?.badge || '').trim());
-      });
-      users.sort((a, b) => {
-        const ra = badgeRankForOrdering(badgeByUser.get(a) || '');
-        const rb = badgeRankForOrdering(badgeByUser.get(b) || '');
-        if (ra !== rb) return ra - rb;
-        const ta = getReqTimeMs(perUser.get(a)?.[0]);
-        const tb = getReqTimeMs(perUser.get(b)?.[0]);
-        if (ta !== tb) return ta - tb;
-        return a.localeCompare(b, 'es');
-      });
-      const out = [];
-
-      function hasAnyLeft() {
-        for (let i = 0; i < users.length; i++) if ((perUser.get(users[i]) || []).length) return true;
-        return false;
+      const gapMs = 18 * 60 * 1000;
+      const blocks = [];
+      let cur = [];
+      let prevT = null;
+      for (let i = 0; i < base.length; i++) {
+        const it = base[i];
+        const t = getReqTimeMs(it);
+        const hasT = Number.isFinite(t) && t > 0;
+        if (cur.length && prevT !== null && hasT && (t - prevT) > gapMs) {
+          blocks.push(cur);
+          cur = [];
+        }
+        cur.push(it);
+        if (hasT) prevT = t;
       }
+      if (cur.length) blocks.push(cur);
 
-      while (hasAnyLeft()) {
-        const served = new Set();
-        for (let i = 0; i < users.length; i++) {
-          const u = users[i];
+      function orderBlock(blockItems) {
+        const perUser = new Map();
+        blockItems.forEach((it) => {
+          const u = String(it?.usuario || it?.displayName || it?.user || it?.username || '').trim();
+          if (!u) return;
+          if (!perUser.has(u)) perUser.set(u, []);
+          perUser.get(u).push(it);
+        });
+        const users = Array.from(perUser.keys());
+        const badgeByUser = new Map();
+        users.forEach((u) => {
           const arr = perUser.get(u) || [];
-          if (!arr.length) continue;
-          const b = badgeByUser.get(u) || '';
-          if (b === 'superfan') {
-            let canGap = false;
-            for (let j = 0; j < users.length; j++) {
-              const v = users[j];
-              if (v === u) continue;
-              if (served.has(v)) continue;
-              const vb = badgeByUser.get(v) || '';
-              if (vb === 'superfan') continue;
-              if ((perUser.get(v) || []).length) { canGap = true; break; }
-            }
-            if (arr.length >= 2 && canGap) {
-              out.push(arr.shift());
-              out.push(arr.shift());
-              served.add(u);
+          arr.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+          badgeByUser.set(u, String(arr?.[0]?.badge || '').trim());
+        });
+        users.sort((a, b) => {
+          const ra = badgeRankForOrdering(badgeByUser.get(a) || '');
+          const rb = badgeRankForOrdering(badgeByUser.get(b) || '');
+          if (ra !== rb) return ra - rb;
+          const ta = getReqTimeMs(perUser.get(a)?.[0]);
+          const tb = getReqTimeMs(perUser.get(b)?.[0]);
+          if (ta !== tb) return ta - tb;
+          return a.localeCompare(b, 'es');
+        });
+        const out = [];
 
-              let gapUser = '';
-              for (let k = 1; k <= users.length; k++) {
-                const v = users[(i + k) % users.length];
+        function hasAnyLeft() {
+          for (let i = 0; i < users.length; i++) if ((perUser.get(users[i]) || []).length) return true;
+          return false;
+        }
+
+        while (hasAnyLeft()) {
+          const served = new Set();
+          for (let i = 0; i < users.length; i++) {
+            const u = users[i];
+            const arr = perUser.get(u) || [];
+            if (!arr.length) continue;
+            const b = badgeByUser.get(u) || '';
+            if (b === 'superfan') {
+              let canGap = false;
+              for (let j = 0; j < users.length; j++) {
+                const v = users[j];
                 if (v === u) continue;
                 if (served.has(v)) continue;
                 const vb = badgeByUser.get(v) || '';
                 if (vb === 'superfan') continue;
-                const vArr = perUser.get(v) || [];
-                if (!vArr.length) continue;
-                gapUser = v;
-                break;
+                if ((perUser.get(v) || []).length) { canGap = true; break; }
               }
-              if (gapUser) {
-                const gArr = perUser.get(gapUser) || [];
-                if (gArr.length) out.push(gArr.shift());
-                served.add(gapUser);
-              }
+              if (arr.length >= 2 && canGap) {
+                out.push(arr.shift());
+                out.push(arr.shift());
+                served.add(u);
 
-              if (arr.length) out.push(arr.shift());
-              continue;
+                let gapUser = '';
+                for (let k = 1; k <= users.length; k++) {
+                  const v = users[(i + k) % users.length];
+                  if (v === u) continue;
+                  if (served.has(v)) continue;
+                  const vb = badgeByUser.get(v) || '';
+                  if (vb === 'superfan') continue;
+                  const vArr = perUser.get(v) || [];
+                  if (!vArr.length) continue;
+                  gapUser = v;
+                  break;
+                }
+                if (gapUser) {
+                  const gArr = perUser.get(gapUser) || [];
+                  if (gArr.length) out.push(gArr.shift());
+                  served.add(gapUser);
+                }
+
+                if (arr.length) out.push(arr.shift());
+                continue;
+              }
             }
-          }
 
-          out.push(arr.shift());
-          served.add(u);
+            out.push(arr.shift());
+            served.add(u);
+          }
         }
+
+        return out;
       }
 
+      const out = [];
+      for (let i = 0; i < blocks.length; i++) {
+        const ordered = orderBlock(blocks[i]);
+        for (let j = 0; j < ordered.length; j++) out.push(ordered[j]);
+      }
       return out;
     }
 
@@ -2244,8 +2270,12 @@
         return true;
       });
 
-      if ((!currentManualOrder || currentManualOrder.length === 0)) {
-        const qm = getQueueMode();
+      const qm = getQueueMode();
+      if (qm === 'recent' || qm === 'manual_recent') {
+        pendingRequests.sort((a, b) => getReqTimeMs(b) - getReqTimeMs(a));
+      } else if (qm === 'oldest' || qm === 'default' || qm === 'manual_fifo') {
+        pendingRequests.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+      } else if ((!currentManualOrder || currentManualOrder.length === 0)) {
         if (qm === 'smart') pendingRequests = applySmartOrder(pendingRequests);
         else if (qm === 'tandas15') pendingRequests = applyTandas15Order(pendingRequests);
       }
@@ -3362,11 +3392,64 @@
     let rouletteCtx = rouletteCanvas ? rouletteCanvas.getContext('2d') : null;
     let isSpinning = false;
     let currentRotation = 0;
+    let rouletteListFrozen = false;
+    let rouletteRestoring = false;
+
+    function rouletteSessionKey() {
+      return `widget_session:${location.pathname}:roulette:${currentDay}`;
+    }
+
+    function saveRouletteSession() {
+      if (rouletteRestoring) return;
+      try {
+        const payload = {
+          v: 1,
+          day: currentDay,
+          mode: rouletteMode,
+          frozenList: !!rouletteListFrozen,
+          list: Array.isArray(rouletteParticipantsList) ? rouletteParticipantsList.slice(0, 500) : [],
+          neu: Array.isArray(rouletteParticipantsNew) ? rouletteParticipantsNew.slice(0, 500) : [],
+          rot: Number.isFinite(currentRotation) ? currentRotation : 0,
+          updatedAt: Date.now()
+        };
+        localStorage.setItem(rouletteSessionKey(), JSON.stringify(payload));
+      } catch (_) {}
+    }
+
+    function clearRouletteSession() {
+      try { localStorage.removeItem(rouletteSessionKey()); } catch (_) {}
+    }
+
+    function restoreRouletteSession() {
+      try {
+        const raw = localStorage.getItem(rouletteSessionKey());
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return false;
+        const mode = String(parsed.mode || '').trim();
+        if (mode !== 'list' && mode !== 'new') return false;
+
+        rouletteRestoring = true;
+        rouletteMode = mode;
+        rouletteListFrozen = !!parsed.frozenList;
+        currentRotation = Number.isFinite(Number(parsed.rot)) ? Number(parsed.rot) : 0;
+        rouletteParticipantsList = Array.isArray(parsed.list) ? parsed.list.map(v => String(v || '').trim()).filter(Boolean) : [];
+        rouletteParticipantsNew = Array.isArray(parsed.neu) ? parsed.neu.map(v => String(v || '').trim()).filter(Boolean) : [];
+        rouletteParticipants = (rouletteMode === 'new') ? rouletteParticipantsNew : rouletteParticipantsList;
+        rouletteRestoring = false;
+        return true;
+      } catch (_) {
+        rouletteRestoring = false;
+        return false;
+      }
+    }
 
     function computeListParticipantsFromQueue() {
         const pending = allRequests.filter(req => {
-            const id = generateSongId(req);
-            return !playedSongIds.has(id);
+            const sid = generateSongId(req);
+            const did = String(req?.docId || '').trim();
+            const rid = String(req?.id || '').trim();
+            return !(playedSongIds.has(sid) || (did && playedSongIds.has(did)) || (rid && playedSongIds.has(rid)));
         });
         const users = new Set();
         pending.forEach(req => {
@@ -3376,13 +3459,18 @@
         return Array.from(users);
     }
 
-    function setRouletteMode(mode) {
+    function setRouletteMode(mode, opts) {
+        const o = opts || {};
+        const resetNew = (o.resetNew === true);
+        const forceReload = (o.forceReload === true);
+        const clearSession = (o.clearSession === true);
         rouletteMode = mode;
         const btnList = document.getElementById('mode-btn-list');
         const btnNew = document.getElementById('mode-btn-new');
         
         if(mode === 'list') {
             rouletteParticipants = rouletteParticipantsList;
+            if (forceReload) rouletteListFrozen = false;
             if(btnList) {
                 btnList.style.background = 'var(--queue-accent-color)';
                 btnList.style.color = '#000';
@@ -3391,7 +3479,7 @@
                 btnNew.style.background = 'transparent';
                 btnNew.style.color = '#aaa';
             }
-            loadRouletteParticipants();
+            loadRouletteParticipants(forceReload);
         } else {
             rouletteParticipants = rouletteParticipantsNew;
             if(btnList) {
@@ -3402,11 +3490,22 @@
                 btnNew.style.background = 'var(--queue-accent-color)';
                 btnNew.style.color = '#000';
             }
-            rouletteParticipantsNew.length = 0;
-            const seed = computeListParticipantsFromQueue();
-            seed.forEach(n => rouletteParticipantsNew.push(n));
+            if (resetNew) {
+              if (clearSession) {
+                rouletteListFrozen = false;
+                rouletteParticipantsList = [];
+                rouletteParticipantsNew = [];
+                rouletteParticipants = rouletteParticipantsNew;
+                currentRotation = 0;
+                clearRouletteSession();
+              }
+              rouletteParticipantsNew.length = 0;
+              const seed = computeListParticipantsFromQueue();
+              seed.forEach(n => rouletteParticipantsNew.push(n));
+            }
             renderParticipantsList();
         }
+        saveRouletteSession();
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -3439,8 +3538,13 @@
            });
        }
        
-       // Init default mode UI
-       setRouletteMode('list');
+       const restored = restoreRouletteSession();
+       if (restored) {
+         setRouletteMode(rouletteMode, { forceReload: false });
+         drawWheel();
+       } else {
+         setRouletteMode('list', { forceReload: true });
+       }
     });
 
     function openRoulette() {
@@ -3450,10 +3554,7 @@
             queue.style.display = 'none';
             view.style.display = 'flex';
             
-            // Reload if in list mode to get latest updates
-            if(rouletteMode === 'list') {
-                loadRouletteParticipants();
-            }
+            if(rouletteMode === 'list') loadRouletteParticipants(false);
 
             try {
                 const rem = document.getElementById('r-remove-winner');
@@ -3480,10 +3581,12 @@
         }
     }
 
-    function loadRouletteParticipants() {
-        if(rouletteMode !== 'list') return; // Should not overwrite if in new mode, unless forced
-
-        // Extract unique users from pending requests
+    function loadRouletteParticipants(force) {
+        if(rouletteMode !== 'list') return;
+        if (rouletteListFrozen && !force) {
+          renderParticipantsList();
+          return;
+        }
         rouletteParticipantsList = computeListParticipantsFromQueue();
         rouletteParticipants = rouletteParticipantsList;
         renderParticipantsList();
@@ -3527,6 +3630,7 @@
         });
         
         drawWheel();
+        saveRouletteSession();
     }
 
     function addParticipant(name) {
@@ -3539,12 +3643,14 @@
         }
         if(!rouletteParticipants.includes(n)) {
             rouletteParticipants.push(n);
+            if (rouletteMode === 'list') rouletteListFrozen = true;
             renderParticipantsList();
         }
     }
 
     function removeParticipant(index) {
         rouletteParticipants.splice(index, 1);
+        if (rouletteMode === 'list') rouletteListFrozen = true;
         renderParticipantsList();
     }
 
@@ -3580,7 +3686,7 @@
         const savedConfig = localStorage.getItem(`widget_config:${location.pathname}:roulette`);
         if(savedConfig) {
             const parsed = JSON.parse(savedConfig);
-            if(parsed) rouletteConfig = { ...rouletteConfig, ...parsed, removeWinnerAfterSpin: false };
+            if(parsed) rouletteConfig = { ...rouletteConfig, ...parsed };
         }
     } catch(_) {}
 
@@ -3879,6 +3985,7 @@
                 requestAnimationFrame(animate);
             } else {
                 isSpinning = false;
+                saveRouletteSession();
                 determineWinner();
             }
         }
@@ -3924,10 +4031,12 @@
                 const idx = rouletteParticipants.indexOf(winner);
                 if (idx !== -1) {
                     rouletteParticipants.splice(idx, 1);
+                    if (rouletteMode === 'list') rouletteListFrozen = true;
                     renderParticipantsList();
                 }
             }, 600);
         }
+        saveRouletteSession();
     }
 
     function clearRouletteWinnerLabel() {

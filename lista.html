@@ -755,6 +755,9 @@
         <div class="day-filter">
           <label for="sort-select" style="margin-right: 8px;">Orden:</label>
           <select id="sort-select">
+            <option value="default">Cola (FIFO / sincronizado)</option>
+            <option value="smart">Cola inteligente (sin repetidos)</option>
+            <option value="tandas15">Cola por tandas (15 min)</option>
             <option value="recent">Más recientes arriba</option>
             <option value="oldest">Más antiguas arriba</option>
             <option value="manual_recent">Manual + recientes</option>
@@ -2318,7 +2321,7 @@
       let currentManualOrder = [];
 
       const SORT_MODE_KEY = 'lista_sort_mode';
-      const allowedSortModes = new Set(['recent', 'oldest', 'manual_recent', 'manual_fifo']);
+      const allowedSortModes = new Set(['default', 'smart', 'tandas15', 'recent', 'oldest', 'manual_recent', 'manual_fifo']);
 
       function getSortMode() {
         try {
@@ -2479,102 +2482,125 @@
 
       function applySmartOrder(items) {
         const base = sortItemsStable(items, 'asc');
-        const perUser = new Map();
-        base.forEach((it) => {
-          const u = String(it?.usuario || it?.displayName || '').trim();
-          if (!u) return;
-          if (!perUser.has(u)) perUser.set(u, []);
-          perUser.get(u).push(it);
-        });
-        const users = Array.from(perUser.keys());
-        const badgeByUser = new Map();
-        users.forEach((u) => {
-          const arr = perUser.get(u) || [];
-          arr.sort((a, b) => compareItemsByTime(a, b, 'asc'));
-          badgeByUser.set(u, getOrderingBadgeForUser(u, (arr?.[0]?.badge || '')));
-        });
-        users.sort((a, b) => {
-          const ba = badgeByUser.get(a) || '';
-          const bb = badgeByUser.get(b) || '';
-          const ra = badgeRankForOrdering(ba);
-          const rb = badgeRankForOrdering(bb);
-          if (ra !== rb) return ra - rb;
-          const ta = getItemTimeMs(perUser.get(a)?.[0]);
-          const tb = getItemTimeMs(perUser.get(b)?.[0]);
-          if (ta !== tb) return ta - tb;
-          return a.localeCompare(b, 'es');
-        });
-
-        const out = [];
-
-        function hasAnyLeft() {
-          for (let i = 0; i < users.length; i++) if ((perUser.get(users[i]) || []).length) return true;
-          return false;
+        const gapMs = 18 * 60 * 1000;
+        const blocks = [];
+        let cur = [];
+        let prevT = null;
+        for (let i = 0; i < base.length; i++) {
+          const it = base[i];
+          const t = getItemTimeMs(it);
+          const hasT = Number.isFinite(t) && t > 0;
+          if (cur.length && prevT !== null && hasT && (t - prevT) > gapMs) {
+            blocks.push(cur);
+            cur = [];
+          }
+          cur.push(it);
+          if (hasT) prevT = t;
         }
+        if (cur.length) blocks.push(cur);
 
-        while (hasAnyLeft()) {
-          const served = new Set();
-          for (let i = 0; i < users.length; i++) {
-            const u = users[i];
+        function orderBlock(blockItems) {
+          const perUser = new Map();
+          blockItems.forEach((it) => {
+            const u = String(it?.usuario || it?.displayName || '').trim();
+            if (!u) return;
+            if (!perUser.has(u)) perUser.set(u, []);
+            perUser.get(u).push(it);
+          });
+          const users = Array.from(perUser.keys());
+          const badgeByUser = new Map();
+          users.forEach((u) => {
             const arr = perUser.get(u) || [];
-            if (!arr.length) continue;
-            const b = badgeByUser.get(u) || '';
-            if (b === 'superfan') {
-              let canGap = false;
-              for (let j = 0; j < users.length; j++) {
-                const v = users[j];
-                if (v === u) continue;
-                if (served.has(v)) continue;
-                const vb = badgeByUser.get(v) || '';
-                if (vb === 'superfan') continue;
-                if ((perUser.get(v) || []).length) { canGap = true; break; }
-              }
-              if (arr.length >= 2 && canGap) {
-                out.push(arr.shift());
-                out.push(arr.shift());
-                served.add(u);
+            arr.sort((a, b) => compareItemsByTime(a, b, 'asc'));
+            badgeByUser.set(u, getOrderingBadgeForUser(u, (arr?.[0]?.badge || '')));
+          });
+          users.sort((a, b) => {
+            const ba = badgeByUser.get(a) || '';
+            const bb = badgeByUser.get(b) || '';
+            const ra = badgeRankForOrdering(ba);
+            const rb = badgeRankForOrdering(bb);
+            if (ra !== rb) return ra - rb;
+            const ta = getItemTimeMs(perUser.get(a)?.[0]);
+            const tb = getItemTimeMs(perUser.get(b)?.[0]);
+            if (ta !== tb) return ta - tb;
+            return a.localeCompare(b, 'es');
+          });
 
-                let gapUser = '';
-                for (let k = 1; k <= users.length; k++) {
-                  const v = users[(i + k) % users.length];
+          const out = [];
+          function hasAnyLeft() {
+            for (let i = 0; i < users.length; i++) if ((perUser.get(users[i]) || []).length) return true;
+            return false;
+          }
+          while (hasAnyLeft()) {
+            const served = new Set();
+            for (let i = 0; i < users.length; i++) {
+              const u = users[i];
+              const arr = perUser.get(u) || [];
+              if (!arr.length) continue;
+              const b = badgeByUser.get(u) || '';
+              if (b === 'superfan') {
+                let canGap = false;
+                for (let j = 0; j < users.length; j++) {
+                  const v = users[j];
                   if (v === u) continue;
                   if (served.has(v)) continue;
                   const vb = badgeByUser.get(v) || '';
                   if (vb === 'superfan') continue;
-                  const vArr = perUser.get(v) || [];
-                  if (!vArr.length) continue;
-                  gapUser = v;
-                  break;
+                  if ((perUser.get(v) || []).length) { canGap = true; break; }
                 }
-                if (gapUser) {
-                  const gArr = perUser.get(gapUser) || [];
-                  if (gArr.length) out.push(gArr.shift());
-                  served.add(gapUser);
-                }
+                if (arr.length >= 2 && canGap) {
+                  out.push(arr.shift());
+                  out.push(arr.shift());
+                  served.add(u);
 
-                if (arr.length) out.push(arr.shift());
-                continue;
+                  let gapUser = '';
+                  for (let k = 1; k <= users.length; k++) {
+                    const v = users[(i + k) % users.length];
+                    if (v === u) continue;
+                    if (served.has(v)) continue;
+                    const vb = badgeByUser.get(v) || '';
+                    if (vb === 'superfan') continue;
+                    const vArr = perUser.get(v) || [];
+                    if (!vArr.length) continue;
+                    gapUser = v;
+                    break;
+                  }
+                  if (gapUser) {
+                    const gArr = perUser.get(gapUser) || [];
+                    if (gArr.length) out.push(gArr.shift());
+                    served.add(gapUser);
+                  }
+
+                  if (arr.length) out.push(arr.shift());
+                  continue;
+                }
               }
-            }
 
-            out.push(arr.shift());
-            served.add(u);
+              out.push(arr.shift());
+              served.add(u);
+            }
           }
+          return out;
         }
 
+        const out = [];
+        for (let i = 0; i < blocks.length; i++) {
+          const ordered = orderBlock(blocks[i]);
+          for (let j = 0; j < ordered.length; j++) out.push(ordered[j]);
+        }
         return out;
       }
 
       function applyDisplayOrder(items) {
         const mode = getSortMode();
-        const qMode = getQueueMode();
-        if (qMode === 'smart' && !isManualSortMode(mode)) return applySmartOrder(items);
-        if (qMode === 'tandas15' && !isManualSortMode(mode)) return applyTandas15Order(items);
-        if (mode === 'oldest') return sortItemsStable(items, 'asc');
-        if (mode === 'recent') return sortItemsStable(items, 'desc');
-        if (mode === 'manual_fifo') return applyOrder(sortItemsStable(items, 'asc'), currentManualOrder);
-        if (mode === 'manual_recent') return applyOrder(sortItemsStable(items, 'desc'), currentManualOrder);
-        return sortItemsStable(items, 'desc');
+        let base = [];
+        if (mode === 'smart') base = applySmartOrder(items);
+        else if (mode === 'tandas15') base = applyTandas15Order(items);
+        else if (mode === 'default' || mode === 'oldest' || mode === 'manual_fifo') base = sortItemsStable(items, 'asc');
+        else if (mode === 'recent' || mode === 'manual_recent') base = sortItemsStable(items, 'desc');
+        else base = sortItemsStable(items, 'desc');
+        if (Array.isArray(currentManualOrder) && currentManualOrder.length) return applyOrder(base, currentManualOrder);
+        return base;
       }
 
       function showCopyNotification(anchor) {
@@ -6008,6 +6034,20 @@
       });
       sortSelect?.addEventListener('change', () => {
         try { localStorage.setItem(SORT_MODE_KEY, String(sortSelect.value || '').trim()); } catch (_) {}
+        try {
+          const m = String(sortSelect.value || '').trim();
+          const qm = allowedSortModes.has(m) ? m : 'default';
+          window.__QUEUE_MODE__ = qm;
+          try { localStorage.setItem('queueMode', qm); } catch (_) {}
+          const isAdmin = (() => { try { return localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true'; } catch (_) { return false; } })();
+          if (isAdmin && typeof db !== 'undefined' && db) {
+            db.collection('system').doc('status').set({
+              queueMode: qm,
+              lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
+              forcedBy: 'admin'
+            }, { merge: true }).catch(() => {});
+          }
+        } catch (_) {}
         if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
       });
 
@@ -6015,7 +6055,8 @@
         console.log('🚀 Iniciando aplicación...');
         try {
           const saved = String(localStorage.getItem(SORT_MODE_KEY) || '').trim();
-          const initial = allowedSortModes.has(saved) ? saved : 'recent';
+          const savedQ = String(localStorage.getItem('queueMode') || '').trim();
+          const initial = allowedSortModes.has(savedQ) ? savedQ : (allowedSortModes.has(saved) ? saved : 'default');
           if (sortSelect) sortSelect.value = initial;
           localStorage.setItem(SORT_MODE_KEY, initial);
         } catch (_) {}
@@ -18353,9 +18394,13 @@
     <label style="display:flex; flex-direction:column; gap:8px; margin-top: 10px;">
       <span style="opacity:0.9;">Orden</span>
       <select id="queue-mode-select" style="width:100%; padding:10px 10px; border-radius:10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #f9fafb;">
-        <option value="default">Normal</option>
-        <option value="smart">Inteligente (sin repetidos)</option>
-        <option value="tandas15">Tandas (15 min)</option>
+        <option value="default">Cola (FIFO)</option>
+        <option value="smart">Cola inteligente</option>
+        <option value="tandas15">Cola por tandas</option>
+        <option value="recent">Más recientes</option>
+        <option value="oldest">Más antiguas</option>
+        <option value="manual_recent">Manual + recientes</option>
+        <option value="manual_fifo">Manual (FIFO)</option>
       </select>
     </label>
     <div id="queue-mode-status" style="margin-top: 8px; font-size: 12px; opacity: 0.85;">Estado: (desconocido)</div>
@@ -18375,6 +18420,15 @@
       const m = String(mode || 'default').trim() || 'default';
       window.__QUEUE_MODE__ = m;
       try { localStorage.setItem('queueMode', m); } catch (_) {}
+      try {
+        const sort = document.getElementById('sort-select');
+        if (sort) {
+          const allowed = new Set(['default', 'smart', 'tandas15', 'recent', 'oldest', 'manual_recent', 'manual_fifo']);
+          const next = allowed.has(m) ? m : 'default';
+          if (String(sort.value || '').trim() !== next) sort.value = next;
+          try { localStorage.setItem('lista_sort_mode', next); } catch (_) {}
+        }
+      } catch (_) {}
       try { if (daySelect && daySelect.value) subscribeSolicitudesForDay(daySelect.value); } catch (_) {}
     }
     function getQueueModeLocal() {
@@ -18388,7 +18442,7 @@
       if (fab) fab.style.display = isAdminMode() ? 'inline-flex' : 'none';
       const mode = getQueueModeLocal();
       if (select) select.value = mode;
-      if (status) status.textContent = `Estado: ${mode === 'tandas15' ? 'Tandas (15 min)' : (mode === 'smart' ? 'Inteligente' : 'Normal')}`;
+      if (status) status.textContent = `Estado: ${mode === 'tandas15' ? 'Cola por tandas' : (mode === 'smart' ? 'Cola inteligente' : (mode === 'recent' ? 'Más recientes' : (mode === 'oldest' ? 'Más antiguas' : (mode === 'manual_recent' ? 'Manual + recientes' : (mode === 'manual_fifo' ? 'Manual (FIFO)' : 'Cola (FIFO)')))))}`;
       if (panel && panel.hidden === false && !isAdminMode()) panel.hidden = true;
     }
     document.addEventListener('DOMContentLoaded', function() {
