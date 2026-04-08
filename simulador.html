@@ -554,55 +554,170 @@
       }
 
       function drawStick(p, scale, color, highlight) {
-        const headR = 9 * scale;
-        const bodyH = 26 * scale;
-        const legH = 16 * scale;
-        const armY = -10 * scale;
         const x = p.x;
         const y = p.y;
+        const s = Math.max(0.2, scale);
+
+        function capsulePath(x1, y1, x2, y2, r) {
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const len = Math.hypot(dx, dy) || 1;
+          const ux = dx / len;
+          const uy = dy / len;
+          const px = -uy;
+          const py = ux;
+          const a1 = Math.atan2(py, px);
+          const a2 = Math.atan2(-py, -px);
+          ctx.beginPath();
+          ctx.moveTo(x1 + px * r, y1 + py * r);
+          ctx.lineTo(x2 + px * r, y2 + py * r);
+          ctx.arc(x2, y2, r, a1, a2);
+          ctx.lineTo(x1 - px * r, y1 - py * r);
+          ctx.arc(x1, y1, r, a2, a1);
+          ctx.closePath();
+        }
+
+        function matteFill(baseAlpha) {
+          const g = ctx.createRadialGradient(-18 * s, -22 * s, 6 * s, 10 * s, 26 * s, 70 * s);
+          g.addColorStop(0, `rgba(255,255,255,${0.92 * baseAlpha})`);
+          g.addColorStop(0.45, `rgba(232,236,241,${0.86 * baseAlpha})`);
+          g.addColorStop(1, `rgba(187,195,207,${0.78 * baseAlpha})`);
+          return g;
+        }
+
+        function strokeAccent(w) {
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = highlight ? 0.85 : 0.55;
+          ctx.lineWidth = w;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
 
         ctx.save();
         ctx.translate(x, y);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = highlight ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.72)';
-        ctx.lineWidth = highlight ? Math.max(2, 3.4 * scale) : Math.max(1.5, 2.8 * scale);
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(0, bodyH);
-        ctx.stroke();
 
-        ctx.beginPath();
-        ctx.moveTo(0, armY);
-        ctx.lineTo(-10 * scale, armY + 7 * scale);
-        ctx.moveTo(0, armY);
-        ctx.lineTo(10 * scale, armY + 7 * scale);
-        ctx.stroke();
+        const headR = 14 * s;
+        const neckY = 0;
+        const headCY = -18 * s;
+        const torsoTopY = 2 * s;
+        const torsoBotY = 30 * s;
+        const hipY = torsoBotY;
+        const groundY = 58 * s;
+        const torsoW = 22 * s;
+        const torsoR = 12 * s;
 
-        ctx.beginPath();
-        ctx.moveTo(0, bodyH);
-        ctx.lineTo(-10 * scale, bodyH + legH);
-        ctx.moveTo(0, bodyH);
-        ctx.lineTo(10 * scale, bodyH + legH);
-        ctx.stroke();
+        const shoulderY = torsoTopY + 6 * s;
+        const shoulderX = 14 * s;
+        const elbowY = torsoTopY + 18 * s;
+        const elbowX = 20 * s;
+        const handY = torsoTopY + 22 * s;
+        const handX = 12 * s;
 
-        const g = ctx.createRadialGradient(-headR * 0.3, -headR * 0.4, headR * 0.3, 0, 0, headR * 1.4);
-        g.addColorStop(0, 'rgba(255,255,255,0.92)');
-        g.addColorStop(1, 'rgba(255,255,255,0.25)');
-        ctx.fillStyle = g;
-        ctx.globalAlpha = 0.85;
-        ctx.beginPath();
-        ctx.arc(0, -headR - 4 * scale, headR, 0, Math.PI * 2);
+        const legHipX = 7 * s;
+        const kneeY = hipY + 16 * s;
+        const ankleY = groundY - 6 * s;
+        const footY = groundY;
+
+        const limbR = 5.6 * s;
+        const legR = 6.2 * s;
+
+        const glow = highlight ? 18 * s : 0;
+        if (glow) {
+          ctx.save();
+          ctx.globalAlpha = 0.24;
+          ctx.shadowColor = color;
+          ctx.shadowBlur = glow;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(0, hipY, 14 * s, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        ctx.fillStyle = matteFill(0.95);
+        capsulePath(-shoulderX, shoulderY, -elbowX, elbowY, limbR);
         ctx.fill();
+        strokeAccent(Math.max(1, 2.2 * s));
+
+        ctx.fillStyle = matteFill(0.95);
+        capsulePath(-elbowX, elbowY, -handX, handY, limbR);
+        ctx.fill();
+        strokeAccent(Math.max(1, 2.2 * s));
+
+        ctx.fillStyle = matteFill(0.95);
+        capsulePath(shoulderX, shoulderY, elbowX, elbowY, limbR);
+        ctx.fill();
+        strokeAccent(Math.max(1, 2.2 * s));
+
+        ctx.fillStyle = matteFill(0.95);
+        capsulePath(elbowX, elbowY, handX, handY, limbR);
+        ctx.fill();
+        strokeAccent(Math.max(1, 2.2 * s));
+
+        ctx.fillStyle = matteFill(0.95);
+        capsulePath(-handX, handY, -handX, handY + 0.1, 4.6 * s);
+        ctx.fill();
+        ctx.fillStyle = matteFill(0.95);
+        capsulePath(handX, handY, handX, handY + 0.1, 4.6 * s);
+        ctx.fill();
+
+        ctx.fillStyle = matteFill(0.98);
+        capsulePath(-legHipX, hipY, -8 * s, kneeY, legR);
+        ctx.fill();
+        strokeAccent(Math.max(1, 2.6 * s));
+        ctx.fillStyle = matteFill(0.98);
+        capsulePath(-8 * s, kneeY, -9 * s, ankleY, legR);
+        ctx.fill();
+        strokeAccent(Math.max(1, 2.6 * s));
+
+        ctx.fillStyle = matteFill(0.98);
+        capsulePath(legHipX, hipY, 8 * s, kneeY, legR);
+        ctx.fill();
+        strokeAccent(Math.max(1, 2.6 * s));
+        ctx.fillStyle = matteFill(0.98);
+        capsulePath(8 * s, kneeY, 9 * s, ankleY, legR);
+        ctx.fill();
+        strokeAccent(Math.max(1, 2.6 * s));
+
+        const footW = 12 * s;
+        const footH = 7 * s;
+        ctx.fillStyle = matteFill(0.98);
+        roundRect(-9 * s - footW / 2, footY - footH, footW, footH, 6 * s);
+        ctx.fill();
+        strokeAccent(Math.max(1, 2.4 * s));
+        ctx.fillStyle = matteFill(0.98);
+        roundRect(9 * s - footW / 2, footY - footH, footW, footH, 6 * s);
+        ctx.fill();
+        strokeAccent(Math.max(1, 2.4 * s));
+
+        ctx.fillStyle = matteFill(0.98);
+        roundRect(-torsoW / 2, torsoTopY, torsoW, torsoBotY - torsoTopY, torsoR);
+        ctx.fill();
+        strokeAccent(Math.max(1, 3.2 * s));
+
+        ctx.save();
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = color;
+        roundRect(-torsoW / 2 + 3 * s, torsoTopY + 4 * s, torsoW - 6 * s, torsoBotY - torsoTopY - 8 * s, torsoR);
+        ctx.fill();
+        ctx.restore();
+
+        const hg = ctx.createRadialGradient(-headR * 0.55, headCY - headR * 0.65, headR * 0.25, 0, headCY, headR * 1.6);
+        hg.addColorStop(0, 'rgba(255,255,255,0.98)');
+        hg.addColorStop(0.55, 'rgba(234,238,243,0.88)');
+        hg.addColorStop(1, 'rgba(185,194,206,0.80)');
+        ctx.fillStyle = hg;
+        ctx.beginPath();
+        ctx.arc(0, headCY, headR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(1, 3.2 * s);
+        ctx.globalAlpha = highlight ? 0.85 : 0.55;
+        ctx.arc(0, headCY, headR, 0, Math.PI * 2);
+        ctx.stroke();
         ctx.globalAlpha = 1;
 
-        ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(2, 4 * scale);
-        ctx.globalAlpha = 0.7;
-        ctx.beginPath();
-        ctx.moveTo(0, -headR - 4 * scale);
-        ctx.lineTo(0, bodyH);
-        ctx.stroke();
         ctx.restore();
       }
 
