@@ -1,0 +1,825 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Simulador de Cola - Zero FM</title>
+  <link rel="stylesheet" href="styles.css?v=2.11" />
+  <style>
+    :root {
+      --sim-bg: radial-gradient(1200px 900px at 20% 15%, rgba(0,229,255,0.12), rgba(0,0,0,0) 60%),
+                radial-gradient(1200px 900px at 80% 85%, rgba(168,85,247,0.12), rgba(0,0,0,0) 60%),
+                linear-gradient(180deg, #0b0d10, #050608);
+      --sim-card: rgba(255,255,255,0.06);
+      --sim-card2: rgba(255,255,255,0.09);
+      --sim-border: rgba(255,255,255,0.14);
+      --sim-fg: #f9fafb;
+      --sim-muted: rgba(249,250,251,0.72);
+      --sim-accent: #00e5ff;
+      --sim-accent2: #a855f7;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--sim-bg);
+      color: var(--sim-fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .sim-shell {
+      display: grid;
+      grid-template-columns: 360px 1fr 320px;
+      gap: 14px;
+      padding: 14px;
+      box-sizing: border-box;
+      min-height: 100vh;
+    }
+    @media (max-width: 1100px) {
+      .sim-shell { grid-template-columns: 1fr; }
+      .sim-right { order: 3; }
+      .sim-center { order: 2; }
+      .sim-left { order: 1; }
+    }
+    .sim-panel {
+      background: var(--sim-card);
+      border: 1px solid var(--sim-border);
+      border-radius: 16px;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.45);
+      backdrop-filter: blur(12px);
+      overflow: hidden;
+    }
+    .sim-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.10);
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.00));
+    }
+    .sim-title {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .sim-title h1 {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .sim-title div {
+      font-size: 12px;
+      color: var(--sim-muted);
+    }
+    .sim-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: rgba(249,250,251,0.82);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .sim-body {
+      padding: 12px 14px 14px;
+    }
+    .sim-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .sim-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.10);
+    }
+    .sim-field label {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(249,250,251,0.75);
+      font-weight: 900;
+    }
+    .sim-field input, .sim-field select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.28);
+      color: #f9fafb;
+      outline: none;
+      font-weight: 800;
+    }
+    .sim-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .sim-btn {
+      border: none;
+      cursor: pointer;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(0,229,255,0.95), rgba(168,85,247,0.85));
+      color: #06070a;
+    }
+    .sim-btn.secondary {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: rgba(249,250,251,0.90);
+    }
+    .sim-btn:active { transform: translateY(1px); }
+    .sim-canvas-wrap {
+      position: relative;
+      width: 100%;
+      height: calc(100vh - 28px);
+      min-height: 560px;
+    }
+    @media (max-width: 1100px) {
+      .sim-canvas-wrap { height: 62vh; min-height: 460px; }
+    }
+    canvas#sim-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .sim-hud {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+    .sim-hud .sim-chip { pointer-events: none; }
+    .sim-legend {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 12px 14px 14px;
+    }
+    .sim-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      display: inline-block;
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.25);
+    }
+    .sim-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sim-queue-item {
+      padding: 10px 10px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.10);
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+    .sim-queue-item .n {
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: rgba(0,0,0,0.9);
+      background: rgba(0,229,255,0.85);
+    }
+    .sim-queue-item .meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .sim-queue-item .u {
+      font-weight: 900;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sim-queue-item .s {
+      font-size: 12px;
+      color: rgba(249,250,251,0.72);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="sim-shell">
+    <div class="sim-panel sim-left">
+      <div class="sim-panel-header">
+        <div class="sim-title">
+          <h1>Simulador</h1>
+          <div>Stick people 3D minimalista</div>
+        </div>
+        <a class="sim-chip" href="lista.html" style="text-decoration:none;">← Lista</a>
+      </div>
+      <div class="sim-body">
+        <div class="sim-grid">
+          <div class="sim-field">
+            <label>Modo</label>
+            <select id="mode">
+              <option value="smart">Inteligente</option>
+              <option value="tandas15">Tandas (15 min)</option>
+              <option value="fifo">FIFO</option>
+            </select>
+          </div>
+          <div class="sim-field">
+            <label>Velocidad</label>
+            <select id="speed">
+              <option value="1">1×</option>
+              <option value="2">2×</option>
+              <option value="4">4×</option>
+              <option value="8">8×</option>
+            </select>
+          </div>
+          <div class="sim-field">
+            <label>Superfan/Platino</label>
+            <input id="count-sf" type="number" min="0" max="200" step="1" value="3" />
+          </div>
+          <div class="sim-field">
+            <label>VIP</label>
+            <input id="count-vip" type="number" min="0" max="200" step="1" value="6" />
+          </div>
+          <div class="sim-field">
+            <label>Normales</label>
+            <input id="count-n" type="number" min="0" max="500" step="1" value="24" />
+          </div>
+          <div class="sim-field">
+            <label>Prom. canciones</label>
+            <input id="avg-req" type="number" min="0" max="6" step="0.1" value="1.6" />
+          </div>
+          <div class="sim-field">
+            <label>Cola visible</label>
+            <input id="visible" type="number" min="3" max="30" step="1" value="10" />
+          </div>
+          <div class="sim-field">
+            <label>Semilla</label>
+            <input id="seed" type="number" min="1" max="999999" step="1" value="42" />
+          </div>
+        </div>
+        <div class="sim-actions">
+          <button class="sim-btn" id="btn-reset" type="button">Reset</button>
+          <button class="sim-btn secondary" id="btn-burst" type="button">Burst</button>
+        </div>
+        <div class="sim-legend">
+          <span class="sim-chip"><span class="sim-dot" style="background:#00e5ff"></span> SF/Platino</span>
+          <span class="sim-chip"><span class="sim-dot" style="background:#a855f7"></span> VIP</span>
+          <span class="sim-chip"><span class="sim-dot" style="background:#94a3b8"></span> Normal</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sim-panel sim-center">
+      <div class="sim-canvas-wrap">
+        <div class="sim-hud">
+          <span class="sim-chip" id="hud-time">t = 0:00</span>
+          <span class="sim-chip" id="hud-q">cola = 0</span>
+          <span class="sim-chip" id="hud-served">reproducidas = 0</span>
+          <span class="sim-chip" id="hud-dist">SF 0 · VIP 0 · N 0</span>
+        </div>
+        <canvas id="sim-canvas"></canvas>
+      </div>
+    </div>
+
+    <div class="sim-panel sim-right">
+      <div class="sim-panel-header">
+        <div class="sim-title">
+          <h1>Cola</h1>
+          <div>Vista rápida del orden</div>
+        </div>
+        <span class="sim-chip" id="hud-mode">—</span>
+      </div>
+      <div class="sim-body">
+        <div class="sim-list" id="queue-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const elMode = document.getElementById('mode');
+      const elSpeed = document.getElementById('speed');
+      const elCountSf = document.getElementById('count-sf');
+      const elCountVip = document.getElementById('count-vip');
+      const elCountN = document.getElementById('count-n');
+      const elAvgReq = document.getElementById('avg-req');
+      const elVisible = document.getElementById('visible');
+      const elSeed = document.getElementById('seed');
+      const btnReset = document.getElementById('btn-reset');
+      const btnBurst = document.getElementById('btn-burst');
+      const hudTime = document.getElementById('hud-time');
+      const hudQ = document.getElementById('hud-q');
+      const hudServed = document.getElementById('hud-served');
+      const hudDist = document.getElementById('hud-dist');
+      const hudMode = document.getElementById('hud-mode');
+      const queueListEl = document.getElementById('queue-list');
+      const canvas = document.getElementById('sim-canvas');
+      const ctx = canvas.getContext('2d');
+
+      const COLORS = {
+        sf: '#00e5ff',
+        vip: '#a855f7',
+        n: '#94a3b8'
+      };
+
+      function mulberry32(seed) {
+        let t = seed >>> 0;
+        return function () {
+          t += 0x6D2B79F5;
+          let r = Math.imul(t ^ (t >>> 15), 1 | t);
+          r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+          return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
+      function fmtTime(ms) {
+        const s = Math.max(0, Math.floor(ms / 1000));
+        const mm = Math.floor(s / 60);
+        const ss = s % 60;
+        return `${mm}:${String(ss).padStart(2, '0')}`;
+      }
+
+      function getReqTimeMs(req) {
+        const t = Number(req && req.ts ? req.ts : 0);
+        return Number.isFinite(t) ? t : 0;
+      }
+
+      function badgeRankForOrdering(badge) {
+        const b = String(badge || '').trim();
+        if (b === 'superfan') return 0;
+        if (b === 'z0-platino') return 1;
+        if (b === 'z0-vip') return 2;
+        if (b === 'vip') return 3;
+        if (b === 'donador') return 4;
+        if (b === 'z0-fan') return 5;
+        return 6;
+      }
+
+      function tierForBadge(badge) {
+        const b = String(badge || '').trim();
+        if (b === 'superfan' || b === 'z0-platino') return 0;
+        if (b === 'z0-vip' || b === 'vip') return 1;
+        return 2;
+      }
+
+      function orderBlockWithPriorities(blockItems) {
+        const perUser = new Map();
+        for (const it of blockItems) {
+          const key = String(it.userKey || it.userId || '').trim();
+          if (!key) continue;
+          if (!perUser.has(key)) perUser.set(key, []);
+          perUser.get(key).push(it);
+        }
+
+        const users = Array.from(perUser.keys());
+        const expanded = [];
+        for (const u of users) {
+          const arr = perUser.get(u) || [];
+          arr.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+          const badge = String(arr?.[0]?.badge || '').trim();
+          const rank = badgeRankForOrdering(badge);
+          const tier = tierForBadge(badge);
+          for (let idx = 0; idx < arr.length; idx++) {
+            const it = arr[idx];
+            const t = getReqTimeMs(it);
+            let bucket = 5;
+            if (tier === 0 && idx < 2) bucket = 0;
+            else if (tier === 1 && idx === 0) bucket = 1;
+            else if (tier === 2 && idx === 0) bucket = 2;
+            else if (tier === 0) bucket = 3;
+            else if (tier === 1) bucket = 4;
+            expanded.push({ it, bucket, rank, t, u, idx });
+          }
+        }
+
+        expanded.sort((a, b) => {
+          if (a.bucket !== b.bucket) return a.bucket - b.bucket;
+          if (a.rank !== b.rank) return a.rank - b.rank;
+          const ta = Number.isFinite(a.t) ? a.t : 0;
+          const tb = Number.isFinite(b.t) ? b.t : 0;
+          if (ta !== tb) return ta - tb;
+          if (a.u !== b.u) return a.u.localeCompare(b.u, 'es');
+          return a.idx - b.idx;
+        });
+
+        return expanded.map(x => x.it);
+      }
+
+      function applySmartOrder(items) {
+        const base = Array.isArray(items) ? items.slice() : [];
+        base.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+        const gapMs = 18 * 60 * 1000;
+        const blocks = [];
+        let cur = [];
+        let prevT = null;
+        for (const it of base) {
+          const t = getReqTimeMs(it);
+          const hasT = Number.isFinite(t) && t > 0;
+          if (cur.length && prevT !== null && hasT && (t - prevT) > gapMs) {
+            blocks.push(cur);
+            cur = [];
+          }
+          cur.push(it);
+          if (hasT) prevT = t;
+        }
+        if (cur.length) blocks.push(cur);
+        const out = [];
+        for (const b of blocks) out.push(...orderBlockWithPriorities(b));
+        return out;
+      }
+
+      function applyTandas15Order(items) {
+        const base = Array.isArray(items) ? items.slice() : [];
+        base.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+        const slotMs = 15 * 60 * 1000;
+        const bySlot = new Map();
+        for (const it of base) {
+          const t = getReqTimeMs(it);
+          const slotKey = Math.floor((Number.isFinite(t) ? t : 0) / slotMs);
+          if (!bySlot.has(slotKey)) bySlot.set(slotKey, []);
+          bySlot.get(slotKey).push(it);
+        }
+        const keys = Array.from(bySlot.keys()).sort((a, b) => a - b);
+        const out = [];
+        for (const k of keys) out.push(...orderBlockWithPriorities(bySlot.get(k) || []));
+        return out;
+      }
+
+      function computeQueue(mode, items) {
+        if (mode === 'smart') return applySmartOrder(items);
+        if (mode === 'tandas15') return applyTandas15Order(items);
+        const base = Array.isArray(items) ? items.slice() : [];
+        base.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+        return base;
+      }
+
+      function resizeCanvas() {
+        const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+        const rect = canvas.getBoundingClientRect();
+        const w = Math.max(10, Math.floor(rect.width));
+        const h = Math.max(10, Math.floor(rect.height));
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      const camera = {
+        az: -0.55,
+        el: 0.72,
+        dist: 12.0,
+        fov: 560
+      };
+
+      function project(p, w, h) {
+        const ca = Math.cos(camera.az), sa = Math.sin(camera.az);
+        const ce = Math.cos(camera.el), se = Math.sin(camera.el);
+        const x1 = p.x * ca - p.z * sa;
+        const z1 = p.x * sa + p.z * ca;
+        const y2 = p.y * ce - z1 * se;
+        const z2 = p.y * se + z1 * ce + camera.dist;
+        const s = camera.fov / (camera.fov + z2 * 80);
+        return { x: w / 2 + x1 * 110 * s, y: h / 2 + y2 * 140 * s, s, z: z2 };
+      }
+
+      function roundRect(x, y, w, h, r) {
+        const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+        ctx.beginPath();
+        ctx.moveTo(x + rr, y);
+        ctx.arcTo(x + w, y, x + w, y + h, rr);
+        ctx.arcTo(x + w, y + h, x, y + h, rr);
+        ctx.arcTo(x, y + h, x, y, rr);
+        ctx.arcTo(x, y, x + w, y, rr);
+        ctx.closePath();
+      }
+
+      function drawBubble(x, y, text, color) {
+        ctx.save();
+        ctx.font = '900 11px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+        const padX = 10;
+        const padY = 6;
+        const tw = ctx.measureText(text).width;
+        const w = Math.max(46, tw + padX * 2);
+        const h = 22;
+        const bx = x - w / 2;
+        const by = y - h - 10;
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        roundRect(bx, by, w, h, 999);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.55;
+        roundRect(bx + 2, by + 2, w - 4, h - 4, 999);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(249,250,251,0.96)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x, by + h / 2 + 1);
+        ctx.restore();
+      }
+
+      function drawStick(p, scale, color, highlight) {
+        const headR = 9 * scale;
+        const bodyH = 26 * scale;
+        const legH = 16 * scale;
+        const armY = -10 * scale;
+        const x = p.x;
+        const y = p.y;
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = highlight ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.72)';
+        ctx.lineWidth = highlight ? Math.max(2, 3.4 * scale) : Math.max(1.5, 2.8 * scale);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, bodyH);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, armY);
+        ctx.lineTo(-10 * scale, armY + 7 * scale);
+        ctx.moveTo(0, armY);
+        ctx.lineTo(10 * scale, armY + 7 * scale);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, bodyH);
+        ctx.lineTo(-10 * scale, bodyH + legH);
+        ctx.moveTo(0, bodyH);
+        ctx.lineTo(10 * scale, bodyH + legH);
+        ctx.stroke();
+
+        const g = ctx.createRadialGradient(-headR * 0.3, -headR * 0.4, headR * 0.3, 0, 0, headR * 1.4);
+        g.addColorStop(0, 'rgba(255,255,255,0.92)');
+        g.addColorStop(1, 'rgba(255,255,255,0.25)');
+        ctx.fillStyle = g;
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.arc(0, -headR - 4 * scale, headR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(2, 4 * scale);
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(0, -headR - 4 * scale);
+        ctx.lineTo(0, bodyH);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      let rng = mulberry32(42);
+      let nowMs = 0;
+      let servedCount = 0;
+      let users = [];
+      let requests = [];
+
+      function makeUsers() {
+        const sf = clamp(Number(elCountSf.value || 0), 0, 500);
+        const vip = clamp(Number(elCountVip.value || 0), 0, 500);
+        const n = clamp(Number(elCountN.value || 0), 0, 1000);
+        const list = [];
+        let id = 1;
+        for (let i = 0; i < sf; i++) list.push({ id: `SF${id++}`, badge: (i % 2 === 0 ? 'superfan' : 'z0-platino') });
+        id = 1;
+        for (let i = 0; i < vip; i++) list.push({ id: `VIP${id++}`, badge: (i % 2 === 0 ? 'vip' : 'z0-vip') });
+        id = 1;
+        for (let i = 0; i < n; i++) list.push({ id: `U${id++}`, badge: '' });
+
+        const cols = Math.ceil(Math.sqrt(list.length));
+        const spacing = 1.2;
+        for (let i = 0; i < list.length; i++) {
+          const r = Math.floor(i / cols);
+          const c = i % cols;
+          const x = (c - cols / 2) * spacing;
+          const z = (r - Math.floor(list.length / cols) / 2) * spacing;
+          list[i].pos = { x, z };
+          list[i].queued = 0;
+          list[i].served = 0;
+        }
+        return list;
+      }
+
+      function pickColor(badge) {
+        const t = tierForBadge(badge);
+        if (t === 0) return COLORS.sf;
+        if (t === 1) return COLORS.vip;
+        return COLORS.n;
+      }
+
+      function enqueueForUser(u, nItems) {
+        const n = Math.max(0, Math.min(20, nItems | 0));
+        for (let i = 0; i < n; i++) {
+          requests.push({
+            userId: u.id,
+            userKey: u.id,
+            badge: u.badge,
+            ts: nowMs + Math.floor(rng() * 2500),
+            song: `Song ${Math.floor(rng() * 999)}`
+          });
+        }
+      }
+
+      function burst() {
+        const avg = clamp(Number(elAvgReq.value || 1), 0, 10);
+        for (const u of users) {
+          const base = tierForBadge(u.badge) === 0 ? avg * 1.4 : (tierForBadge(u.badge) === 1 ? avg * 1.15 : avg);
+          const n = Math.max(0, Math.round(base + (rng() - 0.5) * base));
+          enqueueForUser(u, n);
+        }
+      }
+
+      function resetAll() {
+        rng = mulberry32(clamp(Number(elSeed.value || 42), 1, 999999));
+        nowMs = 0;
+        servedCount = 0;
+        users = makeUsers();
+        requests = [];
+        burst();
+      }
+
+      function stepSim(dtMs) {
+        nowMs += dtMs;
+        const mode = String(elMode.value || 'smart');
+        const ordered = computeQueue(mode, requests);
+        const speed = clamp(Number(elSpeed.value || 1), 1, 20);
+        const plays = mode === 'fifo' ? 1 : 1;
+        if (ordered.length && (nowMs % Math.max(1, Math.floor(2400 / speed)) < dtMs)) {
+          for (let i = 0; i < plays; i++) {
+            const next = ordered[i];
+            if (!next) break;
+            const idx = requests.indexOf(next);
+            if (idx !== -1) requests.splice(idx, 1);
+            servedCount++;
+            const u = users.find(x => x.id === next.userId);
+            if (u) u.served++;
+          }
+        }
+      }
+
+      function renderUI(ordered) {
+        for (const u of users) u.queued = 0;
+        for (const r of requests) {
+          const u = users.find(x => x.id === r.userId);
+          if (u) u.queued++;
+        }
+
+        const visible = clamp(Number(elVisible.value || 10), 3, 50);
+        queueListEl.innerHTML = '';
+        for (let i = 0; i < Math.min(visible, ordered.length); i++) {
+          const r = ordered[i];
+          const n = document.createElement('div');
+          n.className = 'sim-queue-item';
+          const badge = String(r.badge || '').trim();
+          const tier = tierForBadge(badge);
+          const color = tier === 0 ? COLORS.sf : (tier === 1 ? COLORS.vip : COLORS.n);
+          n.innerHTML = `<div class="n" style="background:${color}">${i + 1}</div><div class="meta"><div class="u">${r.userId}</div><div class="s">${badge || 'normal'} · ${r.song}</div></div>`;
+          queueListEl.appendChild(n);
+        }
+
+        const dist = { sf: 0, vip: 0, n: 0 };
+        for (const u of users) {
+          const t = tierForBadge(u.badge);
+          if (t === 0) dist.sf++;
+          else if (t === 1) dist.vip++;
+          else dist.n++;
+        }
+        hudTime.textContent = `t = ${fmtTime(nowMs)}`;
+        hudQ.textContent = `cola = ${requests.length}`;
+        hudServed.textContent = `reproducidas = ${servedCount}`;
+        hudDist.textContent = `SF ${dist.sf} · VIP ${dist.vip} · N ${dist.n}`;
+        hudMode.textContent = String(elMode.value || '').toUpperCase();
+      }
+
+      function renderScene(ordered) {
+        const rect = canvas.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const bg = ctx.createLinearGradient(0, 0, 0, h);
+        bg.addColorStop(0, 'rgba(11,13,16,0)');
+        bg.addColorStop(0.35, 'rgba(11,13,16,0.15)');
+        bg.addColorStop(1, 'rgba(11,13,16,0.55)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+
+        const gridN = 20;
+        ctx.save();
+        ctx.globalAlpha = 0.22;
+        ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+        ctx.lineWidth = 1;
+        for (let i = -gridN; i <= gridN; i++) {
+          const a1 = project({ x: i, y: 0, z: -gridN }, w, h);
+          const a2 = project({ x: i, y: 0, z: gridN }, w, h);
+          ctx.beginPath();
+          ctx.moveTo(a1.x, a1.y);
+          ctx.lineTo(a2.x, a2.y);
+          ctx.stroke();
+          const b1 = project({ x: -gridN, y: 0, z: i }, w, h);
+          const b2 = project({ x: gridN, y: 0, z: i }, w, h);
+          ctx.beginPath();
+          ctx.moveTo(b1.x, b1.y);
+          ctx.lineTo(b2.x, b2.y);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        const nextSet = new Set();
+        for (let i = 0; i < Math.min(8, ordered.length); i++) nextSet.add(String(ordered[i].userId));
+
+        const sprites = [];
+        for (const u of users) {
+          const p = project({ x: u.pos.x, y: 0, z: u.pos.z }, w, h);
+          const color = pickColor(u.badge);
+          const scale = clamp(p.s, 0.25, 1.0);
+          const highlight = nextSet.has(u.id);
+          sprites.push({ u, p, color, scale, highlight });
+        }
+        sprites.sort((a, b) => b.p.z - a.p.z);
+
+        for (const s of sprites) {
+          const p = s.p;
+          const scale = s.scale;
+          ctx.save();
+          ctx.globalAlpha = 0.25;
+          ctx.fillStyle = s.highlight ? 'rgba(0,229,255,0.35)' : 'rgba(0,0,0,0.35)';
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y + 44 * scale, 16 * scale, 6.5 * scale, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+
+          drawStick({ x: p.x, y: p.y + 8 * scale }, scale, s.color, s.highlight);
+          drawBubble(p.x, p.y - 10 * scale, `${s.u.id} · ${s.u.queued}`, s.color);
+        }
+      }
+
+      function tick() {
+        const speed = clamp(Number(elSpeed.value || 1), 1, 20);
+        stepSim(100 * speed);
+        const mode = String(elMode.value || 'smart');
+        const ordered = computeQueue(mode, requests);
+        renderUI(ordered);
+        renderScene(ordered);
+        requestAnimationFrame(tick);
+      }
+
+      btnReset.addEventListener('click', () => resetAll());
+      btnBurst.addEventListener('click', () => burst());
+      window.addEventListener('resize', () => resizeCanvas());
+      ['change', 'input'].forEach((evt) => {
+        elMode.addEventListener(evt, () => {});
+        elSpeed.addEventListener(evt, () => {});
+        elCountSf.addEventListener(evt, () => {});
+        elCountVip.addEventListener(evt, () => {});
+        elCountN.addEventListener(evt, () => {});
+        elAvgReq.addEventListener(evt, () => {});
+        elVisible.addEventListener(evt, () => {});
+        elSeed.addEventListener(evt, () => {});
+      });
+
+      resizeCanvas();
+      resetAll();
+      tick();
+    })();
+  </script>
+</body>
+</html>
