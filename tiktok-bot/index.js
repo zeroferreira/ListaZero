@@ -1788,9 +1788,6 @@ async function handleSongRequest(user, query, options = {}) {
         const liveCodeEnv = String(process.env.ZEROFM_LIVE_CODE || '').trim();
         const liveCodeStatus = String(await getLiveCodeCached() || '').trim();
         const liveCode = (liveCodeStatus || liveCodeEnv || '').trim();
-        if (!liveCode) {
-            console.log('⚠️ No hay Código del Live configurado. Bloqueando envío a la cola para evitar peticiones fantasma.');
-        }
 
         const requestData = {
             id: songId,
@@ -1824,9 +1821,6 @@ async function handleSongRequest(user, query, options = {}) {
         let queueSaved = false;
         let queueDocId = '';
         if (sendToQueue) {
-            if (!liveCode) {
-                return { ok: false, error: 'Falta Código del Live', queueSaved: false, ciderSent: false };
-            }
             try {
                 const docRef = await addDoc(collection(db, 'solicitudes'), requestData);
                 queueSaved = true;

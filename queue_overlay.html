@@ -1964,6 +1964,13 @@
       const u = normalizeUserForOverride(username);
       return (u && u === forcedUserKey) ? forcedBadgeParam : '';
     }
+    function normalizeQueueUserKey(v) {
+      try {
+        const s = String(v || '').replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim().replace(/^@/, '');
+        if (!s) return '';
+        return s.replace(/\s+/g, ' ').toLowerCase();
+      } catch (_) { return ''; }
+    }
     let superfanUsersSet = new Set();
     function badgeLabel(badge) {
       const b = String(badge || '').trim();
@@ -2058,10 +2065,11 @@
         const group = bySlot.get(slotKey) || [];
         const perUser = new Map();
         group.forEach((it) => {
-          const u = String(it?.usuario || it?.displayName || it?.user || it?.username || '').trim();
-          if (!u) return;
-          if (!perUser.has(u)) perUser.set(u, []);
-          perUser.get(u).push(it);
+          const raw = String(it?.usuario || it?.displayName || it?.user || it?.username || '').trim();
+          const key = normalizeQueueUserKey(raw) || raw;
+          if (!key) return;
+          if (!perUser.has(key)) perUser.set(key, []);
+          perUser.get(key).push(it);
         });
         const users = Array.from(perUser.keys());
         const expanded = [];
@@ -2122,10 +2130,11 @@
       function orderBlock(blockItems) {
         const perUser = new Map();
         blockItems.forEach((it) => {
-          const u = String(it?.usuario || it?.displayName || it?.user || it?.username || '').trim();
-          if (!u) return;
-          if (!perUser.has(u)) perUser.set(u, []);
-          perUser.get(u).push(it);
+          const raw = String(it?.usuario || it?.displayName || it?.user || it?.username || '').trim();
+          const key = normalizeQueueUserKey(raw) || raw;
+          if (!key) return;
+          if (!perUser.has(key)) perUser.set(key, []);
+          perUser.get(key).push(it);
         });
         const users = Array.from(perUser.keys());
         const expanded = [];
@@ -3424,12 +3433,6 @@
         const req = list.find((r) => String(r.userId || '').trim() === w && Number(r.rouletteSpinsRemaining || 0) > 0);
         if (!req) return;
 
-        const liveCode = String(localStorage.getItem('liveCode') || '').trim();
-        if (!liveCode) {
-          alert('Falta el Código del Live (liveCode). No se puede ejecutar el canje de ruleta.');
-          return;
-        }
-
         const usuario = String(req.userKey || '').trim() || normalizeUserForOverride(w) || w;
         const displayName = String(req.userId || w).trim() || w;
         const cancion = String(req.rouletteSong || '').trim();
@@ -3446,7 +3449,6 @@
           ts: firebase.firestore.FieldValue.serverTimestamp(),
           source: 'web',
           subsource: 'roulette',
-          liveCode
         });
 
         const remaining = Number(req.rouletteSpinsRemaining || 0);

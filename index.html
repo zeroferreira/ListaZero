@@ -65,12 +65,6 @@
           <label for="artista">Artista</label>
           <input id="artista" name="artista" type="text" required placeholder="¿Quién interpreta la cancion?" />
         </div>
-        <div class="field" id="live-code-field" hidden>
-          <label for="live-code">Código del Live</label>
-          <input id="live-code" name="live-code" type="text" placeholder="Código compartido en el live" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" />
-          <div id="live-code-hint" style="margin-top: 6px; font-size: 12px; opacity: 0.8;">Si está activo, es necesario para evitar peticiones fantasma.</div>
-        </div>
-
         <div class="actions">
           <button type="submit" class="btn">Enviar solicitud</button>
           <a href="lista.html" class="btn">Lista de Canciones</a>
@@ -579,7 +573,6 @@
 
       let db = null;
       let liveCodeRequired = false;
-      let liveCodeConfigured = false;
       let authReadyPromise = Promise.resolve(true);
       let statusReadyPromise = Promise.resolve(true);
       try {
@@ -609,15 +602,6 @@
 
       const form = document.getElementById('formulario');
       const usuarioSelect = document.getElementById('usuario-registrado');
-      const liveCodeField = document.getElementById('live-code-field');
-      const liveCodeInput = document.getElementById('live-code');
-      const savedLiveCode = String(localStorage.getItem('liveCode') || '');
-      if (liveCodeInput && savedLiveCode) liveCodeInput.value = savedLiveCode;
-      if (liveCodeInput) {
-        liveCodeInput.addEventListener('input', () => {
-          try { localStorage.setItem('liveCode', String(liveCodeInput.value || '')); } catch (_) {}
-        });
-      }
       try {
         if (db) {
           statusReadyPromise = new Promise((resolve) => {
@@ -625,10 +609,7 @@
             db.collection('system').doc('status').onSnapshot((doc) => {
               const data = doc && doc.exists ? (doc.data() || {}) : {};
               const code = String(data.liveCode || '').trim();
-              liveCodeConfigured = code.length >= 4;
-              liveCodeRequired = true;
-              if (liveCodeField) liveCodeField.hidden = false;
-              if (liveCodeInput) liveCodeInput.required = true;
+              liveCodeRequired = code.length >= 4;
               if (!done) { done = true; resolve(true); }
             }, () => {
               if (!done) { done = true; resolve(false); }
@@ -799,15 +780,7 @@
             ]);
           } catch (_) {}
 
-          const liveCode = String((liveCodeInput && liveCodeInput.value) || localStorage.getItem('liveCode') || '').trim();
-          if (!liveCodeConfigured) {
-            alert('No se aceptan solicitudes ahora: falta configurar el Código del Live.');
-            return;
-          }
-          if (!liveCode) {
-            alert('Falta el Código del Live. Escríbelo y vuelve a intentar.');
-            return;
-          }
+          const liveCode = '';
 
           // Guardar en Firestore (sincronización multi-dispositivo)
           try {
@@ -835,7 +808,6 @@
                 day: dayKey,
                 ts: firebase.firestore.FieldValue.serverTimestamp(),
                 source: 'web',
-                liveCode: liveCode || '',
               });
 
               // Upsert del usuario para que aparezca en el panel Admin (colección users)
