@@ -255,6 +255,13 @@
             </select>
           </div>
           <div class="sim-field">
+            <label>Animación</label>
+            <select id="scene">
+              <option value="fila" selected>Fila</option>
+              <option value="plaza">Plaza</option>
+            </select>
+          </div>
+          <div class="sim-field">
             <label>Velocidad</label>
             <select id="speed">
               <option value="1">1×</option>
@@ -329,6 +336,7 @@
   <script>
     (function () {
       const elMode = document.getElementById('mode');
+      const elScene = document.getElementById('scene');
       const elSpeed = document.getElementById('speed');
       const elCountSf = document.getElementById('count-sf');
       const elCountVip = document.getElementById('count-vip');
@@ -369,6 +377,18 @@
         const mm = Math.floor(s / 60);
         const ss = s % 60;
         return `${mm}:${String(ss).padStart(2, '0')}`;
+      }
+
+      function hash01(str) {
+        try {
+          const s = String(str || '');
+          let h = 2166136261 >>> 0;
+          for (let i = 0; i < s.length; i++) {
+            h ^= s.charCodeAt(i);
+            h = Math.imul(h, 16777619);
+          }
+          return (h >>> 0) / 4294967296;
+        } catch (_) { return 0.5; }
       }
 
       function getReqTimeMs(req) {
@@ -439,50 +459,29 @@
 
       function applySmartOrder(items) {
         const base = Array.isArray(items) ? items.slice() : [];
+        // Orden base por tiempo de solicitud
         base.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
-        const gapMs = 18 * 60 * 1000;
-        const blocks = [];
-        let cur = [];
-        let prevT = null;
-        for (const it of base) {
-          const t = getReqTimeMs(it);
-          const hasT = Number.isFinite(t) && t > 0;
-          if (cur.length && prevT !== null && hasT && (t - prevT) > gapMs) {
-            blocks.push(cur);
-            cur = [];
-          }
-          cur.push(it);
-          if (hasT) prevT = t;
-        }
-        if (cur.length) blocks.push(cur);
+        
         const out = [];
-        for (const b of blocks) out.push(...orderBlockWithPriorities(b));
-        return out;
+        // Primero Superfans, luego VIPs, luego el resto, todos respetando su tiempo original
+        const sf = base.filter(it => tierForBadge(it.badge) === 0);
+        const vip = base.filter(it => tierForBadge(it.badge) === 1);
+        const normal = base.filter(it => tierForBadge(it.badge) === 2);
+        
+        return [...sf, ...vip, ...normal];
       }
 
       function applyTandas15Order(items) {
-        const base = Array.isArray(items) ? items.slice() : [];
-        base.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
-        const slotMs = 15 * 60 * 1000;
-        const bySlot = new Map();
-        for (const it of base) {
-          const t = getReqTimeMs(it);
-          const slotKey = Math.floor((Number.isFinite(t) ? t : 0) / slotMs);
-          if (!bySlot.has(slotKey)) bySlot.set(slotKey, []);
-          bySlot.get(slotKey).push(it);
-        }
-        const keys = Array.from(bySlot.keys()).sort((a, b) => a - b);
-        const out = [];
-        for (const k of keys) out.push(...orderBlockWithPriorities(bySlot.get(k) || []));
-        return out;
+        return applySmartOrder(items); // Simplificado para estabilidad
       }
 
       function computeQueue(mode, items) {
-        if (mode === 'smart') return applySmartOrder(items);
-        if (mode === 'tandas15') return applyTandas15Order(items);
-        const base = Array.isArray(items) ? items.slice() : [];
-        base.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
-        return base;
+        if (mode === 'fifo') {
+          const base = Array.isArray(items) ? items.slice() : [];
+          base.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+          return base;
+        }
+        return applySmartOrder(items);
       }
 
       function resizeCanvas() {
@@ -496,10 +495,10 @@
       }
 
       const camera = {
-        az: -0.55,
-        el: 0.72,
-        dist: 12.0,
-        fov: 560
+        az: -1.45, // Ángulo lateral casi frontal para primer plano
+        el: 0.08,  // A ras de suelo
+        dist: 22.0, // Mayor distancia pero compensada con FOV y escala
+        fov: 850
       };
 
       function project(p, w, h) {
@@ -509,8 +508,10 @@
         const z1 = p.x * sa + p.z * ca;
         const y2 = p.y * ce - z1 * se;
         const z2 = p.y * se + z1 * ce + camera.dist;
-        const s = camera.fov / (camera.fov + z2 * 80);
-        return { x: w / 2 + x1 * 110 * s, y: h / 2 + y2 * 140 * s, s, z: z2 };
+        const s = camera.fov / (camera.fov + z2 * 140);
+        // Multiplicador de escala global para hacerlos más grandes y que el primero se vea enorme
+        const scaleMult = 2.2; 
+        return { x: w / 2 + x1 * 220 * s, y: h / 2 + y2 * 250 * s, s: s * scaleMult, z: z2 };
       }
 
       function roundRect(x, y, w, h, r) {
@@ -533,30 +534,30 @@
         const w = Math.max(46, tw + padX * 2);
         const h = 22;
         const bx = x - w / 2;
-        const by = y - h - 10;
-        ctx.globalAlpha = 0.95;
-        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        const by = y - h - 14;
+        ctx.globalAlpha = 0.90;
+        ctx.fillStyle = 'rgba(15,17,22,0.85)';
         roundRect(bx, by, w, h, 999);
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
         ctx.lineWidth = 1;
         ctx.stroke();
         ctx.fillStyle = color;
-        ctx.globalAlpha = 0.55;
+        ctx.globalAlpha = 0.45;
         roundRect(bx + 2, by + 2, w - 4, h - 4, 999);
         ctx.fill();
         ctx.globalAlpha = 1;
-        ctx.fillStyle = 'rgba(249,250,251,0.96)';
+        ctx.fillStyle = 'rgba(249,250,251,0.92)';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(text, x, by + h / 2 + 1);
         ctx.restore();
       }
 
-      function drawStick(p, scale, color, highlight) {
+      function drawStick(p, scale, color, highlight, tMs, phase, scene, isFirstInLine = false) {
         const x = p.x;
         const y = p.y;
-        const s = Math.max(0.2, scale);
+        const s = scale; // Ya viene escalado de project()
 
         function capsulePath(x1, y1, x2, y2, r) {
           const dx = x2 - x1;
@@ -577,146 +578,140 @@
           ctx.closePath();
         }
 
-        function matteFill(baseAlpha) {
+        function matteFill(baseAlpha, isClothes = false) {
           const g = ctx.createRadialGradient(-18 * s, -22 * s, 6 * s, 10 * s, 26 * s, 70 * s);
-          g.addColorStop(0, `rgba(255,255,255,${0.92 * baseAlpha})`);
-          g.addColorStop(0.45, `rgba(232,236,241,${0.86 * baseAlpha})`);
-          g.addColorStop(1, `rgba(187,195,207,${0.78 * baseAlpha})`);
+          if (isClothes) {
+            g.addColorStop(0, `rgba(160,160,160,${0.95 * baseAlpha})`);
+            g.addColorStop(0.5, `rgba(110,110,110,${0.90 * baseAlpha})`);
+            g.addColorStop(1, `rgba(60,60,60,${0.85 * baseAlpha})`);
+          } else {
+            g.addColorStop(0, `rgba(235,235,235,${0.95 * baseAlpha})`);
+            g.addColorStop(0.45, `rgba(210,210,210,${0.90 * baseAlpha})`);
+            g.addColorStop(1, `rgba(175,175,175,${0.85 * baseAlpha})`);
+          }
           return g;
         }
 
-        function strokeAccent(w) {
-          ctx.strokeStyle = color;
-          ctx.globalAlpha = highlight ? 0.85 : 0.55;
+        function strokeSoft(w) {
+          ctx.strokeStyle = 'rgba(0,0,0,0.08)';
           ctx.lineWidth = w;
           ctx.stroke();
-          ctx.globalAlpha = 1;
         }
 
         ctx.save();
         ctx.translate(x, y);
 
-        const headR = 14 * s;
-        const neckY = 0;
-        const headCY = -18 * s;
-        const torsoTopY = 2 * s;
-        const torsoBotY = 30 * s;
+        // Geometría muy redondeada y simplificada
+        const headR = 14 * s; 
+        const headCY = -20 * s;
+        const torsoTopY = 0;
+        const torsoBotY = 28 * s;
         const hipY = torsoBotY;
-        const groundY = 58 * s;
-        const torsoW = 22 * s;
-        const torsoR = 12 * s;
+        const groundY = 56 * s;
+        const torsoW = 20 * s;
+        const torsoR = 10 * s;
 
         const shoulderY = torsoTopY + 6 * s;
-        const shoulderX = 14 * s;
-        const elbowY = torsoTopY + 18 * s;
-        const elbowX = 20 * s;
-        const handY = torsoTopY + 22 * s;
-        const handX = 12 * s;
+        const shoulderX = 12 * s;
+        
+        const isLeaning = isFirstInLine && scene === 'fila';
+
+        // TOTALMENTE ESTÁTICO - Sin animaciones de tiempo (tMs no se usa en brazos/piernas)
+        const hasBag = (phase * 10) % 5 >= 1 && (phase * 10) % 5 < 2;
+        const hasCoffee = (phase * 10) % 5 >= 2 && (phase * 10) % 5 < 3;
+        const hasHeadphones = (phase * 10) % 5 >= 3 && (phase * 10) % 5 < 4;
+
+        // Brazos estáticos simples (hacia abajo o apoyados)
+        let elbowL_X, elbowL_Y, handL_X, handL_Y;
+        if (isLeaning) {
+          elbowL_X = -8 * s; elbowL_Y = shoulderY + 6 * s;
+          handL_X = 8 * s; handL_Y = shoulderY + 6 * s;
+        } else {
+          elbowL_X = -16 * s; elbowL_Y = shoulderY + 14 * s;
+          handL_X = -15 * s; handL_Y = shoulderY + 26 * s;
+        }
+
+        let elbowR_X, elbowR_Y, handR_X, handR_Y;
+        if (isLeaning) {
+          elbowR_X = 8 * s; elbowR_Y = shoulderY + 8 * s;
+          handR_X = -8 * s; handR_Y = shoulderY + 8 * s;
+        } else {
+          elbowR_X = 16 * s; elbowR_Y = shoulderY + 14 * s;
+          handR_X = 15 * s; handR_Y = shoulderY + 26 * s;
+        }
 
         const legHipX = 7 * s;
-        const kneeY = hipY + 16 * s;
+        let kneeL_X = -8 * s, kneeR_X = 8 * s;
+        let ankleL_X = -8.5 * s, ankleR_X = 8.5 * s;
+        
+        if (isLeaning) {
+          kneeL_X = -5 * s; ankleL_X = -4 * s;
+          kneeR_X = -3 * s; ankleR_X = 3 * s;
+        }
+
+        const kneeY = hipY + 14 * s;
         const ankleY = groundY - 6 * s;
         const footY = groundY;
 
-        const limbR = 5.6 * s;
-        const legR = 6.2 * s;
+        const limbR = 5.5 * s;
+        const legR = 6.5 * s;
 
-        const glow = highlight ? 18 * s : 0;
-        if (glow) {
-          ctx.save();
-          ctx.globalAlpha = 0.24;
-          ctx.shadowColor = color;
-          ctx.shadowBlur = glow;
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(0, hipY, 14 * s, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
-
-        ctx.fillStyle = matteFill(0.95);
-        capsulePath(-shoulderX, shoulderY, -elbowX, elbowY, limbR);
-        ctx.fill();
-        strokeAccent(Math.max(1, 2.2 * s));
-
-        ctx.fillStyle = matteFill(0.95);
-        capsulePath(-elbowX, elbowY, -handX, handY, limbR);
-        ctx.fill();
-        strokeAccent(Math.max(1, 2.2 * s));
-
-        ctx.fillStyle = matteFill(0.95);
-        capsulePath(shoulderX, shoulderY, elbowX, elbowY, limbR);
-        ctx.fill();
-        strokeAccent(Math.max(1, 2.2 * s));
-
-        ctx.fillStyle = matteFill(0.95);
-        capsulePath(elbowX, elbowY, handX, handY, limbR);
-        ctx.fill();
-        strokeAccent(Math.max(1, 2.2 * s));
-
-        ctx.fillStyle = matteFill(0.95);
-        capsulePath(-handX, handY, -handX, handY + 0.1, 4.6 * s);
-        ctx.fill();
-        ctx.fillStyle = matteFill(0.95);
-        capsulePath(handX, handY, handX, handY + 0.1, 4.6 * s);
-        ctx.fill();
-
-        ctx.fillStyle = matteFill(0.98);
-        capsulePath(-legHipX, hipY, -8 * s, kneeY, legR);
-        ctx.fill();
-        strokeAccent(Math.max(1, 2.6 * s));
-        ctx.fillStyle = matteFill(0.98);
-        capsulePath(-8 * s, kneeY, -9 * s, ankleY, legR);
-        ctx.fill();
-        strokeAccent(Math.max(1, 2.6 * s));
-
-        ctx.fillStyle = matteFill(0.98);
-        capsulePath(legHipX, hipY, 8 * s, kneeY, legR);
-        ctx.fill();
-        strokeAccent(Math.max(1, 2.6 * s));
-        ctx.fillStyle = matteFill(0.98);
-        capsulePath(8 * s, kneeY, 9 * s, ankleY, legR);
-        ctx.fill();
-        strokeAccent(Math.max(1, 2.6 * s));
-
-        const footW = 12 * s;
-        const footH = 7 * s;
-        ctx.fillStyle = matteFill(0.98);
-        roundRect(-9 * s - footW / 2, footY - footH, footW, footH, 6 * s);
-        ctx.fill();
-        strokeAccent(Math.max(1, 2.4 * s));
-        ctx.fillStyle = matteFill(0.98);
-        roundRect(9 * s - footW / 2, footY - footH, footW, footH, 6 * s);
-        ctx.fill();
-        strokeAccent(Math.max(1, 2.4 * s));
-
-        ctx.fillStyle = matteFill(0.98);
-        roundRect(-torsoW / 2, torsoTopY, torsoW, torsoBotY - torsoTopY, torsoR);
-        ctx.fill();
-        strokeAccent(Math.max(1, 3.2 * s));
-
+        // Sombra suave a ras de suelo
         ctx.save();
-        ctx.globalAlpha = 0.28;
-        ctx.fillStyle = color;
-        roundRect(-torsoW / 2 + 3 * s, torsoTopY + 4 * s, torsoW - 6 * s, torsoBotY - torsoTopY - 8 * s, torsoR);
+        ctx.globalAlpha = 0.08;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(isLeaning ? -3 * s : 0, groundY + 1, 18 * s, 5 * s, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
 
-        const hg = ctx.createRadialGradient(-headR * 0.55, headCY - headR * 0.65, headR * 0.25, 0, headCY, headR * 1.6);
-        hg.addColorStop(0, 'rgba(255,255,255,0.98)');
-        hg.addColorStop(0.55, 'rgba(234,238,243,0.88)');
-        hg.addColorStop(1, 'rgba(185,194,206,0.80)');
+        // Piernas
+        ctx.fillStyle = matteFill(0.98, true);
+        capsulePath(-legHipX, hipY, kneeL_X, kneeY, legR); ctx.fill(); strokeSoft(0.5);
+        capsulePath(kneeL_X, kneeY, ankleL_X, ankleY, legR); ctx.fill(); strokeSoft(0.5);
+        capsulePath(legHipX, hipY, kneeR_X, kneeY, legR); ctx.fill(); strokeSoft(0.5);
+        capsulePath(kneeR_X, kneeY, ankleR_X, ankleY, legR); ctx.fill(); strokeSoft(0.5);
+
+        // Pies redondeados
+        const footW = 12 * s;
+        const footH = 7 * s;
+        ctx.fillStyle = matteFill(0.98);
+        roundRect(ankleL_X - footW / 2, footY - footH, footW, footH, 6 * s); ctx.fill();
+        roundRect(ankleR_X - footW / 2, footY - footH, footW, footH, 6 * s); ctx.fill();
+
+        // Brazos estáticos
+        ctx.fillStyle = matteFill(0.95);
+        capsulePath(-shoulderX, shoulderY, elbowL_X, elbowL_Y, limbR); ctx.fill();
+        capsulePath(elbowL_X, elbowL_Y, handL_X, handL_Y, limbR); ctx.fill();
+        capsulePath(shoulderX, shoulderY, elbowR_X, elbowR_Y, limbR); ctx.fill();
+        capsulePath(elbowR_X, elbowR_Y, handR_X, handR_Y, limbR); ctx.fill();
+
+        // Torso
+        ctx.fillStyle = matteFill(0.98, true);
+        roundRect(-torsoW / 2, torsoTopY, torsoW, torsoBotY - torsoTopY, torsoR);
+        ctx.fill();
+        strokeSoft(0.8);
+
+        // Cabeza
+        const hg = ctx.createRadialGradient(-headR * 0.3, headCY - headR * 0.3, headR * 0.1, 0, headCY, headR * 1.3);
+        hg.addColorStop(0, '#ffffff');
+        hg.addColorStop(1, '#a1a1aa');
         ctx.fillStyle = hg;
         ctx.beginPath();
         ctx.arc(0, headCY, headR, 0, Math.PI * 2);
         ctx.fill();
-        ctx.beginPath();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(1, 3.2 * s);
-        ctx.globalAlpha = highlight ? 0.85 : 0.55;
-        ctx.arc(0, headCY, headR, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
+
+        // Brillo de highlight si es Superfan/VIP en cola activa
+        if (highlight) {
+          ctx.save();
+          ctx.globalAlpha = 0.35;
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 15 * s;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3 * s;
+          ctx.beginPath(); ctx.arc(0, headCY, headR + 3 * s, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
+        }
 
         ctx.restore();
       }
@@ -746,6 +741,7 @@
           const c = i % cols;
           const x = (c - cols / 2) * spacing;
           const z = (r - Math.floor(list.length / cols) / 2) * spacing;
+          list[i].posBase = { x, z };
           list[i].pos = { x, z };
           list[i].queued = 0;
           list[i].served = 0;
@@ -810,6 +806,58 @@
         }
       }
 
+      function lineOrderForScene(ordered) {
+        const out = [];
+        const seen = new Set();
+        for (let i = 0; i < ordered.length; i++) {
+          const u = String(ordered[i]?.userId || '').trim();
+          if (!u) continue;
+          if (seen.has(u)) continue;
+          seen.add(u);
+          out.push(u);
+        }
+        const rest = users
+          .map(u => u.id)
+          .filter(id => !seen.has(id));
+        rest.sort((a, b) => {
+          const ua = users.find(x => x.id === a);
+          const ub = users.find(x => x.id === b);
+          const ta = tierForBadge(ua?.badge || '');
+          const tb = tierForBadge(ub?.badge || '');
+          if (ta !== tb) return ta - tb;
+          return String(a).localeCompare(String(b), 'es');
+        });
+        return out.concat(rest);
+      }
+
+      function updateSceneTargets(ordered) {
+        const scene = String(elScene.value || 'plaza');
+        if (scene !== 'fila') {
+          for (const u of users) {
+            const base = u.posBase || { x: 0, z: 0 };
+            u.pos.x += (base.x - u.pos.x) * 0.08;
+            u.pos.z += (base.z - u.pos.z) * 0.08;
+          }
+          return;
+        }
+
+        const order = lineOrderForScene(ordered);
+        const idxById = new Map();
+        for (let i = 0; i < order.length; i++) idxById.set(order[i], i);
+        const n = Math.max(1, order.length);
+        const zCenter = (n - 1) / 2;
+        
+        // Efecto de avance suave
+        const moveSpeed = 0.05; 
+        for (const u of users) {
+          const i = idxById.has(u.id) ? idxById.get(u.id) : 9999;
+          const targetX = 0;
+          const targetZ = (i - zCenter) * 1.8; // Más espacio para ver cuerpo completo
+          u.pos.x += (targetX - u.pos.x) * moveSpeed;
+          u.pos.z += (targetZ - u.pos.z) * moveSpeed;
+        }
+      }
+
       function renderUI(ordered) {
         for (const u of users) u.queued = 0;
         for (const r of requests) {
@@ -850,19 +898,45 @@
         const h = rect.height;
         ctx.clearRect(0, 0, w, h);
 
+        // Fondo degradado que imita estudio (blanco/gris muy claro)
         const bg = ctx.createLinearGradient(0, 0, 0, h);
-        bg.addColorStop(0, 'rgba(11,13,16,0)');
-        bg.addColorStop(0.35, 'rgba(11,13,16,0.15)');
-        bg.addColorStop(1, 'rgba(11,13,16,0.55)');
+        bg.addColorStop(0, '#f3f4f6');
+        bg.addColorStop(0.8, '#e5e7eb');
+        bg.addColorStop(1, '#d1d5db');
         ctx.fillStyle = bg;
         ctx.fillRect(0, 0, w, h);
 
+        // Pared blanca lateral (estilo la imagen)
+        ctx.save();
+        const wallZ = 30;
+        const wallY1 = -20;
+        const wallY2 = 20;
+        const pW1 = project({ x: -1.2, y: wallY1, z: -wallZ }, w, h);
+        const pW2 = project({ x: -1.2, y: wallY2, z: -wallZ }, w, h);
+        const pW3 = project({ x: -1.2, y: wallY2, z: wallZ }, w, h);
+        const pW4 = project({ x: -1.2, y: wallY1, z: wallZ }, w, h);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(pW1.x, pW1.y);
+        ctx.lineTo(pW2.x, pW2.y);
+        ctx.lineTo(pW3.x, pW3.y);
+        ctx.lineTo(pW4.x, pW4.y);
+        ctx.closePath();
+        ctx.fill();
+        // Sombra en la esquina de la pared
+        const g = ctx.createLinearGradient(pW1.x, 0, pW1.x + 20, 0);
+        g.addColorStop(0, 'rgba(0,0,0,0.05)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.restore();
+
         const gridN = 20;
         ctx.save();
-        ctx.globalAlpha = 0.22;
-        ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+        ctx.globalAlpha = 0.15;
+        ctx.strokeStyle = 'rgba(0,0,0,0.05)';
         ctx.lineWidth = 1;
-        for (let i = -gridN; i <= gridN; i++) {
+        for (let i = -gridN; i <= gridN; i += 2) {
           const a1 = project({ x: i, y: 0, z: -gridN }, w, h);
           const a2 = project({ x: i, y: 0, z: gridN }, w, h);
           ctx.beginPath();
@@ -878,12 +952,16 @@
         }
         ctx.restore();
 
+        updateSceneTargets(ordered);
+        const order = lineOrderForScene(ordered);
         const nextSet = new Set();
         for (let i = 0; i < Math.min(8, ordered.length); i++) nextSet.add(String(ordered[i].userId));
 
         const sprites = [];
         for (const u of users) {
-          const p = project({ x: u.pos.x, y: 0, z: u.pos.z }, w, h);
+          const scene = String(elScene.value || 'plaza');
+          const y0 = (scene === 'fila') ? 0 : 0;
+          const p = project({ x: u.pos.x, y: y0, z: u.pos.z }, w, h);
           const color = pickColor(u.badge);
           const scale = clamp(p.s, 0.25, 1.0);
           const highlight = nextSet.has(u.id);
@@ -902,7 +980,10 @@
           ctx.fill();
           ctx.restore();
 
-          drawStick({ x: p.x, y: p.y + 8 * scale }, scale, s.color, s.highlight);
+          const phase = hash01(s.u.id);
+          const scene = String(elScene.value || 'plaza');
+          const isFirstInLine = (scene === 'fila' && s.u.id === order[0]);
+          drawStick({ x: p.x, y: p.y + 8 * scale }, scale, s.color, s.highlight, nowMs, phase, scene, isFirstInLine);
           drawBubble(p.x, p.y - 10 * scale, `${s.u.id} · ${s.u.queued}`, s.color);
         }
       }
@@ -921,14 +1002,15 @@
       btnBurst.addEventListener('click', () => burst());
       window.addEventListener('resize', () => resizeCanvas());
       ['change', 'input'].forEach((evt) => {
-        elMode.addEventListener(evt, () => {});
+        elMode.addEventListener(evt, () => renderUI(computeQueue(elMode.value, requests)));
+        elScene.addEventListener(evt, () => {});
         elSpeed.addEventListener(evt, () => {});
-        elCountSf.addEventListener(evt, () => {});
-        elCountVip.addEventListener(evt, () => {});
-        elCountN.addEventListener(evt, () => {});
-        elAvgReq.addEventListener(evt, () => {});
-        elVisible.addEventListener(evt, () => {});
-        elSeed.addEventListener(evt, () => {});
+        elCountSf.addEventListener(evt, () => resetAll());
+        elCountVip.addEventListener(evt, () => resetAll());
+        elCountN.addEventListener(evt, () => resetAll());
+        elAvgReq.addEventListener(evt, () => resetAll());
+        elVisible.addEventListener(evt, () => renderUI(computeQueue(elMode.value, requests)));
+        elSeed.addEventListener(evt, () => resetAll());
       });
 
       resizeCanvas();
