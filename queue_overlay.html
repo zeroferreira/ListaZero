@@ -3318,6 +3318,7 @@
     let rouletteParticipantsRedeem = [];
     let rouletteParticipantsNew = [];
     let rouletteParticipants = rouletteParticipantsList;
+    let rouletteDuplicates = new Set(); // Nombres que tienen ticket extra
     let rouletteMode = 'list'; // 'list' | 'redeem' | 'new'
     let rouletteCanvas = document.getElementById('roulette-canvas');
     let rouletteCtx = rouletteCanvas ? rouletteCanvas.getContext('2d') : null;
@@ -3658,10 +3659,49 @@
             row.style.background = '#333';
             row.style.padding = '8px 10px';
             row.style.borderRadius = '6px';
+            row.style.marginBottom = '4px';
             
+            const leftPart = document.createElement('div');
+            leftPart.style.display = 'flex';
+            leftPart.style.alignItems = 'center';
+            leftPart.style.gap = '8px';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = rouletteDuplicates.has(p);
+            checkbox.style.cursor = 'pointer';
+            checkbox.onclick = (e) => {
+                if (checkbox.checked) rouletteDuplicates.add(p);
+                else rouletteDuplicates.delete(p);
+                renderParticipantsList();
+            };
+
             const name = document.createElement('span');
             name.style.color = 'white';
             name.innerText = p;
+            
+            leftPart.appendChild(checkbox);
+            leftPart.appendChild(name);
+
+            const rightPart = document.createElement('div');
+            rightPart.style.display = 'flex';
+            rightPart.style.alignItems = 'center';
+            rightPart.style.gap = '10px';
+
+            const addTicketBtn = document.createElement('button');
+            addTicketBtn.innerText = '+';
+            addTicketBtn.style.background = 'var(--queue-accent-color)';
+            addTicketBtn.style.border = 'none';
+            addTicketBtn.style.color = '#000';
+            addTicketBtn.style.borderRadius = '4px';
+            addTicketBtn.style.width = '24px';
+            addTicketBtn.style.height = '24px';
+            addTicketBtn.style.cursor = 'pointer';
+            addTicketBtn.style.fontWeight = 'bold';
+            addTicketBtn.onclick = () => {
+                rouletteDuplicates.add(p);
+                renderParticipantsList();
+            };
             
             const delBtn = document.createElement('button');
             delBtn.className = 'roulette-participant-remove';
@@ -3673,8 +3713,14 @@
             delBtn.style.cursor = 'pointer';
             if (rouletteMode !== 'redeem') delBtn.onclick = () => removeParticipant(idx);
 
-            row.appendChild(name);
-            if (rouletteMode !== 'redeem') row.appendChild(delBtn);
+            row.appendChild(leftPart);
+            
+            if (rouletteMode !== 'redeem') {
+                rightPart.appendChild(addTicketBtn);
+                rightPart.appendChild(delBtn);
+                row.appendChild(rightPart);
+            }
+            
             list.appendChild(row);
         });
         
@@ -3935,35 +3981,48 @@
     function getWheelEntries() {
         let base = Array.isArray(rouletteParticipants) ? rouletteParticipants.slice() : [];
         
-        // 1. Aplicar duplicados si la opción está activa
+        // 1. Aplicar duplicados globales si la opción está activa
         if (rouletteConfig.allowDuplicates) {
-            const users = new Set(base);
-            const counts = new Map();
-            // Contar cuántas veces aparece cada usuario en la lista base
-            base.forEach(u => counts.set(u, (counts.get(u) || 0) + 1));
-            
             let doubled = [];
             base.forEach(u => {
                 doubled.push(u);
-                doubled.push(u); // Añadir el doble
+                doubled.push(u);
             });
             base = doubled;
         }
 
-        // 2. Añadir opciones de 'Vuelve a tirar'
+        // 2. Aplicar duplicados individuales (Botón +)
+        let finalEntries = [];
+        base.forEach(u => {
+            finalEntries.push(u);
+            if (rouletteDuplicates.has(u)) {
+                finalEntries.push(u); // Añadir el extra por ticket individual
+            }
+        });
+
+        // 3. Añadir opciones de 'Vuelve a tirar'
         if (rouletteConfig.spinAgainEnabled) {
-            const extra = getSpinAgainExtraCount(base.length);
-            for (let i = 0; i < extra; i++) base.push(ROULETTE_SPIN_AGAIN_LABEL);
+            const extra = getSpinAgainExtraCount(finalEntries.length);
+            for (let i = 0; i < extra; i++) finalEntries.push(ROULETTE_SPIN_AGAIN_LABEL);
         }
 
-        // 3. MEZCLAR INTELIGENTEMENTE (Shuffle) para que no salgan juntos
-        // Usamos una semilla basada en el tiempo o participantes para que sea visualmente aleatorio cada vez que se abre
-        for (let i = base.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [base[i], base[j]] = [base[j], base[i]];
+        // 4. MEZCLAR DETERMINÍSTICAMENTE
+        // Usamos una semilla fija basada en los participantes para que NO cambie al hacer clic
+        const seedStr = JSON.stringify(rouletteParticipants) + Array.from(rouletteDuplicates).sort().join(',') + (rouletteConfig.allowDuplicates ? 'y' : 'n');
+        let seed = 0;
+        for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+        
+        const pseudoRandom = () => {
+            seed = (seed * 9301 + 49297) % 233280;
+            return seed / 233280;
+        };
+
+        for (let i = finalEntries.length - 1; i > 0; i--) {
+            const j = Math.floor(pseudoRandom() * (i + 1));
+            [finalEntries[i], finalEntries[j]] = [finalEntries[j], finalEntries[i]];
         }
         
-        return base;
+        return finalEntries;
     }
 
     function drawWheel() {
