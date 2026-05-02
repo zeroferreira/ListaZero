@@ -805,44 +805,6 @@
           const ts = Date.now();
           const dayKey = getLocalDateKey(ts);
 
-          async function resolveBadgeForUserKey(userKey) {
-            try {
-              if (!db || !userKey) return '';
-              const key = String(userKey || '').trim().replace(/^@/, '').toLowerCase();
-              if (!key) return '';
-
-              try {
-                const sel = await db.collection('selectedBadges').doc(key).get();
-                if (sel && sel.exists) {
-                  const d = sel.data() || {};
-                  const b = String(d.badge || '').trim();
-                  if (b) return b;
-                }
-              } catch (_) {}
-
-              const order = [
-                ['superfanUsers', 'superfan'],
-                ['z0PlatinumUsers', 'z0-platino'],
-                ['z0VipUsers', 'z0-vip'],
-                ['vipUsers', 'vip'],
-                ['donadorUsers', 'donador'],
-                ['z0FanUsers', 'z0-fan']
-              ];
-              for (let i = 0; i < order.length; i++) {
-                const col = order[i][0];
-                const badge = order[i][1];
-                try {
-                  const docSnap = await db.collection(col).doc(key).get();
-                  if (docSnap && docSnap.exists) return badge;
-                } catch (_) {}
-              }
-            } catch (_) {}
-            return '';
-          }
-
-          const usuarioKey = usuario.toLowerCase();
-          const badge = await resolveBadgeForUserKey(usuarioKey);
-
           let liveCode = '';
           const liveStatus = await fetchLiveCodeStatus();
           if (liveStatus.required) {
@@ -853,15 +815,22 @@
             }
           }
 
+          const now = new Date(ts);
+          const hh = String(now.getHours()).padStart(2, '0');
+          const mm = String(now.getMinutes()).padStart(2, '0');
+          const hora = `${hh}:${mm}`;
+          const songId = `${usuario}-${cancion}-${artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+
           // Guardar en Firestore (sincronización multi-dispositivo)
           const solicitudPayload = {
+            id: songId,
             usuario,
             displayName: usuario,
-            badge: badge || '',
             cancion,
             artista,
-            day: dayKey,
             ts: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'pending',
+            day: dayKey,
             source: 'web',
             ...(liveCode ? { liveCode } : {})
           };
@@ -886,14 +855,6 @@
               await Promise.race([
                 db.collection('solicitudes').add(solicitudPayload),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('WRITE_TIMEOUT')), 8000))
-              ]);
-
-              // Upsert del usuario para que aparezca en el panel Admin (colección users)
-              await Promise.race([
-                db.collection('users')
-                  .doc(usuario.toLowerCase())
-                  .set({ name: usuario }, { merge: true }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('USERS_WRITE_TIMEOUT')), 5000))
               ]);
               remotePersisted = true;
             } else {
@@ -920,13 +881,12 @@
                 }
               } catch (_) {}
             }
-            const isTimeout = msg.includes('WRITE_TIMEOUT') || msg.includes('USERS_WRITE_TIMEOUT');
+            const isTimeout = msg.includes('WRITE_TIMEOUT');
             const isQuota = msg.toLowerCase().includes('quota') || code === 'resource-exhausted';
             const shouldTryRestFallback = isTimeout || isQuota;
             if (shouldTryRestFallback) {
               try {
                 await addSolicitudViaRest(solicitudPayload);
-                await upsertUserViaRest(usuario);
                 remotePersisted = true;
               } catch (restErr) {
                 console.error('Error en fallback REST de solicitud:', restErr);

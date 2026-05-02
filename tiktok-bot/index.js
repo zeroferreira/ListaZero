@@ -1034,11 +1034,15 @@ function setupNotificationListener() {
     if (!db) return;
     
     console.log("👂 Iniciando listener de notificaciones de Firebase...");
-    
-    // Usamos un flag para ignorar notificaciones antiguas al arrancar
-    let initialLoad = true;
-    
-    onSnapshot(collection(db, 'notifications'), (snapshot) => {
+
+    const recentThreshold = new Date(Date.now() - 5 * 60 * 1000);
+    const recentNotificationsQuery = query(
+        collection(db, 'notifications'),
+        where('timestamp', '>', recentThreshold),
+        limit(100)
+    );
+
+    onSnapshot(recentNotificationsQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
                 const data = change.doc.data();
