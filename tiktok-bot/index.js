@@ -25,6 +25,21 @@ try {
 
 // --- ACTUALIZADOR DE ESTADO LIVE ---
 let dbStatus = null;
+let liveHeartbeatInterval = null;
+function stopLiveHeartbeat() {
+    try {
+        if (liveHeartbeatInterval) {
+            clearInterval(liveHeartbeatInterval);
+            liveHeartbeatInterval = null;
+        }
+    } catch (_) {}
+}
+function startLiveHeartbeat() {
+    stopLiveHeartbeat();
+    liveHeartbeatInterval = setInterval(() => {
+        try { updateLiveStatus(true); } catch (_) {}
+    }, 60 * 1000);
+}
 function initStatusUpdater(firebaseConfig) {
     if (!firebaseConfig) {
         console.error("❌ initStatusUpdater: No se recibió configuración de Firebase.");
@@ -1114,12 +1129,14 @@ function setupListeners() {
         }
         activeLiveRoomId = state.roomId || null;
         updateLiveStatus(true); // Actualizar estado a ONLINE
+        startLiveHeartbeat();
     });
     
     // Solo un listener de 'disconnected' principal que maneja ambas cosas
     tiktokLiveConnection.on('disconnected', () => {
         console.log('🔴 Desconectado del live.');
         resetLikeTracking({ resetSession: false, resetTopLiker: false });
+        stopLiveHeartbeat();
         updateLiveStatus(false); // Actualizar estado a OFFLINE
         console.log('🔄 Volviendo a buscar Live...');
         setTimeout(connectToLive, 10000); 
@@ -1135,6 +1152,7 @@ function setupListeners() {
         activeLiveRoomId = null;
         resetLikeTracking({ resetSession: true, resetTopLiker: true });
         updateGlobalTopLiker('N/D', 0).catch(() => {});
+        stopLiveHeartbeat();
         updateLiveStatus(false); // Asegurar OFFLINE al terminar stream
     });
 

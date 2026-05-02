@@ -662,6 +662,37 @@
         const indicator = document.getElementById('live-indicator');
         const text = indicator.querySelector('.live-text');
         const dot = indicator.querySelector('.live-dot');
+        const LIVE_STALE_MS = 2 * 60 * 1000;
+        let lastLivePayload = null;
+        
+        function resolveMillis(ts) {
+            try {
+                if (!ts) return 0;
+                if (typeof ts.toMillis === 'function') return Number(ts.toMillis()) || 0;
+                if (typeof ts.toDate === 'function') return Number(ts.toDate().getTime()) || 0;
+                const d = new Date(ts);
+                return Number(d.getTime()) || 0;
+            } catch (_) {
+                return 0;
+            }
+        }
+        function applyLiveIndicator(data) {
+            const isLiveFlag = !!(data && data.isLive === true);
+            const lastUpdateMs = resolveMillis(data && data.lastUpdate);
+            const isFresh = lastUpdateMs > 0 && (Date.now() - lastUpdateMs) <= LIVE_STALE_MS;
+            const shouldShowLive = isLiveFlag && isFresh;
+            if (shouldShowLive) {
+                indicator.classList.remove('offline');
+                indicator.classList.add('live');
+                text.textContent = 'EN VIVO';
+                dot.style.backgroundColor = '#fff';
+            } else {
+                indicator.classList.remove('live');
+                indicator.classList.add('offline');
+                text.textContent = 'OFFLINE';
+                dot.style.backgroundColor = '#9ca3af';
+            }
+        }
         
         // Draggable Logic
         let isDragging = false;
@@ -768,28 +799,23 @@
                 .onSnapshot((doc) => {
                     if (!doc.exists) {
                         console.warn("⚠️ Documento system/status NO existe aún.");
+                        lastLivePayload = null;
+                        applyLiveIndicator(null);
                         return;
                     }
                     const data = doc.data();
                     const isLive = data && data.isLive === true;
                     console.log("📡 Cambio en estado LIVE recibido:", data, "-> isLive:", isLive);
-                    
-                    if (isLive) {
-                        indicator.classList.remove('offline');
-                        indicator.classList.add('live');
-                        text.textContent = 'EN VIVO';
-                        dot.style.backgroundColor = '#fff';
-                    } else {
-                        indicator.classList.remove('live');
-                        indicator.classList.add('offline');
-                        text.textContent = 'OFFLINE';
-                        dot.style.backgroundColor = '#9ca3af';
-                    }
+                    lastLivePayload = data || null;
+                    applyLiveIndicator(lastLivePayload);
                 }, (error) => {
                     console.error("❌ Error escuchando estado Live (permisos?):", error);
                 });
         }
         
+        setInterval(() => {
+            applyLiveIndicator(lastLivePayload);
+        }, 15000);
         initLiveStatusListener();
     });
   </script>
