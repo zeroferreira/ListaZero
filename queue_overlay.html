@@ -1905,6 +1905,32 @@
       } catch (_) { return ''; }
     }
     let superfanUsersSet = new Set();
+    async function pollSuperfanUsersOnce() {
+      try {
+        const snap = await db.collection('superfanUsers').get();
+        const next = new Set();
+        snap.forEach((doc) => {
+          const d = doc.data() || {};
+          const name = String(d.name || doc.id || '').trim();
+          const k = normalizeUserForOverride(name);
+          if (k) next.add(k);
+        });
+        superfanUsersSet = next;
+        renderQueue();
+      } catch (_) {}
+    }
+    async function pollQueueModeOnce() {
+      try {
+        const doc = await db.collection('system').doc('status').get();
+        const data = doc && doc.exists ? (doc.data() || {}) : {};
+        const mode = String(data.queueMode || '').trim();
+        if (mode) {
+          window.__QUEUE_MODE__ = mode;
+          try { localStorage.setItem('queueMode', mode); } catch (_) {}
+          renderQueue();
+        }
+      } catch (_) {}
+    }
     function badgeLabel(badge) {
       const b = String(badge || '').trim();
       if (!b) return '';
@@ -2849,29 +2875,13 @@
       subscribeRequestsForDay(currentDay);
 
       try {
-        db.collection('superfanUsers').onSnapshot((snap) => {
-          const next = new Set();
-          snap.forEach((doc) => {
-            const d = doc.data() || {};
-            const name = String(d.name || doc.id || '').trim();
-            const k = normalizeUserForOverride(name);
-            if (k) next.add(k);
-          });
-          superfanUsersSet = next;
-          renderQueue();
-        });
+        pollSuperfanUsersOnce();
+        setInterval(pollSuperfanUsersOnce, 60000);
       } catch (_) {}
 
       try {
-        db.collection('system').doc('status').onSnapshot((doc) => {
-          const data = doc && doc.exists ? (doc.data() || {}) : {};
-          const mode = String(data.queueMode || '').trim();
-          if (mode) {
-            window.__QUEUE_MODE__ = mode;
-            try { localStorage.setItem('queueMode', mode); } catch (_) {}
-            renderQueue();
-          }
-        });
+        pollQueueModeOnce();
+        setInterval(pollQueueModeOnce, 2500);
       } catch (_) {}
 
       db.collection('playedSongs').doc(currentDay)

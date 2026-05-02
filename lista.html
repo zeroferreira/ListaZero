@@ -2245,33 +2245,37 @@
           } catch(_){ }
         }).catch(()=>{});
       });
-      (function subscribeAllUserPoints(){
-        try {
-          db.collection('userStats').onSnapshot((snap) => {
+      (function hydrateVisibleUserPoints(){
+        async function refreshVisibleUserPoints() {
+          try {
+            const candidate = String((typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser()) || getCurrentUser() || '').trim().replace(/^@/, '').toLowerCase();
+            if (!candidate) return;
+            const doc = await db.collection('userStats').doc(candidate).get();
+            if (!doc || !doc.exists) return;
             const allStr = localStorage.getItem('gamificationData') || '{}';
             const all = JSON.parse(allStr);
-            snap.forEach((doc) => {
-              const u = (doc.id || '').toLowerCase();
-              const d = all[u] || {
-                points: 0,
-                level: 1,
-                xp: 0,
-                achievements: [],
-                streaks: { current: 0, best: 0, lastActivity: null, calendar: {} },
-                stats: { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false }
-              };
-              const data = doc.data() || {};
-              if (typeof data.totalPoints === 'number') d.points = data.totalPoints;
-              if (typeof data.currentStreak === 'number') d.streaks.current = data.currentStreak;
-              if (typeof data.bestStreak === 'number') d.streaks.best = data.bestStreak;
-              if (typeof data.lastActivity === 'string') d.streaks.lastActivity = data.lastActivity;
-              all[u] = d;
-          });
-          localStorage.setItem('gamificationData', JSON.stringify(all));
-          try { if (typeof window.refreshStatsTicker === 'function') window.refreshStatsTicker(); } catch (_)
-          {}
-        });
-      } catch (_){ }
+            const d = all[candidate] || {
+              points: 0,
+              level: 1,
+              xp: 0,
+              achievements: [],
+              streaks: { current: 0, best: 0, lastActivity: null, calendar: {} },
+              stats: { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false }
+            };
+            const data = doc.data() || {};
+            if (typeof data.totalPoints === 'number') d.points = data.totalPoints;
+            if (typeof data.currentStreak === 'number') d.streaks.current = data.currentStreak;
+            if (typeof data.bestStreak === 'number') d.streaks.best = data.bestStreak;
+            if (typeof data.lastActivity === 'string') d.streaks.lastActivity = data.lastActivity;
+            all[candidate] = d;
+            localStorage.setItem('gamificationData', JSON.stringify(all));
+            try { if (typeof window.refreshStatsTicker === 'function') window.refreshStatsTicker(); } catch (_) {}
+          } catch (_) {}
+        }
+        try {
+          refreshVisibleUserPoints();
+          setInterval(refreshVisibleUserPoints, 60000);
+        } catch (_) {}
       })();
 
       // Verificación integral de toggle y estadísticas
@@ -10572,21 +10576,18 @@
           // Usar la función de actualización forzada que es más robusta
           await forceUpdateAllUsers();
 
-          // SETUP REALTIME LISTENERS FOR CURRENT USER
+          // Listener liviano: solo el día actual, no toda la colección playedSongs
           if (window.db) {
              const currentUser = getCurrentUser();
-             console.log(`📡 Configurando listeners en tiempo real para ${currentUser}`);
-             
-             // Escuchar cambios en playedSongs (global) para recalcular stats
-             db.collection('playedSongs').onSnapshot(async (snapshot) => {
-                if (snapshot.empty) return;
-                
-                console.log('📡 Cambio detectado en playedSongs - Recalculando stats del usuario actual...');
-                
-                // Recalcular stats del usuario actual
+             console.log(`📡 Configurando listener ligero para ${currentUser}`);
+             const now = new Date();
+             const yyyy = now.getFullYear();
+             const mm = String(now.getMonth() + 1).padStart(2, '0');
+             const dd = String(now.getDate()).padStart(2, '0');
+             const todayKey = `${yyyy}-${mm}-${dd}`;
+             db.collection('playedSongs').doc(todayKey).onSnapshot(async () => {
+                console.log('📡 Cambio detectado en playedSongs del día actual - Recalculando stats del usuario actual...');
                 await analyzeAndGrantPointsForUser(currentUser);
-                
-                // Actualizar UI del header
                 try {
                    await updateUserHeaderUI(currentUser);
                 } catch(e) { console.warn('Error actualizando header:', e); }
@@ -11906,6 +11907,7 @@
         try { subs.solicitudes && subs.solicitudes(); } catch (_){}
         try { subs.played && subs.played(); } catch (_){}
         try { subs.allSolicitudes && subs.allSolicitudes(); } catch (_){}
+        try { subs.toggleEvents && subs.toggleEvents(); } catch (_){}
         window.__userSubs = {};
       }
       function startCloudRealtimeForUser(usuario) {
@@ -11977,7 +11979,8 @@
         };
 
         try {
-          window.__userSubs.solicitudes = db.collection('solicitudes').where('usuario','==',u).onSnapshot(snap => {
+          const pollUserSolicitudes = async () => {
+            const snap = await db.collection('solicitudes').where('usuario','==',u).get();
             let totalSongs = 0;
             const artists = new Set();
             const days = new Set();
@@ -12010,10 +12013,14 @@
             
             // Recalcular played con la nueva lista de solicitudes
             if (localPlayedSnapshot) recalcPlayed();
-          });
+          };
+          pollUserSolicitudes().catch(()=>{});
+          const intervalId = setInterval(() => { pollUserSolicitudes().catch(()=>{}); }, 45000);
+          window.__userSubs.solicitudes = () => clearInterval(intervalId);
         } catch (_){}
         try {
-          window.__userSubs.played = db.collection('playedSongs').onSnapshot(snap => {
+          const pollPlayedSongs = async () => {
+            const snap = await db.collection('playedSongs').get();
             localPlayedSnapshot = snap;
             // Si ya tenemos requests, filtramos. Si no, esperamos a que lleguen (el snapshot de solicitudes llega casi junto)
             if (localRequests.size > 0 || (window.__userReqPrefixes[norm] && window.__userReqPrefixes[norm].size > 0)) {
@@ -12025,10 +12032,14 @@
                // Mejor esperar un poco o confiar en el estado inicial
                recalcPlayed(); 
             }
-          });
+          };
+          pollPlayedSongs().catch(()=>{});
+          const intervalId = setInterval(() => { pollPlayedSongs().catch(()=>{}); }, 60000);
+          window.__userSubs.played = () => clearInterval(intervalId);
         } catch (_){}
         try {
-          window.__userSubs.allSolicitudes = db.collection('solicitudes').onSnapshot(snap => {
+          const pollAllSolicitudes = async () => {
+            const snap = await db.collection('solicitudes').get();
             const counts = {};
             snap.forEach(doc => {
               const d = doc.data()||{};
@@ -12040,13 +12051,17 @@
             const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
             const rank = sorted.findIndex(([name])=>name===norm)+1;
             stableSetRank('personal-rank', rank, u);
-          });
+          };
+          pollAllSolicitudes().catch(()=>{});
+          const intervalId = setInterval(() => { pollAllSolicitudes().catch(()=>{}); }, 60000);
+          window.__userSubs.allSolicitudes = () => clearInterval(intervalId);
         } catch (_){}
         try {
-          window.__userSubs.toggleEvents = db.collection('systemEvents')
-            .where('type','==','togglePlayed')
-            .where('usuario','==',String(u||'').trim().replace(/^@/,'').toLowerCase())
-            .onSnapshot(snap => {
+          const pollToggleEvents = async () => {
+            const snap = await db.collection('systemEvents')
+              .where('type','==','togglePlayed')
+              .where('usuario','==',String(u||'').trim().replace(/^@/,'').toLowerCase())
+              .get();
               const latest = {};
               snap.forEach(doc => {
                 const d = doc.data()||{};
@@ -12070,7 +12085,10 @@
               window.__toggleReady[norm] = true;
               try { setPlayedStat(set.size); } catch(_){ }
               recalcPlayed();
-            });
+            };
+          pollToggleEvents().catch(()=>{});
+          const intervalId = setInterval(() => { pollToggleEvents().catch(()=>{}); }, 45000);
+          window.__userSubs.toggleEvents = () => clearInterval(intervalId);
         } catch(_){ }
         try { backfillToggleEventsForUser(u); } catch(_){ }
       }
@@ -18504,13 +18522,19 @@
       });
       try {
         const dbRef = getDb();
-        if (dbRef) {
-          dbRef.collection('system').doc('status').onSnapshot(function(doc) {
+        async function pollQueueMode() {
+          try {
+            if (!dbRef) return;
+            const doc = await dbRef.collection('system').doc('status').get();
             const data = doc && doc.exists ? (doc.data() || {}) : {};
             const mode = String(data.queueMode || '').trim();
             if (mode) setQueueMode(mode);
             syncUi();
-          });
+          } catch (_) {}
+        }
+        if (dbRef) {
+          pollQueueMode();
+          setInterval(pollQueueMode, 2500);
         } else {
           syncUi();
         }
