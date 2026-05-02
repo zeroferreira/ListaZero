@@ -7821,10 +7821,14 @@
       (function setupThemeBtnDraggable() {
         if (!themeBtn) return;
         const storageKey = `widget_btn_pos:${location.pathname}:theme-btn`;
+        const DRAG_HOLD_MS = 180;
+        const DRAG_MOVE_PX = 8;
+        let pointerDown = false;
         let isDragging = false;
         let hasMoved = false;
         let startX = 0;
         let startY = 0;
+        let pointerDownAt = 0;
         let dragOffsetX = 0;
         let dragOffsetY = 0;
 
@@ -7844,22 +7848,32 @@
         } catch (_) {}
 
         themeBtn.addEventListener('mousedown', (e) => {
-          isDragging = true;
+          if (e.button !== 0) return;
+          pointerDown = true;
+          isDragging = false;
           hasMoved = false;
           startX = e.clientX;
           startY = e.clientY;
+          pointerDownAt = Date.now();
           const rect = themeBtn.getBoundingClientRect();
           dragOffsetX = e.clientX - rect.left;
           dragOffsetY = e.clientY - rect.top;
-          themeBtn.style.cursor = 'grabbing';
-          themeBtn.style.transition = 'none';
+          themeBtn.style.cursor = 'grab';
         });
 
         window.addEventListener('mousemove', (e) => {
-          if (!isDragging) return;
+          if (!pointerDown) return;
           const dx = e.clientX - startX;
           const dy = e.clientY - startY;
-          if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
+          const movedEnough = Math.abs(dx) > DRAG_MOVE_PX || Math.abs(dy) > DRAG_MOVE_PX;
+          const heldEnough = (Date.now() - pointerDownAt) >= DRAG_HOLD_MS;
+          if (!isDragging) {
+            if (!movedEnough || !heldEnough) return;
+            isDragging = true;
+            hasMoved = true;
+            themeBtn.style.cursor = 'grabbing';
+            themeBtn.style.transition = 'none';
+          }
 
           const left = e.clientX - dragOffsetX;
           const top = e.clientY - dragOffsetY;
@@ -7872,12 +7886,13 @@
         });
 
         window.addEventListener('mouseup', () => {
-          if (!isDragging) return;
+          const wasDragging = isDragging;
+          pointerDown = false;
           isDragging = false;
           themeBtn.style.cursor = 'grab';
           themeBtn.style.transition = '';
 
-          if (hasMoved) {
+          if (wasDragging && hasMoved) {
             const rect = themeBtn.getBoundingClientRect();
             const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
             const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
