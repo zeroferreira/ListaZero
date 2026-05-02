@@ -4586,87 +4586,7 @@
         return raw.replace(/[^a-zA-Z0-9-]/g, '');
       }
       async function recalculateAllUsers() {
-        const vipNow = window.vipSet || new Set();
-        const z0vipNow = window.z0VipSet || new Set();
-        const playedSnap = await db.collection('playedSongs').get();
-        const playedMap = new Map();
-        playedSnap.forEach(doc => {
-          const day = doc.id;
-          const arr = (doc.data() && doc.data().songs) || [];
-          playedMap.set(day, new Set(arr));
-        });
-        const daySnap = await db.collection('solicitudes').orderBy('day', 'desc').get();
-        const daysSet = new Set();
-        daySnap.forEach(doc => {
-          const d = doc.data().day;
-          if (d) daysSet.add(d);
-        });
-        const days = Array.from(daysSet).sort();
-        const perUser = new Map();
-        const originalNames = {};
-        for (let di = 0; di < days.length; di++) {
-          const day = days[di];
-          const playedSet = playedMap.get(day) || new Set();
-          const q = await db.collection('solicitudes').where('day', '==', day).orderBy('ts', 'asc').get();
-          const distinctUsersDay = new Set();
-          const countedUsersDay = new Set();
-          q.forEach(doc => {
-            const data = doc.data() || {};
-            const rawUser = String(data.usuario || '').trim();
-            const usuario = rawUser.toLowerCase();
-            const cancion = String(data.cancion || '').trim();
-            const artista = String(data.artista || '').trim();
-            const ts = data.ts || null;
-            const horaStr = String(data.hora || '').trim();
-            if (!usuario) return;
-            if (!originalNames[usuario] || (rawUser && rawUser !== usuario)) {
-              originalNames[usuario] = rawUser;
-            }
-            distinctUsersDay.add(usuario);
-            const sid = makeSongId(rawUser, cancion, artista, ts, horaStr);
-            if (playedSet.has(sid)) {
-              const prev = perUser.get(usuario) || { played: 0, activeDays: 0 };
-              prev.played += 1;
-              perUser.set(usuario, prev);
-              countedUsersDay.add(usuario);
-            }
-          });
-          if (distinctUsersDay.size >= 2) {
-            countedUsersDay.forEach(u => {
-              const prev = perUser.get(u) || { played: 0, activeDays: 0 };
-              prev.activeDays += 1;
-              perUser.set(u, prev);
-            });
-          }
-        }
-        const batchUpdates = [];
-        perUser.forEach((val, user) => {
-          // Check VIP status (case-insensitive check against sets assumed to be lowercase or we check both)
-          // Actually vipNow/z0vipNow are sets of strings. How are they populated?
-          // Usually we should check lowercase.
-          // Assuming user is already lowercase here.
-          let isVip = false;
-          // Iterate sets to find case-insensitive match or assume sets are normalized?
-          // Let's assume sets might contain original names.
-          // Best effort check.
-          for (let v of vipNow) { if (v.toLowerCase() === user) { isVip = true; break; } }
-          if (!isVip) { for (let v of z0vipNow) { if (v.toLowerCase() === user) { isVip = true; break; } } }
-          
-          const base = val.played * 25;
-          const vipBonus = isVip ? val.played * 40 : 0;
-          const dailyBonus = val.activeDays * 5;
-          const total = base + vipBonus + dailyBonus;
-          batchUpdates.push({ user, totalPoints: total, displayName: originalNames[user] || user });
-        });
-        for (let i = 0; i < batchUpdates.length; i++) {
-          const u = batchUpdates[i].user;
-          await db.collection('userStats').doc(u).set({
-            totalPoints: batchUpdates[i].totalPoints,
-            displayName: batchUpdates[i].displayName,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
-        }
-        return batchUpdates;
+        return window.runFullAdminPointsRebuild();
       }
 
       // Utilidad para obtener el día (YYYY-MM-DD) desde una entrada con distintos tipos de timestamp
@@ -6111,10 +6031,14 @@
           recalculateUsersBtn.textContent = '🔄 Recalculando...';
           
           try {
-            await recalculateAllUsers();
+            if (typeof window.runFullAdminPointsRebuild === 'function') {
+              await window.runFullAdminPointsRebuild();
+            } else {
+              await recalculateAllUsers();
+            }
           } finally {
             recalculateUsersBtn.disabled = false;
-            recalculateUsersBtn.textContent = '🔄 Recalcular todos los usuarios';
+            recalculateUsersBtn.textContent = 'Recalcular Puntos';
           }
         }
       });
@@ -10398,13 +10322,7 @@
           });
         }
         
-        if (recalculateBtn) {
-          recalculateBtn.addEventListener('click', async () => {
-            if (typeof window.corregirPuntosTodosLosUsuarios === 'function') {
-              await window.corregirPuntosTodosLosUsuarios();
-            }
-          });
-        }
+        // Listener legacy eliminado: el botón de recálculo se maneja en una sola ruta
 
         if (daySelectEl) {
           daySelectEl.addEventListener('change', () => {
@@ -12386,64 +12304,142 @@
         });
       })();
       
-      // Función para corregir puntos de todos los usuarios
-      window.corregirPuntosTodosLosUsuarios = async function() {
-        console.log('🔧 INICIANDO CORRECCIÓN MASIVA DE PUNTOS...');
-        
+      async function collectUsersForAdminRebuild() {
+        const allUsers = new Map();
+        const addUser = (name) => {
+          const raw = String(name || '').trim();
+          if (!raw) return;
+          const key = raw.replace(/^@/, '').toLowerCase();
+          if (!key) return;
+          if (!allUsers.has(key)) allUsers.set(key, raw.replace(/^@/, ''));
+        };
+
         try {
-          // Obtener todos los usuarios únicos
-          const allUsers = new Set();
-          
-          // Usuarios de localStorage
           const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          localSolicitudes.forEach(sol => {
-            if (sol.usuario && sol.usuario.trim()) {
-              allUsers.add(sol.usuario.trim());
-            }
+          localSolicitudes.forEach(sol => addUser(sol?.usuario));
+        } catch (_) {}
+
+        try {
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          Object.values(byDay).flat().forEach(sol => addUser(sol?.usuario));
+        } catch (_) {}
+
+        try {
+          const solicitudesSnap = await db.collection('solicitudes').get();
+          solicitudesSnap.forEach(doc => addUser((doc.data() || {}).usuario));
+        } catch (error) {
+          console.warn('Error obteniendo usuarios desde solicitudes:', error);
+        }
+
+        try {
+          const usersSnap = await db.collection('users').get();
+          usersSnap.forEach(doc => addUser((doc.data() || {}).name || doc.id));
+        } catch (error) {
+          console.warn('Error obteniendo usuarios desde users:', error);
+        }
+
+        try {
+          const statsSnap = await db.collection('userStats').get();
+          statsSnap.forEach(doc => {
+            const d = doc.data() || {};
+            addUser(d.displayName || d.name || doc.id);
           });
-          
-          // Usuarios de Firebase
-          try {
-            const solicitudesSnap = await db.collection('solicitudes').get();
-            solicitudesSnap.forEach(doc => {
-              const { usuario } = doc.data();
-              if (usuario && usuario.trim()) allUsers.add(usuario.trim());
-            });
-          } catch (error) {
-            console.warn('Error obteniendo usuarios de Firebase:', error);
-          }
-          
-          console.log(`📊 Corrigiendo puntos para ${allUsers.size} usuarios...`);
-          
+        } catch (error) {
+          console.warn('Error obteniendo usuarios desde userStats:', error);
+        }
+
+        return Array.from(allUsers.values());
+      }
+
+      async function persistAdminRebuildForUser(username, breakdown) {
+        const normUser = normalizeUserKey(username);
+        const data = getGamificationDataForUser(username) || {};
+        data.points = Math.max(0, Number(breakdown.total || 0));
+        data.xp = data.points;
+        data.level = calculateLevel(data.points);
+        data.autoProcessed = true;
+        saveGamificationDataForUser(data, username);
+
+        await db.collection('userStats').doc(normUser).set({
+          displayName: username,
+          totalPoints: data.points,
+          level: data.level,
+          achievements: Array.isArray(data.achievements) ? data.achievements : [],
+          gamification: data,
+          breakdown: {
+            base: Number(breakdown.base || 0),
+            vip: Number(breakdown.vipBonus || 0),
+            daily: Number(breakdown.dailyBonus || 0),
+            achievements: Number(breakdown.achievements || 0),
+            streak: Number(breakdown.streakBonus || 0),
+            top1: Number(breakdown.top1Bonus || 0),
+            manual: Number(breakdown.manualBonus || 0),
+            likes: Number(breakdown.likesPoints || 0),
+            gifts: Number(breakdown.giftPoints || 0),
+            spent: Number(breakdown.redemptionsSpent || 0)
+          },
+          lastAdminRebuildAt: firebase.firestore.FieldValue.serverTimestamp(),
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
+
+      window.runFullAdminPointsRebuild = async function() {
+        if (window.__ADMIN_POINTS_REBUILD_RUNNING__) {
+          console.warn('⚠️ Ya hay un recálculo masivo en curso.');
+          return { total: 0, corrected: 0, skipped: true };
+        }
+        window.__ADMIN_POINTS_REBUILD_RUNNING__ = true;
+        console.log('🔧 INICIANDO RECÁLCULO MASIVO COMPLETO DE PUNTOS...');
+
+        try {
+          const allUsers = await collectUsersForAdminRebuild();
+          console.log(`📊 Recalculando puntos completos para ${allUsers.size} usuarios...`);
+
           let correctedCount = 0;
+          let processed = 0;
+
           for (const username of allUsers) {
             try {
-              let data = getGamificationDataForUser(username);
-              const oldPoints = data.points;
-              
-              // Validar y corregir datos
-              validateAndFixGamificationData(data, username);
-              
-              // Guardar datos corregidos
-              saveGamificationDataForUser(data, username);
-              
-              if (oldPoints !== data.points) {
+              processed++;
+              console.log(`🔄 [${processed}/${allUsers.size}] Recalculando ${username}...`);
+              const beforeDoc = await fetchBestUserStatsDoc(username).catch(() => null);
+              const beforeTotal = Number(beforeDoc?.data?.totalPoints || 0);
+
+              await analyzeAndGrantPointsForUser(username);
+              const breakdown = await computeUserBreakdown(username, { persistToCloud: false });
+              await persistAdminRebuildForUser(username, breakdown);
+
+              const afterTotal = Number(breakdown?.total || 0);
+              if (Math.abs(afterTotal - beforeTotal) > 0.1) {
                 correctedCount++;
-                console.log(`✅ ${username}: ${oldPoints} → ${data.points} puntos`);
+                console.log(`✅ ${username}: ${beforeTotal} → ${afterTotal} puntos`);
               }
             } catch (error) {
-              console.error(`❌ Error corrigiendo ${username}:`, error);
+              console.error(`❌ Error recalculando ${username}:`, error);
             }
           }
-          
-          console.log(`🎉 CORRECCIÓN COMPLETADA: ${correctedCount} usuarios corregidos de ${allUsers.size} totales`);
-          alert(`Corrección completada: ${correctedCount} usuarios tuvieron sus puntos corregidos.`);
-          
+
+          console.log(`🎉 RECÁLCULO COMPLETO FINALIZADO: ${correctedCount} ajustados de ${allUsers.size}`);
+          showSuccessNotification(`Recálculo completo listo: ${correctedCount} usuarios ajustados de ${allUsers.size}.`);
+
+          try {
+            const currentProfile = getCurrentProfileUser?.();
+            if (currentProfile) await renderPointsBreakdownForUser(currentProfile, true);
+          } catch (_) {}
+
           return { total: allUsers.size, corrected: correctedCount };
         } catch (error) {
-          console.error('Error en corrección masiva:', error);
-          alert('Error durante la corrección. Revisa la consola para más detalles.');
+          console.error('Error en recálculo masivo completo:', error);
+          showErrorNotification('Error durante el recálculo completo de puntos.');
+          throw error;
+        } finally {
+          window.__ADMIN_POINTS_REBUILD_RUNNING__ = false;
         }
+      };
+
+      // Función para corregir puntos de todos los usuarios
+      window.corregirPuntosTodosLosUsuarios = async function() {
+        return window.runFullAdminPointsRebuild();
       };
       
       // Función simple para corrección inmediata (sin async)
@@ -12503,78 +12499,6 @@
           alert('Error durante la corrección. Revisa la consola para más detalles.');
         }
       };
-
-      // Función para recalcular todos los usuarios y corregir inconsistencias
-      async function recalculateAllUsers() {
-        console.log('🔄 INICIANDO RECÁLCULO MASIVO DE USUARIOS...');
-        
-        try {
-          // Obtener todos los usuarios únicos de todas las fuentes
-          const allUsers = new Set();
-          
-          // Usuarios de Firebase
-          try {
-            const usersSnap = await db.collection('users').get();
-            usersSnap.forEach(doc => {
-              const { name } = doc.data();
-              if (name && name.trim()) allUsers.add(name.trim());
-            });
-            
-            const solicitudesSnap = await db.collection('solicitudes').get();
-            solicitudesSnap.forEach(doc => {
-              const { usuario } = doc.data();
-              if (usuario && usuario.trim()) allUsers.add(usuario.trim());
-            });
-          } catch (error) {
-            console.warn('Error obteniendo usuarios de Firebase:', error);
-          }
-          
-          // Usuarios de localStorage
-          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          
-          localSolicitudes.forEach(s => {
-            if (s.usuario && s.usuario.trim()) allUsers.add(s.usuario.trim());
-          });
-          
-          Object.values(byDay).flat().forEach(s => {
-            if (s.usuario && s.usuario.trim()) allUsers.add(s.usuario.trim());
-          });
-          
-          console.log(`👥 Encontrados ${allUsers.size} usuarios únicos para recalcular`);
-          
-          // Recalcular cada usuario
-          let processed = 0;
-          for (const username of allUsers) {
-            try {
-              console.log(`🔄 Recalculando usuario ${++processed}/${allUsers.size}: ${username}`);
-              
-              // Limpiar flag de procesado para forzar recálculo
-              const data = getGamificationDataForUser(username);
-              delete data.autoProcessed;
-              saveGamificationDataForUser(data, username);
-              
-              // Recalcular
-              await analyzeAndGrantPointsForUser(username);
-              
-            } catch (error) {
-              console.error(`Error recalculando usuario ${username}:`, error);
-            }
-          }
-          
-          console.log('✅ RECÁLCULO MASIVO COMPLETADO');
-          showSuccessNotification(`Recálculo completado: ${processed} usuarios procesados`);
-          
-          // Actualizar modal si está abierto
-          if (document.getElementById('gamification-modal').style.display !== 'none') {
-            await renderGamificationModal();
-          }
-          
-        } catch (error) {
-          console.error('Error en recálculo masivo:', error);
-          showErrorNotification('Error durante el recálculo masivo');
-        }
-      }
 
       // ===== FUNCIONES PARA SELECTOR DE USUARIO =====
       
