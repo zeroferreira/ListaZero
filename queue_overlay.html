@@ -874,6 +874,10 @@
       const qm = getQueueMode();
       if (qm === 'recent' || qm === 'manual_recent') {
         pending.sort((a, b) => getReqTimeMs(b) - getReqTimeMs(a));
+      } else if (qm === 'smart') {
+        pending = applySmartOrder(pending);
+      } else if (qm === 'tandas15') {
+        pending = applyTandas15Order(pending);
       } else {
         pending.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
       }
@@ -881,6 +885,27 @@
         pending = applyOrder(pending, currentManualOrder);
       }
       return pending;
+    }
+
+    function getEquivalentManualQueueMode() {
+      const qm = getQueueMode();
+      return (qm === 'recent' || qm === 'manual_recent') ? 'manual_recent' : 'manual_fifo';
+    }
+
+    async function activateManualQueueModeForWidget() {
+      const mode = getEquivalentManualQueueMode();
+      try {
+        window.__QUEUE_MODE__ = mode;
+        localStorage.setItem('queueMode', mode);
+      } catch (_) {}
+      if (!db || !firebase?.firestore?.FieldValue) return;
+      try {
+        await db.collection('system').doc('status').set({
+          queueMode: mode,
+          lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
+          forcedBy: 'widget-mover'
+        }, { merge: true });
+      } catch (_) {}
     }
 
     async function persistManualOrder(orderArr) {
@@ -1040,6 +1065,7 @@
                  
                  // Guardar y renderizar
                  await persistManualOrder([...orderKeys]); // Clonar por seguridad
+                 await activateManualQueueModeForWidget();
                  try { renderQueue(); } catch (_) {}
                  render();
              }
@@ -1068,6 +1094,7 @@
             orderKeys.splice(from, 1);
             orderKeys.splice(to, 0, draggingKey);
             await persistManualOrder(orderKeys.slice());
+            await activateManualQueueModeForWidget();
             try { renderQueue(); } catch (_) {}
             render();
           });
