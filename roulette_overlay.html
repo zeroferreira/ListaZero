@@ -1416,6 +1416,7 @@
     let lastHandledLiveWinnerToken = '';
     let lastHandledLiveCloseToken = '';
     let lastHandledOverlayToggleToken = '';
+    let lastHandledSystemOverlayEnabled = null;
     const rouletteLiveClientId = (() => {
       const key = 'rouletteLiveClientId:v1';
       try {
@@ -1859,10 +1860,18 @@
       applyOverlayEnabled(enabled, { broadcast: false });
       const overlayToggleToken = `overlay_${enabled ? 'on' : 'off'}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       lastHandledOverlayToggleToken = overlayToggleToken;
+      lastHandledSystemOverlayEnabled = enabled;
       publishRouletteLiveState({
         type: 'overlay_toggle',
         overlayEnabled: enabled,
         overlayToggleToken
+      });
+      db.collection('system').doc('status').set({
+        rouletteOverlayEnabled: enabled,
+        lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: 'roulette-overlay'
+      }, { merge: true }).catch(err => {
+        console.warn('No se pudo sincronizar rouletteOverlayEnabled en system/status:', err);
       });
       db.collection('notifications').add({
         type: 'roulette_overlay_toggle',
@@ -1928,6 +1937,15 @@
             }
           });
         });
+
+      db.collection('system').doc('status').onSnapshot(doc => {
+        const data = doc && doc.exists ? (doc.data() || {}) : {};
+        if (typeof data.rouletteOverlayEnabled === 'boolean') {
+          if (lastHandledSystemOverlayEnabled === data.rouletteOverlayEnabled) return;
+          lastHandledSystemOverlayEnabled = data.rouletteOverlayEnabled;
+          applyOverlayEnabled(data.rouletteOverlayEnabled, { broadcast: false });
+        }
+      });
 
       getRouletteLiveRef().onSnapshot(doc => {
         if (!doc.exists) return;

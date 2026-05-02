@@ -574,7 +574,6 @@
       let db = null;
       let liveCodeRequired = false;
       let authReadyPromise = Promise.resolve(true);
-      let statusReadyPromise = Promise.resolve(true);
       try {
         if (typeof firebase !== 'undefined' && firebase.apps) {
           if (!firebase.apps.length) {
@@ -602,21 +601,18 @@
 
       const form = document.getElementById('formulario');
       const usuarioSelect = document.getElementById('usuario-registrado');
-      try {
-        if (db) {
-          statusReadyPromise = new Promise((resolve) => {
-            let done = false;
-            db.collection('system').doc('status').onSnapshot((doc) => {
-              const data = doc && doc.exists ? (doc.data() || {}) : {};
-              const code = String(data.liveCode || '').trim();
-              liveCodeRequired = code.length >= 4;
-              if (!done) { done = true; resolve(true); }
-            }, () => {
-              if (!done) { done = true; resolve(false); }
-            });
-          });
+      async function fetchLiveCodeStatus() {
+        try {
+          if (!db) return { required: false, code: '' };
+          const st = await db.collection('system').doc('status').get();
+          const d = st && st.exists ? (st.data() || {}) : {};
+          const code = String(d.liveCode || '').trim();
+          liveCodeRequired = code.length >= 4;
+          return { required: liveCodeRequired, code };
+        } catch (_) {
+          return { required: false, code: '' };
         }
-      } catch (_) {}
+      }
 
       // Poblar lista de usuarios registrados desde localStorage y Firestore
       async function collectRegisteredUsers() {
@@ -773,14 +769,15 @@
           const usuarioKey = usuario.toLowerCase();
           const badge = await resolveBadgeForUserKey(usuarioKey);
 
-          try {
-            await Promise.race([
-              statusReadyPromise,
-              new Promise((resolve) => setTimeout(() => resolve(false), 3000))
-            ]);
-          } catch (_) {}
-
-          const liveCode = '';
+          let liveCode = '';
+          const liveStatus = await fetchLiveCodeStatus();
+          if (liveStatus.required) {
+            liveCode = String(window.prompt('Ingresa el Código del Live para enviar tu solicitud:') || '').trim();
+            if (!liveCode) {
+              alert('Se requiere Código del Live para enviar la solicitud.');
+              return;
+            }
+          }
 
           // Guardar en Firestore (sincronización multi-dispositivo)
           try {
@@ -808,6 +805,7 @@
                 day: dayKey,
                 ts: firebase.firestore.FieldValue.serverTimestamp(),
                 source: 'web',
+                ...(liveCode ? { liveCode } : {})
               });
 
               // Upsert del usuario para que aparezca en el panel Admin (colección users)
@@ -837,6 +835,11 @@
                   return;
                 }
               } catch (_) {}
+            }
+            const isQuota = msg.toLowerCase().includes('quota') || code === 'resource-exhausted';
+            if (isQuota) {
+              alert('No se pudo enviar: Firestore alcanzó límite temporal de cuota. Intenta de nuevo en unos minutos.');
+              return;
             }
             const isOffline = msg.toLowerCase().includes('offline') || msg.toLowerCase().includes('unavailable') || code === 'unavailable';
             if (isOffline) {
@@ -1016,14 +1019,7 @@
 </html>
 
 <script>
-  // Autenticación: sesión anónima automática para usuarios normales
-  firebase.auth().onAuthStateChanged((user) => {
-    if (!user) {
-      firebase.auth().signInAnonymously().catch((err) => {
-        console.error('Error al autenticar anónimamente:', err);
-      });
-    }
-  });
+  // Autenticación: ya se gestiona arriba durante la inicialización principal.
 
   // ===== FUNCIONES DE GAMIFICACIÓN =====
   
@@ -1273,32 +1269,32 @@
   //   usuario, cancion, artista, day,
   //   ts: firebase.firestore.FieldValue.serverTimestamp(),
   // });
-  (function subscribeAllUserPoints(){
+  (function hydrateCurrentUserPoints(){
     try {
+      const current = String(localStorage.getItem('currentUser') || '').trim().replace(/^@/, '').toLowerCase();
+      if (!current) return;
       const db = firebase.firestore();
-      db.collection('userStats').onSnapshot((snap) => {
+      db.collection('userStats').doc(current).get().then((doc) => {
+        if (!doc || !doc.exists) return;
         const allStr = localStorage.getItem('gamificationData') || '{}';
         const all = JSON.parse(allStr);
-        snap.forEach((doc) => {
-          const u = (doc.id || '').toLowerCase();
-          const d = all[u] || {
-            points: 0,
-            level: 1,
-            xp: 0,
-            achievements: [],
-            streaks: { current: 0, best: 0, lastActivity: null, calendar: {} },
-            stats: { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false }
-          };
-          const data = doc.data() || {};
-          if (typeof data.totalPoints === 'number') d.points = data.totalPoints;
-          if (typeof data.currentStreak === 'number') d.streaks.current = data.currentStreak;
-          if (typeof data.bestStreak === 'number') d.streaks.best = data.bestStreak;
-          if (typeof data.lastActivity === 'string') d.streaks.lastActivity = data.lastActivity;
-          all[u] = d;
-        });
+        const d = all[current] || {
+          points: 0,
+          level: 1,
+          xp: 0,
+          achievements: [],
+          streaks: { current: 0, best: 0, lastActivity: null, calendar: {} },
+          stats: { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false }
+        };
+        const data = doc.data() || {};
+        if (typeof data.totalPoints === 'number') d.points = data.totalPoints;
+        if (typeof data.currentStreak === 'number') d.streaks.current = data.currentStreak;
+        if (typeof data.bestStreak === 'number') d.streaks.best = data.bestStreak;
+        if (typeof data.lastActivity === 'string') d.streaks.lastActivity = data.lastActivity;
+        all[current] = d;
         localStorage.setItem('gamificationData', JSON.stringify(all));
         try { if (typeof updatePointsIndicator === 'function') updatePointsIndicator(); } catch (_){}
-      });
+      }).catch(() => {});
     } catch (_){}
   })();
   window.debugUserPoints = async function(usuario){
