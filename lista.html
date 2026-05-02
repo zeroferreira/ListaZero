@@ -242,6 +242,56 @@
       box-shadow: 0 16px 40px rgba(0,0,0,0.45);
       backdrop-filter: blur(10px);
     }
+
+    #live-indicator {
+      position: fixed;
+      top: calc(env(safe-area-inset-top, 0px) + 12px);
+      right: 14px;
+      left: auto;
+      bottom: auto;
+      z-index: 2147483600;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(17,24,39,0.92);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.16);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+      backdrop-filter: blur(10px);
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      pointer-events: auto;
+    }
+    #live-indicator .live-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #9ca3af;
+      flex: 0 0 auto;
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.10);
+    }
+    #live-indicator .live-text {
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.4px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    #live-indicator.live {
+      background: rgba(220,38,38,0.92);
+      border-color: rgba(255,255,255,0.2);
+    }
+    @media (max-width: 768px) {
+      #live-indicator {
+        top: calc(env(safe-area-inset-top, 0px) + 10px);
+        right: 10px;
+        padding: 9px 11px;
+      }
+    }
   </style>
   
   <!-- Script de sincronización de temas -->
@@ -6814,8 +6864,25 @@
       const daySelect = document.getElementById('day-select');
 
       // const ADMIN_PASS = '...'; // Eliminado por seguridad
-      // Leer estado inicial de localStorage
-      let isAdminLoggedIn = localStorage.getItem('isAdminMode') === 'true'; 
+      function hasActiveAdminSession() {
+        try {
+          return sessionStorage.getItem('isAdminMode') === 'true' ||
+                 sessionStorage.getItem('isAdminAuthenticated') === 'true' ||
+                 window.__ACTIVE_ADMIN_SESSION__ === true;
+        } catch (_) {
+          return window.__ACTIVE_ADMIN_SESSION__ === true;
+        }
+      }
+
+      // Leer estado inicial de sesión admin real del dispositivo actual
+      let isAdminLoggedIn = hasActiveAdminSession();
+      window.__ACTIVE_ADMIN_SESSION__ = isAdminLoggedIn === true;
+      if (!isAdminLoggedIn) {
+        try {
+          localStorage.removeItem('isAdminMode');
+          localStorage.removeItem('isAdminAuthenticated');
+        } catch (_) {}
+      }
       const adminModal = document.getElementById('admin-modal');
       const adminPanel = document.getElementById('admin-panel');
       const adminPassInput = document.getElementById('admin-pass-input');
@@ -6891,6 +6958,11 @@
 
         if (pass === storedHash) {
           isAdminLoggedIn = true;
+          window.__ACTIVE_ADMIN_SESSION__ = true;
+          try {
+            sessionStorage.setItem('isAdminMode', 'true');
+            sessionStorage.setItem('isAdminAuthenticated', 'true');
+          } catch (_) {}
           localStorage.setItem('isAdminMode', 'true'); // Persistir login
           adminModal.hidden = true;
           adminPanel.hidden = false;
@@ -6917,6 +6989,11 @@
 
       adminExitBtn?.addEventListener('click', () => {
           isAdminLoggedIn = false;
+          window.__ACTIVE_ADMIN_SESSION__ = false;
+          try {
+            sessionStorage.removeItem('isAdminMode');
+            sessionStorage.removeItem('isAdminAuthenticated');
+          } catch (_) {}
           localStorage.removeItem('isAdminMode'); // Borrar login
           adminPanel.hidden = true;
           adminModal.hidden = true;
@@ -18473,7 +18550,13 @@
       return null;
     }
     function isAdminMode() {
-      try { return localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true'; } catch (_) { return false; }
+      try {
+        return sessionStorage.getItem('isAdminMode') === 'true' ||
+               sessionStorage.getItem('isAdminAuthenticated') === 'true' ||
+               window.__ACTIVE_ADMIN_SESSION__ === true;
+      } catch (_) {
+        return window.__ACTIVE_ADMIN_SESSION__ === true;
+      }
     }
     function setQueueMode(mode) {
       const m = String(mode || 'default').trim() || 'default';
@@ -18556,8 +18639,9 @@
       } catch (_) { syncUi(); }
       window.addEventListener('storage', function(e) {
         if (!e) return;
-        if (e.key === 'isAdminMode' || e.key === 'isAdminAuthenticated' || e.key === 'queueMode') syncUi();
+        if (e.key === 'queueMode') syncUi();
       });
+      window.addEventListener('focus', syncUi);
       syncUi();
     });
   })();
