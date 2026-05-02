@@ -1415,6 +1415,7 @@
     let lastHandledLiveSpinId = '';
     let lastHandledLiveWinnerToken = '';
     let lastHandledLiveCloseToken = '';
+    let lastHandledOverlayToggleToken = '';
     const rouletteLiveClientId = (() => {
       const key = 'rouletteLiveClientId:v1';
       try {
@@ -1846,17 +1847,23 @@
       renderParticipantsList();
     }
 
-    function applyOverlayEnabled(enabled) {
+    function applyOverlayEnabled(enabled, options = {}) {
       overlayEnabled = enabled;
       document.body.classList.toggle('overlay-disabled', !enabled);
       overlayStatus.textContent = enabled ? 'Estado: ACTIVO' : 'Estado: DESACTIVADO';
       localStorage.setItem('rouletteOverlayEnabled', enabled ? '1' : '0');
-      if (!enabled) resetWinner();
+      if (!enabled) resetWinner({ broadcast: false });
     }
 
     function setOverlayEnabledRemote(enabled) {
-      applyOverlayEnabled(enabled);
-      publishRouletteLiveState({ overlayEnabled: enabled });
+      applyOverlayEnabled(enabled, { broadcast: false });
+      const overlayToggleToken = `overlay_${enabled ? 'on' : 'off'}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      lastHandledOverlayToggleToken = overlayToggleToken;
+      publishRouletteLiveState({
+        type: 'overlay_toggle',
+        overlayEnabled: enabled,
+        overlayToggleToken
+      });
       db.collection('notifications').add({
         type: 'roulette_overlay_toggle',
         enabled,
@@ -1916,7 +1923,7 @@
                 updateParticipants();
                 resetWinner();
               } else if (data.type === 'roulette_overlay_toggle') {
-                applyOverlayEnabled(data.enabled !== false);
+                applyOverlayEnabled(data.enabled !== false, { broadcast: false });
               }
             }
           });
@@ -1928,8 +1935,13 @@
         if (data.themeKey && THEMES[data.themeKey] && data.updatedBy !== rouletteLiveClientId) {
           applyTheme(data.themeKey, { broadcast: false });
         }
+        if (data.type === 'overlay_toggle' && data.overlayToggleToken && data.overlayToggleToken !== lastHandledOverlayToggleToken) {
+          lastHandledOverlayToggleToken = data.overlayToggleToken;
+          applyOverlayEnabled(data.overlayEnabled !== false, { broadcast: false });
+          return;
+        }
         if (typeof data.overlayEnabled === 'boolean' && data.updatedBy !== rouletteLiveClientId) {
-          applyOverlayEnabled(data.overlayEnabled);
+          applyOverlayEnabled(data.overlayEnabled, { broadcast: false });
         }
 
         if (data.updatedBy === rouletteLiveClientId) return;
