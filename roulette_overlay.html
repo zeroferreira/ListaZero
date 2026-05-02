@@ -177,15 +177,15 @@
 
     .participants-list {
       flex: 1;
-      min-height: 120px;
-      max-height: 280px;
+      min-height: 96px;
+      max-height: 250px;
       overflow-y: auto;
-      margin-top: 12px;
-      margin-bottom: 12px;
+      margin-top: 10px;
+      margin-bottom: 10px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      padding-right: 8px;
+      gap: 4px;
+      padding-right: 6px;
       min-width: 0;
       overflow-x: hidden;
     }
@@ -194,17 +194,18 @@
     .participants-list::-webkit-scrollbar-thumb { background: var(--roulette-accent-color); border-radius: 10px; }
 
     .participant-row {
-      background: rgba(255,255,255,0.05);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      padding: 10px 12px;
-      border-radius: 10px;
+      background: transparent;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      padding: 6px 4px 6px 2px;
+      border-radius: 0;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 10px;
       align-items: center;
       transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-      border: 1px solid rgba(255,255,255,0.08);
+      border: none;
+      border-bottom: 1px solid rgba(255,255,255,0.09);
       animation: row-entrance 0.5s ease backwards;
       min-height: auto;
       overflow: hidden;
@@ -216,13 +217,13 @@
     }
 
     .participant-row:hover { 
-      background: rgba(255,255,255,0.12); 
-      border-color: var(--roulette-accent-color);
-      box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+      background: rgba(255,255,255,0.04); 
+      border-bottom-color: rgba(var(--roulette-accent-rgb), 0.75);
+      box-shadow: none;
     }
     .participant-name { 
-      font-weight: 800; 
-      font-size: 13px; 
+      font-weight: 700; 
+      font-size: 12px; 
       letter-spacing: 0.1px;
       text-shadow: none;
       min-width: 0;
@@ -254,19 +255,20 @@
     .participant-actions {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
       flex-shrink: 0;
+      opacity: 0.82;
     }
     .participant-action-select {
-      width: 106px;
-      max-width: 106px;
-      border-radius: 8px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.08);
+      width: 88px;
+      max-width: 88px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.04);
       color: white;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 700;
-      padding: 6px 8px;
+      padding: 4px 8px;
       outline: none;
     }
     .participant-action-select option {
@@ -1135,10 +1137,10 @@
         gap: 4px;
       }
       .participant-action-select {
-        width: 92px;
-        max-width: 92px;
+        width: 82px;
+        max-width: 82px;
         font-size: 10px;
-        padding: 5px 6px;
+        padding: 4px 6px;
       }
       #roulette-spin-btn {
         width: 100px;
@@ -1523,7 +1525,7 @@
       }
     };
 
-    function applyTheme(themeKey) {
+    function applyTheme(themeKey, options = {}) {
       const t = THEMES[themeKey] ? themeKey : 'minimal';
       const T = THEMES[t];
       document.documentElement.style.setProperty('--roulette-accent-color', T.accentColor);
@@ -1537,6 +1539,12 @@
       // Actualizar select de tema
       const sel = document.getElementById('inp-theme');
       if (sel) sel.value = t;
+
+      if (options.broadcast !== false) {
+        publishRouletteLiveState({
+          themeKey: t
+        });
+      }
       
       drawWheel();
     }
@@ -1604,13 +1612,17 @@
     function getWinnerPhotoUrl(name) {
       const accentHex = getComputedStyle(document.documentElement).getPropertyValue('--roulette-accent-color').trim().replace('#', '') || '00e5ff';
       const normalize = (s) => String(s || '').toLowerCase().trim();
-      const winnerReq = allRequests.find(req => {
-        const reqName = normalize(req.displayName || req.usuario || req.user || '');
-        return reqName === normalize(name);
-      });
+      const matching = allRequests
+        .filter(req => {
+          const reqName = normalize(req.displayName || req.usuario || req.user || '');
+          return reqName === normalize(name);
+        })
+        .sort((a, b) => getReqTimeMs(b) - getReqTimeMs(a));
 
-      if (winnerReq && winnerReq.profilePhoto) {
-        return winnerReq.profilePhoto;
+      const winnerReq = matching.find(req => String(req.profilePhoto || req.photoUrl || req.avatar || req.userPhoto || '').trim());
+      const photo = winnerReq ? String(winnerReq.profilePhoto || winnerReq.photoUrl || winnerReq.avatar || winnerReq.userPhoto || '').trim() : '';
+      if (photo) {
+        return photo;
       }
       return 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=' + accentHex + '&color=000&size=150&bold=true';
     }
@@ -1913,6 +1925,9 @@
       getRouletteLiveRef().onSnapshot(doc => {
         if (!doc.exists) return;
         const data = doc.data() || {};
+        if (data.themeKey && THEMES[data.themeKey] && data.updatedBy !== rouletteLiveClientId) {
+          applyTheme(data.themeKey, { broadcast: false });
+        }
         if (typeof data.overlayEnabled === 'boolean' && data.updatedBy !== rouletteLiveClientId) {
           applyOverlayEnabled(data.overlayEnabled);
         }
@@ -2680,7 +2695,7 @@
 
     (function initTheme() {
       const saved = localStorage.getItem('rouletteTheme') || 'minimal';
-      applyTheme(saved);
+      applyTheme(saved, { broadcast: false });
     })();
     if (obsLinkInput) obsLinkInput.value = getObsOverlayUrl();
     applyOverlayEnabled(localStorage.getItem('rouletteOverlayEnabled') !== '0');
