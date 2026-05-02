@@ -1043,7 +1043,8 @@
           if (cleanTrack) track = cleanTrack;
           const result = {
             correctTitle: track.trackName,
-            correctArtist: track.artistName
+            correctArtist: track.artistName,
+            artworkUrl: track.artworkUrl100 ? track.artworkUrl100.replace('100x100', '600x600') : ''
           };
           songDataCache[cacheKey] = result;
           return result;
@@ -1058,7 +1059,12 @@
       if (!data || !data.cancion || !data.artista) return data;
       const info = await fetchSongData(data.artista, data.cancion);
       if (!info) return data;
-      return { ...data, cancion: info.correctTitle || data.cancion, artista: info.correctArtist || data.artista };
+      return {
+        ...data,
+        cancion: info.correctTitle || data.cancion,
+        artista: info.correctArtist || data.artista,
+        artworkUrl: info.artworkUrl || data.artworkUrl || ''
+      };
     }
 
     function addToQueue(data) {
@@ -1081,12 +1087,23 @@
       isProcessing = true; // Bloquear cola mientras se prepara
       isShowing = true;
       currentCardData = data;
+      const artEl = document.getElementById('album-art');
 
       // Rellenar datos básicos
       songEl.textContent = data.cancion || 'Desconocida';
       artistEl.textContent = data.artista || 'Desconocido';
       const uname = data.displayName || data.usuario || 'Anónimo';
       userEl.textContent = uname;
+      if (artEl) {
+        const artUrl = String(data.artworkUrl || '').trim();
+        if (artUrl) {
+          artEl.src = artUrl;
+          artEl.style.display = 'block';
+        } else {
+          artEl.removeAttribute('src');
+          artEl.style.display = 'none';
+        }
+      }
       
       // Intentar obtener foto de perfil de Firestore
       const headerEl = card.querySelector('.header');
