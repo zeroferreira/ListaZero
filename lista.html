@@ -285,11 +285,29 @@
       background: rgba(220,38,38,0.92);
       border-color: rgba(255,255,255,0.2);
     }
+    .live-code-row {
+      width: 100%;
+      min-width: 0;
+      flex-wrap: nowrap;
+    }
+    .live-code-input {
+      min-width: 0;
+      width: 100%;
+      background: #fff;
+      color: #111827;
+    }
     @media (max-width: 768px) {
       #live-indicator {
         top: calc(env(safe-area-inset-top, 0px) + 10px);
         right: 10px;
         padding: 9px 11px;
+      }
+      .live-code-row {
+        flex-direction: column;
+        align-items: stretch !important;
+      }
+      .live-code-row .btn {
+        width: 100%;
       }
     }
   </style>
@@ -1055,7 +1073,7 @@
                   <div class="card-body">
                    
                    <!-- Control Manual de Estado LIVE -->
-                   <div class="live-control-box" style="margin-bottom: 20px; padding: 15px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px;">
+                   <div class="live-control-box live-code-box" style="margin-bottom: 20px; padding: 15px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px;">
                       <h4 style="margin: 0 0 10px 0; font-size: 16px;">🔴 Control Manual de Estado LIVE</h4>
                       <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
                         Usa esto si el bot falla en detectar el estado automáticamente.
@@ -1076,8 +1094,8 @@
                       </p>
                       <div style="display: flex; flex-direction: column; gap: 10px;">
                         <span id="current-live-code-text" style="font-weight: bold; font-size: 14px;">Código Actual: (desactivado)</span>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                          <input id="live-code-admin" type="text" placeholder="Ej: Z0-2026" style="flex: 1; padding: 8px 10px; border: 1px solid rgba(0,0,0,0.15); border-radius: 8px;" />
+                        <div class="live-code-row" style="display: flex; gap: 8px; align-items: center;">
+                          <input id="live-code-admin" type="text" placeholder="Ej: Z0-2026" class="live-code-input" style="flex: 1; padding: 8px 10px; border: 1px solid rgba(0,0,0,0.15); border-radius: 8px;" />
                           <button type="button" id="set-live-code" class="btn btn-sm btn-primary">Guardar</button>
                           <button type="button" id="clear-live-code" class="btn btn-sm btn-outline-secondary">Quitar</button>
                         </div>
@@ -12397,6 +12415,8 @@
 
           let correctedCount = 0;
           let processed = 0;
+          let errorCount = 0;
+          const deltas = [];
 
           for (const username of allUsers) {
             try {
@@ -12410,24 +12430,48 @@
               await persistAdminRebuildForUser(username, breakdown);
 
               const afterTotal = Number(breakdown?.total || 0);
+              const delta = afterTotal - beforeTotal;
+              deltas.push({ username, beforeTotal, afterTotal, delta });
               if (Math.abs(afterTotal - beforeTotal) > 0.1) {
                 correctedCount++;
                 console.log(`✅ ${username}: ${beforeTotal} → ${afterTotal} puntos`);
               }
             } catch (error) {
+              errorCount++;
               console.error(`❌ Error recalculando ${username}:`, error);
             }
           }
 
+          const topChanges = deltas
+            .filter(item => Math.abs(item.delta) > 0.1)
+            .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+            .slice(0, 5);
+          const reportLines = [
+            `Procesados: ${allUsers.size}`,
+            `Ajustados: ${correctedCount}`,
+            `Errores: ${errorCount}`
+          ];
+          if (topChanges.length) {
+            reportLines.push('Mayores cambios:');
+            topChanges.forEach(item => {
+              const sign = item.delta > 0 ? '+' : '';
+              reportLines.push(`- ${item.username}: ${item.beforeTotal} → ${item.afterTotal} (${sign}${item.delta})`);
+            });
+          }
+
           console.log(`🎉 RECÁLCULO COMPLETO FINALIZADO: ${correctedCount} ajustados de ${allUsers.size}`);
-          showSuccessNotification(`Recálculo completo listo: ${correctedCount} usuarios ajustados de ${allUsers.size}.`);
+          console.table(deltas);
+          showSuccessNotification(`Recálculo completo listo: ${correctedCount} usuarios ajustados de ${allUsers.size}. Errores: ${errorCount}.`);
+          setTimeout(() => {
+            try { alert(reportLines.join('\n')); } catch (_) {}
+          }, 50);
 
           try {
             const currentProfile = getCurrentProfileUser?.();
             if (currentProfile) await renderPointsBreakdownForUser(currentProfile, true);
           } catch (_) {}
 
-          return { total: allUsers.size, corrected: correctedCount };
+          return { total: allUsers.size, corrected: correctedCount, errors: errorCount, deltas };
         } catch (error) {
           console.error('Error en recálculo masivo completo:', error);
           showErrorNotification('Error durante el recálculo completo de puntos.');
@@ -12440,64 +12484,6 @@
       // Función para corregir puntos de todos los usuarios
       window.corregirPuntosTodosLosUsuarios = async function() {
         return window.runFullAdminPointsRebuild();
-      };
-      
-      // Función simple para corrección inmediata (sin async)
-      window.corregirPuntosRapido = function() {
-        console.log('⚡ CORRECCIÓN RÁPIDA DE PUNTOS...');
-        
-        try {
-          // Obtener todos los usuarios de localStorage
-          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          const allUsers = new Set();
-          
-          localSolicitudes.forEach(sol => {
-            if (sol.usuario && sol.usuario.trim()) {
-              allUsers.add(sol.usuario.trim());
-            }
-          });
-          
-          console.log(`📊 Corrigiendo puntos para ${allUsers.size} usuarios...`);
-          
-          let correctedCount = 0;
-          for (const username of allUsers) {
-            try {
-              let data = getGamificationDataForUser(username);
-              const oldPoints = data.points;
-              
-              // Calcular puntos correctos basado en canciones
-              const userSongs = localSolicitudes.filter(s => s.usuario === username);
-              const songPoints = userSongs.length * 25; // 25 puntos por canción
-              
-              // Calcular puntos de logros
-              const achievementPoints = data.achievements.reduce((total, achievementId) => {
-                const achievement = ACHIEVEMENTS.find(a => a.id === achievementId);
-                return achievement ? total + achievement.points : total;
-              }, 0);
-              
-              const correctTotalPoints = songPoints + achievementPoints;
-              
-              // Solo corregir si hay diferencia
-              if (Math.abs(data.points - correctTotalPoints) > 5) {
-                data.points = correctTotalPoints;
-                data.xp = correctTotalPoints;
-                saveGamificationDataForUser(data, username);
-                correctedCount++;
-                console.log(`✅ ${username}: ${oldPoints} → ${data.points} puntos`);
-              }
-            } catch (error) {
-              console.error(`❌ Error corrigiendo ${username}:`, error);
-            }
-          }
-          
-          console.log(`🎉 CORRECCIÓN COMPLETADA: ${correctedCount} usuarios corregidos`);
-          alert(`Corrección completada: ${correctedCount} usuarios tuvieron sus puntos corregidos.`);
-          
-          return { total: allUsers.size, corrected: correctedCount };
-        } catch (error) {
-          console.error('Error en corrección rápida:', error);
-          alert('Error durante la corrección. Revisa la consola para más detalles.');
-        }
       };
 
       // ===== FUNCIONES PARA SELECTOR DE USUARIO =====
