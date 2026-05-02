@@ -927,6 +927,51 @@
       try { renderWidgetMoverList(); } catch (_) {}
     }
 
+    function flashReorderElement(el, options = {}) {
+      if (!el) return;
+      const duration = Number(options.duration) || 900;
+      const useInner = options.useInner !== false;
+      const target = useInner ? (el.querySelector('.queue-item-inner') || el) : el;
+      const prevTransition = target.style.transition || '';
+      const prevBoxShadow = target.style.boxShadow || '';
+      const prevOutline = target.style.outline || '';
+      const prevBackground = target.style.background || '';
+      const prevTransform = target.style.transform || '';
+
+      target.style.transition = 'box-shadow 0.18s ease, outline 0.18s ease, background 0.18s ease, transform 0.18s ease';
+      target.style.boxShadow = '0 0 0 2px rgba(0,229,255,0.75), 0 0 28px rgba(0,229,255,0.32)';
+      target.style.outline = '1px solid rgba(0,229,255,0.95)';
+      target.style.background = options.background || 'rgba(0,229,255,0.12)';
+      target.style.transform = 'scale(1.01)';
+
+      clearTimeout(target.__reorderFlashTimer);
+      target.__reorderFlashTimer = setTimeout(() => {
+        target.style.boxShadow = prevBoxShadow;
+        target.style.outline = prevOutline;
+        target.style.background = prevBackground;
+        target.style.transform = prevTransform;
+        target.style.transition = prevTransition;
+      }, duration);
+    }
+
+    function highlightReorderedKey(key) {
+      if (!key) return;
+      try {
+        const widgetRows = Array.from(document.querySelectorAll('#widget-mover-list [data-key]'));
+        const widgetRow = widgetRows.find(el => String(el.dataset.key || '') === String(key));
+        if (widgetRow) flashReorderElement(widgetRow, { useInner: false, background: 'rgba(0,229,255,0.10)' });
+      } catch (_) {}
+
+      try {
+        const queueCards = Array.from(document.querySelectorAll('#queue-container .queue-item'));
+        const queueCard = queueCards.find(el => {
+          const elKey = String(el.dataset.docId || el.dataset.songId || '');
+          return elKey === String(key);
+        });
+        if (queueCard) flashReorderElement(queueCard, { useInner: true, background: 'rgba(0,229,255,0.10)' });
+      } catch (_) {}
+    }
+
     function renderWidgetMoverList() {
       const list = document.getElementById('widget-mover-list');
       if (!list) return;
@@ -1068,6 +1113,7 @@
                  await activateManualQueueModeForWidget();
                  try { renderQueue(); } catch (_) {}
                  render();
+                 highlightReorderedKey(item);
              }
           };
 
@@ -1102,6 +1148,7 @@
             await activateManualQueueModeForWidget();
             try { renderQueue(); } catch (_) {}
             render();
+            highlightReorderedKey(draggingKey);
           });
 
           list.appendChild(row);
@@ -3082,6 +3129,7 @@
       if (e.stopPropagation) {
         e.stopPropagation();
       }
+      const movedKey = String(dragSrcEl?.dataset?.docId || dragSrcEl?.dataset?.songId || '').trim();
       if (dragSrcEl !== this) {
         // Swap elements
         const container = document.getElementById('queue-container');
@@ -3096,6 +3144,7 @@
         }
         
         await saveOrder(); // Save new order to Firebase
+        highlightReorderedKey(movedKey);
       }
       return false;
     }
@@ -3114,6 +3163,7 @@
       // Encontrar la tarjeta padre
       const card = e.target.closest('.queue-item');
       if (!card) return;
+      const movedKey = String(card.dataset.docId || card.dataset.songId || '').trim();
       
       const container = document.getElementById('queue-container');
       // Mover al principio del contenedor (antes del primer hijo)
@@ -3121,13 +3171,7 @@
       
       // Guardar el nuevo orden
       await saveOrder();
-      
-      // Feedback visual
-      card.style.transition = 'background-color 0.3s';
-      card.style.backgroundColor = 'rgba(34, 197, 94, 0.2)';
-      setTimeout(() => {
-          card.style.backgroundColor = '';
-      }, 500);
+      highlightReorderedKey(movedKey);
     }
 
     function addDragEvents(card) {
