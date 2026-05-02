@@ -614,6 +614,93 @@
         }
       }
 
+      function toFirestoreValue(value) {
+        if (value === null || typeof value === 'undefined') return { nullValue: null };
+        if (typeof value === 'string') return { stringValue: value };
+        if (typeof value === 'boolean') return { booleanValue: value };
+        if (typeof value === 'number') {
+          return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+        }
+        if (Array.isArray(value)) {
+          return { arrayValue: { values: value.map(toFirestoreValue) } };
+        }
+        if (typeof value === 'object') {
+          const fields = {};
+          Object.entries(value).forEach(([k, v]) => {
+            fields[k] = toFirestoreValue(v);
+          });
+          return { mapValue: { fields } };
+        }
+        return { stringValue: String(value) };
+      }
+
+      async function getAuthTokenForRest() {
+        if (firebase?.auth) {
+          if (!firebase.auth().currentUser) {
+            const ok = await Promise.race([
+              authReadyPromise,
+              new Promise((resolve) => setTimeout(() => resolve(false), 6000))
+            ]);
+            if (!ok || !firebase.auth().currentUser) {
+              throw new Error('AUTH_TOKEN_UNAVAILABLE');
+            }
+          }
+          return firebase.auth().currentUser.getIdToken();
+        }
+        throw new Error('AUTH_NOT_AVAILABLE');
+      }
+
+      async function commitFirestoreWritesViaRest(writes) {
+        const token = await getAuthTokenForRest();
+        const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents:commit`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ writes })
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`REST_COMMIT_FAILED:${res.status}:${text}`);
+        }
+        return res.json().catch(() => ({}));
+      }
+
+      async function addSolicitudViaRest(payload) {
+        const docId = `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const name = `projects/${firebaseConfig.projectId}/databases/(default)/documents/solicitudes/${docId}`;
+        const fields = { ...payload };
+        delete fields.ts;
+        await commitFirestoreWritesViaRest([
+          {
+            update: {
+              name,
+              fields: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, toFirestoreValue(v)]))
+            },
+            updateTransforms: [
+              { fieldPath: 'ts', setToServerValue: 'REQUEST_TIME' }
+            ]
+          }
+        ]);
+        return docId;
+      }
+
+      async function upsertUserViaRest(usuario) {
+        const name = `projects/${firebaseConfig.projectId}/databases/(default)/documents/users/${String(usuario || '').trim().toLowerCase()}`;
+        await commitFirestoreWritesViaRest([
+          {
+            update: {
+              name,
+              fields: {
+                name: { stringValue: usuario }
+              }
+            }
+          }
+        ]);
+      }
+
       // Poblar lista de usuarios registrados desde localStorage y Firestore
       async function collectRegisteredUsers() {
         const set = new Set();
@@ -767,6 +854,19 @@
           }
 
           // Guardar en Firestore (sincronización multi-dispositivo)
+          const solicitudPayload = {
+            usuario,
+            displayName: usuario,
+            badge: badge || '',
+            cancion,
+            artista,
+            day: dayKey,
+            ts: firebase.firestore.FieldValue.serverTimestamp(),
+            source: 'web',
+            ...(liveCode ? { liveCode } : {})
+          };
+          let remotePersisted = false;
+
           try {
             if (db) {
               if (firebase?.auth) {
@@ -784,17 +884,7 @@
               }
 
               await Promise.race([
-                db.collection('solicitudes').add({
-                  usuario,
-                  displayName: usuario,
-                  badge: badge || '',
-                  cancion,
-                  artista,
-                  day: dayKey,
-                  ts: firebase.firestore.FieldValue.serverTimestamp(),
-                  source: 'web',
-                  ...(liveCode ? { liveCode } : {})
-                }),
+                db.collection('solicitudes').add(solicitudPayload),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('WRITE_TIMEOUT')), 8000))
               ]);
 
@@ -805,6 +895,7 @@
                   .set({ name: usuario }, { merge: true }),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('USERS_WRITE_TIMEOUT')), 5000))
               ]);
+              remotePersisted = true;
             } else {
                console.warn('Firestore no disponible. Se guardó localmente.');
                // Opcional: Podríamos mostrar un toast o aviso no bloqueante
@@ -830,14 +921,40 @@
               } catch (_) {}
             }
             const isTimeout = msg.includes('WRITE_TIMEOUT') || msg.includes('USERS_WRITE_TIMEOUT');
-            if (isTimeout) {
-              alert('No se pudo enviar a tiempo. La conexión con Firestore está lenta o saturada. Intenta de nuevo en unos minutos.');
-              return;
-            }
             const isQuota = msg.toLowerCase().includes('quota') || code === 'resource-exhausted';
-            if (isQuota) {
-              alert('No se pudo enviar: Firestore alcanzó límite temporal de cuota. Intenta de nuevo en unos minutos.');
-              return;
+            const shouldTryRestFallback = isTimeout || isQuota;
+            if (shouldTryRestFallback) {
+              try {
+                await addSolicitudViaRest(solicitudPayload);
+                await upsertUserViaRest(usuario);
+                remotePersisted = true;
+              } catch (restErr) {
+                console.error('Error en fallback REST de solicitud:', restErr);
+                const restMsg = String(restErr && restErr.message ? restErr.message : restErr);
+                if (restMsg.includes('PERMISSION_DENIED') || restMsg.includes('Código del Live')) {
+                  alert('Tu solicitud no se pudo enviar por validación de acceso. Revisa el Código del Live.');
+                  return;
+                }
+                if (isTimeout) {
+                  alert('No se pudo enviar a tiempo. La conexión con Firestore está lenta o saturada. Intenta de nuevo en unos minutos.');
+                  return;
+                }
+                if (isQuota) {
+                  alert('No se pudo enviar: Firestore alcanzó límite temporal de cuota. Intenta de nuevo en unos minutos.');
+                  return;
+                }
+                alert('Tu solicitud no se pudo enviar. Intenta de nuevo.');
+                return;
+              }
+            } else {
+              if (isTimeout) {
+                alert('No se pudo enviar a tiempo. La conexión con Firestore está lenta o saturada. Intenta de nuevo en unos minutos.');
+                return;
+              }
+              if (isQuota) {
+                alert('No se pudo enviar: Firestore alcanzó límite temporal de cuota. Intenta de nuevo en unos minutos.');
+                return;
+              }
             }
             const isOffline = msg.toLowerCase().includes('offline') || msg.toLowerCase().includes('unavailable') || code === 'unavailable';
             if (isOffline) {
@@ -847,6 +964,7 @@
             alert('Tu solicitud no se pudo enviar. Intenta de nuevo.');
             return;
           }
+          if (db && !remotePersisted) return;
 
           // Guardar en localStorage (compatibilidad/local)
           try {

@@ -1611,6 +1611,60 @@
       return db.collection('sessionData').doc('rouletteLive');
     }
 
+    function toFirestoreValue(value) {
+      if (value === null || typeof value === 'undefined') return { nullValue: null };
+      if (typeof value === 'string') return { stringValue: value };
+      if (typeof value === 'boolean') return { booleanValue: value };
+      if (typeof value === 'number') {
+        return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+      }
+      if (Array.isArray(value)) {
+        return { arrayValue: { values: value.map(toFirestoreValue) } };
+      }
+      if (typeof value === 'object') {
+        const fields = {};
+        Object.entries(value).forEach(([k, v]) => {
+          fields[k] = toFirestoreValue(v);
+        });
+        return { mapValue: { fields } };
+      }
+      return { stringValue: String(value) };
+    }
+
+    async function commitFirestoreWritesViaRest(writes) {
+      const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents:commit`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ writes })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`REST_COMMIT_FAILED:${res.status}:${text}`);
+      }
+      return res.json().catch(() => ({}));
+    }
+
+    async function setDocumentViaRest(collectionName, docId, data, serverTimestampFields = []) {
+      const name = `projects/${firebaseConfig.projectId}/databases/(default)/documents/${collectionName}/${docId}`;
+      const fields = { ...data };
+      serverTimestampFields.forEach((field) => delete fields[field]);
+      await commitFirestoreWritesViaRest([
+        {
+          update: {
+            name,
+            fields: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, toFirestoreValue(v)]))
+          },
+          updateTransforms: serverTimestampFields.map((field) => ({
+            fieldPath: field,
+            setToServerValue: 'REQUEST_TIME'
+          }))
+        }
+      ]);
+    }
+
     async function pollSystemStatusOnce() {
       try {
         const doc = await db.collection('system').doc('status').get();
@@ -1706,6 +1760,16 @@
         }, { merge: true });
       } catch (err) {
         console.error('Error publicando estado live de ruleta:', err);
+        try {
+          await setDocumentViaRest('sessionData', 'rouletteLive', {
+            ...payload,
+            overlayEnabled,
+            updatedBy: rouletteLiveClientId,
+            updatedAt: true
+          }, ['updatedAt']);
+        } catch (restErr) {
+          console.error('Error publicando estado live de ruleta por REST:', restErr);
+        }
       }
     }
 
@@ -1936,8 +2000,17 @@
         rouletteOverlayEnabled: enabled,
         lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
         updatedBy: 'roulette-overlay'
-      }, { merge: true }).catch(err => {
+      }, { merge: true }).catch(async err => {
         console.warn('No se pudo sincronizar rouletteOverlayEnabled en system/status:', err);
+        try {
+          await setDocumentViaRest('system', 'status', {
+            rouletteOverlayEnabled: enabled,
+            updatedBy: 'roulette-overlay',
+            lastUpdate: true
+          }, ['lastUpdate']);
+        } catch (restErr) {
+          console.warn('Tampoco se pudo sincronizar rouletteOverlayEnabled por REST:', restErr);
+        }
       });
       db.collection('notifications').add({
         type: 'roulette_overlay_toggle',
