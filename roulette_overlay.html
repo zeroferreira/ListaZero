@@ -1611,6 +1611,72 @@
       return db.collection('sessionData').doc('rouletteLive');
     }
 
+    async function pollSystemStatusOnce() {
+      try {
+        const doc = await db.collection('system').doc('status').get();
+        const data = doc && doc.exists ? (doc.data() || {}) : {};
+        if (typeof data.rouletteOverlayEnabled === 'boolean') {
+          if (lastHandledSystemOverlayEnabled !== data.rouletteOverlayEnabled) {
+            lastHandledSystemOverlayEnabled = data.rouletteOverlayEnabled;
+            applyOverlayEnabled(data.rouletteOverlayEnabled, { broadcast: false });
+          }
+        }
+      } catch (_) {}
+    }
+
+    async function pollRouletteLiveOnce() {
+      try {
+        const doc = await getRouletteLiveRef().get();
+        if (!doc.exists) return;
+        const data = doc.data() || {};
+        if (data.themeKey && THEMES[data.themeKey] && data.updatedBy !== rouletteLiveClientId) {
+          applyTheme(data.themeKey, { broadcast: false });
+        }
+        if (data.type === 'overlay_toggle' && data.overlayToggleToken && data.overlayToggleToken !== lastHandledOverlayToggleToken) {
+          lastHandledOverlayToggleToken = data.overlayToggleToken;
+          applyOverlayEnabled(data.overlayEnabled !== false, { broadcast: false });
+          return;
+        }
+        if (typeof data.overlayEnabled === 'boolean' && data.updatedBy !== rouletteLiveClientId) {
+          applyOverlayEnabled(data.overlayEnabled, { broadcast: false });
+        }
+        if (data.updatedBy === rouletteLiveClientId) return;
+        if (data.type === 'spin' && data.spin && data.spin.spinId && data.spin.spinId !== lastHandledLiveSpinId) {
+          lastHandledLiveSpinId = data.spin.spinId;
+          spinWheel({
+            payload: data.spin,
+            broadcast: false,
+            sideEffects: false,
+            autoFollowSpinAgain: false,
+            applyWinnerRemoval: false
+          });
+          return;
+        }
+        if (data.type === 'winner' && data.winner && data.winner.token && data.winner.token !== lastHandledLiveWinnerToken) {
+          if (isSpinning && lastHandledLiveSpinId && data.winner.token === `winner_${lastHandledLiveSpinId}`) return;
+          lastHandledLiveWinnerToken = data.winner.token;
+          if (Array.isArray(data.winner.entries) && data.winner.entries.length) {
+            liveSpinEntriesOverride = data.winner.entries.slice();
+          }
+          if (Number.isFinite(data.winner.finalRotation)) {
+            currentRotation = data.winner.finalRotation;
+            drawWheel(data.winner.entries || undefined);
+          }
+          showWinner(data.winner.name, {
+            sideEffects: false,
+            broadcast: false,
+            photoUrl: data.winner.photoUrl || '',
+            quietIfSame: true
+          });
+          return;
+        }
+        if (data.type === 'idle' && data.closeToken && data.closeToken !== lastHandledLiveCloseToken) {
+          lastHandledLiveCloseToken = data.closeToken;
+          resetWinner({ broadcast: false });
+        }
+      } catch (_) {}
+    }
+
     function getWinnerPhotoUrl(name) {
       const accentHex = getComputedStyle(document.documentElement).getPropertyValue('--roulette-accent-color').trim().replace('#', '') || '00e5ff';
       const normalize = (s) => String(s || '').toLowerCase().trim();
@@ -1938,70 +2004,10 @@
           });
         });
 
-      db.collection('system').doc('status').onSnapshot(doc => {
-        const data = doc && doc.exists ? (doc.data() || {}) : {};
-        if (typeof data.rouletteOverlayEnabled === 'boolean') {
-          if (lastHandledSystemOverlayEnabled === data.rouletteOverlayEnabled) return;
-          lastHandledSystemOverlayEnabled = data.rouletteOverlayEnabled;
-          applyOverlayEnabled(data.rouletteOverlayEnabled, { broadcast: false });
-        }
-      });
-
-      getRouletteLiveRef().onSnapshot(doc => {
-        if (!doc.exists) return;
-        const data = doc.data() || {};
-        if (data.themeKey && THEMES[data.themeKey] && data.updatedBy !== rouletteLiveClientId) {
-          applyTheme(data.themeKey, { broadcast: false });
-        }
-        if (data.type === 'overlay_toggle' && data.overlayToggleToken && data.overlayToggleToken !== lastHandledOverlayToggleToken) {
-          lastHandledOverlayToggleToken = data.overlayToggleToken;
-          applyOverlayEnabled(data.overlayEnabled !== false, { broadcast: false });
-          return;
-        }
-        if (typeof data.overlayEnabled === 'boolean' && data.updatedBy !== rouletteLiveClientId) {
-          applyOverlayEnabled(data.overlayEnabled, { broadcast: false });
-        }
-
-        if (data.updatedBy === rouletteLiveClientId) return;
-
-        if (data.type === 'spin' && data.spin && data.spin.spinId && data.spin.spinId !== lastHandledLiveSpinId) {
-          lastHandledLiveSpinId = data.spin.spinId;
-          spinWheel({
-            payload: data.spin,
-            broadcast: false,
-            sideEffects: false,
-            autoFollowSpinAgain: false,
-            applyWinnerRemoval: false
-          });
-          return;
-        }
-
-        if (data.type === 'winner' && data.winner && data.winner.token && data.winner.token !== lastHandledLiveWinnerToken) {
-          if (isSpinning && lastHandledLiveSpinId && data.winner.token === `winner_${lastHandledLiveSpinId}`) {
-            return;
-          }
-          lastHandledLiveWinnerToken = data.winner.token;
-          if (Array.isArray(data.winner.entries) && data.winner.entries.length) {
-            liveSpinEntriesOverride = data.winner.entries.slice();
-          }
-          if (Number.isFinite(data.winner.finalRotation)) {
-            currentRotation = data.winner.finalRotation;
-            drawWheel(data.winner.entries || undefined);
-          }
-          showWinner(data.winner.name, {
-            sideEffects: false,
-            broadcast: false,
-            photoUrl: data.winner.photoUrl || '',
-            quietIfSame: true
-          });
-          return;
-        }
-
-        if (data.type === 'idle' && data.closeToken && data.closeToken !== lastHandledLiveCloseToken) {
-          lastHandledLiveCloseToken = data.closeToken;
-          resetWinner({ broadcast: false });
-        }
-      });
+      pollSystemStatusOnce();
+      pollRouletteLiveOnce();
+      setInterval(pollSystemStatusOnce, 1800);
+      setInterval(pollRouletteLiveOnce, 1200);
     }
 
     function updateParticipants() {

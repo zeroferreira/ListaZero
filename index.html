@@ -632,19 +632,6 @@
           });
         } catch (e) {}
         
-        // 2. Intentar obtener desde Firestore (asincrono)
-        try {
-           if (db) {
-             // Desde userStats
-             const statsSnap = await db.collection('userStats').get();
-             statsSnap.forEach(doc => { if (doc.id) set.add(doc.id); });
-             
-             // Desde users (si existe)
-             const usersSnap = await db.collection('users').orderBy('name').get();
-             usersSnap.forEach(doc => { const d=doc.data(); if (d.name) set.add(d.name); });
-           }
-        } catch (e) { console.warn('Error fetching users from Firestore:', e); }
-
         const arr = Array.from(set);
         arr.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
         return arr;
@@ -796,22 +783,28 @@
                 }
               }
 
-              await db.collection('solicitudes').add({
-                usuario,
-                displayName: usuario,
-                badge: badge || '',
-                cancion,
-                artista,
-                day: dayKey,
-                ts: firebase.firestore.FieldValue.serverTimestamp(),
-                source: 'web',
-                ...(liveCode ? { liveCode } : {})
-              });
+              await Promise.race([
+                db.collection('solicitudes').add({
+                  usuario,
+                  displayName: usuario,
+                  badge: badge || '',
+                  cancion,
+                  artista,
+                  day: dayKey,
+                  ts: firebase.firestore.FieldValue.serverTimestamp(),
+                  source: 'web',
+                  ...(liveCode ? { liveCode } : {})
+                }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('WRITE_TIMEOUT')), 8000))
+              ]);
 
               // Upsert del usuario para que aparezca en el panel Admin (colección users)
-              await db.collection('users')
-                .doc(usuario.toLowerCase())
-                .set({ name: usuario }, { merge: true });
+              await Promise.race([
+                db.collection('users')
+                  .doc(usuario.toLowerCase())
+                  .set({ name: usuario }, { merge: true }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('USERS_WRITE_TIMEOUT')), 5000))
+              ]);
             } else {
                console.warn('Firestore no disponible. Se guardó localmente.');
                // Opcional: Podríamos mostrar un toast o aviso no bloqueante
@@ -835,6 +828,11 @@
                   return;
                 }
               } catch (_) {}
+            }
+            const isTimeout = msg.includes('WRITE_TIMEOUT') || msg.includes('USERS_WRITE_TIMEOUT');
+            if (isTimeout) {
+              alert('No se pudo enviar a tiempo. La conexión con Firestore está lenta o saturada. Intenta de nuevo en unos minutos.');
+              return;
             }
             const isQuota = msg.toLowerCase().includes('quota') || code === 'resource-exhausted';
             if (isQuota) {
