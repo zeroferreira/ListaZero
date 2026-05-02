@@ -1079,10 +1079,15 @@
 
           row.addEventListener('dragstart', (e) => {
             draggingKey = key;
-            try { e.dataTransfer.effectAllowed = 'move'; } catch (_) {}
+            try {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.dropEffect = 'move';
+              e.dataTransfer.setData('text/plain', key);
+            } catch (_) {}
           });
           row.addEventListener('dragover', (e) => {
             e.preventDefault();
+            try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
           });
           row.addEventListener('drop', async (e) => {
             e.preventDefault();
@@ -3073,7 +3078,7 @@
       this.classList.remove('over');
     }
 
-    function handleDrop(e) {
+    async function handleDrop(e) {
       if (e.stopPropagation) {
         e.stopPropagation();
       }
@@ -3090,7 +3095,7 @@
             container.insertBefore(dragSrcEl, this);
         }
         
-        saveOrder(); // Save new order to Firebase
+        await saveOrder(); // Save new order to Firebase
       }
       return false;
     }
@@ -3103,7 +3108,7 @@
       });
     }
 
-    function moveToTop(e) {
+    async function moveToTop(e) {
       e.stopPropagation();
       e.preventDefault();
       // Encontrar la tarjeta padre
@@ -3115,7 +3120,7 @@
       container.insertBefore(card, container.firstChild);
       
       // Guardar el nuevo orden
-      saveOrder();
+      await saveOrder();
       
       // Feedback visual
       card.style.transition = 'background-color 0.3s';
@@ -3149,17 +3154,17 @@
     }
 
     // Guardar orden manual en Firebase
-    function saveOrder() {
+    async function saveOrder() {
         const container = document.getElementById('queue-container');
         const items = Array.from(container.querySelectorAll('.queue-item'));
-        const newOrder = items.map(el => el.dataset.songId).filter(id => id);
+        const newOrder = items.map(el => el.dataset.docId || el.dataset.songId).filter(id => id);
         
         if (newOrder.length > 0) {
             console.log("Saving manual order:", newOrder);
-            db.collection('manualOrders').doc(currentDay).set({
-                order: newOrder,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+            await persistManualOrder(newOrder);
+            await activateManualQueueModeForWidget();
+            try { renderQueue(); } catch (_) {}
+            try { renderWidgetMoverList(); } catch (_) {}
         }
     }
 
