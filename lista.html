@@ -296,6 +296,29 @@
       background: #fff;
       color: #111827;
     }
+    .recalc-report-box {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.06);
+      border: 1px solid rgba(15, 23, 42, 0.10);
+      color: #0f172a;
+    }
+    .recalc-report-box[hidden] {
+      display: none !important;
+    }
+    .recalc-report-title {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .recalc-report-text {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
     @media (max-width: 768px) {
       #live-indicator {
         top: calc(env(safe-area-inset-top, 0px) + 10px);
@@ -1115,6 +1138,10 @@
                         <span class="btn-icon">🗑️</span>
                         <span class="btn-text">Borrar Día</span>
                       </button>
+                   </div>
+                   <div id="recalc-report-box" class="recalc-report-box" hidden>
+                     <h4 class="recalc-report-title">Reporte del recálculo</h4>
+                     <p id="recalc-report-text" class="recalc-report-text">Aquí aparecerá el resultado del recálculo.</p>
                    </div>
                    
                    <div class="dj-control-wrapper">
@@ -5983,6 +6010,8 @@
       const wipeAllCancelBtn = document.getElementById('wipe-all-cancel');
       const wipeAllConfirmBtn = document.getElementById('wipe-all-confirm');
       const recalculateUsersBtn = document.getElementById('recalculate-users');
+      const recalcReportBox = document.getElementById('recalc-report-box');
+      const recalcReportText = document.getElementById('recalc-report-text');
       const diagnoseDataBtn = document.getElementById('diagnose-data-btn');
 
       wipeAllBtn?.addEventListener('click', () => {
@@ -6036,17 +6065,16 @@
 
       // Event listener para recálculo de usuarios
       recalculateUsersBtn?.addEventListener('click', async () => {
-        const confirmed = await showConfirmation({
-          icon: '🔄',
-          title: 'Recalcular Usuarios',
-          message: '¿Confirmas que quieres recalcular todos los usuarios? Esto corregirá puntos e insignias inconsistentes.',
-          confirmText: 'Sí, Recalcular',
-          cancelText: 'Cancelar'
-        });
+        const confirmed = window.confirm('¿Confirmas que quieres recalcular todos los usuarios? Esto reconstruirá puntos, likes, regalos, rachas, logros y ajustes.');
         
         if (confirmed) {
           recalculateUsersBtn.disabled = true;
-          recalculateUsersBtn.textContent = '🔄 Recalculando...';
+          const btnText = recalculateUsersBtn.querySelector('.btn-text');
+          if (btnText) btnText.textContent = 'Recalculando...';
+          if (recalcReportBox && recalcReportText) {
+            recalcReportBox.hidden = false;
+            recalcReportText.textContent = 'Procesando recálculo masivo... esto puede tardar un poco.';
+          }
           
           try {
             if (typeof window.runFullAdminPointsRebuild === 'function') {
@@ -6054,9 +6082,15 @@
             } else {
               await recalculateAllUsers();
             }
+          } catch (err) {
+            if (recalcReportBox && recalcReportText) {
+              recalcReportBox.hidden = false;
+              recalcReportText.textContent = `Error durante el recálculo: ${err && err.message ? err.message : String(err)}`;
+            }
+            throw err;
           } finally {
             recalculateUsersBtn.disabled = false;
-            recalculateUsersBtn.textContent = 'Recalcular Puntos';
+            if (btnText) btnText.textContent = 'Recalcular Puntos';
           }
         }
       });
@@ -12410,6 +12444,8 @@
         console.log('🔧 INICIANDO RECÁLCULO MASIVO COMPLETO DE PUNTOS...');
 
         try {
+          const reportBox = document.getElementById('recalc-report-box');
+          const reportText = document.getElementById('recalc-report-text');
           const allUsers = await collectUsersForAdminRebuild();
           console.log(`📊 Recalculando puntos completos para ${allUsers.size} usuarios...`);
 
@@ -12458,12 +12494,17 @@
               reportLines.push(`- ${item.username}: ${item.beforeTotal} → ${item.afterTotal} (${sign}${item.delta})`);
             });
           }
+          const reportTextValue = reportLines.join('\n');
 
           console.log(`🎉 RECÁLCULO COMPLETO FINALIZADO: ${correctedCount} ajustados de ${allUsers.size}`);
           console.table(deltas);
           showSuccessNotification(`Recálculo completo listo: ${correctedCount} usuarios ajustados de ${allUsers.size}. Errores: ${errorCount}.`);
+          if (reportBox && reportText) {
+            reportBox.hidden = false;
+            reportText.textContent = reportTextValue;
+          }
           setTimeout(() => {
-            try { alert(reportLines.join('\n')); } catch (_) {}
+            try { alert(reportTextValue); } catch (_) {}
           }, 50);
 
           try {
