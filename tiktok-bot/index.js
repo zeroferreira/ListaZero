@@ -172,7 +172,7 @@ let config = {
     mockCider: false,
     requireVipForSr: false,
     allowPointsCommand: true, // Nuevo: Permitir !puntos
-    likesPerPoint: 120, // Nuevo: Configuración de likes por punto (Default 120)
+    likesPerPoint: 300, // Configuración por defecto: 300 likes = 1 punto
     commandAliases: ["!zr", "!sr", "!pedir", "!cancion"],
     ignoreExampleQuery: "artista cancion"
 };
@@ -1025,6 +1025,44 @@ function startBot() {
     
     // Iniciar búsqueda
     connectToLive();
+    
+    // --- LISTENER DE NOTIFICACIONES PARA LA RULETA Y OTROS ---
+    setupNotificationListener();
+}
+
+function setupNotificationListener() {
+    if (!db) return;
+    
+    console.log("👂 Iniciando listener de notificaciones de Firebase...");
+    
+    // Usamos un flag para ignorar notificaciones antiguas al arrancar
+    let initialLoad = true;
+    
+    onSnapshot(collection(db, 'notifications'), (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === "added") {
+                const data = change.doc.data();
+                
+                // Ignorar si es muy antigua (más de 30 segundos)
+                const ts = data.timestamp ? data.timestamp.toDate() : new Date();
+                const ageMs = Date.now() - ts.getTime();
+                if (ageMs > 30000) return;
+
+                console.log(`🔔 Notificación recibida: [${data.type}] ${data.message || ''}`);
+                
+                if (data.type === 'roulette_winner') {
+                    console.log(`🏆 ¡Ganador de la ruleta detectado!: ${data.user}`);
+                    // Aquí el bot podría enviar un mensaje al chat si tuviera esa capacidad.
+                    // Por ahora, lo registramos y podríamos emitirlo por socket.io si hay un dashboard.
+                    if (mockCiderIo) {
+                        mockCiderIo.emit('roulette_winner', data);
+                    }
+                }
+            }
+        });
+    }, (error) => {
+        console.error("❌ Error en listener de notificaciones:", error);
+    });
 }
 
 startBot();
@@ -1064,12 +1102,20 @@ function setupListeners() {
     // Debug: Log de conexión exitosa
     tiktokLiveConnection.on('connected', state => {
         console.log(`🟢 Conectado exitosamente (Room ID: ${state.roomId})`);
+        if (activeLiveRoomId && activeLiveRoomId !== state.roomId) {
+            console.log(`🔄 Nuevo room detectado (${activeLiveRoomId} -> ${state.roomId}). Reiniciando tracking de likes de sesión.`);
+            resetLikeTracking({ resetSession: true, resetTopLiker: true });
+        } else {
+            resetLikeTracking({ resetSession: false, resetTopLiker: false });
+        }
+        activeLiveRoomId = state.roomId || null;
         updateLiveStatus(true); // Actualizar estado a ONLINE
     });
     
     // Solo un listener de 'disconnected' principal que maneja ambas cosas
     tiktokLiveConnection.on('disconnected', () => {
         console.log('🔴 Desconectado del live.');
+        resetLikeTracking({ resetSession: false, resetTopLiker: false });
         updateLiveStatus(false); // Actualizar estado a OFFLINE
         console.log('🔄 Volviendo a buscar Live...');
         setTimeout(connectToLive, 10000); 
@@ -1082,6 +1128,9 @@ function setupListeners() {
 
     tiktokLiveConnection.on('streamEnd', () => {
         console.log('🏁 El stream ha terminado.');
+        activeLiveRoomId = null;
+        resetLikeTracking({ resetSession: true, resetTopLiker: true });
+        updateGlobalTopLiker('N/D', 0).catch(() => {});
         updateLiveStatus(false); // Asegurar OFFLINE al terminar stream
     });
 
@@ -1222,6 +1271,27 @@ function setupListeners() {
             return;
         }
 
+        // --- COMANDOS DE RULETA (NUEVO) ---
+        const isRouletteSpinCmd = lowerMsg === '!girar' || lowerMsg === '!spin';
+        const isRouletteResetCmd = lowerMsg === '!ruleta_reset' || lowerMsg === '!reset_ruleta';
+
+        if ((isRouletteSpinCmd || isRouletteResetCmd) && (isModerator || isStreamer)) {
+            try {
+                if (db && typeof addDoc === 'function' && typeof collection === 'function') {
+                    await addDoc(collection(db, 'notifications'), {
+                        type: isRouletteSpinCmd ? 'roulette_spin' : 'roulette_reset',
+                        user: displayName,
+                        message: isRouletteSpinCmd ? `🎲 @${displayName} inició el giro` : `🔄 @${displayName} reinició la ruleta`,
+                        timestamp: serverTimestamp()
+                    });
+                    console.log(`🎰 Comando de ruleta procesado: ${lowerMsg} por ${displayName}`);
+                }
+            } catch (e) {
+                console.error(`Error enviando comando de ruleta:`, e);
+            }
+            return;
+        }
+
         const aliases = getSrAliases();
         const parsed = parseSrCommand(msg, aliases);
         if (parsed) {
@@ -1335,13 +1405,21 @@ function setupListeners() {
 
     // --- MANEJO DE LIKES (NUEVO) ---
     tiktokLiveConnection.on('like', (data) => {
-        const { uniqueId, nickname, likeCount } = data;
+        const uniqueId = String(data && data.uniqueId || '').trim();
+        const nickname = String(data && data.nickname || uniqueId || 'Usuario').trim();
+        const rawLikeCount = Number(data && data.likeCount);
+        const safeLikeCount = Number.isFinite(rawLikeCount) ? Math.floor(rawLikeCount) : 0;
+        
+        if (!uniqueId || safeLikeCount <= 0) {
+            return;
+        }
+        
         // Acumular likes en buffer para no saturar Firestore
-        // El 'likeCount' que llega de TikTok suele ser el acumulado de esa ráfaga, o incremental.
-        // La librería suele emitir el total de la ráfaga. 
-        // Vamos a asumir que es incremental para el buffer.
-        // OJO: data.likeCount es el número de likes enviados en este evento (ej: 15 likes)
-        // No es el total de la sesión.
+        // OJO:
+        // - `likeCount` representa los likes del usuario en ESTE evento.
+        // - `totalLikeCount` es el total del live completo, no del usuario.
+        // Si usamos `totalLikeCount` como si fuera por usuario, inflamos brutalmente
+        // el conteo individual y el "Top Liker".
         
         // Vamos a sumar al buffer.
         const current = likeBuffer.get(uniqueId) || { 
@@ -1349,27 +1427,17 @@ function setupListeners() {
             displayName: nickname, 
             likes: 0 
         };
-        current.likes += likeCount; // Sumar likes
+        current.displayName = nickname || current.displayName || uniqueId;
+        current.likes += safeLikeCount; // Sumar solo el delta real del evento
         likeBuffer.set(uniqueId, current);
         
         // Actualizar Top Liker de sesión (memoria)
-        // FIX: La librería tiktok-live-connector a veces envía `likeCount` como el total de la ráfaga
-        // pero también emite `totalLikeCount` que es el total de la sesión.
-        // Para evitar números inflados, usaremos `totalLikeCount` si está disponible, 
-        // o acumularemos con cuidado.
-        // En la versión actual, `likeCount` es incremental por evento.
-        
-        let sessionTotal = 0;
-        
-        // Si la librería nos da el total acumulado de la sesión, lo usamos directamente
-        if (data.totalLikeCount && typeof data.totalLikeCount === 'number') {
-             sessionTotal = data.totalLikeCount;
-             // Actualizar nuestro mapa local para sincronizar
-             sessionLikes.set(uniqueId, sessionTotal);
-        } else {
-             // Si no, sumamos manualmente (fallback)
-             sessionTotal = (sessionLikes.get(uniqueId) || 0) + likeCount;
-             sessionLikes.set(uniqueId, sessionTotal);
+        // Nunca usar `totalLikeCount` aquí porque es el total del stream.
+        const sessionTotal = (sessionLikes.get(uniqueId) || 0) + safeLikeCount;
+        sessionLikes.set(uniqueId, sessionTotal);
+
+        if (safeLikeCount >= 200) {
+            console.log(`❤️ Evento de likes grande detectado: @${nickname} +${safeLikeCount} likes (sesión usuario: ${sessionTotal})`);
         }
         
         // Solo actualizar si supera al actual líder
@@ -1385,6 +1453,19 @@ const likeBuffer = new Map();
 // Tracking de sesión para Top Liker
 const sessionLikes = new Map();
 let currentTopLiker = { name: 'N/D', count: 0 };
+let activeLiveRoomId = null;
+
+function resetLikeTracking(options = {}) {
+    const resetSession = options.resetSession === true;
+    const resetTopLiker = options.resetTopLiker === true;
+    try { likeBuffer.clear(); } catch (_) {}
+    if (resetSession) {
+        try { sessionLikes.clear(); } catch (_) {}
+    }
+    if (resetTopLiker) {
+        currentTopLiker = { name: 'N/D', count: 0 };
+    }
+}
 
 async function updateGlobalTopLiker(name, count) {
     try {
@@ -1418,8 +1499,12 @@ setInterval(async () => {
             const userKey = resolved.userKey || uid; 
             const finalName = resolved.displayName || data.displayName;
 
-            // Calcular puntos: 1 punto cada 300 likes (configurado aquí)
-            const LIKES_PER_POINT = 300; 
+            // Calcular puntos usando la configuración real del bot.
+            // Esto evita inconsistencias entre la UI, el bot y los documentos en Firestore.
+            const configuredLikesPerPoint = Number(config && config.likesPerPoint);
+            const LIKES_PER_POINT = Number.isFinite(configuredLikesPerPoint) && configuredLikesPerPoint > 0
+                ? configuredLikesPerPoint
+                : 300;
             const totalLikesInBatch = data.likes;
             
             // --- RESTAURADO: Cálculo de puntos ACUMULATIVO ---
@@ -1459,7 +1544,7 @@ setInterval(async () => {
                 // o incrementar solo la diferencia. 
                 // El problema es que si el usuario ya tenía puntos erróneos inflados,
                 // esto podría no corregirlos hacia abajo.
-                // Mejor: Recalcular totalLikesPoints basado estrictamente en totalLikes / 300
+            // Mejor: Recalcular totalLikesPoints basado estrictamente en totalLikes / LIKES_PER_POINT
                 
                 updateData.totalPoints = increment(pointsToAdd);
                 updateData.totalLikesPoints = expectedTotalPoints; 
