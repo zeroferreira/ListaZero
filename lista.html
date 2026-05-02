@@ -7613,51 +7613,23 @@
             }
           });
           
-          // Obtener solicitudes de localStorage como respaldo
-          const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          
-          // Combinar datos de Firestore y localStorage, evitando duplicados
+          // IMPORTANTE: Para estadísticas globales compartidas, usar SOLO Firestore.
+          // Mezclar localStorage aquí provoca que cada PC vea números distintos.
           const allSolicitudesMap = new Map();
-          
+
           // Agregar solicitudes de Firestore
           firestoreSolicitudes.forEach(s => {
-            const key = `${s.usuario}-${s.cancion}-${s.artista}-${s.ts}`;
+            const hora = String(s.hora || '').trim() || (() => {
+              try {
+                const d = new Date(Number(s.ts) || 0);
+                return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+              } catch (_) {
+                return '';
+              }
+            })();
+            const day = String(s.day || '').trim();
+            const key = `${s.usuario}-${s.cancion}-${s.artista}-${hora}-${day}`.replace(/[^a-zA-Z0-9-]/g, '');
             allSolicitudesMap.set(key, s);
-          });
-          
-          // Agregar solicitudes de localStorage que no estén en Firestore
-          localSolicitudes.forEach(s => {
-            const key = `${s.usuario}-${s.cancion}-${s.artista}-${s.time}`;
-            if (!allSolicitudesMap.has(key)) {
-              allSolicitudesMap.set(key, {
-                usuario: s.usuario,
-                cancion: s.cancion,
-                artista: s.artista,
-                ts: s.time,
-                hora: s.hora || '',
-                isSimulation: s.isSimulation === true,
-                isTest: s.isTest === true,
-                source: s.source || ''
-              });
-            }
-          });
-          
-          // Agregar solicitudes de byDay que no estén incluidas
-          Object.values(byDay).flat().forEach(s => {
-            const key = `${s.usuario}-${s.cancion}-${s.artista}-${s.time}`;
-            if (!allSolicitudesMap.has(key)) {
-              allSolicitudesMap.set(key, {
-                usuario: s.usuario,
-                cancion: s.cancion,
-                artista: s.artista,
-                ts: s.time,
-                hora: s.hora || '',
-                isSimulation: s.isSimulation === true,
-                isTest: s.isTest === true,
-                source: s.source || ''
-              });
-            }
           });
           
           const allSolicitudesRaw = Array.from(allSolicitudesMap.values());
