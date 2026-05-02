@@ -1409,6 +1409,22 @@
     const wheelState = { x: 0, y: 0, size: 560 };
     let dragData = null;
     let resizeData = null;
+    let liveSpinEntriesOverride = null;
+    let lastHandledLiveSpinId = '';
+    let lastHandledLiveWinnerToken = '';
+    let lastHandledLiveCloseToken = '';
+    const rouletteLiveClientId = (() => {
+      const key = 'rouletteLiveClientId:v1';
+      try {
+        const existing = localStorage.getItem(key);
+        if (existing) return existing;
+        const created = `roulette_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
+        localStorage.setItem(key, created);
+        return created;
+      } catch (_) {
+        return `roulette_${Math.random().toString(36).slice(2, 10)}`;
+      }
+    })();
 
     const canvas = document.getElementById('roulette-canvas');
     const ctx = canvas.getContext('2d');
@@ -1579,6 +1595,57 @@
 
     function getObsOverlayUrl() {
       return new URL('roulette_overlay.html', window.location.href).toString().split('#')[0];
+    }
+
+    function getRouletteLiveRef() {
+      return db.collection('sessionData').doc('rouletteLive');
+    }
+
+    function getWinnerPhotoUrl(name) {
+      const accentHex = getComputedStyle(document.documentElement).getPropertyValue('--roulette-accent-color').trim().replace('#', '') || '00e5ff';
+      const normalize = (s) => String(s || '').toLowerCase().trim();
+      const winnerReq = allRequests.find(req => {
+        const reqName = normalize(req.displayName || req.usuario || req.user || '');
+        return reqName === normalize(name);
+      });
+
+      if (winnerReq && winnerReq.profilePhoto) {
+        return winnerReq.profilePhoto;
+      }
+      return 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=' + accentHex + '&color=000&size=150&bold=true';
+    }
+
+    async function publishRouletteLiveState(payload) {
+      if (!db) return;
+      try {
+        await getRouletteLiveRef().set({
+          ...payload,
+          overlayEnabled,
+          updatedBy: rouletteLiveClientId,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch (err) {
+        console.error('Error publicando estado live de ruleta:', err);
+      }
+    }
+
+    function buildSpinPayload() {
+      const entries = getWheelEntries();
+      if (!entries.length) return null;
+      const intensity = config.spinIntensity;
+      const minSpins = 2 + intensity;
+      const maxSpins = minSpins + 5;
+      const durationMs = config.spinDurationMs;
+      const spinAngle = (minSpins + Math.random() * (maxSpins - minSpins)) * 2 * Math.PI;
+      const startRotation = currentRotation;
+      const targetRotation = startRotation + spinAngle;
+      return {
+        spinId: `spin_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        entries,
+        startRotation,
+        targetRotation,
+        durationMs
+      };
     }
 
     async function copyObsLink() {
@@ -1777,6 +1844,7 @@
 
     function setOverlayEnabledRemote(enabled) {
       applyOverlayEnabled(enabled);
+      publishRouletteLiveState({ overlayEnabled: enabled });
       db.collection('notifications').add({
         type: 'roulette_overlay_toggle',
         enabled,
@@ -1841,6 +1909,54 @@
             }
           });
         });
+
+      getRouletteLiveRef().onSnapshot(doc => {
+        if (!doc.exists) return;
+        const data = doc.data() || {};
+        if (typeof data.overlayEnabled === 'boolean' && data.updatedBy !== rouletteLiveClientId) {
+          applyOverlayEnabled(data.overlayEnabled);
+        }
+
+        if (data.updatedBy === rouletteLiveClientId) return;
+
+        if (data.type === 'spin' && data.spin && data.spin.spinId && data.spin.spinId !== lastHandledLiveSpinId) {
+          lastHandledLiveSpinId = data.spin.spinId;
+          spinWheel({
+            payload: data.spin,
+            broadcast: false,
+            sideEffects: false,
+            autoFollowSpinAgain: false,
+            applyWinnerRemoval: false
+          });
+          return;
+        }
+
+        if (data.type === 'winner' && data.winner && data.winner.token && data.winner.token !== lastHandledLiveWinnerToken) {
+          if (isSpinning && lastHandledLiveSpinId && data.winner.token === `winner_${lastHandledLiveSpinId}`) {
+            return;
+          }
+          lastHandledLiveWinnerToken = data.winner.token;
+          if (Array.isArray(data.winner.entries) && data.winner.entries.length) {
+            liveSpinEntriesOverride = data.winner.entries.slice();
+          }
+          if (Number.isFinite(data.winner.finalRotation)) {
+            currentRotation = data.winner.finalRotation;
+            drawWheel(data.winner.entries || undefined);
+          }
+          showWinner(data.winner.name, {
+            sideEffects: false,
+            broadcast: false,
+            photoUrl: data.winner.photoUrl || '',
+            quietIfSame: true
+          });
+          return;
+        }
+
+        if (data.type === 'idle' && data.closeToken && data.closeToken !== lastHandledLiveCloseToken) {
+          lastHandledLiveCloseToken = data.closeToken;
+          resetWinner({ broadcast: false });
+        }
+      });
     }
 
     function updateParticipants() {
@@ -2026,7 +2142,9 @@
       }
     }
 
-    function getWheelEntries() {
+    function getWheelEntries(sourceEntries = null) {
+      if (Array.isArray(sourceEntries)) return sourceEntries.slice();
+      if (Array.isArray(liveSpinEntriesOverride) && liveSpinEntriesOverride.length) return liveSpinEntriesOverride.slice();
       let entries = [...rouletteParticipants];
       if (config.spinAgainEnabled && entries.length > 0) {
         entries.push(ROULETTE_SPIN_AGAIN_LABEL);
@@ -2034,7 +2152,7 @@
       return entries;
     }
 
-    function drawWheel() {
+    function drawWheel(sourceEntries = null) {
       const width = canvas.width;
       const height = canvas.height;
       const cx = width / 2;
@@ -2043,7 +2161,7 @@
       
       ctx.clearRect(0, 0, width, height);
       
-      const entries = getWheelEntries();
+      const entries = getWheelEntries(sourceEntries);
       if (entries.length === 0) {
         ctx.fillStyle = 'rgba(255,255,255,0.12)';
         ctx.beginPath();
@@ -2215,24 +2333,36 @@
       return (usePound ? "#" : "") + s;
     }
 
-    function spinWheel() {
+    function spinWheel(options = {}) {
+      const remotePayload = options.payload || null;
       if (!overlayEnabled) return;
-      if (isSpinning || (rouletteParticipants.length === 0 && !config.spinAgainEnabled)) return;
-      
-      resetWinner();
+      if (isSpinning) return;
+
+      const spinPayload = remotePayload || buildSpinPayload();
+      if (!spinPayload || !Array.isArray(spinPayload.entries) || spinPayload.entries.length === 0) return;
+
+      resetWinner({ broadcast: false });
       isSpinning = true;
       wrapper.classList.add('spinning');
       playSound('spin');
-      
-      const intensity = config.spinIntensity;
-      const minSpins = 2 + intensity;
-      const maxSpins = minSpins + 5;
-      const duration = config.spinDurationMs;
-      const spinAngle = (minSpins + Math.random() * (maxSpins - minSpins)) * 2 * Math.PI;
-      
-      const startRotation = currentRotation;
-      const targetRotation = startRotation + spinAngle;
+
+      const entries = getWheelEntries(spinPayload.entries);
+      liveSpinEntriesOverride = entries.slice();
+      const duration = Number(spinPayload.durationMs) || config.spinDurationMs;
+      const startRotation = Number.isFinite(spinPayload.startRotation) ? spinPayload.startRotation : currentRotation;
+      const targetRotation = Number.isFinite(spinPayload.targetRotation) ? spinPayload.targetRotation : startRotation;
       const startTime = performance.now();
+      currentRotation = startRotation;
+      drawWheel(entries);
+
+      if (!remotePayload && options.broadcast !== false) {
+        lastHandledLiveSpinId = spinPayload.spinId;
+        publishRouletteLiveState({
+          type: 'spin',
+          spin: spinPayload,
+          winner: null
+        });
+      }
 
       let lastArrowAngle = 0;
       let lastTickSoundAt = 0;
@@ -2243,10 +2373,9 @@
         const ease = 1 - Math.pow(1 - progress, 4); // easeOutQuart for smoother stop
         
         currentRotation = startRotation + (targetRotation - startRotation) * ease;
-        drawWheel();
+        drawWheel(entries);
 
         // Arrow vibration based on slices
-        const entries = getWheelEntries();
         const arc = (2 * Math.PI) / entries.length;
         const currentSliceAngle = (currentRotation % arc);
         if (currentSliceAngle < lastArrowAngle) {
@@ -2272,7 +2401,14 @@
             wrapper.style.transform = 'scale(1) rotateX(0deg) rotate(-3deg)';
             setTimeout(() => {
               wrapper.style.transform = 'scale(1) rotateX(0deg) rotate(0deg)';
-              determineWinner();
+              determineWinner({
+                entries,
+                spinId: spinPayload.spinId,
+                sideEffects: options.sideEffects !== false,
+                broadcastWinner: !remotePayload && options.broadcast !== false,
+                autoFollowSpinAgain: remotePayload ? false : options.autoFollowSpinAgain !== false,
+                applyWinnerRemoval: remotePayload ? false : options.applyWinnerRemoval !== false
+              });
             }, 150);
           }, 150);
         }
@@ -2281,8 +2417,8 @@
       requestAnimationFrame(animate);
     }
 
-    function determineWinner() {
-      const entries = getWheelEntries();
+    function determineWinner(options = {}) {
+      const entries = getWheelEntries(options.entries);
       const count = entries.length;
       if (count === 0) return;
       
@@ -2295,14 +2431,22 @@
       const winner = entries[index];
 
       if (winner === ROULETTE_SPIN_AGAIN_LABEL) {
-        setTimeout(spinWheel, 1000);
+        if (options.autoFollowSpinAgain !== false) {
+          setTimeout(() => spinWheel(), 1000);
+        }
         return;
       }
 
-      if (config.removeWinnerEnabled) {
+      if (config.removeWinnerEnabled && options.applyWinnerRemoval !== false) {
         removeWinnerFromFutureSpins(winner);
       }
-      showWinner(winner);
+      showWinner(winner, {
+        sideEffects: options.sideEffects !== false,
+        broadcast: options.broadcastWinner !== false,
+        winnerToken: options.spinId ? `winner_${options.spinId}` : '',
+        sourceEntries: entries,
+        finalRotation: currentRotation
+      });
     }
 
     function removeWinnerFromFutureSpins(name) {
@@ -2386,33 +2530,40 @@
       };
     }
 
-    function showWinner(name) {
-      winnerName.innerText = name;
-      const accentHex = getComputedStyle(document.documentElement).getPropertyValue('--roulette-accent-color').trim().replace('#', '') || '00e5ff';
-      
-      // Find winner request to get photo
-      // Normalize names to improve matching
-      const normalize = (s) => s.toLowerCase().trim();
-      const winnerReq = allRequests.find(req => {
-        const reqName = normalize(req.displayName || req.usuario || req.user || '');
-        return reqName === normalize(name);
-      });
-
-      if (winnerReq && winnerReq.profilePhoto) {
-        winnerPhoto.src = winnerReq.profilePhoto;
-        winnerPhoto.onerror = () => {
-          winnerPhoto.src = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=' + accentHex + '&color=000&size=150&bold=true';
-        };
-      } else {
-        winnerPhoto.src = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=' + accentHex + '&color=000&size=150&bold=true';
+    function showWinner(name, options = {}) {
+      const alreadySameWinner = winnerOverlay.classList.contains('show') && winnerName.innerText === name;
+      if (options.winnerToken) {
+        lastHandledLiveWinnerToken = options.winnerToken;
       }
+      winnerName.innerText = name;
+      const fallbackPhoto = getWinnerPhotoUrl(name);
+      winnerPhoto.src = String(options.photoUrl || fallbackPhoto || '').trim() || fallbackPhoto;
+      winnerPhoto.onerror = () => {
+        winnerPhoto.src = fallbackPhoto;
+      };
       
       winnerOverlay.classList.add('show');
-      playSound('win');
-      createConfetti();
+      if (!(alreadySameWinner && options.quietIfSame)) {
+        playSound('win');
+        createConfetti();
+      }
+
+      if (options.broadcast !== false && options.winnerToken) {
+        lastHandledLiveWinnerToken = options.winnerToken;
+        publishRouletteLiveState({
+          type: 'winner',
+          winner: {
+            token: options.winnerToken,
+            name,
+            photoUrl: winnerPhoto.src,
+            entries: Array.isArray(options.sourceEntries) ? options.sourceEntries.slice() : getWheelEntries(),
+            finalRotation: Number.isFinite(options.finalRotation) ? options.finalRotation : currentRotation
+          }
+        });
+      }
 
       // Notify bot via Firebase
-      if (db) {
+      if (db && options.sideEffects !== false) {
         db.collection('notifications').add({
           type: 'roulette_winner',
           user: name,
@@ -2514,8 +2665,17 @@
     `;
     document.head.appendChild(style);
 
-    function resetWinner() {
+    function resetWinner(options = {}) {
       winnerOverlay.classList.remove('show');
+      if (options.broadcast !== false) {
+        const closeToken = `close_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        lastHandledLiveCloseToken = closeToken;
+        publishRouletteLiveState({
+          type: 'idle',
+          closeToken,
+          winner: null
+        });
+      }
     }
 
     (function initTheme() {
