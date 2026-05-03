@@ -536,7 +536,7 @@
       grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
-    details.settings-collapsible {
+    .advanced-settings-anchor {
       border: 1.5px solid rgba(var(--roulette-accent-rgb), 0.2);
       border-radius: 12px;
       padding: 8px 10px;
@@ -553,8 +553,11 @@
       z-index: 8;
       overflow: visible;
     }
-    details.settings-collapsible > summary {
-      list-style: none;
+    .advanced-settings-trigger {
+      width: 100%;
+      border: none;
+      background: transparent;
+      padding: 0;
       cursor: pointer;
       font-size: 13px;
       font-weight: 900;
@@ -569,32 +572,32 @@
       white-space: nowrap;
       gap: 10px;
     }
-    details.settings-collapsible > summary::-webkit-details-marker {
-      display: none;
-    }
-    details.settings-collapsible > summary::after {
+    .advanced-settings-trigger::after {
       content: '▾';
       font-size: 12px;
       transition: transform .2s ease;
     }
-    details.settings-collapsible[open] > summary::after {
+    .advanced-settings-anchor.open .advanced-settings-trigger::after {
       transform: rotate(180deg);
     }
-    .collapsible-body {
-      position: absolute;
-      right: calc(100% + 12px);
-      bottom: -6px;
+    .advanced-settings-popup {
+      position: fixed;
+      left: 12px;
+      top: 12px;
       margin: 0;
-      width: min(300px, calc(100vw - 40px));
+      width: min(320px, calc(100vw - 24px));
       max-height: min(72vh, 560px);
       overflow-y: auto;
-      transform: translateX(var(--advanced-popup-shift, 0px));
       padding: 14px;
       border: 1px solid rgba(var(--roulette-accent-rgb), 0.2);
       border-radius: 14px;
       background: rgba(9, 14, 18, 0.95);
       box-shadow: 0 14px 34px rgba(0,0,0,0.35);
       z-index: 25;
+      display: none;
+    }
+    .advanced-settings-anchor.open .advanced-settings-popup {
+      display: block;
     }
     .participants-group {
       display: flex;
@@ -1100,6 +1103,12 @@
         min-height: 40px;
         white-space: normal;
       }
+      .advanced-settings-anchor {
+        left: 12px;
+        right: 12px;
+        width: auto;
+        max-width: none;
+      }
       .quick-btn-icon {
         font-size: 18px;
       }
@@ -1334,9 +1343,9 @@
       </div>
     </div>
 
-    <details class="settings-collapsible">
-      <summary>Ajustes avanzados</summary>
-      <div class="collapsible-body details-stack">
+    <div class="advanced-settings-anchor" id="advanced-settings-anchor">
+      <button class="advanced-settings-trigger" id="advanced-settings-trigger" type="button" aria-expanded="false" onclick="toggleAdvancedSettings(event)">Ajustes avanzados</button>
+      <div class="advanced-settings-popup details-stack" id="advanced-settings-popup">
         <div class="settings-group" style="margin-bottom:0;">
           <label>Tema</label>
           <select id="inp-theme" onchange="applyThemeFromUI()">
@@ -1364,7 +1373,7 @@
           </div>
         </div>
       </div>
-    </details>
+    </div>
 
   </div>
 
@@ -1471,9 +1480,9 @@
     const participantsList = document.getElementById('participants-list');
     const participantsCount = document.getElementById('participants-count');
     const settingsPanel = document.getElementById('settings-panel');
-    const advancedSettingsDetails = document.querySelector('details.settings-collapsible');
-    const advancedSettingsPopup = document.querySelector('.collapsible-body');
-    const advancedSettingsSummary = advancedSettingsDetails?.querySelector('summary');
+    const advancedSettingsAnchor = document.getElementById('advanced-settings-anchor');
+    const advancedSettingsTrigger = document.getElementById('advanced-settings-trigger');
+    const advancedSettingsPopup = document.getElementById('advanced-settings-popup');
     const inpAddName = document.getElementById('inp-add-name');
     const btnAddName = document.getElementById('btn-add-name');
     const inpDuration = document.getElementById('inp-duration');
@@ -1862,6 +1871,9 @@
     function togglePanel() {
       settingsPanel.classList.toggle('open');
       document.body.classList.toggle('panel-open');
+      if (!settingsPanel.classList.contains('open')) {
+        closeAdvancedSettings();
+      }
       setTimeout(() => {
         positionAdvancedMenu();
         applyWheelState();
@@ -1869,20 +1881,64 @@
       }, 20);
     }
 
+    function isAdvancedSettingsOpen() {
+      return !!advancedSettingsAnchor?.classList.contains('open');
+    }
+
+    function openAdvancedSettings() {
+      if (!advancedSettingsAnchor || !advancedSettingsTrigger) return;
+      advancedSettingsAnchor.classList.add('open');
+      advancedSettingsTrigger.setAttribute('aria-expanded', 'true');
+      positionAdvancedMenu();
+      requestAnimationFrame(() => {
+        positionAdvancedMenu();
+        setTimeout(positionAdvancedMenu, 40);
+      });
+    }
+
+    function closeAdvancedSettings() {
+      if (!advancedSettingsAnchor || !advancedSettingsTrigger) return;
+      advancedSettingsAnchor.classList.remove('open');
+      advancedSettingsTrigger.setAttribute('aria-expanded', 'false');
+      if (advancedSettingsPopup) {
+        advancedSettingsPopup.style.left = '';
+        advancedSettingsPopup.style.top = '';
+      }
+    }
+
+    function toggleAdvancedSettings(event) {
+      if (event) event.stopPropagation();
+      if (isAdvancedSettingsOpen()) {
+        closeAdvancedSettings();
+      } else {
+        openAdvancedSettings();
+      }
+    }
+    window.toggleAdvancedSettings = toggleAdvancedSettings;
+
     function positionAdvancedMenu() {
-      if (!advancedSettingsDetails || !advancedSettingsPopup) return;
-      advancedSettingsPopup.style.setProperty('--advanced-popup-shift', '0px');
-      if (!advancedSettingsDetails.open) return;
-      const rect = advancedSettingsPopup.getBoundingClientRect();
+      if (!advancedSettingsAnchor || !advancedSettingsPopup) return;
+      if (!isAdvancedSettingsOpen()) return;
       const margin = 10;
-      let shift = 0;
-      if (rect.left < margin) {
-        shift += (margin - rect.left);
+      const anchorRect = advancedSettingsAnchor.getBoundingClientRect();
+      const popupRect = advancedSettingsPopup.getBoundingClientRect();
+      const popupWidth = popupRect.width || Math.min(320, window.innerWidth - 24);
+      const popupHeight = popupRect.height || 320;
+      const anchorLooksOffscreen =
+        anchorRect.left > window.innerWidth ||
+        anchorRect.top > window.innerHeight ||
+        anchorRect.right < 0 ||
+        anchorRect.bottom < 0;
+      let left = anchorRect.left - popupWidth - 12;
+      if (anchorLooksOffscreen || left < margin || left + popupWidth > window.innerWidth - margin) {
+        left = Math.max(margin, Math.round((window.innerWidth - popupWidth) / 2));
       }
-      if (rect.right > window.innerWidth - margin) {
-        shift -= (rect.right - (window.innerWidth - margin));
+      let top = anchorRect.bottom - popupHeight;
+      if (anchorLooksOffscreen || top < margin || top + popupHeight > window.innerHeight - margin) {
+        top = Math.max(margin, Math.round((window.innerHeight - Math.min(popupHeight, window.innerHeight - 2 * margin)) / 2));
       }
-      advancedSettingsPopup.style.setProperty('--advanced-popup-shift', `${Math.round(shift)}px`);
+      advancedSettingsPopup.style.left = `${Math.round(left)}px`;
+      advancedSettingsPopup.style.top = `${Math.round(top)}px`;
     }
 
     function openConfigModal() {
@@ -2879,11 +2935,11 @@
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', stopPointerInteraction);
     window.addEventListener('pointercancel', stopPointerInteraction);
-    advancedSettingsDetails?.addEventListener('toggle', () => {
-      setTimeout(positionAdvancedMenu, 30);
-    });
-    advancedSettingsSummary?.addEventListener('click', () => {
-      setTimeout(positionAdvancedMenu, 30);
+    document.addEventListener('click', (event) => {
+      if (!advancedSettingsAnchor) return;
+      if (!advancedSettingsAnchor.contains(event.target)) {
+        closeAdvancedSettings();
+      }
     });
 
     window.addEventListener('resize', () => {
