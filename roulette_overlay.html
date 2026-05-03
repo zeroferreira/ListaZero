@@ -585,7 +585,10 @@
       right: calc(100% + 12px);
       bottom: -6px;
       margin: 0;
-      width: min(320px, calc(100vw - 420px));
+      width: min(300px, calc(100vw - 40px));
+      max-height: min(72vh, 560px);
+      overflow-y: auto;
+      transform: translateX(var(--advanced-popup-shift, 0px));
       padding: 14px;
       border: 1px solid rgba(var(--roulette-accent-rgb), 0.2);
       border-radius: 14px;
@@ -1097,16 +1100,6 @@
         min-height: 40px;
         white-space: normal;
       }
-      details.settings-collapsible {
-        position: static;
-        width: 100%;
-        min-width: 0;
-        max-width: none;
-      }
-      .collapsible-body {
-        position: static;
-        width: 100%;
-      }
       .quick-btn-icon {
         font-size: 18px;
       }
@@ -1478,6 +1471,9 @@
     const participantsList = document.getElementById('participants-list');
     const participantsCount = document.getElementById('participants-count');
     const settingsPanel = document.getElementById('settings-panel');
+    const advancedSettingsDetails = document.querySelector('details.settings-collapsible');
+    const advancedSettingsPopup = document.querySelector('.collapsible-body');
+    const advancedSettingsSummary = advancedSettingsDetails?.querySelector('summary');
     const inpAddName = document.getElementById('inp-add-name');
     const btnAddName = document.getElementById('btn-add-name');
     const inpDuration = document.getElementById('inp-duration');
@@ -1867,9 +1863,26 @@
       settingsPanel.classList.toggle('open');
       document.body.classList.toggle('panel-open');
       setTimeout(() => {
+        positionAdvancedMenu();
         applyWheelState();
         saveWheelState();
       }, 20);
+    }
+
+    function positionAdvancedMenu() {
+      if (!advancedSettingsDetails || !advancedSettingsPopup) return;
+      advancedSettingsPopup.style.setProperty('--advanced-popup-shift', '0px');
+      if (!advancedSettingsDetails.open) return;
+      const rect = advancedSettingsPopup.getBoundingClientRect();
+      const margin = 10;
+      let shift = 0;
+      if (rect.left < margin) {
+        shift += (margin - rect.left);
+      }
+      if (rect.right > window.innerWidth - margin) {
+        shift -= (rect.right - (window.innerWidth - margin));
+      }
+      advancedSettingsPopup.style.setProperty('--advanced-popup-shift', `${Math.round(shift)}px`);
     }
 
     function openConfigModal() {
@@ -2866,7 +2879,15 @@
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', stopPointerInteraction);
     window.addEventListener('pointercancel', stopPointerInteraction);
+    advancedSettingsDetails?.addEventListener('toggle', () => {
+      setTimeout(positionAdvancedMenu, 30);
+    });
+    advancedSettingsSummary?.addEventListener('click', () => {
+      setTimeout(positionAdvancedMenu, 30);
+    });
+
     window.addEventListener('resize', () => {
+      positionAdvancedMenu();
       applyWheelState();
       saveWheelState();
     });
