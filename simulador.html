@@ -472,7 +472,46 @@
       }
 
       function applyTandas15Order(items) {
-        return applySmartOrder(items); // Simplificado para estabilidad
+        const base = Array.isArray(items) ? items.slice() : [];
+        base.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
+        const slotMs = 15 * 60 * 1000;
+        
+        const blocks = [];
+        let currentBlock = [];
+        let blockStartTime = null;
+        let blockExpiryTime = null;
+
+        base.forEach((it) => {
+          const t = getReqTimeMs(it);
+          if (currentBlock.length === 0) {
+            currentBlock.push(it);
+            blockStartTime = t;
+            blockExpiryTime = null;
+          } else {
+            if (currentBlock.length < 3) {
+              currentBlock.push(it);
+              if (currentBlock.length === 3) {
+                blockExpiryTime = t + slotMs;
+              }
+            } else {
+              if (!blockExpiryTime || t < blockExpiryTime) {
+                currentBlock.push(it);
+              } else {
+                blocks.push(currentBlock);
+                currentBlock = [it];
+                blockStartTime = t;
+                blockExpiryTime = null;
+              }
+            }
+          }
+        });
+        if (currentBlock.length > 0) blocks.push(currentBlock);
+
+        const out = [];
+        blocks.forEach((group) => {
+          out.push(...applySmartOrder(group));
+        });
+        return out;
       }
 
       function computeQueue(mode, items) {
