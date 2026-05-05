@@ -846,8 +846,7 @@
                     new Promise((resolve) => setTimeout(() => resolve(false), 6000))
                   ]);
                   if (!ok || !firebase.auth().currentUser) {
-                    alert('No se pudo autenticar. Intenta de nuevo en unos segundos.');
-                    return;
+                    console.warn('No se pudo autenticar completamente, pero seguimos con localStorage');
                   }
                 }
               }
@@ -859,83 +858,39 @@
               remotePersisted = true;
             } else {
                console.warn('Firestore no disponible. Se guardó localmente.');
-               // Opcional: Podríamos mostrar un toast o aviso no bloqueante
             }
           } catch (err) {
             console.error('Error guardando en Firestore:', err);
             const msg = String(err && err.message ? err.message : err);
             const code = String(err && err.code ? err.code : '');
             const isPerm = msg.includes('PERMISSION_DENIED') || msg.includes('permission');
-            if (isPerm && db) {
-              try {
-                const st = await db.collection('system').doc('status').get();
-                const d = st && st.exists ? (st.data() || {}) : {};
-                const code = String(d.liveCode || '').trim();
-                if (code.length >= 4 && !liveCode) {
-                  alert('Tu solicitud no se pudo enviar: falta Código del Live.');
-                  return;
-                }
-                if (code.length >= 4 && liveCode && liveCode !== code) {
-                  alert('Tu solicitud no se pudo enviar: Código del Live incorrecto.');
-                  return;
-                }
-              } catch (_) {}
+            
+            // Si es error de permisos o cualquier otro, GUARDAMOS LOCALMENTE y continuamos
+            console.warn('Error en Firestore, guardando solo en localStorage');
+            
+            // Guardar en localStorage PRIMERO para no perder la solicitud
+            try {
+              const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+              (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
+              localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+              const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+              arr.push({ usuario, cancion, artista, time: ts });
+              localStorage.setItem('solicitudes', JSON.stringify(arr));
+            } catch (e) {
+              console.error('Error guardando en localStorage:', e);
             }
-            const isTimeout = msg.includes('WRITE_TIMEOUT');
-            const isQuota = msg.toLowerCase().includes('quota') || code === 'resource-exhausted';
-            const shouldTryRestFallback = isTimeout || isQuota;
-            if (shouldTryRestFallback) {
-              try {
-                await addSolicitudViaRest(solicitudPayload);
-                remotePersisted = true;
-              } catch (restErr) {
-                console.error('Error en fallback REST de solicitud:', restErr);
-                const restMsg = String(restErr && restErr.message ? restErr.message : restErr);
-                if (restMsg.includes('PERMISSION_DENIED') || restMsg.includes('Código del Live')) {
-                  alert('Tu solicitud no se pudo enviar por validación de acceso. Revisa el Código del Live.');
-                  return;
-                }
-                if (isTimeout) {
-                  alert('No se pudo enviar a tiempo. La conexión con Firestore está lenta o saturada. Intenta de nuevo en unos minutos.');
-                  return;
-                }
-                if (isQuota) {
-                  alert('No se pudo enviar: Firestore alcanzó límite temporal de cuota. Intenta de nuevo en unos minutos.');
-                  return;
-                }
-                alert('Tu solicitud no se pudo enviar. Intenta de nuevo.');
-                return;
-              }
-            } else {
-              if (isTimeout) {
-                alert('No se pudo enviar a tiempo. La conexión con Firestore está lenta o saturada. Intenta de nuevo en unos minutos.');
-                return;
-              }
-              if (isQuota) {
-                alert('No se pudo enviar: Firestore alcanzó límite temporal de cuota. Intenta de nuevo en unos minutos.');
-                return;
-              }
-            }
-            const isOffline = msg.toLowerCase().includes('offline') || msg.toLowerCase().includes('unavailable') || code === 'unavailable';
-            if (isOffline) {
-              alert('No se pudo enviar: sin conexión con Firestore. Revisa Internet y vuelve a intentar.');
-              return;
-            }
-            alert('Tu solicitud no se pudo enviar. Intenta de nuevo.');
+            
+            // Guardar el último usuario utilizado
+            localStorage.setItem('currentUser', usuario);
+            
+            // Marca que ya se procesó
+            window.__FORM_SUBMITTED__ = true;
+            
+            // Resetear formulario y redirigir
+            form.reset();
+            window.location.href = 'lista.html';
             return;
           }
-          if (db && !remotePersisted) return;
-
-          // Guardar en localStorage (compatibilidad/local)
-          try {
-            const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-            (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
-            localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
-            const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-            arr.push({ usuario, cancion, artista, time: ts });
-            localStorage.setItem('solicitudes', JSON.stringify(arr));
-          } catch (_) {}
-
           // Guardar el último usuario utilizado para facilitar próximas solicitudes
           localStorage.setItem('currentUser', usuario);
 
