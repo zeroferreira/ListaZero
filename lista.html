@@ -13,10 +13,9 @@
     html, body {
       margin: 0;
       padding: 0;
-      min-height: 100vh;
-      height: auto; /* Permitir scroll nativo */
-      overflow-x: hidden;
-      overflow-y: visible; /* Evitar que body actúe como contenedor de scroll y rompa position: fixed */
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
     }
     
     /* Forzar que el canvas de partículas quede 100% fijo */
@@ -9337,7 +9336,8 @@
 
         const todayRequests = getRequestsForDay(today);
         const distinctUsersToday = new Set(todayRequests.map(s => s && s.usuario)).size;
-        const userRequestedToday = todayRequests.some(s => s && s.usuario === currentUser);
+        const normCurrentUser = normalizeUserKey(currentUser);
+        const userRequestedToday = todayRequests.some(s => s && normalizeUserKey(s.usuario) === normCurrentUser);
 
         const todayValid = distinctUsersToday >= 2 && userRequestedToday;
         if (!todayValid) {
@@ -9416,8 +9416,9 @@
             } catch (_) {}
             return new Date().toISOString().split('T')[0];
           };
+          const normUsername = normalizeUserKey(username);
           allSolicitudes.forEach(s => {
-            if (s && s.usuario === username) {
+            if (s && normalizeUserKey(s.usuario) === normUsername) {
               const day = getSongDay(s);
               userDays.add(day);
             }
@@ -10893,24 +10894,25 @@
           
           // 2. Verificar localStorage directo
           const localSolicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          const localCount = localSolicitudes.filter(s => s.usuario === username).length;
+          const normUsername = normalizeUserKey(username);
+          const localCount = localSolicitudes.filter(s => normalizeUserKey(s.usuario) === normUsername).length;
           console.log(`💾 localStorage directo: ${localCount} solicitudes para ${username}`);
           
           // 3. Verificar localStorage byDay
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
           let byDayCount = 0;
           Object.values(byDay).flat().forEach(s => {
-            if (s.usuario === username) byDayCount++;
+            if (normalizeUserKey(s.usuario) === normUsername) byDayCount++;
           });
           console.log(`📅 localStorage byDay: ${byDayCount} solicitudes para ${username}`);
           
           // 4. Verificar función combinada
           const allSolicitudes = await getAllCombinedSolicitudes();
-          const combinedCount = allSolicitudes.filter(s => s.usuario === username).length;
+          const combinedCount = allSolicitudes.filter(s => normalizeUserKey(s.usuario) === normUsername).length;
           console.log(`🎵 Función combinada: ${combinedCount} solicitudes para ${username}`);
           
           // 5. Mostrar algunas solicitudes de ejemplo
-          const userSongs = allSolicitudes.filter(s => s.usuario === username).slice(0, 5);
+          const userSongs = allSolicitudes.filter(s => normalizeUserKey(s.usuario) === normUsername).slice(0, 5);
           console.log(`📋 Primeras 5 solicitudes de ${username}:`, userSongs);
           
           return {
@@ -13896,7 +13898,8 @@
           // Obtener datos combinados de Firebase y localStorage
           const allSolicitudes = await getAllCombinedSolicitudes();
           
-          const userSongs = allSolicitudes.filter(s => s.usuario === targetUser && !isTestRequestForStats(s));
+          const normTargetUser = normalizeUserKey(targetUser);
+          const userSongs = allSolicitudes.filter(s => normalizeUserKey(s.usuario) === normTargetUser && !isTestRequestForStats(s));
           console.log(`🎵 ${targetUser}: ${userSongs.length} canciones encontradas de ${allSolicitudes.length} totales`);
           
           const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
@@ -13951,7 +13954,7 @@
           });
           let firstRequests = 0;
           earliestByDay.forEach(({ usuario, day }) => {
-            if (usuario === targetUser && (countsByDay.get(day) || 0) >= 2) firstRequests++;
+            if (normalizeUserKey(usuario) === normTargetUser && (countsByDay.get(day) || 0) >= 2) firstRequests++;
           });
           
           // Verificar estado VIP desde Firebase (sets globales)
@@ -14007,7 +14010,8 @@
           // Fallback a localStorage (SOLO SI ES MI PROPIO PERFIL)
           const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
           
-          const userSongs = solicitudes.filter(s => s.usuario === targetUser);
+          const normTargetUser = normalizeUserKey(targetUser);
+          const userSongs = solicitudes.filter(s => normalizeUserKey(s.usuario) === normTargetUser);
           const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
           const playedSongs = userSongs.filter(isEntryPlayed);
           const totalPlayedSongs = playedSongs.length;
@@ -14063,7 +14067,7 @@
           });
           let firstRequests = 0;
           earliestByDayLS.forEach(({ usuario, day }) => {
-            if (usuario === targetUser && (countsByDayLS.get(day) || 0) >= 2) firstRequests++;
+            if (normalizeUserKey(usuario) === normTargetUser && (countsByDayLS.get(day) || 0) >= 2) firstRequests++;
           });
           
           // Verificar estado VIP desde Firebase (sets globales)
@@ -16644,7 +16648,8 @@
           const localData = JSON.parse(localStorage.getItem('solicitudes') || '[]');
           console.log(`💾 Total solicitudes en localStorage: ${localData.length}`);
           
-          const userSongs = localData.filter(s => s.usuario === user);
+          const normUser = normalizeUserKey(user);
+          const userSongs = localData.filter(s => normalizeUserKey(s.usuario) === normUser);
           console.log(`🎵 Canciones del usuario: ${userSongs.length}`);
           
           // Mostrar algunas canciones recientes
@@ -18421,8 +18426,8 @@
         window.requestAnimationFrame(renderFrame);
       }
 
-      function handleScroll() {
-        var y = window.scrollY || 0;
+      function handleScroll(e) {
+        var y = window.scrollY || (e && e.target && e.target.scrollTop) || 0;
         var delta = y - lastScrollY;
         lastScrollY = y;
         velocityY += delta * 0.000002;
@@ -18448,6 +18453,10 @@
       window.addEventListener('pointerdown', boostRotation, { passive: true });
       window.addEventListener('touchstart', boostRotation, { passive: true });
       window.addEventListener('scroll', handleScroll, { passive: true });
+      var containerEl = document.querySelector('.container');
+      if (containerEl) {
+        containerEl.addEventListener('scroll', handleScroll, { passive: true });
+      }
       window.requestAnimationFrame(renderFrame);
     });
   </script>
