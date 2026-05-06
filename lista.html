@@ -14,10 +14,9 @@
       margin: 0;
       padding: 0;
       min-height: 100vh;
-      height: 100vh;
+      height: auto; /* Permitir scroll nativo */
       overflow-x: hidden;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
+      overflow-y: visible; /* Evitar que body actúe como contenedor de scroll y rompa position: fixed */
     }
     
     /* Forzar que el canvas de partículas quede 100% fijo */
@@ -899,7 +898,7 @@
           <label for="day-select" style="margin-right: 8px;">Ver día:</label>
           <select id="day-select"></select>
         </div>
-        <div class="day-filter">
+        <div class="day-filter" id="sort-filter-container" style="display: none;">
           <label for="sort-select" style="margin-right: 8px;">Orden:</label>
           <select id="sort-select">
             <option value="default">Cola (FIFO / sincronizado)</option>
@@ -18448,6 +18447,7 @@
       window.addEventListener('orientationchange', resize);
       window.addEventListener('pointerdown', boostRotation, { passive: true });
       window.addEventListener('touchstart', boostRotation, { passive: true });
+      window.addEventListener('scroll', handleScroll, { passive: true });
       window.requestAnimationFrame(renderFrame);
     });
   </script>
@@ -18560,11 +18560,17 @@
       const panel = document.getElementById('queue-mode-panel');
       const select = document.getElementById('queue-mode-select');
       const status = document.getElementById('queue-mode-status');
-      if (fab) fab.style.display = isAdminMode() ? 'inline-flex' : 'none';
+      const sortContainer = document.getElementById('sort-filter-container');
+      
+      const isAdmin = isAdminMode();
+      
+      if (fab) fab.style.display = isAdmin ? 'inline-flex' : 'none';
+      if (sortContainer) sortContainer.style.display = isAdmin ? 'flex' : 'none';
+      
       const mode = getQueueModeLocal();
       if (select) select.value = mode;
       if (status) status.textContent = `Estado: ${mode === 'tandas15' ? 'Cola por tandas' : (mode === 'smart' ? 'Cola inteligente' : (mode === 'recent' ? 'Más recientes' : (mode === 'oldest' ? 'Más antiguas' : (mode === 'manual_recent' ? 'Manual + recientes' : (mode === 'manual_fifo' ? 'Manual (FIFO)' : 'Cola (FIFO)')))))}`;
-      if (panel && panel.hidden === false && !isAdminMode()) panel.hidden = true;
+      if (panel && panel.hidden === false && !isAdmin) panel.hidden = true;
     }
     document.addEventListener('DOMContentLoaded', function() {
       const fab = document.getElementById('queue-mode-fab');
