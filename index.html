@@ -601,7 +601,52 @@
       }
 
       const form = document.getElementById('formulario');
+      const usuarioInput = document.getElementById('usuario');
       const usuarioSelect = document.getElementById('usuario-registrado');
+
+      // Cargar lista de usuarios registrados
+      async function loadUserList() {
+        if (!db || !usuarioSelect) return;
+        try {
+          const userMap = new Set();
+          
+          // 1. Obtener de userStats
+          const statsSnap = await db.collection('userStats').get();
+          statsSnap.forEach(doc => { if (doc.id) userMap.add(doc.id); });
+          
+          // 2. Obtener de la colección users
+          const usersSnap = await db.collection('users').get();
+          usersSnap.forEach(doc => {
+            const d = doc.data() || {};
+            if (d.name) userMap.add(d.name);
+          });
+
+          // Limpiar y poblar dropdown
+          usuarioSelect.innerHTML = '<option value="">Selecciona un usuario</option>';
+          const sortedUsers = Array.from(userMap).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+          
+          sortedUsers.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u;
+            opt.textContent = u;
+            usuarioSelect.appendChild(opt);
+          });
+        } catch (e) {
+          console.error("Error al cargar lista de usuarios:", e);
+        }
+      }
+
+      // Sincronizar dropdown con input
+      if (usuarioSelect && usuarioInput) {
+        usuarioSelect.addEventListener('change', () => {
+          if (usuarioSelect.value) {
+            usuarioInput.value = usuarioSelect.value;
+          }
+        });
+      }
+
+      loadUserList();
+
       async function fetchLiveCodeStatus() {
         try {
           if (!db) return { required: false, code: '' };
