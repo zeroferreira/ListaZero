@@ -1736,77 +1736,23 @@
       } catch (_) {}
     }
 
-    let rouletteLiveUnsubscribe = null;
-    function setupLiveSync() {
-      if (rouletteLiveUnsubscribe) rouletteLiveUnsubscribe();
-      
-      rouletteLiveUnsubscribe = getRouletteLiveRef().onSnapshot(doc => {
+    async function pollRouletteLiveOnce() {
+      try {
+        const doc = await getRouletteLiveRef().get();
         if (!doc.exists) return;
         const data = doc.data() || {};
-        
-        // Evitar procesar nuestros propios cambios
-        if (data.updatedBy === rouletteLiveClientId) return;
-
-        // 1. Sincronizar Tema
-        if (data.themeKey && THEMES[data.themeKey]) {
+        if (data.themeKey && THEMES[data.themeKey] && data.updatedBy !== rouletteLiveClientId) {
           applyTheme(data.themeKey, { broadcast: false });
         }
-
-        // 2. Sincronizar Estado de Overlay (Activado/Desactivado)
-        if (typeof data.overlayEnabled === 'boolean') {
+        if (data.type === 'overlay_toggle' && data.overlayToggleToken && data.overlayToggleToken !== lastHandledOverlayToggleToken) {
+          lastHandledOverlayToggleToken = data.overlayToggleToken;
+          applyOverlayEnabled(data.overlayEnabled !== false, { broadcast: false });
+          return;
+        }
+        if (typeof data.overlayEnabled === 'boolean' && data.updatedBy !== rouletteLiveClientId) {
           applyOverlayEnabled(data.overlayEnabled, { broadcast: false });
         }
-
-        // 3. Sincronizar Pestaña Activa y Participantes Manuales/Excluidos
-        let needsRecompute = false;
-        if (data.activeSourceTab && data.activeSourceTab !== activeSourceTab) {
-          activeSourceTab = data.activeSourceTab;
-          const btn = document.getElementById(`source-tab-${activeSourceTab}`);
-          if (btn) {
-             ['list', 'rewards', 'manual'].forEach(k => {
-               const b = document.getElementById(`source-tab-${k}`);
-               if (b) b.classList.toggle('active', k === activeSourceTab);
-             });
-          }
-          needsRecompute = true;
-        }
-
-        if (Array.isArray(data.manualParticipants)) {
-          // Solo actualizar si hay cambios reales para evitar bucles visuales
-          if (JSON.stringify(data.manualParticipants) !== JSON.stringify(manualParticipants)) {
-            manualParticipants = [...data.manualParticipants];
-            needsRecompute = true;
-          }
-        }
-
-        if (Array.isArray(data.excludedParticipants)) {
-          const newExcluded = new Set(data.excludedParticipants);
-          if (newExcluded.size !== excludedParticipants.size || [...newExcluded].some(p => !excludedParticipants.has(p))) {
-            excludedParticipants = newExcluded;
-            needsRecompute = true;
-          }
-        }
-
-        // 4. Sincronizar Configuración (Duración, Intensidad, etc.)
-        if (data.config) {
-          let configChanged = false;
-          for (const key in data.config) {
-            if (config[key] !== data.config[key]) {
-              config[key] = data.config[key];
-              configChanged = true;
-            }
-          }
-          if (configChanged) {
-            updateUIFromConfig();
-            needsRecompute = true;
-          }
-        }
-
-        if (needsRecompute) {
-          recomputeParticipants();
-        }
-
-        // 5. Sincronizar Giro (Spin)
+        if (data.updatedBy === rouletteLiveClientId) return;
         if (data.type === 'spin' && data.spin && data.spin.spinId && data.spin.spinId !== lastHandledLiveSpinId) {
           lastHandledLiveSpinId = data.spin.spinId;
           spinWheel({
@@ -1816,13 +1762,12 @@
             autoFollowSpinAgain: false,
             applyWinnerRemoval: false
           });
+          return;
         }
-
-        // 6. Sincronizar Ganador
         if (data.type === 'winner' && data.winner && data.winner.token && data.winner.token !== lastHandledLiveWinnerToken) {
           if (isSpinning && lastHandledLiveSpinId && data.winner.token === `winner_${lastHandledLiveSpinId}`) return;
           lastHandledLiveWinnerToken = data.winner.token;
-          if (Array.isArray(data.winner.entries)) {
+          if (Array.isArray(data.winner.entries) && data.winner.entries.length) {
             liveSpinEntriesOverride = data.winner.entries.slice();
           }
           if (Number.isFinite(data.winner.finalRotation)) {
@@ -1835,58 +1780,19 @@
             photoUrl: data.winner.photoUrl || '',
             quietIfSame: true
           });
+          return;
         }
-
-        // 7. Sincronizar Diseño (Posición y Tamaño)
-        if (data.wheelState) {
-          let stateChanged = false;
-          if (Number.isFinite(data.wheelState.x) && data.wheelState.x !== wheelState.x) { wheelState.x = data.wheelState.x; stateChanged = true; }
-          if (Number.isFinite(data.wheelState.y) && data.wheelState.y !== wheelState.y) { wheelState.y = data.wheelState.y; stateChanged = true; }
-          if (Number.isFinite(data.wheelState.size) && data.wheelState.size !== wheelState.size) { wheelState.size = data.wheelState.size; stateChanged = true; }
-          if (stateChanged) {
-            applyWheelState(true);
-          }
+        if (data.type === 'layout' && data.wheelState && data.updatedBy !== rouletteLiveClientId) {
+          if (Number.isFinite(data.wheelState.x)) wheelState.x = data.wheelState.x;
+          if (Number.isFinite(data.wheelState.y)) wheelState.y = data.wheelState.y;
+          if (Number.isFinite(data.wheelState.size)) wheelState.size = data.wheelState.size;
+          applyWheelState();
         }
-
-        // 8. Sincronizar Cierre/Reset
         if (data.type === 'idle' && data.closeToken && data.closeToken !== lastHandledLiveCloseToken) {
           lastHandledLiveCloseToken = data.closeToken;
           resetWinner({ broadcast: false });
         }
-      }, err => {
-        console.warn('Error en listener de ruleta live:', err);
-      });
-
-      // Listener para el estado global del sistema (Overlay On/Off)
-      db.collection('system').doc('status').onSnapshot(doc => {
-        if (!doc.exists) return;
-        const data = doc.data() || {};
-        if (typeof data.rouletteOverlayEnabled === 'boolean') {
-          if (lastHandledSystemOverlayEnabled !== data.rouletteOverlayEnabled) {
-            lastHandledSystemOverlayEnabled = data.rouletteOverlayEnabled;
-            applyOverlayEnabled(data.rouletteOverlayEnabled, { broadcast: false });
-          }
-        }
-      });
-    }
-
-    function updateUIFromConfig() {
-      if (inpDuration) inpDuration.value = config.spinDurationMs;
-      if (inpIntensity) inpIntensity.value = config.spinIntensity;
-      if (inpSpinAgain) inpSpinAgain.checked = config.spinAgainEnabled;
-      if (inpAllowDuplicates) inpAllowDuplicates.checked = config.allowDuplicates;
-      if (inpRemoveWinner) inpRemoveWinner.checked = config.removeWinnerEnabled;
-      if (valDuration) valDuration.textContent = String(config.spinDurationMs);
-      if (valIntensity) valIntensity.textContent = String(config.spinIntensity);
-    }
-
-    async function syncParticipants() {
-      publishRouletteLiveState({
-        manualParticipants,
-        excludedParticipants: Array.from(excludedParticipants),
-        activeSourceTab,
-        config
-      });
+      } catch (_) {}
     }
 
     function getWinnerPhotoUrl(name) {
@@ -1899,11 +1805,8 @@
         })
         .sort((a, b) => getReqTimeMs(b) - getReqTimeMs(a));
 
-      const winnerReq = matching.find(req => {
-        const p = req.profilePic || req.profilePhoto || req.photoUrl || req.avatar || req.userPhoto || req.userPic || '';
-        return String(p).trim().length > 0;
-      });
-      const photo = winnerReq ? String(winnerReq.profilePic || winnerReq.profilePhoto || winnerReq.photoUrl || winnerReq.avatar || winnerReq.userPhoto || winnerReq.userPic || '').trim() : '';
+      const winnerReq = matching.find(req => String(req.profilePhoto || req.photoUrl || req.avatar || req.userPhoto || '').trim());
+      const photo = winnerReq ? String(winnerReq.profilePhoto || winnerReq.photoUrl || winnerReq.avatar || winnerReq.userPhoto || '').trim() : '';
       if (photo) {
         return photo;
       }
@@ -2076,8 +1979,8 @@
       wheelState.y = Math.max(-maxY, Math.min(maxY, wheelState.y || 0));
     }
 
-    function applyWheelState(isRemote = false) {
-      if (!isRemote) clampWheelState();
+    function applyWheelState() {
+      clampWheelState();
       wrapper.style.width = `${wheelState.size}px`;
       wrapper.style.height = `${wheelState.size}px`;
       stage.style.transform = `translate(${wheelState.x}px, ${wheelState.y}px)`;
@@ -2158,7 +2061,6 @@
       valIntensity.textContent = String(config.spinIntensity);
       recomputeParticipants();
       drawWheel();
-      syncParticipants(); // Sincronizar configuración
     }
 
     function setSourceTab(tab) {
@@ -2171,7 +2073,6 @@
         btn.setAttribute('aria-selected', active ? 'true' : 'false');
       });
       renderParticipantsList();
-      syncParticipants(); // Sincronizar cambio de pestaña
     }
 
     function loadNewRoulette() {
@@ -2207,8 +2108,25 @@
         rouletteOverlayEnabled: enabled,
         lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
         updatedBy: 'roulette-overlay'
-      }, { merge: true }).catch(err => {
+      }, { merge: true }).catch(async err => {
         console.warn('No se pudo sincronizar rouletteOverlayEnabled en system/status:', err);
+        try {
+          await setDocumentViaRest('system', 'status', {
+            rouletteOverlayEnabled: enabled,
+            updatedBy: 'roulette-overlay',
+            lastUpdate: true
+          }, ['lastUpdate']);
+        } catch (restErr) {
+          console.warn('Tampoco se pudo sincronizar rouletteOverlayEnabled por REST:', restErr);
+        }
+      });
+      db.collection('notifications').add({
+        type: 'roulette_overlay_toggle',
+        enabled,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(err => {
+        console.error('No se pudo enviar comando remoto de overlay:', err);
+        overlayStatus.textContent = 'Estado: ERROR REMOTO';
       });
     }
 
@@ -2267,8 +2185,10 @@
           });
         });
 
-      // Reemplazar polling por listeners reales (setupLiveSync)
-      setupLiveSync();
+      pollSystemStatusOnce();
+      pollRouletteLiveOnce();
+      setInterval(pollSystemStatusOnce, 1800);
+      setInterval(pollRouletteLiveOnce, 1200);
     }
 
     function updateParticipants() {
@@ -2301,21 +2221,9 @@
       const merged = [];
       const seen = new Set();
 
-      // Nombres que tienen canciones pendientes hoy
-      const currentPendingUsers = new Set(firebaseParticipants.map(n => normalizeParticipantName(n)));
-      const usersInAllRequests = new Set(allRequests.map(req => normalizeParticipantName(req.displayName || req.usuario || req.user)));
-
       manualParticipants.forEach(name => {
         const normalized = normalizeParticipantName(name);
         if (!normalized || excludedParticipants.has(normalized)) return;
-        
-        // REGLA: Si el usuario está en la lista de solicitudes de hoy, 
-        // solo incluirlo si aún tiene canciones pendientes.
-        // Si no está en solicitudes hoy, es un ingreso puramente manual y se mantiene.
-        if (usersInAllRequests.has(normalized) && !currentPendingUsers.has(normalized)) {
-          return; // Saltamos porque ya se tocó su música
-        }
-
         if (!config.allowDuplicates && seen.has(normalized)) return;
         seen.add(normalized);
         merged.push(...expandNameCopies(name, 1));
@@ -2438,7 +2346,6 @@
         excludedParticipants.add(normalizeParticipantName(name));
       }
       recomputeParticipants();
-      syncParticipants(); // Sincronizar cambio con otros dispositivos
     }
 
     function addManualParticipant() {
@@ -2455,7 +2362,6 @@
       setExtraDuplicateCount(name, 0);
       recomputeParticipants();
       setSourceTab('manual');
-      syncParticipants(); // Sincronizar cambio con otros dispositivos
     }
 
     function resetRoulette() {

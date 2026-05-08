@@ -13,18 +13,18 @@
     html, body {
       margin: 0;
       padding: 0;
-      min-height: 100dvh;
+      height: 100dvh;
       width: 100%;
-      overflow-x: hidden;
-      overflow-y: auto;
+      overflow: hidden !important;
       position: relative;
     }
     
     .container {
-      min-height: 100dvh !important;
+      height: 100dvh !important;
       width: 100% !important;
       display: flex !important;
       flex-direction: column !important;
+      overflow: hidden !important;
       padding: 12px !important;
       box-sizing: border-box !important;
     }
@@ -33,11 +33,11 @@
       flex: 1 !important;
       display: flex !important;
       flex-direction: column !important;
-      overflow: visible !important;
+      overflow: hidden !important;
       margin: 0 auto !important;
       max-width: 800px !important;
       width: 100% !important;
-      min-height: min-content;
+      height: 100% !important;
     }
 
     .title-bar, .filter-controls-row {
@@ -963,7 +963,6 @@
             </div>
          </div>
       </div>
-
 
       <div id="admin-panel" class="admin-panel" hidden>
         
@@ -5810,56 +5809,60 @@
       async function renderAllUsersSelect() {
         const allUsersSelect = document.getElementById('all-users-select');
         const allUsersSelectDonador = document.getElementById('all-users-select-donador');
-        const compUserSelect = document.getElementById('comp-user-select');
-        
         // Si no existen los elementos en el DOM, no hacer nada
-        if (!allUsersSelect && !allUsersSelectDonador && !compUserSelect) return;
+        if (!allUsersSelect) return;
 
         const userMap = new Map();
         const addUser = (rawName) => {
            const u = String(rawName || '').trim();
            if (!u) return;
            const key = u.toLowerCase();
+           // Estrategia: si no existe, lo agregamos.
+           // Si existe, podríamos reemplazar si el nuevo tiene mejor capitalización, 
+           // pero por simplicidad y estabilidad, nos quedamos con el primero (o el último).
            if (!userMap.has(key)) {
              userMap.set(key, u);
            }
         };
         
-        // 1. Usuarios del día actual (memoria)
         try {
-          const items = Array.isArray(window.__allDayItems) ? window.__allDayItems : (Array.isArray(window.__dayItems) ? window.__dayItems : []);
+          const items = Array.isArray(window.__dayItems) ? window.__dayItems : [];
           items.forEach(it => addUser(it?.usuario));
         } catch (_) {}
 
-        // 2. Caché local
+        try {
+          const all = await getAllCombinedSolicitudes();
+          (all || []).forEach(s => addUser(s?.usuario));
+        } catch (_) {}
+
+        try {
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          Object.values(byDay).forEach(arr => (arr || []).forEach(it => addUser(it.usuario)));
+        } catch (error) { }
+
         try {
           const cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
           cached.forEach(name => addUser(name));
-          
-          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          Object.values(byDay).forEach(arr => (arr || []).forEach(it => addUser(it.usuario)));
         } catch (_) {}
 
-        // 3. Firestore: userStats (Límite 1000 para no saturar)
         try {
           const dbRef = window.db || db;
           if (dbRef) {
-            const statsSnap = await dbRef.collection('userStats').limit(1000).get();
+            const statsSnap = await dbRef.collection('userStats').get();
             statsSnap.forEach(doc => { if (doc.id) addUser(doc.id); });
           }
-        } catch (e) { console.warn('Falló fetch userStats en renderAllUsersSelect:', e); }
+        } catch (_) {}
 
-        // 4. Firestore: users (Límite 500)
         try {
           const dbRef = window.db || db;
           if (dbRef) {
-            const usersSnap = await dbRef.collection('users').limit(500).get();
+            const usersSnap = await dbRef.collection('users').get();
             usersSnap.forEach(doc => {
               const d = doc.data() || {};
               if (d.name) addUser(d.name);
             });
           }
-        } catch (e) { console.warn('Falló fetch users en renderAllUsersSelect:', e); }
+        } catch (_) {}
 
         const list = Array.from(userMap.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
         try { localStorage.setItem('knownUsers', JSON.stringify(list)); } catch (_) {}
@@ -5867,7 +5870,7 @@
         // Función helper para llenar selects
         const fillSelect = (el) => {
            if (!el) return;
-           const currentVal = el.value;
+           const currentVal = el.value; // Preservar valor si ya tenía algo
            el.innerHTML = '<option value="">Selecciona un usuario</option>';
            list.forEach(name => {
              const opt = document.createElement('option');
@@ -5876,14 +5879,13 @@
              el.appendChild(opt);
            });
            if (currentVal && list.includes(currentVal)) {
-              el.value = currentVal;
+             el.value = currentVal;
            }
         };
 
         fillSelect(allUsersSelect);
-        fillSelect(allUsersSelectDonador);
-        fillSelect(compUserSelect);
         fillSelect(document.getElementById('all-users-select-z0'));
+        fillSelect(document.getElementById('all-users-select-donador'));
         fillSelect(document.getElementById('all-users-select-z0-fan'));
         fillSelect(document.getElementById('all-users-select-z0-platino'));
         fillSelect(document.getElementById('all-users-select-superfan'));
@@ -6220,7 +6222,7 @@
         if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
       });
 
-      async function init() {
+      (async function init() {
         console.log('🚀 Iniciando aplicación...');
         try {
           const saved = String(localStorage.getItem(SORT_MODE_KEY) || '').trim();
@@ -6229,12 +6231,9 @@
           if (sortSelect) sortSelect.value = initial;
           localStorage.setItem(SORT_MODE_KEY, initial);
         } catch (_) {}
-        
         await loadDays();
-        
         // Mostrar estado inicial aunque no haya datos todavía
         try { renderSolicitudes([]); } catch (_) {}
-        
         console.log('📅 Días cargados, iniciando suscripciones...');
         subscribeSuperfanUsers();
         subscribeVipUsers();
@@ -6242,7 +6241,6 @@
         subscribeDonadorUsers();
         subscribeZ0FanUsers();
         subscribeZ0PlatinoUsers();
-        
         try {
           const rawSel = localStorage.getItem('selectedBadges');
           if (rawSel) {
@@ -6253,32 +6251,21 @@
             }
           }
         } catch (_) {}
-        
         try {
           const localPlayedMapDays = Object.keys(JSON.parse(localStorage.getItem('playedSongs') || '{}') || {});
           localPlayedMapDays.forEach(d => { if (d) daysSet.add(d); });
         } catch (_) {}
-        
         try { if (typeof subscribeSelectedBadges === 'function') subscribeSelectedBadges(); } catch (_) {}
         try { if (shouldShowStatsTicker()) { ensureStatsTicker(); startStatsTicker(); } } catch (_) {}
-        
         console.log('✅ Suscripciones iniciadas');
-        
-        // Poblar selectores de usuarios en segundo plano para no bloquear el inicio
-        renderAllUsersSelect().catch(err => console.warn('Error en renderAllUsersSelect inicial:', err));
-        
+        await renderAllUsersSelect();
         if (daySelect.value) {
           subscribeManualOrderForDay(daySelect.value);
           subscribeSolicitudesForDay(daySelect.value);
           subscribePlayedSongs(daySelect.value);
         }
-      }
-
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => init().catch(console.error));
-      } else {
-        init().catch(console.error);
-      }
+      })();
+    })();
   </script>
 
   <script>
@@ -6837,15 +6824,26 @@
         window.__globalTotalSolicitudes = 0;
       };
 
-      window.__statsTickerUnsub = docRef.onSnapshot((doc) => {
-        if (doc && doc.exists) {
-          setFromData(doc.data() || {});
-        } else {
+      try {
+        docRef.get({ source: 'server' }).then((doc) => {
+          if (doc && doc.exists) setFromData(doc.data() || {});
+          else setUnavailable();
+          refreshStatsTicker();
+        }).catch(() => {
           setUnavailable();
-        }
+          refreshStatsTicker();
+        });
+      } catch (_) {
+        setUnavailable();
         refreshStatsTicker();
-      }, (err) => {
-        console.warn('Error en onSnapshot de stats ticker:', err);
+      }
+
+      window.__statsTickerUnsub = docRef.onSnapshot({ includeMetadataChanges: true }, (doc) => {
+        if (!doc || !doc.exists) return;
+        if (doc.metadata && doc.metadata.fromCache) return;
+        setFromData(doc.data() || {});
+        refreshStatsTicker();
+      }, () => {
         setUnavailable();
         refreshStatsTicker();
       });
@@ -7071,15 +7069,15 @@
           console.log('🔒 Panel cerrado (DJ Mode OFF)');
         });
 
-      // 1. Unificar Event Listeners para las pestañas de administración (Versión Centralizada)
-      document.querySelectorAll('.admin-section-tab').forEach((btn) => {
+      const adminSectionTabs = Array.from(document.querySelectorAll('.admin-section-tab'));
+      adminSectionTabs.forEach((btn) => {
         btn.addEventListener('click', () => {
           const section = btn.getAttribute('data-section') || '';
           if (section) showAdminSection(section);
         });
       });
 
-      // Event listeners para el selector móvil (si existe)
+      // Event listeners para el sistema de secciones
       adminSectionSelect?.addEventListener('change', (e) => {
         showAdminSection(e.target.value);
       });
@@ -7108,47 +7106,36 @@
       // Función para mostrar una sección específica del admin
       function showAdminSection(section) {
         if (adminSectionSelect) adminSectionSelect.value = section;
-        
-        // Sincronizar clases activas en las pestañas
-        document.querySelectorAll('.admin-section-tab').forEach((btn) => {
-          const isActive = btn.getAttribute('data-section') === section;
-          btn.classList.toggle('active', isActive);
-          btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        });
-
-        // Ocultar TODAS las secciones registradas
+        if (adminSectionTabs && adminSectionTabs.length) {
+          adminSectionTabs.forEach((btn) => {
+            const isActive = btn.getAttribute('data-section') === section;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+          });
+        }
+        // Ocultar todas las secciones
         if (badgesSection) badgesSection.hidden = true;
         if (rewardsSection) rewardsSection.hidden = true;
         if (maintenanceSection) maintenanceSection.hidden = true;
-        const rewardsConfigSec = document.getElementById('rewards-config-section');
-        if (rewardsConfigSec) rewardsConfigSec.hidden = true;
 
-        // Mostrar la sección seleccionada y ejecutar su lógica de inicialización
+        // Mostrar la sección seleccionada
         switch(section) {
           case 'badges':
             if (badgesSection) badgesSection.hidden = false;
-            // Por defecto mostramos VIP en el selector interno
-            const currentBadge = badgeTypeSelect?.value || 'vip';
-            showBadgeManagement(currentBadge);
-            syncBadgeTabs(currentBadge);
-            if (typeof window.renderAllUsersSelect === 'function') window.renderAllUsersSelect();
+            if (badgeTypeSelect) badgeTypeSelect.value = 'vip';
+            showBadgeManagement('vip'); // Mostrar VIP por defecto
+            syncBadgeTabs('vip');
             break;
           case 'rewards':
             if (rewardsSection) rewardsSection.hidden = false;
-            if (typeof loadRewardRequests === 'function') loadRewardRequests();
-            break;
-          case 'rewards-config':
-            if (rewardsConfigSec) {
-                rewardsConfigSec.hidden = false;
-                if (typeof renderRewardsConfig === 'function') renderRewardsConfig();
-            }
+            loadRewardRequests(); // Cargar solicitudes de recompensas
             break;
           case 'maintenance':
             if (maintenanceSection) maintenanceSection.hidden = false;
+            // Poblar selector de compensación si existe la función
             if (typeof window.populateAdminCompensationSelector === 'function') {
                window.populateAdminCompensationSelector();
             }
-            if (typeof window.renderAllUsersSelect === 'function') window.renderAllUsersSelect();
             break;
         }
       }
@@ -7296,7 +7283,6 @@
                 // Esto evita leer el documento antes de escribir y reduce costos/cuota
                 await docRef.set({
                    totalPoints: firebase.firestore.FieldValue.increment(points),
-                   manualAdjustmentTotal: firebase.firestore.FieldValue.increment(points),
                    lastManualAdjustment: {
                       amount: points,
                       reason: reason,
@@ -11055,115 +11041,6 @@
         console.log(`✅ Validación completada para ${username}: ${data.achievements.length} logros, ${achievementPoints} puntos de logros, ${data.points} puntos totales`);
         return achievementPoints;
       }
-      async function countTotalToggledSongsForUser(usuario, cachedData = null) {
-         try {
-           const norm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
-           if (!norm) return 0;
-           
-           const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
-
-           // Construir todos los prefijos a buscar (el usuario principal + sus alias de TikTok)
-           const prefixes = new Set();
-           prefixes.add(sanitize(`${norm}-`));
-
-           // Agregar prefijos de cualquier alias vinculado
-           const aliasesMap = (cachedData && cachedData.aliases) ? cachedData.aliases : (window.__USER_ALIASES_MAP__ || {});
-           Object.keys(aliasesMap).forEach(alias => {
-             if (String(aliasesMap[alias] || '').trim().toLowerCase() === norm) {
-               const aliasPrefix = sanitize(`${alias.replace(/^@/, '')}-`);
-               if (aliasPrefix) prefixes.add(aliasPrefix);
-             }
-           });
-
-           const ids = new Set();
-           
-           // 1. Firestore playedSongs (FUENTE DE VERDAD)
-           try {
-             let snap;
-             if (cachedData && cachedData.playedSongs) {
-               // USAR CACHE SI EXISTE
-               cachedData.playedSongs.forEach((songs, day) => {
-                 if (typeof window.isOnOrAfterStart === 'function' && !window.isOnOrAfterStart(day)) return;
-                 songs.forEach(x => {
-                   const id = sanitize(x);
-                   for (const p of prefixes) { if (id.startsWith(p)) { ids.add(id); break; } }
-                 });
-               });
-             } else {
-               snap = await db.collection('playedSongs').get();
-               snap.forEach(doc => {
-                 const day = doc.id;
-                 if (typeof window.isOnOrAfterStart === 'function' && !window.isOnOrAfterStart(day)) return;
-                 const d = doc.data()||{};
-                 const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
-                 arr.forEach(x => {
-                   const id = sanitize(x);
-                   for (const p of prefixes) { if (id.startsWith(p)) { ids.add(id); break; } }
-                 });
-               });
-             }
-           } catch(e){}
-           
-           // 2. System Events (unmark/mark logic corrections)
-           try {
-              let qs;
-              if (cachedData && cachedData.systemEvents) {
-                // Incluir eventos del usuario principal y de sus alias
-                const aliasNorms = [...prefixes].map(p => p.slice(0, -1)); // quitar el '-' final
-                qs = cachedData.systemEvents.filter(e => {
-                  const eu = String(e.usuario || '').toLowerCase().replace(/^@/, '');
-                  return aliasNorms.includes(eu);
-                });
-              } else {
-                const snap = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
-                qs = [];
-                snap.forEach(doc => qs.push(doc.data()));
-              }
-
-              const latest = {};
-              qs.forEach(d => {
-                 const sid = sanitize(d.songId);
-                 if (!sid) return;
-                 const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : (d.ts && d.ts.seconds ? d.ts.seconds * 1000 : 0);
-                 const k = sid;
-                 if (!latest[k] || ts > latest[k].ts) {
-                   latest[k] = { action: d.action, ts };
-                 }
-              });
-             Object.keys(latest).forEach(sid => {
-                if (latest[sid].action === 'mark') ids.add(sid);
-                else if (latest[sid].action === 'unmark') ids.delete(sid);
-             });
-           } catch(e){}
-
-           // 3. SOLO SI ES EL USUARIO PROPIO (Admin viendo su propia sesión o User viéndose a sí mismo)
-           const currentUser = getCurrentUser();
-           const targetUser = getCurrentSelectedUser();
-           
-           const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
-           const normTarget = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
-           const isOwner = normCurrent === norm && normCurrent === normTarget;
-           
-           if (isOwner) {
-               try {
-                 const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-                 Object.keys(localPlayed).forEach(day => {
-                   if (typeof window.isOnOrAfterStart === 'function' && !window.isOnOrAfterStart(day)) return;
-                   const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
-                   arr.forEach(x => {
-                     const id = sanitize(x);
-                     for (const p of prefixes) { if (id.startsWith(p)) { ids.add(id); break; } }
-                   });
-                 });
-               } catch(e){}
-           } else {
-               console.log(`🔒 countTotalToggledSongsForUser: Ignorando localStorage porque ${normCurrent} está viendo a ${norm}`);
-           }
-
-           console.log(`🔢 Conteo final (calculado) para ${norm} (aliases: ${[...prefixes].join(', ')}): ${ids.size}`);
-           return ids.size;
-         } catch(e) { console.error(e); return 0; }
-      }
       function getLocalGamificationData(u) {
         const allStr = localStorage.getItem('gamificationData') || '{}';
         const all = JSON.parse(allStr);
@@ -11181,24 +11058,104 @@
           } catch (_) { return '00:00'; }
         };
       }
+      // NUEVA función unificada para contar canciones toggleadas (Reproducidas)
+      // Esta función se declara aquí para estar disponible tanto para computeUserBreakdown como para renderPersonalStatsForUser
+      async function countTotalToggledSongsForUser(usuario) {
+         try {
+           const norm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
+           if (!norm) return 0;
+           
+           // IMPORTANTE: NO usar LocalStorage para el conteo de puntos globales.
+           // LocalStorage solo contiene lo que se marcó en ESTE dispositivo.
+           // Si el admin tiene 36k es porque él marcó muchas canciones, pero si el usuario
+           // entra desde otro PC, solo verá lo que está en Firestore.
+           // Para garantizar consistencia, DEBEMOS confiar en Firestore como única fuente de verdad para estadísticas públicas.
+
+           // Sin embargo, para evitar romper la experiencia inmediata del usuario que marca cosas,
+           // podemos usar el set en memoria SI ES EL USUARIO ACTUAL.
+           // Pero para ver perfiles ajenos (Transparencia), SOLO Firestore.
+
+           const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+           const prefix = sanitize(`${norm}-`);
+           const ids = new Set();
+           
+           // 1. Firestore playedSongs (FUENTE DE VERDAD)
+           try {
+             const snap = await db.collection('playedSongs').get();
+             snap.forEach(doc => {
+               const day = doc.id;
+               if (!isOnOrAfterStart(day)) return;
+               const d = doc.data()||{};
+               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
+               arr.forEach(x => {
+                 const id = sanitize(x);
+                 if (id.startsWith(prefix)) ids.add(id);
+               });
+             });
+           } catch(e){}
+           
+           // 2. System Events (unmark/mark logic corrections)
+           try {
+             const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
+             const latest = {};
+             qs.forEach(doc => {
+                const d = doc.data()||{};
+                const sid = sanitize(d.songId);
+                if (!sid) return;
+                const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+                const k = sid;
+                if (!latest[k] || ts > latest[k].ts) {
+                  latest[k] = { action: d.action, ts };
+                }
+             });
+             Object.keys(latest).forEach(sid => {
+                if (latest[sid].action === 'mark') ids.add(sid);
+                else if (latest[sid].action === 'unmark') ids.delete(sid);
+             });
+           } catch(e){}
+
+           // 3. SOLO SI ES EL USUARIO PROPIO (Admin viendo su propia sesión o User viéndose a sí mismo)
+           // Mezclar con LocalStorage para dar feedback instantáneo de lo que acaba de hacer.
+           // Pero si estamos viendo a OTRO usuario, NO usar nuestro LocalStorage.
+           const currentUser = getCurrentUser(); // El usuario real logueado en el navegador
+           const targetUser = getCurrentSelectedUser(); // El usuario que estamos viendo
+           
+           // Verificar si soy el dueño de los datos que estoy viendo
+           const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
+           const normTarget = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
+           // También validar contra el usuario solicitado en la función
+           const isOwner = normCurrent === norm && normCurrent === normTarget;
+           
+           if (isOwner) {
+               try {
+                 const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+                 Object.keys(localPlayed).forEach(day => {
+                   if (!isOnOrAfterStart(day)) return;
+                   const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+                   arr.forEach(x => {
+                     const id = sanitize(x);
+                     if (id.startsWith(prefix)) ids.add(id);
+                   });
+                 });
+               } catch(e){}
+           } else {
+               console.log(`🔒 countTotalToggledSongsForUser: Ignorando localStorage porque ${normCurrent} está viendo a ${norm}`);
+           }
+
+           console.log(`🔢 Conteo final (calculado) para ${norm}: ${ids.size}`);
+           return ids.size;
+         } catch(e) { console.error(e); return 0; }
+      }
 
       const TOP1_BONUS_START_DATE = '2025-12-19';
 
       async function computeUserBreakdown(u, options = {}) {
-        const cachedData = options.cachedData || null;
         const rawUser = String(u || '').trim();
         const usuario = rawUser.replace(/^@/, '');
         const norm = (s) => String(s || '').trim().replace(/^@/, '').toLowerCase();
         const unameLc = String(usuario||'').trim().toLowerCase();
         const rawLc = String(rawUser||'').trim().toLowerCase();
-        
-        // --- SOPORTE DE ALIAS (VINCULACIÓN) ---
-        const aliases = (cachedData && cachedData.aliases) ? cachedData.aliases : (window.__USER_ALIASES_MAP__ || {});
-        const targetMaster = aliases[unameLc] || aliases[rawLc] || unameLc;
-        
-        let isVip = (window.vipSet && (window.vipSet.has(unameLc) || window.vipSet.has(rawLc) || window.vipSet.has(targetMaster))) || 
-                    (window.z0VipSet && (window.z0VipSet.has(unameLc) || window.z0VipSet.has(rawLc) || window.z0VipSet.has(targetMaster)));
-        
+        let isVip = (window.vipSet && (window.vipSet.has(unameLc) || window.vipSet.has(rawLc))) || (window.z0VipSet && (window.z0VipSet.has(unameLc) || window.z0VipSet.has(rawLc)));
         const getHourKey = (x) => {
           try {
             if (typeof window.toHourKey === 'function') return window.toHourKey(x);
@@ -11213,19 +11170,24 @@
         // --- CALCULO DE "TOP 1 DIARIO" ---
         let top1Count = 0;
         try {
-           const allReqs = (cachedData && cachedData.allSolicitudes) ? cachedData.allSolicitudes : await getAllCombinedSolicitudes();
+           const allReqs = await getAllCombinedSolicitudes();
            // Agrupar por día
            const byDay = {};
            allReqs.forEach(s => {
              let d = String(s.day || (s.fecha||'').split('T')[0] || '').trim();
              if (!d) return;
+             // Solo considerar desde la fecha de inicio del evento
              if (d < TOP1_BONUS_START_DATE) return;
+             
+             // No contar el día de HOY si no ha terminado (opcional, pero el usuario dijo "cuantas veces ha quedado")
+             // Asumiremos que cuenta días completados o actuales si ya va ganando.
+             // Pero para evitar volatilidad, lo ideal es días pasados. 
+             // Sin embargo, si es "hoy", el usuario quiere ver si va ganando.
+             // Vamos a contar todos los días desde START_DATE hasta hoy (inclusive).
              
              if (!byDay[d]) byDay[d] = {};
              const uKey = String(s.usuario||'').trim().replace(/^@/,'').toLowerCase();
-             // Si el usuario tiene un alias, sumamos al master
-             const finalUKey = aliases[uKey] || uKey;
-             byDay[d][finalUKey] = (byDay[d][finalUKey] || 0) + 1;
+             byDay[d][uKey] = (byDay[d][uKey] || 0) + 1;
            });
            
            // Determinar ganador de cada día
@@ -11233,16 +11195,20 @@
               const counts = byDay[day];
               let max = -1;
               let winner = null;
+              // Encontrar el maximo
               Object.keys(counts).forEach(user => {
                  if (counts[user] > max) {
                    max = counts[user];
                    winner = user;
                  } else if (counts[user] === max) {
-                    if (user === targetMaster) winner = user; 
+                   // Empate: ¿ambos ganan? O nadie? O el primero?
+                   // Asumiremos empate = ambos ganan (o el sistema elige uno, pero mejor ambos).
+                   // Para simplificar, si hay empate con el usuario actual, cuenta.
+                   if (user === unameLc) winner = user; 
                  }
               });
               
-              if (winner === targetMaster && max > 0) {
+              if (winner === unameLc && max > 0) {
                  top1Count++;
               }
            });
@@ -11252,114 +11218,70 @@
         const daysSet = new Set();
         const perDaySongs = new Map();
         try {
-          // Si tenemos cache de solicitudes, usarlo
-          if (cachedData && cachedData.allSolicitudes) {
-             cachedData.allSolicitudes.forEach(d => {
-                const day = normalizeDay(d.day || '');
-                if (!day) return;
-                if (typeof window.isOnOrAfterStart === 'function' && !window.isOnOrAfterStart(day)) return;
-                daysSet.add(day);
-                const arr = perDaySongs.get(day) || [];
-                arr.push(d);
-                perDaySongs.set(day, arr);
-             });
-          } else {
-             const userSnap = await db.collection('solicitudes').where('usuario', '==', usuario).get();
-             userSnap.forEach(doc => {
-               const d = doc.data() || {};
-               const day = normalizeDay(d.day || '');
-               if (!day) return;
-               if (typeof window.isOnOrAfterStart === 'function' && !window.isOnOrAfterStart(day)) return;
-               daysSet.add(day);
-               const arr = perDaySongs.get(day) || [];
-               arr.push(d);
-               perDaySongs.set(day, arr);
-             });
-          }
+          const userSnap = await db.collection('solicitudes').where('usuario', '==', usuario).get();
+          // Construir set de IDs validos de solicitudes para filtrar las reproducidas
+          userSnap.forEach(doc => {
+            const d = doc.data() || {};
+            const day = normalizeDay(d.day || '');
+            if (!day) return;
+            if (isOnOrAfterStart(day)) daysSet.add(day);
+            const arr = perDaySongs.get(day) || [];
+            arr.push(d);
+            perDaySongs.set(day, arr);
+          });
         } catch (_) {}
         try {
-           if (cachedData && cachedData.playedSongs) {
-             cachedData.playedSongs.forEach((v, k) => {
-               const day = normalizeDay(k);
-               if (day && typeof window.isOnOrAfterStart === 'function' && !window.isOnOrAfterStart(day)) return;
-               if (day) daysSet.add(day);
-             });
-           } else {
-             const playedDaysSnap = await db.collection('playedSongs').get();
-             playedDaysSnap.forEach(ps => {
-               const day = normalizeDay(ps.id);
-               if (day && typeof window.isOnOrAfterStart === 'function' && !window.isOnOrAfterStart(day)) return;
-               if (day) daysSet.add(day);
-             });
-           }
+          const playedDaysSnap = await db.collection('playedSongs').get();
+          playedDaysSnap.forEach(ps => {
+            const day = normalizeDay(ps.id);
+            if (day && isOnOrAfterStart(day)) daysSet.add(day);
+          });
         } catch (_) {}
         
         let playedCount = 0;
         try {
-           playedCount = await countTotalToggledSongsForUser(usuario, cachedData);
+           playedCount = await countTotalToggledSongsForUser(usuario);
         } catch(e) { console.error('Error counting played from toggles:', e); }
         
         let activeDaysValid = 0;
         const playedArtistsSet = new Set();
         const detail = [];
         const days = Array.from(daysSet);
+        const totalPlayedSet = new Set();
+        // (El resto de la lógica de totalPlayedSet es redundante ahora, pero la mantengo limpia para evitar romper rachas)
         
-        // Iterar días SOLO para calcular días activos y rachas
+        // Iterar días SOLO para calcular días activos y rachas, NO para recontar canciones
         for (let i = 0; i < days.length; i++) {
           const day = days[i];
-          if (typeof window.isOnOrAfterStart === 'function' && !window.isOnOrAfterStart(day)) continue;
+          if (!isOnOrAfterStart(day)) continue;
           
-          let playedArr = [];
-          if (cachedData && cachedData.playedSongs && cachedData.playedSongs.has(day)) {
-            playedArr = cachedData.playedSongs.get(day);
-          } else {
-            const playedDoc = await db.collection('playedSongs').doc(day).get();
-            const pdata = playedDoc.exists ? (playedDoc.data() || {}) : {};
-            playedArr = Array.isArray(pdata.songs) ? pdata.songs : (Array.isArray(pdata.list) ? pdata.list : (Array.isArray(pdata.songIds) ? pdata.songIds : []));
-          }
+          // Obtener canciones reproducidas del día para validar actividad
+          const playedDoc = await db.collection('playedSongs').doc(day).get();
+          const pdata = playedDoc.exists ? (playedDoc.data() || {}) : {};
+          const playedArr = Array.isArray(pdata.songs) ? pdata.songs : (Array.isArray(pdata.list) ? pdata.list : (Array.isArray(pdata.songIds) ? pdata.songIds : []));
           
+          // Contar canciones del usuario en este día específico para validar "Día Activo"
           const cleanLc = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-          // Construir todos los prefijos (usuario principal + alias de TikTok vinculados)
-          const allPrefixes = new Set();
-          allPrefixes.add(`${cleanLc(usuario)}-`);
-          const aliasesMapDay = (cachedData && cachedData.aliases) ? cachedData.aliases : (window.__USER_ALIASES_MAP__ || {});
-          Object.keys(aliasesMapDay).forEach(alias => {
-            if (String(aliasesMapDay[alias] || '').trim().toLowerCase() === targetMaster) {
-              const ap = `${cleanLc(alias.replace(/^@/, ''))}-`;
-              if (ap) allPrefixes.add(ap);
-            }
-          });
+          const userPrefix = `${cleanLc(usuario)}-`;
           let userPlayedThatDay = 0;
           
           for (let k = 0; k < playedArr.length; k++) {
             const x = playedArr[k] || '';
-            const xClean = typeof x === 'string' ? cleanLc(x) : '';
-            if (xClean && [...allPrefixes].some(p => xClean.startsWith(p))) {
+            if (typeof x === 'string' && cleanLc(x).startsWith(userPrefix)) {
               userPlayedThatDay++;
             }
           }
           
-          let distinctUsersDaySize = 0;
-          if (cachedData && cachedData.allSolicitudes) {
-            const set = new Set();
-            cachedData.allSolicitudes.forEach(s => {
-              if (normalizeDay(s.day) === day && s.usuario) set.add(s.usuario);
-            });
-            distinctUsersDaySize = set.size;
-          } else {
-            const daySnap = await db.collection('solicitudes').where('day', '==', day).get();
-            const distinctUsersDay = new Set();
-            daySnap.forEach(dd => {
-              const d2 = dd.data() || {};
-              if (d2.usuario) distinctUsersDay.add(d2.usuario);
-            });
-            distinctUsersDaySize = distinctUsersDay.size;
-          }
-
-          const validDay = distinctUsersDaySize >= 2 && userPlayedThatDay > 0;
+          const daySnap = await db.collection('solicitudes').where('day', '==', day).get();
+          const distinctUsersDay = new Set();
+          daySnap.forEach(dd => {
+            const d2 = dd.data() || {};
+            if (d2.usuario) distinctUsersDay.add(d2.usuario);
+          });
+          const validDay = distinctUsersDay.size >= 2 && userPlayedThatDay > 0;
           if (validDay) activeDaysValid++;
           if (userPlayedThatDay > 0) {
-            detail.push({ day, played: userPlayedThatDay, distinctUsers: distinctUsersDaySize });
+            detail.push({ day, played: userPlayedThatDay, distinctUsers: distinctUsersDay.size });
           }
         }
         // Calcular rachas a partir de detail (secuencias consecutivas de días con actividad)
@@ -11394,16 +11316,187 @@
             const steps = Math.min(Math.max(seqLen - 1, 0), 10);
             const tri = (steps * (steps + 1)) / 2;
             const mult = (POINTS_CONFIG && typeof POINTS_CONFIG.STREAK_MULTIPLIER === 'number') ? POINTS_CONFIG.STREAK_MULTIPLIER : 2;
+            streakPointsSum += tri * mult;
+            i = j;
+          }
+        } catch (_) {}
+        const base = playedCount * 25;
+        let vipBonus = 0;
+        
+        // Calcular Bonus VIP respetando fecha de activación
+        if (isVip) {
+           let vipActivationDate = null;
+           if (window.vipMap && window.vipMap.has(unameLc)) {
+              vipActivationDate = window.vipMap.get(unameLc).activatedAt;
+           } else if (window.vipMap && window.vipMap.has(rawLc)) {
+              vipActivationDate = window.vipMap.get(rawLc).activatedAt;
+           }
+           
+           if (vipActivationDate) {
+              let vipEligibleSongs = 0;
+              detail.forEach(d => {
+                 if (d.day >= vipActivationDate) {
+                    vipEligibleSongs += d.played;
+                 }
+              });
+              vipBonus = vipEligibleSongs * 40;
+              console.log(`💎 VIP Bonus calculado desde ${vipActivationDate}: ${vipEligibleSongs} canciones (${vipBonus} pts)`);
+           } else {
+              // Comportamiento legacy: todas las canciones cuentan si no hay fecha
+              vipBonus = playedCount * 40;
+              // console.log(`💎 VIP Bonus legacy (sin fecha): ${playedCount} canciones (${vipBonus} pts)`);
+           }
+        }
+        
+        let dailyBonus = activeDaysValid * 5;
+        const uniqueArtistsPlayed = Array.from(playedArtistsSet).filter(Boolean).length;
+        let achievements = 0;
+        let streakBonus = 0;
+        try {
+          const uid = norm(usuario);
+          const idSet = new Set();
+          // Preferir datos locales para consistencia con la cabecera
+          try {
+            const localData = getLocalGamificationData(usuario) || {};
+            const st = localData.stats || {};
+            if (typeof st.activeDays === 'number') activeDaysValid = st.activeDays;
+            if (typeof st.isVip === 'boolean') {
+              // Recalcular VIP con el flag local
+              if (st.isVip) {
+                isVip = true;
+              }
+            }
+            // Recalcular partidas con valores locales
+            vipBonus = isVip ? playedCount * 40 : 0;
+            dailyBonus = activeDaysValid * 5;
+            // Ruta rápida deshabilitada para asegurar consistencia con nube
+            if (false) {
+              let fastBestStreak = 0;
+              try {
+                const bs = st.bestStreak;
+                if (typeof bs === 'number') fastBestStreak = bs;
+              } catch (_){}
+              try {
+                if (!fastBestStreak) {
+                  const localStreaks = (localData.streaks || {});
+                  if (typeof localStreaks.best === 'number') fastBestStreak = localStreaks.best;
+                }
+              } catch (_){}
+              // Bono de racha aproximado por mejor racha
+              try {
+                const steps = Math.min(Math.max((fastBestStreak || 0) - 1, 0), 10);
+                const tri = (steps * (steps + 1)) / 2;
+                const mult = (POINTS_CONFIG && typeof POINTS_CONFIG.STREAK_MULTIPLIER === 'number') ? POINTS_CONFIG.STREAK_MULTIPLIER : 2;
+                streakBonus = tri * mult;
+              } catch (_){}
+              // Calcular logros únicamente desbloqueados (union)
+              try {
+                const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
+                (localAch || []).forEach(id => idSet.add(String(id)));
+              } catch (_){}
+              try {
+                const statsDoc = await db.collection('userStats').doc(uid).get();
+                if (statsDoc.exists) {
+                  const sdata = statsDoc.data() || {};
+                  const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
+                  (statAch || []).forEach(id => idSet.add(String(id)));
+                }
+              } catch (_){}
+              try {
+                const achDoc = await db.collection('userAchievements').doc(uid).get();
+                if (achDoc.exists) {
+                  const a = achDoc.data() || {};
+                  const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
+                  (ids || []).forEach(id => idSet.add(String(id)));
+                }
+              } catch (_){}
+              achievements = Array.from(idSet).reduce((sum, id) => {
+                const found = ACHIEVEMENTS && ACHIEVEMENTS.find ? ACHIEVEMENTS.find(x => x.id === id) : null;
+                return sum + (found && typeof found.points === 'number' ? found.points : 0);
+              }, 0);
+              const fastBase = playedCount * 25;
+              const fastVip = isVip ? playedCount * 40 : 0;
+              const fastDaily = activeDaysValid * 5;
+              const fastSum = fastBase + fastVip + fastDaily + achievements + streakBonus;
+              let displayTotal = fastSum;
+              return {
+                usuario,
+                playedCount,
+                activeDaysValid,
+                isVip,
+                base: fastBase,
+                vipBonus: fastVip,
+                dailyBonus: fastDaily,
+                achievements,
+                streakBonus,
+                residual: 0,
+                total: displayTotal,
+                detail: [],
+                achievementsList: []
+              };
+            }
+          } catch (_){}
+          try {
+            const achDoc = await db.collection('userAchievements').doc(uid).get();
+            if (achDoc.exists) {
+              const a = achDoc.data() || {};
+              const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
+              (ids || []).forEach(id => idSet.add(String(id)));
+            }
+          } catch (_){}
+          try {
+            const bestStats = await fetchBestUserStatsDoc(uid);
+            if (bestStats && bestStats.data) {
+              const sdata = bestStats.data || {};
+              const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
+              (statAch || []).forEach(id => idSet.add(String(id)));
+            }
+          } catch (_){}
+          try {
+            const localData = getLocalGamificationData(usuario) || {};
+            const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
+            (localAch || []).forEach(id => idSet.add(String(id)));
+          } catch (_){}
+          achievements = Array.from(idSet).reduce((sum, id) => {
+            const found = ACHIEVEMENTS && ACHIEVEMENTS.find ? ACHIEVEMENTS.find(x => x.id === id) : null;
+            return sum + (found && typeof found.points === 'number' ? found.points : 0);
+          }, 0);
+          // Ensure achievements is never negative
+          achievements = Math.max(0, achievements);
+        } catch (_) {}
+        let cloudTotal = 0;
+        let bestStreakVal = 0;
+        let lastManualAdjustment = null;
+        try {
+          const bestStats = await fetchBestUserStatsDoc(usuario);
+          const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
+          cloudTotal = Number((statsDoc.totalPoints || 0));
+          if (typeof statsDoc.bestStreak === 'number') bestStreakVal = statsDoc.bestStreak;
+          if (statsDoc.lastManualAdjustment) lastManualAdjustment = statsDoc.lastManualAdjustment;
+        } catch (_) {}
+        // Fallback a localData para bestStreak si no se encontró en nube
+        try {
+          if (!bestStreakVal) {
+            const localData = getLocalGamificationData(usuario) || {};
+            const streaks = localData.streaks || {};
+            if (typeof streaks.best === 'number') bestStreakVal = streaks.best;
+          }
+        } catch (_) {}
+        // Calcular bono acumulado por racha usando secuencias detectadas; si no hay, aproximar por bestStreakVal
+        try {
+          if (streakPointsSum > 0) {
+            streakBonus = streakPointsSum;
+          } else {
+            const steps = Math.min(Math.max((bestStreakVal || 0) - 1, 0), 10);
+            const tri = (steps * (steps + 1)) / 2;
+            const mult = (POINTS_CONFIG && typeof POINTS_CONFIG.STREAK_MULTIPLIER === 'number') ? POINTS_CONFIG.STREAK_MULTIPLIER : 2;
             streakBonus = Math.max(0, tri * mult); // Ensure non-negative
           }
         } catch (_) { streakBonus = 0; }
-
         const top1Bonus = top1Count * 150;
+        // Calcular manual bonus
         let manualBonus = 0;
-        if (typeof statsDoc.manualAdjustmentTotal === 'number') {
-           manualBonus = statsDoc.manualAdjustmentTotal;
-        } else if (lastManualAdjustment && typeof lastManualAdjustment.amount === 'number') {
-           // Fallback para datos legacy
+        if (lastManualAdjustment && typeof lastManualAdjustment.amount === 'number') {
            manualBonus = lastManualAdjustment.amount;
         }
 
@@ -12416,49 +12509,16 @@
         window.__ADMIN_POINTS_REBUILD_RUNNING__ = true;
         console.log('🔧 INICIANDO RECÁLCULO MASIVO COMPLETO DE PUNTOS...');
 
-          try {
-            const reportBox = document.getElementById('recalc-report-box');
-            const reportText = document.getElementById('recalc-report-text');
-            const allUsers = await collectUsersForAdminRebuild();
-            console.log(`📊 INICIANDO CARGA DE DATOS MAESTROS PARA RECÁLCULO (Optimizado)...`);
-            
-            if (reportText) reportText.textContent = 'Cargando datos maestros desde la nube...';
+        try {
+          const reportBox = document.getElementById('recalc-report-box');
+          const reportText = document.getElementById('recalc-report-text');
+          const allUsers = await collectUsersForAdminRebuild();
+          console.log(`📊 Recalculando puntos completos para ${allUsers.size} usuarios...`);
 
-            // PRE-CARGAR TODO UNA SOLA VEZ
-            const cachedData = {
-              playedSongs: new Map(),
-              systemEvents: [],
-              allSolicitudes: [],
-              aliases: {},
-              allStats: new Map(),
-              globalConfig: {}
-            };
-
-            const [playedSnap, eventsSnap, solicitudesSnap, aliasesSnap, statsSnap, configSnap] = await Promise.all([
-              db.collection('playedSongs').get(),
-              db.collection('systemEvents').where('type', '==', 'togglePlayed').get(),
-              db.collection('solicitudes').get(),
-              db.collection('systemConfig').doc('userAliases').get(),
-              db.collection('userStats').get(),
-              db.collection('systemConfig').doc('bot').get()
-            ]);
-
-            playedSnap.forEach(doc => {
-              const d = doc.data() || {};
-              cachedData.playedSongs.set(doc.id, Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []));
-            });
-            eventsSnap.forEach(doc => cachedData.systemEvents.push(doc.data()));
-            solicitudesSnap.forEach(doc => cachedData.allSolicitudes.push(doc.data()));
-            if (aliasesSnap.exists) cachedData.aliases = aliasesSnap.data() || {};
-            statsSnap.forEach(doc => cachedData.allStats.set(doc.id, doc.data()));
-            if (configSnap.exists) cachedData.globalConfig = configSnap.data() || {};
-
-            console.log(`✅ Datos cargados: ${cachedData.playedSongs.size} días, ${cachedData.allSolicitudes.length} solicitudes, ${cachedData.allStats.size} perfiles.`);
-            
-            let correctedCount = 0;
-            let processed = 0;
-            let errorCount = 0;
-            const deltas = [];
+          let correctedCount = 0;
+          let processed = 0;
+          let errorCount = 0;
+          const deltas = [];
 
           for (const username of allUsers) {
             try {
@@ -12468,10 +12528,7 @@
               const beforeTotal = Number(beforeDoc?.data?.totalPoints || 0);
 
               await analyzeAndGrantPointsForUser(username);
-              const breakdown = await computeUserBreakdown(username, { 
-                persistToCloud: false,
-                cachedData: cachedData 
-              });
+              const breakdown = await computeUserBreakdown(username, { persistToCloud: false });
               await persistAdminRebuildForUser(username, breakdown);
 
               const afterTotal = Number(breakdown?.total || 0);
@@ -12912,8 +12969,6 @@
               const doc = await window.db.collection('systemConfig').doc('userAliases').get();
               if (doc.exists) {
                   USER_ALIASES_MAP = doc.data() || {};
-                  // Exponer globalmente para que funciones de puntos puedan accederlo
-                  window.__USER_ALIASES_MAP__ = USER_ALIASES_MAP;
                   console.log('🔗 Alias de usuarios cargados:', Object.keys(USER_ALIASES_MAP).length);
               }
           } catch (e) {
@@ -14577,8 +14632,32 @@
         }
       }
 
-      // (Eliminada definición duplicada de countTotalToggledSongsForUser)
-      // La función oficial se encuentra alrededor de la línea 11063
+      // NUEVA función simplificada para contar canciones toggleadas (Reproducidas)
+      async function countTotalToggledSongsForUser(usuario) {
+         try {
+           const norm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
+           const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+           const prefix = sanitize(`${norm}-`);
+           const ids = new Set();
+           
+           // 1. Firestore playedSongs (FUENTE DE VERDAD)
+           try {
+             const snap = await db.collection('playedSongs').get();
+             snap.forEach(doc => {
+               const day = doc.id;
+               if (!isOnOrAfterStart(day)) return;
+               const d = doc.data()||{};
+               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
+               arr.forEach(x => {
+                 const id = sanitize(x);
+                 if (id.startsWith(prefix)) ids.add(id);
+               });
+             });
+           } catch(e){}
+           
+           // 2. System Events (unmark/mark logic)
+           try {
+             const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
              const latest = {};
              qs.forEach(doc => {
                 const d = doc.data()||{};
@@ -15654,8 +15733,37 @@
          }
       };
 
-      // Se ha consolidado la lógica de cambio de pestañas en showAdminSection
-      // para evitar duplicidad de listeners y estados inconsistentes.
+      // Listener para cambiar tabs (versión robusta)
+      // Asegurarse de limpiar listeners anteriores si los hubiera (aunque es script inline)
+      document.querySelectorAll('.admin-section-tab').forEach(tab => {
+          tab.addEventListener('click', (e) => {
+              const target = e.currentTarget;
+              const sectionId = target.dataset.section;
+              
+              // 1. UI Tabs Update
+              document.querySelectorAll('.admin-section-tab').forEach(t => {
+                  t.classList.remove('active');
+                  t.setAttribute('aria-selected', 'false');
+              });
+              target.classList.add('active');
+              target.setAttribute('aria-selected', 'true');
+              
+              // 2. Hide All Sections
+              document.getElementById('badges-section').hidden = true;
+              document.getElementById('rewards-section').hidden = true;
+              document.getElementById('rewards-config-section').hidden = true;
+              document.getElementById('maintenance-section').hidden = true;
+              
+              // 3. Show Target Section
+              if (sectionId === 'badges') document.getElementById('badges-section').hidden = false;
+              else if (sectionId === 'rewards') document.getElementById('rewards-section').hidden = false;
+              else if (sectionId === 'rewards-config') {
+                  document.getElementById('rewards-config-section').hidden = false;
+                  renderRewardsConfig();
+              }
+              else if (sectionId === 'maintenance') document.getElementById('maintenance-section').hidden = false;
+          });
+      });
 
       // Inicializar notificaciones al cargar
       setTimeout(checkAdminNotifications, 2000);
@@ -16375,9 +16483,8 @@
           if (!confirm(`¿Vincular "${alias}" -> "${real}"? \nLos puntos de "${alias}" se sumarán a "${real}".`)) return;
 
           try {
-              // Actualizar mapa local y global
+              // Actualizar mapa local
               USER_ALIASES_MAP[alias] = real;
-              window.__USER_ALIASES_MAP__ = USER_ALIASES_MAP;
               
               // Guardar en Firestore (solo el campo nuevo)
               if (window.db) {
@@ -16401,7 +16508,6 @@
           
           try {
               delete USER_ALIASES_MAP[aliasKey];
-              window.__USER_ALIASES_MAP__ = USER_ALIASES_MAP;
               if (window.db) {
                   await window.db.collection('systemConfig').doc('userAliases').update({
                       [aliasKey]: firebase.firestore.FieldValue.delete()

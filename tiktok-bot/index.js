@@ -439,36 +439,13 @@ function normalizeUserKeyText(v) {
     }
 }
 
-// Cache de alias TikTok→Web (se refresca cada 30 min)
-let userAliasesCache = {};
-let userAliasesCacheTs = 0;
-const USER_ALIASES_CACHE_TTL = 30 * 60 * 1000; // 30 minutos
-
-async function getAliasesMap() {
-    const now = Date.now();
-    if (userAliasesCacheTs && (now - userAliasesCacheTs) < USER_ALIASES_CACHE_TTL) {
-        return userAliasesCache;
-    }
-    try {
-        if (db && typeof getDoc === 'function' && typeof doc === 'function') {
-            const snap = await getDoc(doc(db, 'systemConfig', 'userAliases'));
-            if (snap && snap.exists()) {
-                userAliasesCache = snap.data() || {};
-            }
-        }
-    } catch (_) {}
-    userAliasesCacheTs = now;
-    return userAliasesCache;
-}
-
 const userKeyCache = new Map();
 async function getCanonicalUserKey(userId, displayName) {
     const uid = normalizeUserKeyText(userId);
     const name = normalizeUserKeyText(displayName);
     const now = Date.now();
     const cached = uid ? userKeyCache.get(uid) : null;
-    // Cache de 30 min (antes 6h) para que nuevas vinculaciones surtan efecto rápido
-    if (cached && (now - cached.ts) < (30 * 60 * 1000)) return cached;
+    if (cached && (now - cached.ts) < (6 * 60 * 60 * 1000)) return cached;
 
     let userKey = uid || name || 'anon';
     let bestDisplay = String(displayName || '').trim() || String(userId || '').trim() || userKey;
@@ -477,94 +454,71 @@ async function getCanonicalUserKey(userId, displayName) {
         if (db && typeof getDoc === 'function' && typeof doc === 'function') {
             let found = false;
 
-            // ── PASO 0: Consultar systemConfig/userAliases (mapa oficial de vinculación) ──
-            // Este es el mapa que se crea con !link y el panel admin. Es la fuente de verdad.
-            try {
-                const aliases = await getAliasesMap();
-                // El mapa guarda { "tiktokNick": "webUser" } en minúsculas
-                const resolvedWebKey = aliases[uid] || aliases[name] || null;
-                if (resolvedWebKey) {
-                    const webKey = String(resolvedWebKey).trim().toLowerCase();
-                    console.log(`🔗 [Alias] ${uid || name} → ${webKey} (desde systemConfig/userAliases)`);
-                    userKey = webKey;
-                    // Intentar obtener el displayName del perfil web
-                    try {
-                        const snap = await getDoc(doc(db, 'userStats', webKey));
-                        if (snap && snap.exists()) {
-                            const d = snap.data() || {};
-                            if (d.displayName) bestDisplay = d.displayName;
-                        }
-                    } catch (_) {}
-                    found = true;
-                }
-            } catch (_) {}
+            // 1. Intentar buscar por ID directo (uid o name)
+            const candidates = [];
+            if (uid) candidates.push(uid);
+            if (name && name !== uid) candidates.push(name);
+            
+            // FALLBACK: Probar versión limpia de emojis si no se encuentra
+            // Esto ayuda si la BD tiene "Juan" pero TikTok manda "Juan ⚡️"
+            const cleanName = name.replace(/[^a-z0-9áéíóúñü ]/g, '').trim().replace(/\s+/g, ' ');
+            if (cleanName && cleanName !== name && cleanName !== uid) {
+                candidates.push(cleanName);
+            }
 
-            if (!found) {
-                // ── PASO 1: Buscar por ID directo (uid o name) ──
-                const candidates = [];
-                if (uid) candidates.push(uid);
-                if (name && name !== uid) candidates.push(name);
-                
-                // FALLBACK: Probar versión limpia de emojis si no se encuentra
-                const cleanName = name.replace(/[^a-z0-9áéíóúñü ]/g, '').trim().replace(/\s+/g, ' ');
-                if (cleanName && cleanName !== name && cleanName !== uid) {
-                    candidates.push(cleanName);
-                }
+            for (let i = 0; i < candidates.length; i++) {
+                const id = candidates[i];
+                try {
+                    const snap = await getDoc(doc(db, 'userStats', id));
+                    if (snap && typeof snap.exists === 'function' && snap.exists()) {
+                        userKey = id;
+                        const data = snap.data ? (snap.data() || {}) : {};
+                        const dn = String(data.displayName || '').trim();
+                        if (dn) bestDisplay = dn;
+                        
+                        // AUTO-LINK: Si encontramos por nombre pero no tiene tiktokId, lo guardamos
+                        if (uid && id !== uid && !data.tiktokId) {
+                            try {
+                                await updateDoc(doc(db, 'userStats', id), { tiktokId: uid });
+                                console.log(`🔗 Usuario vinculado: ${id} <-> TikTok: ${uid}`);
+                            } catch (_) {}
+                        }
+                        found = true;
+                        break;
+                    }
+                } catch (_) {}
+            }
 
-                for (let i = 0; i < candidates.length; i++) {
-                    const id = candidates[i];
-                    try {
-                        const snap = await getDoc(doc(db, 'userStats', id));
-                        if (snap && typeof snap.exists === 'function' && snap.exists()) {
-                            userKey = id;
-                            const data = snap.data ? (snap.data() || {}) : {};
-                            const dn = String(data.displayName || '').trim();
-                            if (dn) bestDisplay = dn;
-                            
-                            // AUTO-LINK: Si encontramos por nombre pero no tiene tiktokId, lo guardamos
-                            if (uid && id !== uid && !data.tiktokId) {
-                                try {
-                                    await updateDoc(doc(db, 'userStats', id), { tiktokId: uid });
-                                    console.log(`🔗 Usuario vinculado: ${id} <-> TikTok: ${uid}`);
-                                } catch (_) {}
-                            }
-                            found = true;
-                            break;
-                        }
-                    } catch (_) {}
-                }
-
-                // ── PASO 2: Buscar por campo 'tiktokId' ──
-                if (!found && uid && typeof query === 'function' && typeof where === 'function' && typeof limit === 'function') {
-                    try {
-                        const q = query(collection(db, 'userStats'), where('tiktokId', '==', uid), limit(1));
-                        const querySnapshot = await getDocs(q);
-                        if (!querySnapshot.empty) {
-                            const snap = querySnapshot.docs[0];
-                            userKey = snap.id;
-                            const data = snap.data();
-                            const dn = String(data.displayName || '').trim();
-                            if (dn) bestDisplay = dn;
-                            found = true;
-                        }
-                    } catch (_) {}
-                }
-                
-                // ── PASO 3: Buscar por campo 'aliases' (array) ──
-                if (!found && uid && typeof query === 'function' && typeof where === 'function' && typeof limit === 'function') {
-                    try {
-                        const q = query(collection(db, 'userStats'), where('aliases', 'array-contains', uid), limit(1));
-                        const querySnapshot = await getDocs(q);
-                        if (!querySnapshot.empty) {
-                            const snap = querySnapshot.docs[0];
-                            userKey = snap.id;
-                            const data = snap.data();
-                            const dn = String(data.displayName || '').trim();
-                            if (dn) bestDisplay = dn;
-                            found = true;
-                        }
-                    } catch (_) {}
-                }
+            // 2. Si no encontramos por ID, buscar por campo 'tiktokId' (fusión previa)
+            if (!found && uid && typeof query === 'function' && typeof where === 'function' && typeof limit === 'function') {
+                try {
+                    const q = query(collection(db, 'userStats'), where('tiktokId', '==', uid), limit(1));
+                    const querySnapshot = await getDocs(q);
+                    if (!querySnapshot.empty) {
+                        const snap = querySnapshot.docs[0];
+                        userKey = snap.id;
+                        const data = snap.data();
+                        const dn = String(data.displayName || '').trim();
+                        if (dn) bestDisplay = dn;
+                        found = true;
+                    }
+                } catch (_) {}
+            }
+            
+            // 3. Si sigue sin encontrar, buscar por 'aliases' (array) si existiera
+             if (!found && uid && typeof query === 'function' && typeof where === 'function' && typeof limit === 'function') {
+                try {
+                    const q = query(collection(db, 'userStats'), where('aliases', 'array-contains', uid), limit(1));
+                    const querySnapshot = await getDocs(q);
+                    if (!querySnapshot.empty) {
+                        const snap = querySnapshot.docs[0];
+                        userKey = snap.id;
+                        const data = snap.data();
+                        const dn = String(data.displayName || '').trim();
+                        if (dn) bestDisplay = dn;
+                        found = true;
+                    }
+                } catch (_) {}
             }
         }
     } catch (_) {}
