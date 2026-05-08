@@ -964,6 +964,7 @@
          </div>
       </div>
 
+
       <div id="admin-panel" class="admin-panel" hidden>
         
         <div class="admin-sections-tabs" role="tablist" aria-label="Secciones de administración">
@@ -5809,60 +5810,56 @@
       async function renderAllUsersSelect() {
         const allUsersSelect = document.getElementById('all-users-select');
         const allUsersSelectDonador = document.getElementById('all-users-select-donador');
+        const compUserSelect = document.getElementById('comp-user-select');
+        
         // Si no existen los elementos en el DOM, no hacer nada
-        if (!allUsersSelect) return;
+        if (!allUsersSelect && !allUsersSelectDonador && !compUserSelect) return;
 
         const userMap = new Map();
         const addUser = (rawName) => {
            const u = String(rawName || '').trim();
            if (!u) return;
            const key = u.toLowerCase();
-           // Estrategia: si no existe, lo agregamos.
-           // Si existe, podríamos reemplazar si el nuevo tiene mejor capitalización, 
-           // pero por simplicidad y estabilidad, nos quedamos con el primero (o el último).
            if (!userMap.has(key)) {
              userMap.set(key, u);
            }
         };
         
+        // 1. Usuarios del día actual (memoria)
         try {
-          const items = Array.isArray(window.__dayItems) ? window.__dayItems : [];
+          const items = Array.isArray(window.__allDayItems) ? window.__allDayItems : (Array.isArray(window.__dayItems) ? window.__dayItems : []);
           items.forEach(it => addUser(it?.usuario));
         } catch (_) {}
 
-        try {
-          const all = await getAllCombinedSolicitudes();
-          (all || []).forEach(s => addUser(s?.usuario));
-        } catch (_) {}
-
-        try {
-          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          Object.values(byDay).forEach(arr => (arr || []).forEach(it => addUser(it.usuario)));
-        } catch (error) { }
-
+        // 2. Caché local
         try {
           const cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
           cached.forEach(name => addUser(name));
+          
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          Object.values(byDay).forEach(arr => (arr || []).forEach(it => addUser(it.usuario)));
         } catch (_) {}
 
+        // 3. Firestore: userStats (Límite 1000 para no saturar)
         try {
           const dbRef = window.db || db;
           if (dbRef) {
-            const statsSnap = await dbRef.collection('userStats').get();
+            const statsSnap = await dbRef.collection('userStats').limit(1000).get();
             statsSnap.forEach(doc => { if (doc.id) addUser(doc.id); });
           }
-        } catch (_) {}
+        } catch (e) { console.warn('Falló fetch userStats en renderAllUsersSelect:', e); }
 
+        // 4. Firestore: users (Límite 500)
         try {
           const dbRef = window.db || db;
           if (dbRef) {
-            const usersSnap = await dbRef.collection('users').get();
+            const usersSnap = await dbRef.collection('users').limit(500).get();
             usersSnap.forEach(doc => {
               const d = doc.data() || {};
               if (d.name) addUser(d.name);
             });
           }
-        } catch (_) {}
+        } catch (e) { console.warn('Falló fetch users en renderAllUsersSelect:', e); }
 
         const list = Array.from(userMap.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
         try { localStorage.setItem('knownUsers', JSON.stringify(list)); } catch (_) {}
@@ -5870,7 +5867,7 @@
         // Función helper para llenar selects
         const fillSelect = (el) => {
            if (!el) return;
-           const currentVal = el.value; // Preservar valor si ya tenía algo
+           const currentVal = el.value;
            el.innerHTML = '<option value="">Selecciona un usuario</option>';
            list.forEach(name => {
              const opt = document.createElement('option');
@@ -5879,13 +5876,14 @@
              el.appendChild(opt);
            });
            if (currentVal && list.includes(currentVal)) {
-             el.value = currentVal;
+              el.value = currentVal;
            }
         };
 
         fillSelect(allUsersSelect);
+        fillSelect(allUsersSelectDonador);
+        fillSelect(compUserSelect);
         fillSelect(document.getElementById('all-users-select-z0'));
-        fillSelect(document.getElementById('all-users-select-donador'));
         fillSelect(document.getElementById('all-users-select-z0-fan'));
         fillSelect(document.getElementById('all-users-select-z0-platino'));
         fillSelect(document.getElementById('all-users-select-superfan'));
@@ -6222,7 +6220,7 @@
         if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
       });
 
-      (async function init() {
+      async function init() {
         console.log('🚀 Iniciando aplicación...');
         try {
           const saved = String(localStorage.getItem(SORT_MODE_KEY) || '').trim();
@@ -6231,9 +6229,12 @@
           if (sortSelect) sortSelect.value = initial;
           localStorage.setItem(SORT_MODE_KEY, initial);
         } catch (_) {}
+        
         await loadDays();
+        
         // Mostrar estado inicial aunque no haya datos todavía
         try { renderSolicitudes([]); } catch (_) {}
+        
         console.log('📅 Días cargados, iniciando suscripciones...');
         subscribeSuperfanUsers();
         subscribeVipUsers();
@@ -6241,6 +6242,7 @@
         subscribeDonadorUsers();
         subscribeZ0FanUsers();
         subscribeZ0PlatinoUsers();
+        
         try {
           const rawSel = localStorage.getItem('selectedBadges');
           if (rawSel) {
@@ -6251,20 +6253,32 @@
             }
           }
         } catch (_) {}
+        
         try {
           const localPlayedMapDays = Object.keys(JSON.parse(localStorage.getItem('playedSongs') || '{}') || {});
           localPlayedMapDays.forEach(d => { if (d) daysSet.add(d); });
         } catch (_) {}
+        
         try { if (typeof subscribeSelectedBadges === 'function') subscribeSelectedBadges(); } catch (_) {}
         try { if (shouldShowStatsTicker()) { ensureStatsTicker(); startStatsTicker(); } } catch (_) {}
+        
         console.log('✅ Suscripciones iniciadas');
-        await renderAllUsersSelect();
+        
+        // Poblar selectores de usuarios en segundo plano para no bloquear el inicio
+        renderAllUsersSelect().catch(err => console.warn('Error en renderAllUsersSelect inicial:', err));
+        
         if (daySelect.value) {
           subscribeManualOrderForDay(daySelect.value);
           subscribeSolicitudesForDay(daySelect.value);
           subscribePlayedSongs(daySelect.value);
         }
-      })();
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => init().catch(console.error));
+      } else {
+        init().catch(console.error);
+      }
     })();
   </script>
 
@@ -6824,26 +6838,15 @@
         window.__globalTotalSolicitudes = 0;
       };
 
-      try {
-        docRef.get({ source: 'server' }).then((doc) => {
-          if (doc && doc.exists) setFromData(doc.data() || {});
-          else setUnavailable();
-          refreshStatsTicker();
-        }).catch(() => {
+      window.__statsTickerUnsub = docRef.onSnapshot((doc) => {
+        if (doc && doc.exists) {
+          setFromData(doc.data() || {});
+        } else {
           setUnavailable();
-          refreshStatsTicker();
-        });
-      } catch (_) {
-        setUnavailable();
+        }
         refreshStatsTicker();
-      }
-
-      window.__statsTickerUnsub = docRef.onSnapshot({ includeMetadataChanges: true }, (doc) => {
-        if (!doc || !doc.exists) return;
-        if (doc.metadata && doc.metadata.fromCache) return;
-        setFromData(doc.data() || {});
-        refreshStatsTicker();
-      }, () => {
+      }, (err) => {
+        console.warn('Error en onSnapshot de stats ticker:', err);
         setUnavailable();
         refreshStatsTicker();
       });
@@ -7069,15 +7072,15 @@
           console.log('🔒 Panel cerrado (DJ Mode OFF)');
         });
 
-      const adminSectionTabs = Array.from(document.querySelectorAll('.admin-section-tab'));
-      adminSectionTabs.forEach((btn) => {
+      // 1. Unificar Event Listeners para las pestañas de administración (Versión Centralizada)
+      document.querySelectorAll('.admin-section-tab').forEach((btn) => {
         btn.addEventListener('click', () => {
           const section = btn.getAttribute('data-section') || '';
           if (section) showAdminSection(section);
         });
       });
 
-      // Event listeners para el sistema de secciones
+      // Event listeners para el selector móvil (si existe)
       adminSectionSelect?.addEventListener('change', (e) => {
         showAdminSection(e.target.value);
       });
@@ -7106,36 +7109,47 @@
       // Función para mostrar una sección específica del admin
       function showAdminSection(section) {
         if (adminSectionSelect) adminSectionSelect.value = section;
-        if (adminSectionTabs && adminSectionTabs.length) {
-          adminSectionTabs.forEach((btn) => {
-            const isActive = btn.getAttribute('data-section') === section;
-            btn.classList.toggle('active', isActive);
-            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
-          });
-        }
-        // Ocultar todas las secciones
+        
+        // Sincronizar clases activas en las pestañas
+        document.querySelectorAll('.admin-section-tab').forEach((btn) => {
+          const isActive = btn.getAttribute('data-section') === section;
+          btn.classList.toggle('active', isActive);
+          btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+
+        // Ocultar TODAS las secciones registradas
         if (badgesSection) badgesSection.hidden = true;
         if (rewardsSection) rewardsSection.hidden = true;
         if (maintenanceSection) maintenanceSection.hidden = true;
+        const rewardsConfigSec = document.getElementById('rewards-config-section');
+        if (rewardsConfigSec) rewardsConfigSec.hidden = true;
 
-        // Mostrar la sección seleccionada
+        // Mostrar la sección seleccionada y ejecutar su lógica de inicialización
         switch(section) {
           case 'badges':
             if (badgesSection) badgesSection.hidden = false;
-            if (badgeTypeSelect) badgeTypeSelect.value = 'vip';
-            showBadgeManagement('vip'); // Mostrar VIP por defecto
-            syncBadgeTabs('vip');
+            // Por defecto mostramos VIP en el selector interno
+            const currentBadge = badgeTypeSelect?.value || 'vip';
+            showBadgeManagement(currentBadge);
+            syncBadgeTabs(currentBadge);
+            if (typeof window.renderAllUsersSelect === 'function') window.renderAllUsersSelect();
             break;
           case 'rewards':
             if (rewardsSection) rewardsSection.hidden = false;
-            loadRewardRequests(); // Cargar solicitudes de recompensas
+            if (typeof loadRewardRequests === 'function') loadRewardRequests();
+            break;
+          case 'rewards-config':
+            if (rewardsConfigSec) {
+                rewardsConfigSec.hidden = false;
+                if (typeof renderRewardsConfig === 'function') renderRewardsConfig();
+            }
             break;
           case 'maintenance':
             if (maintenanceSection) maintenanceSection.hidden = false;
-            // Poblar selector de compensación si existe la función
             if (typeof window.populateAdminCompensationSelector === 'function') {
                window.populateAdminCompensationSelector();
             }
+            if (typeof window.renderAllUsersSelect === 'function') window.renderAllUsersSelect();
             break;
         }
       }
@@ -15641,37 +15655,8 @@
          }
       };
 
-      // Listener para cambiar tabs (versión robusta)
-      // Asegurarse de limpiar listeners anteriores si los hubiera (aunque es script inline)
-      document.querySelectorAll('.admin-section-tab').forEach(tab => {
-          tab.addEventListener('click', (e) => {
-              const target = e.currentTarget;
-              const sectionId = target.dataset.section;
-              
-              // 1. UI Tabs Update
-              document.querySelectorAll('.admin-section-tab').forEach(t => {
-                  t.classList.remove('active');
-                  t.setAttribute('aria-selected', 'false');
-              });
-              target.classList.add('active');
-              target.setAttribute('aria-selected', 'true');
-              
-              // 2. Hide All Sections
-              document.getElementById('badges-section').hidden = true;
-              document.getElementById('rewards-section').hidden = true;
-              document.getElementById('rewards-config-section').hidden = true;
-              document.getElementById('maintenance-section').hidden = true;
-              
-              // 3. Show Target Section
-              if (sectionId === 'badges') document.getElementById('badges-section').hidden = false;
-              else if (sectionId === 'rewards') document.getElementById('rewards-section').hidden = false;
-              else if (sectionId === 'rewards-config') {
-                  document.getElementById('rewards-config-section').hidden = false;
-                  renderRewardsConfig();
-              }
-              else if (sectionId === 'maintenance') document.getElementById('maintenance-section').hidden = false;
-          });
-      });
+      // Se ha consolidado la lógica de cambio de pestañas en showAdminSection
+      // para evitar duplicidad de listeners y estados inconsistentes.
 
       // Inicializar notificaciones al cargar
       setTimeout(checkAdminNotifications, 2000);

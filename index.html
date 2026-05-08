@@ -585,7 +585,11 @@
           if (firebase.auth) {
             authReadyPromise = new Promise((resolve) => {
               firebase.auth().onAuthStateChanged((user) => {
-                if (user) return resolve(true);
+                if (user) {
+                  // Refrescar lista de usuarios una vez autenticado
+                  if (typeof populateRegisteredUsers === 'function') populateRegisteredUsers();
+                  return resolve(true);
+                }
                 firebase.auth().signInAnonymously().catch((err) => {
                   console.error('Error al autenticar anónimamente:', err);
                 });
@@ -705,7 +709,7 @@
       async function collectRegisteredUsers() {
         const set = new Set();
         
-        // 1. Obtener desde localStorage (sincrono)
+        // 1. Obtener desde localStorage (síncrono)
         try {
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
           Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
@@ -717,10 +721,45 @@
             const original = String(it.usuario || '').trim().replace(/^@/, '');
             if (original) set.add(original);
           });
+          const known = JSON.parse(localStorage.getItem('knownUsers') || '[]');
+          (known || []).forEach(u => {
+            const original = String(u || '').trim().replace(/^@/, '');
+            if (original) set.add(original);
+          });
         } catch (e) {}
+
+        // 2. Obtener desde Firestore (si está disponible)
+        try {
+          if (db) {
+            // Esperar un poco a que la autenticación esté lista si es necesario
+            if (typeof authReadyPromise !== 'undefined') {
+              await Promise.race([
+                authReadyPromise,
+                new Promise(resolve => setTimeout(resolve, 3000))
+              ]);
+            }
+            
+            const statsSnap = await db.collection('userStats').limit(1000).get();
+            statsSnap.forEach(doc => {
+              const u = doc.id;
+              if (u) set.add(u.trim());
+            });
+            const usersSnap = await db.collection('users').limit(500).get();
+            usersSnap.forEach(doc => {
+              const d = doc.data() || {};
+              if (d.name) set.add(String(d.name).trim());
+            });
+          }
+        } catch (e) {
+          console.warn('No se pudieron obtener usuarios de Firestore:', e);
+        }
         
         const arr = Array.from(set);
         arr.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        
+        // Guardar caché para uso offline
+        try { localStorage.setItem('knownUsers', JSON.stringify(arr)); } catch (_) {}
+        
         return arr;
       }
 
@@ -949,6 +988,7 @@
           </li>
         `).join('');
       }
+      window.renderAllUsersSelect = renderAllUsersSelect;
       async function renderAllUsersSelect() {
         if (!usersSelectEl) return;
         const users = await collectRegisteredUsers();
@@ -1045,7 +1085,7 @@
       });
     })();
   </script>
-<!-- Deploy Trigger: 2026-02-02 Force Update -->
+<!-- Deploy Trigger: 2026-05-08 Force Update -->
 </body>
 </html>
 
