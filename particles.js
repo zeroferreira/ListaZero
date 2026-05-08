@@ -1,12 +1,16 @@
 function initParticles() {
+  console.log('✨ particles.js: Inicializando...');
   var canvas = document.getElementById('orb-background');
-  if (!canvas || !canvas.getContext) return;
+  if (!canvas) {
+    console.warn('⚠️ particles.js: No se encontró el canvas #orb-background');
+    return;
+  }
   var ctx = canvas.getContext('2d');
+  if (!ctx) return;
   var width = 0;
   var height = 0;
   var dpr = window.devicePixelRatio || 1;
   var particles = [];
-  var baseRadius = 0;
   var particleCount = 900;
   var lastTime = 0;
   var rotationX = 0;
