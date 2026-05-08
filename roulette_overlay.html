@@ -201,20 +201,18 @@
 
     .participant-row {
       background: transparent;
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-      padding: 7px 4px 7px 2px;
-      border-radius: 0;
+      padding: 8px 6px 8px 4px;
+      border-radius: 8px;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 10px;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
       align-items: center;
-      transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      transition: all 0.2s ease;
       border: none;
-      border-bottom: 1px solid rgba(255,255,255,0.09);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
       animation: row-entrance 0.5s ease backwards;
-      min-height: auto;
-      overflow: hidden;
+      min-height: 44px;
+      position: relative;
     }
     
     @keyframes row-entrance {
@@ -265,21 +263,22 @@
     .participant-actions {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
       flex-shrink: 0;
-      opacity: 0.82;
     }
     .participant-action-select {
-      width: 88px;
-      max-width: 88px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.10);
-      background: rgba(255,255,255,0.04);
+      width: 76px;
+      max-width: 76px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.06);
       color: white;
       font-size: 10px;
       font-weight: 700;
-      padding: 4px 8px;
+      padding: 4px 4px;
       outline: none;
+      cursor: pointer;
+      text-align: center;
     }
     .participant-action-select option {
       color: black;
@@ -992,7 +991,7 @@
       flex-direction: column;
       align-items: center;
       gap: 30px;
-      z-index: 100;
+      z-index: 20000;
       transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
       box-shadow: 0 0 100px rgba(var(--roulette-accent-rgb), 0.4), inset 0 0 40px rgba(255,255,255,0.05);
       width: 90vw;
@@ -1035,7 +1034,7 @@
     .particle {
       position: absolute;
       pointer-events: none;
-      z-index: 1000;
+      z-index: 20001;
     }
 
     #winner-photo {
@@ -1316,7 +1315,7 @@
       <div class="source-tabs" role="tablist" aria-label="Fuentes de participantes">
         <button class="source-tab active" id="source-tab-list" type="button" onclick="setSourceTab('list')" role="tab" aria-selected="true">De la lista</button>
         <button class="source-tab" id="source-tab-rewards" type="button" onclick="setSourceTab('rewards')" role="tab" aria-selected="false">Canjes</button>
-        <button class="source-tab" id="source-tab-manual" type="button" onclick="setSourceTab('manual')" role="tab" aria-selected="false">Ruleta nueva</button>
+        <button class="source-tab" id="source-tab-manual" type="button" onclick="loadNewRoulette()" role="tab" aria-selected="false">Ruleta nueva</button>
       </div>
       <div class="participants-header-row">
         <label>Participantes</label>
@@ -1603,6 +1602,20 @@
       return String(name || '').trim().replace(/^@/, '').toLowerCase();
     }
 
+    function toHour(ts) {
+      if (!ts) return '';
+      if (typeof ts === 'string' && /^\d{2}:\d{2}$/.test(ts)) return ts;
+      try {
+        const d = (ts && typeof ts.toDate === 'function') ? ts.toDate() : new Date(ts);
+        if (isNaN(d.getTime())) return '';
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        return `${hh}:${mm}`;
+      } catch (e) {
+        return '';
+      }
+    }
+
     function buildRouletteSongId(req) {
       const explicit = String(req && (req.songId || req.requestId) || '').trim();
       if (explicit) return explicit.replace(/[^a-zA-Z0-9-]/g, '');
@@ -1610,7 +1623,9 @@
       const usuario = String(req && (req.usuario || req.displayName || req.user) || '').trim();
       const cancion = String(req && req.cancion || '').trim();
       const artista = String(req && req.artista || '').trim();
-      const hora = String(req && (req.hora || req.time || req.createdAt || '') || '').trim();
+      
+      const ts = req && (req.ts || req.timestamp || req.time || req.createdAt || '');
+      const hora = String(req && req.hora || toHour(ts) || '').trim();
 
       return `${usuario}-${cancion}-${artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
     }
@@ -1766,6 +1781,12 @@
             quietIfSame: true
           });
           return;
+        }
+        if (data.type === 'layout' && data.wheelState && data.updatedBy !== rouletteLiveClientId) {
+          if (Number.isFinite(data.wheelState.x)) wheelState.x = data.wheelState.x;
+          if (Number.isFinite(data.wheelState.y)) wheelState.y = data.wheelState.y;
+          if (Number.isFinite(data.wheelState.size)) wheelState.size = data.wheelState.size;
+          applyWheelState();
         }
         if (data.type === 'idle' && data.closeToken && data.closeToken !== lastHandledLiveCloseToken) {
           lastHandledLiveCloseToken = data.closeToken;
@@ -1939,6 +1960,10 @@
     function saveWheelState() {
       try {
         localStorage.setItem(getWheelStateStorageKey(), JSON.stringify(wheelState));
+        publishRouletteLiveState({
+          type: 'layout',
+          wheelState
+        });
       } catch (_) {}
     }
 
@@ -2048,6 +2073,17 @@
         btn.setAttribute('aria-selected', active ? 'true' : 'false');
       });
       renderParticipantsList();
+    }
+
+    function loadNewRoulette() {
+      // Al presionar "Ruleta nueva", cargamos los que tienen canciones pendientes actualmente
+      // firebaseParticipants ya contiene la lista filtrada de usuarios con canciones no reproducidas
+      manualParticipants = [...firebaseParticipants];
+      excludedParticipants.clear();
+      setSourceTab('manual');
+      recomputeParticipants();
+      saveWheelState(); // Sincronizar estado al reiniciar
+      console.log('🎰 Ruleta nueva cargada con participantes pendientes:', manualParticipants);
     }
 
     function applyOverlayEnabled(enabled, options = {}) {
