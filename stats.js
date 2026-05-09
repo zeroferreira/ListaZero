@@ -81,7 +81,8 @@
     }
 
     window.computeDayStatsForTicker = function(items) {
-      const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; const artistOriginal = {}; const userOriginal = {};
+      const songCount = {}; const artistCount = {}; const userCount = {}; const genreCount = {}; 
+      const artistOriginal = {}; const userOriginal = {}; const songOriginal = {};
       let totalCount = 0;
       
       for (let i = 0; i < (items || []).length; i++) {
@@ -93,7 +94,10 @@
         const artist = normalizeKeyTextForTicker(it.artista);
         const genre = normalizeKeyTextForTicker(it.genre || it.genero);
         
-        if (song && song.length > 1 && song !== 'undefined' && song !== 'null') songCount[song] = (songCount[song] || 0) + 1;
+        if (song && song.length > 1 && song !== 'undefined' && song !== 'null') {
+            songCount[song] = (songCount[song] || 0) + 1;
+            if (!songOriginal[song]) songOriginal[song] = String(it.cancion || '').trim();
+        }
         if (artist && artist.length > 1 && artist !== 'undefined' && artist !== 'null') { 
             artistCount[artist] = (artistCount[artist] || 0) + 1; 
             if (!artistOriginal[artist]) artistOriginal[artist] = String(it.artista || '').trim(); 
@@ -129,13 +133,13 @@
         .map(it => `${it.o} (${it.c})`);
 
       return {
-        topSong: top(songCount),
+        topSong: songOriginal[top(songCount)] || top(songCount),
         topSongCount: songCount[top(songCount)] || 0,
-        topArtist: top(artistCount),
+        topArtist: artistOriginal[top(artistCount)] || top(artistCount),
         topArtistCount: artistCount[top(artistCount)] || 0,
         topArtists3: topArtists3,
         topUsers3: usersTop3,
-        topGenre: top(genreCount),
+        topGenre: top(genreCount) ? top(genreCount).replace(/\b\w/g, l => l.toUpperCase()) : 'N/D',
         played: playedCount,
         total: totalCount
       };
@@ -227,7 +231,7 @@
 
       window.__statsTickerUnsub = docRef.onSnapshot({ includeMetadataChanges: true }, (doc) => {
         if (!doc || !doc.exists) return;
-        if (doc.metadata && doc.metadata.fromCache) return;
+        // Permite actualizaciones inmediatas ignorando el flag fromCache para asegurar tiempo real
         setFromData(doc.data() || {});
         window.refreshStatsTicker();
       }, (err) => {

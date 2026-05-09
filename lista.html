@@ -1798,6 +1798,7 @@
             <button type="button" class="stats-tab" data-tab="songs">Canciones</button>
             <button type="button" class="stats-tab" data-tab="artists">Artistas</button>
             <button type="button" class="stats-tab" data-tab="users">Usuarios</button>
+            <button type="button" class="stats-tab" data-tab="genres">Géneros</button>
           </div>
 
           <div class="stats-content">
@@ -1819,6 +1820,10 @@
                   <div class="stat-number" id="today-songs">0</div>
                   <div class="stat-label">Canciones hoy</div>
                 </div>
+                <div class="stat-card">
+                  <div class="stat-number" id="top-genre-name">N/D</div>
+                  <div class="stat-label">Género más pedido</div>
+                </div>
               </div>
             </div>
 
@@ -1835,6 +1840,11 @@
             <div id="stats-users" class="stats-panel">
               <h3>👥 Usuarios Más Activos</h3>
               <div id="top-users-list" class="stats-list"></div>
+            </div>
+            
+            <div id="stats-genres" class="stats-panel">
+              <h3>🎹 Top Géneros</h3>
+              <div id="top-genres-list" class="stats-list"></div>
             </div>
           </div>
 
@@ -3844,6 +3854,10 @@
           li.dataset.day = String(it.day || (it.fecha||'').split('T')[0] || '').trim();
           if (it.id) li.dataset.docId = it.id;
           li.dataset.isTest = isTestRequestForStats(it) ? '1' : '0';
+          li.dataset.cancion = String(it.cancion || '').trim();
+          li.dataset.artista = String(it.artista || '').trim();
+          li.dataset.genre = String(it.genre || it.genero || '').trim();
+          li.dataset.hora = resolvedHora;
 
           // Verificar insignias especiales de donador (si vienen en el objeto 'it' desde backend)
           const badgeType = it.badge || '';
@@ -4541,6 +4555,20 @@
                 await batch.commit();
                 console.log(`🔥 Firestore actualizado para ${songId}`);
 
+                // NUEVO: Registrar evento de toggle para estadísticas en tiempo real
+                try {
+                    await registerToggleEvent({
+                        action: nextPlayed ? 'mark' : 'unmark',
+                        usuario: element.dataset.username || '',
+                        cancion: element.dataset.cancion || '',
+                        artista: element.dataset.artista || '',
+                        genre: element.dataset.genre || '',
+                        day: currentDay,
+                        hora: element.dataset.hora || '',
+                        songId: songId
+                    });
+                } catch (e) { console.warn('Error registrando evento de toggle:', e); }
+
                 // Actualizar contadores de usuario si cambió el estado de "reproducida válida"
                 // (played=true, skipped=false) es el único estado que suma puntos
                 // (played=true, skipped=true) no suma puntos
@@ -4599,6 +4627,7 @@
             usuarioRaw: String(payload.usuario||''),
             cancion: String(payload.cancion||''),
             artista: String(payload.artista||''),
+            genre: String(payload.genre || '').trim(),
             day: String(payload.day||''),
             hora: String(payload.hora||''),
             songId: idNorm,
@@ -4607,8 +4636,6 @@
           };
           const docId = `toggle-${norm}-${idNorm}-${String(payload.day||'')}`.toLowerCase().replace(/[^a-z0-9-]/g,'');
           await db.collection('systemEvents').doc(docId).set(data, { merge: true });
-          // Activación inmediata de estadísticas
-          if (typeof triggerGlobalStatsUpdate === 'function') triggerGlobalStatsUpdate();
         } catch (_){ }
       }
 
@@ -6943,7 +6970,7 @@
         const song = normalizeKeyTextForTicker(s.cancion);
         const artist = normalizeKeyTextForTicker(s.artista);
         const user = uNorm;
-        const genre = normalizeKeyTextForTicker(s.genero);
+        const genre = normalizeKeyTextForTicker(s.genre || s.genero);
         if (song) songCount[song] = (songCount[song] || 0) + 1;
         if (artist) { artistCount[artist] = (artistCount[artist] || 0) + 1; if (!artistOriginal[artist]) artistOriginal[artist] = String(s.artista || '').trim(); }
         if (user) { userCount[user] = (userCount[user] || 0) + 1; if (!userOriginal[user]) userOriginal[user] = String(s.usuario || '').trim(); }
@@ -7941,24 +7968,45 @@
           document.getElementById('total-users').textContent = '...';
           document.getElementById('total-artists').textContent = '...';
           document.getElementById('today-songs').textContent = '...';
+          document.getElementById('top-genre-name').textContent = '...';
           
           // 1. Obtener todas las solicitudes de Firestore
-          const [firestoreSnapshot, systemEventsSnapshot] = await Promise.all([
+          const [solicitudesSnapshot, systemEventsSnapshot] = await Promise.all([
             db.collection('solicitudes').get(),
             db.collection('systemEvents').where('type', '==', 'togglePlayed').get()
           ]);
           
+          // Crear mapa de metadata desde solicitudes para enriquecer los eventos
+          const solicitudesMetaMap = {};
+          solicitudesSnapshot.forEach(doc => {
+            const d = doc.data() || {};
+            // El ID de búsqueda es el songId normalizado
+            const sId = String(d.id || doc.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+            if (sId) {
+                solicitudesMetaMap[sId] = {
+                    genre: d.genre || d.genero || '',
+                    cancion: d.cancion || '',
+                    artista: d.artista || ''
+                };
+            }
+          });
+
           const allSolicitudes = [];
           
           // 1. Agregar Historial de Eventos (Solo canciones reproducidas)
           systemEventsSnapshot.forEach(doc => {
             const data = doc.data();
             if (data.action === 'mark' && data.usuario && data.cancion && data.artista) {
+              // Intentar enriquecer con genre si falta
+              const sId = String(data.songId || '').toLowerCase().replace(/[^a-z0-9-]/g,'');
+              const meta = solicitudesMetaMap[sId] || {};
+              
               const s = {
                 id: doc.id,
                 usuario: data.usuario,
-                cancion: data.cancion,
-                artista: data.artista,
+                cancion: data.cancion || meta.cancion,
+                artista: data.artista || meta.artista,
+                genre: data.genre || meta.genre || '',
                 day: data.day,
                 ts: data.ts ? data.ts.toMillis() : Date.now(),
                 isTest: typeof isTestRequestForStats === 'function' ? isTestRequestForStats(data) : false
@@ -8012,6 +8060,22 @@
           document.getElementById('total-users').textContent = uniqueUsers;
           document.getElementById('total-artists').textContent = uniqueArtists;
           document.getElementById('today-songs').textContent = todaySongs;
+          
+          // Top Géneros
+          const genreCounts = {};
+          allSolicitudes.forEach(s => {
+            const k = norm(s.genre || s.genero);
+            if (!k || k === 'n/d' || k === 'unknown' || k === 'undefined') return;
+            genreCounts[k] = (genreCounts[k] || 0) + 1;
+          });
+          
+          const topGenresSorted = Object.entries(genreCounts)
+            .sort(([,a], [,b]) => b - a);
+          
+          const topGenreName = topGenresSorted.length > 0 ? topGenresSorted[0][0].replace(/\b\w/g, l => l.toUpperCase()) : 'N/D';
+          document.getElementById('top-genre-name').textContent = topGenreName;
+          
+          renderStatsList('top-genres-list', topGenresSorted.map(([k, c]) => [k.replace(/\b\w/g, l => l.toUpperCase()), c]).slice(0, 10));
           
           // Top canciones
           const songCounts = {};
@@ -8090,9 +8154,10 @@
           document.getElementById('total-users').textContent = uniqueUsers + ' (local)';
           document.getElementById('total-artists').textContent = uniqueArtists + ' (local)';
           document.getElementById('today-songs').textContent = todaySongs + ' (local)';
+          document.getElementById('top-genre-name').textContent = 'N/D (local)';
           
           // Mostrar mensaje de error en las listas
-          ['top-songs-list', 'top-artists-list', 'top-users-list'].forEach(id => {
+          ['top-songs-list', 'top-artists-list', 'top-users-list', 'top-genres-list'].forEach(id => {
             const container = document.getElementById(id);
             if (container) {
               container.innerHTML = '<div class="stats-item">Error cargando datos. Mostrando datos locales.</div>';
@@ -10890,17 +10955,12 @@
                  // Si es uno mismo, está bien usar local (feedback instantáneo)
                  data = getGamificationDataForUser(username);
              } else {
-                 // Si vemos a otro, intentar leer de la caché de usuarios sincronizados o esperar
-                 // Para evitar bloqueo, leemos local PERO solo si tiene la marca de _cloudSyncedPoints
-                 // O mejor, forzamos una lectura limpia si es posible, aunque sea asíncrona.
-                 // Dado que esta función debe ser rápida para UI, usaremos local pero filtraremos visualmente si hay discrepancia enorme.
+                 // Si vemos a otro, intentar leer de la caché de usuarios sincronizados
                  data = getGamificationDataForUser(username);
                  
-                 // Parche: Si el dato local tiene puntos inflados respecto a la última sincronización conocida, usar la sync.
-                 if (data && data._cloudSyncedPoints !== undefined && data.points > data._cloudSyncedPoints) {
-                     // Detectamos que local > nube en un perfil ajeno (posible residuo de admin).
-                     // Forzamos visualización de lo sincronizado.
-                     console.log(`⚠️ Ajustando visualización de header para ${username}: Local(${data.points}) -> Cloud(${data._cloudSyncedPoints})`);
+                 // SEGURIDAD: Priorizar siempre el valor sincronizado de la nube (_cloudSyncedPoints) 
+                 // si es mayor que el local, para evitar que el admin vea datos locales obsoletos.
+                 if (data && typeof data._cloudSyncedPoints === 'number' && data._cloudSyncedPoints > data.points) {
                      data.points = data._cloudSyncedPoints;
                  }
              }
@@ -11167,19 +11227,24 @@
 
           if (window.db && isOwner) {
             const normUser = normalizeUserKey(targetUser);
-            // Validar que no estemos bajando los puntos drásticamente por error local
-            // Solo permitir actualizar si el nuevo total es razonable o si estamos seguros
-            // Pero como isOwner = true, asumimos que el usuario tiene sus datos locales completos.
-            
-            db.collection('userStats').doc(normUser).set({
-              totalPoints: data.points,
-              level: data.level,
-              achievements: data.achievements,
-              gamification: data,
-              lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true }).catch(err => console.error('Error guardando stats en Firestore:', err));
+            // SEGURIDAD: No permitir que el cálculo local baje los puntos de la nube drásticamente
+            // sin una razón válida (un canje), para evitar regresiones por fallos de carga.
+            db.collection('userStats').doc(normUser).get().then(snap => {
+               const cloudVal = snap.exists ? Number(snap.data().totalPoints || 0) : 0;
+               if (data.points >= cloudVal || (cloudVal - data.points) < 50) {
+                   db.collection('userStats').doc(normUser).set({
+                     totalPoints: data.points,
+                     level: data.level,
+                     achievements: data.achievements,
+                     gamification: data,
+                     lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                   }, { merge: true }).catch(err => console.error('Error guardando stats:', err));
+               } else {
+                   console.warn(`🛡️ Bloqueada sobrescritura de puntos: Cloud(${cloudVal}) > Local(${data.points}). Posible carga incompleta.`);
+               }
+            });
           } else {
-             console.log(`🔒 Evitando sobrescritura de Cloud Stats para ${targetUser} (No soy Owner)`);
+             console.log(`🔒 Evitando sobrescritura de Cloud Stats (No soy Owner o modo Admin activo)`);
           }
           
           console.log(`✅ Usuario ${targetUser}: ${data.points} puntos, nivel ${data.level}, ${data.achievements.length} logros`);
@@ -11406,7 +11471,7 @@
            const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
            const normTarget = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
            // También validar contra el usuario solicitado en la función
-           const isOwner = normCurrent === norm && normCurrent === normTarget;
+           const isOwner = normCurrent === uNorm && normCurrent === normTarget;
            
            if (isOwner) {
                try {
@@ -11416,15 +11481,15 @@
                    const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
                    arr.forEach(x => {
                      const id = sanitize(x);
-                     if (id.startsWith(prefix)) ids.add(id);
+                     if (prefixes.some(p => id.startsWith(p))) ids.add(id);
                    });
                  });
                } catch(e){}
            } else {
-               console.log(`🔒 countTotalToggledSongsForUser: Ignorando localStorage porque ${normCurrent} está viendo a ${norm}`);
+               console.log(`🔒 countTotalToggledSongsForUser: Ignorando localStorage porque ${normCurrent} está viendo a ${uNorm}`);
            }
 
-           console.log(`🔢 Conteo final (calculado) para ${norm}: ${ids.size}`);
+           console.log(`🔢 Conteo final (calculado) para ${uNorm}: ${ids.size}`);
            return ids.size;
          } catch(e) { console.error(e); return 0; }
       }
@@ -11897,9 +11962,9 @@
              const bestStats = await fetchBestUserStatsDoc(fid);
              const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
              
-             // NUEVO: Sumar los puntos de todas las cuentas vinculadas (Web + TikTok)
-             // para mostrar el total acumulado en lugar del máximo.
-             checkInPoints += Number(statsDoc.totalCheckInPoints || 0);
+             // FIX: Usar Math.max en lugar de suma para evitar duplicidad si los datos ya están consolidados
+             // en las cuentas vinculadas. Si son cuentas independientes, el máximo representará la cuenta principal.
+             checkInPoints = Math.max(checkInPoints, Number(statsDoc.totalCheckInPoints || 0));
              
              const lCount = Number(statsDoc.totalLikes || 0);
              const lPerPoint = Number(statsDoc.likesPerPoint || 300); 
@@ -11907,10 +11972,10 @@
              if (lCount > 0 && lPoints === 0) {
                  lPoints = Math.floor(lCount / lPerPoint);
              }
-             likesPoints += lPoints;
-             likesCount += lCount;
-             giftPoints += Number(statsDoc.totalGiftPoints || 0);
-             totalCoinsDonated += Number(statsDoc.totalCoinsDonated || 0);
+             likesPoints = Math.max(likesPoints, lPoints);
+             likesCount = Math.max(likesCount, lCount);
+             giftPoints = Math.max(giftPoints, Number(statsDoc.totalGiftPoints || 0));
+             totalCoinsDonated = Math.max(totalCoinsDonated, Number(statsDoc.totalCoinsDonated || 0));
              
              fusedDetails[fid] = {
                  checkIn: Number(statsDoc.totalCheckInPoints || 0),
@@ -11956,19 +12021,22 @@
         // Antes usábamos 'cloudTotal' si era mayor, lo que perpetuaba el error.
         
         let displayTotal;
+        let adjustment = 0;
         
-        // Si hay una discrepancia masiva (> 1000 puntos) hacia abajo, asumimos que 'earnedTotal' es la corrección del bug
-        // y lo priorizamos incluso si no somos el dueño (para que la UI se vea bien inmediatamente)
-        const isCorrection = (Number(cloudTotal || 0) - predictedNet) > 1000;
-
-        if (isAdminMode && !isOwner && !isCorrection) {
-            displayTotal = (cloudTotal !== undefined) ? cloudTotal : Math.max(0, predictedNet);
+        // --- CALCULO FINAL DE COHERENCIA ---
+        // predictedNet es lo que podemos explicar con el historial (ganado - gastado).
+        // cloudTotal es lo que la nube dice que el usuario tiene.
+        
+        if (cloudTotal !== undefined && cloudTotal > predictedNet) {
+            // El usuario tiene MÁS puntos en la nube de los que podemos explicar.
+            // Los mantenemos como un ajuste positivo para que el total coincida con el header.
+            adjustment = cloudTotal - predictedNet;
+            displayTotal = cloudTotal;
         } else {
-            // Si soy el dueño O si es una corrección masiva evidente, usamos el cálculo local reconstruido.
+            // El cálculo local explica todo o incluso supera a la nube (o no hay nube).
             displayTotal = Math.max(0, predictedNet);
+            adjustment = 0;
         }
-        
-        const adjustment = 0; 
 
         try {
           // IMPORTANTE:
@@ -11981,7 +12049,7 @@
           if (options && options.persistToCloud === true) {
             const diff = Math.abs(Number(cloudTotal || 0) - displayTotal);
             const isHigher = displayTotal >= Number(cloudTotal || 0);
-            if ((diff > 0.1 || !cloudTotal) && (isHigher || isCorrection)) {
+            if ((diff > 0.1 || !cloudTotal) && isHigher) {
               const docRef = db.collection('userStats').doc(norm(usuario));
               await docRef.set({
                 totalPoints: displayTotal,
@@ -12102,54 +12170,13 @@
           const el = document.getElementById(id);
           if (el) el.textContent = String(val);
         };
-          // --- COHERENCIA: Usar cálculo real ---
-          try {
-             const currentUser = getCurrentUser();
-             const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
-             const normTarget = String(u || '').trim().replace(/^@/, '').toLowerCase();
-             const isAdminMode = localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true';
-             const isOwner = !isAdminMode && (normCurrent === normTarget);
-
-             // Solo recalcular "en vivo" si somos el dueño (para feedback inmediato).
-             // Si somos Admin, confiamos en los datos procesados por computeUserBreakdown (Cloud Truth).
-             if (isOwner) {
-                 const totalPlayed = await countTotalToggledSongsForUser(u);
-                 bd.playedCount = totalPlayed;
-                 bd.base = totalPlayed * 25;
-                 bd.vipBonus = bd.isVip ? (totalPlayed * 40) : 0;
-                 
-                 const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0) + (bd.likesPoints||0) + (bd.giftPoints||0);
-                 const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
-                 bd.earnedTotal = earnedTotal;
-                 bd.adjustment = 0; 
-                 // FIX CRÍTICO: Si la nube dice que tenemos más puntos que el cálculo local, 
-                 // usamos la nube para evitar regresiones visuales.
-                 // EXCEPCIÓN: Si la nube está absurdamente inflada (bug likes), usamos el local.
-                 const cloudVal = typeof bd.cloudTotal === 'number' ? bd.cloudTotal : 0;
-                 const isCorrection = (cloudVal - predictedNet) > 1000;
-                 
-                 if (isCorrection) {
-                     bd.total = Math.max(0, predictedNet);
-                 } else {
-                     bd.total = Math.max(cloudVal, Math.max(0, predictedNet));
-                 }
-             } else {
-                 // FIX: Si somos Admin, asegurar que bd.total coincida con la nube
-                 // EXCEPCIÓN: Si detectamos inflación masiva, forzar el cálculo reconstruido
-                 // para que el Admin vea el valor real corregido.
-                 const cloudVal = typeof bd.cloudTotal === 'number' ? bd.cloudTotal : 0;
-                 const earnedTotal = bd.base + (bd.vipBonus||0) + (bd.dailyBonus||0) + (bd.achievements||0) + (bd.streakBonus||0) + (bd.top1Bonus||0) + (bd.manualBonus||0) + (bd.likesPoints||0) + (bd.giftPoints||0);
-                 const predictedNet = earnedTotal - Number(bd.redemptionsSpent || 0);
-                 const isCorrection = (cloudVal - predictedNet) > 1000;
-
-                 if (isCorrection) {
-                     bd.total = Math.max(0, predictedNet);
-                 } else if (typeof bd.cloudTotal === 'number') {
-                     bd.total = bd.cloudTotal;
-                 }
-             }
-             
-          } catch(e) { console.error('Error actualizando transparencia con conteo consistente:', e); }
+          // --- COHERENCIA: Usar cálculo real consolidado ---
+          // Ya no recalculamos aquí porque computeUserBreakdown() ya hizo todo el trabajo pesado
+          // de sumar cuentas vinculadas y calcular ajustes de forma robusta.
+          if (!bd || typeof bd.total !== 'number') {
+              console.warn('⚠️ Breakdown data incomplete, attempting emergency fallback.');
+              bd = await computeUserBreakdown(u);
+          }
 
         setNum('breakdown-played-base', Number(bd.base||0));
         setNum('breakdown-vip-bonus', Number(bd.vipBonus||0));
@@ -12251,6 +12278,7 @@
             lines.push(`<div class="genre-chip"><span>🧩 Compensación Admin</span><span class="pts-val-green">${mSign}${bd.manualBonus} pts</span></div>`);
           }
 
+
           // Canjes
           if (Number(bd.redemptionsSpent || 0) > 0 || (Array.isArray(bd.redemptions) && bd.redemptions.length > 0)) {
             const rList = Array.isArray(bd.redemptions) ? bd.redemptions : [];
@@ -12286,7 +12314,8 @@
           if (Number(bd.adjustment || 0) !== 0) {
             const adj = Number(bd.adjustment || 0);
             const sign = adj > 0 ? '+' : '';
-            lines.push(`<div class="genre-chip"><span>⚙️ Ajuste de Sistema</span><span class="pts-val-white">${sign}${adj} pts</span></div>`);
+            // Usar una etiqueta única y clara para evitar duplicados visuales
+            lines.push(`<div class="genre-chip"><span>🛠️ Ajuste de Saldo (Cloud Sync)</span><span class="pts-val-white">${sign}${adj} pts</span></div>`);
           }
           
           // Total
@@ -13367,7 +13396,6 @@
           }
         } catch (_){ }
         console.log(`✅ FIN - Modal actualizado para usuario: ${currentSelectedUser}`);
-        try { subscribeUserStatsPointsForUser(currentSelectedUser); } catch (_) {}
       }
 
       function getCurrentSelectedUser() {
@@ -13456,23 +13484,45 @@
           }));
           const existing = docs.filter(d => d && d.data);
           if (!existing.length) return null;
-          existing.sort((x, y) => {
-            const px = Number(x.data.totalPoints || 0);
-            const py = Number(y.data.totalPoints || 0);
-            const diff = Math.abs(px - py);
-            // Si la diferencia es grande, priorizar el que tiene MÁS puntos (asumiendo que es el "bueno")
-            if (diff >= 5000) return py - px; // Descending (Mayor primero)
-            
-            const tx = Math.max(getMillisFromTs(x.data.updatedAt), getMillisFromTs(x.data.lastUpdated));
-            const ty = Math.max(getMillisFromTs(y.data.updatedAt), getMillisFromTs(y.data.lastUpdated));
-            
-            // Priorizar el más reciente
-            if (ty !== tx) return ty - tx; // Descending (y > x -> pos -> y first)
-            
-            // Si son igual de recientes, el que tenga más puntos
-            return py - px;
+          
+          // Agrupar por cuenta real (normalizada) para evitar sumar duplicados del mismo ID
+          const byAccount = {};
+          existing.forEach(d => {
+              const accId = normalizeUserKeyLoose(d.key || '');
+              if (!byAccount[accId]) byAccount[accId] = [];
+              byAccount[accId].push(d);
           });
-          return existing[0];
+
+          let totalPoints = 0;
+          let bestDoc = null;
+
+          Object.keys(byAccount).forEach(accId => {
+              const accountDocs = byAccount[accId];
+              accountDocs.sort((x, y) => {
+                  const tx = Math.max(getMillisFromTs(x.data.updatedAt), getMillisFromTs(x.data.lastUpdated));
+                  const ty = Math.max(getMillisFromTs(y.data.updatedAt), getMillisFromTs(y.data.lastUpdated));
+                  if (Math.abs(tx - ty) > 5000) return ty - tx;
+                  return Number(y.data.totalPoints || 0) - Number(x.data.totalPoints || 0);
+              });
+              
+              const bestForThisAccount = accountDocs[0];
+              totalPoints += Number(bestForThisAccount.data.totalPoints || 0);
+              
+              if (!bestDoc || Number(bestForThisAccount.data.totalPoints || 0) > Number(bestDoc.data.totalPoints || 0)) {
+                  bestDoc = bestForThisAccount;
+              }
+          });
+
+          if (bestDoc) {
+              return {
+                  ...bestDoc,
+                  data: {
+                      ...bestDoc.data,
+                      totalPoints: totalPoints
+                  }
+              };
+          }
+          return null;
         } catch (_) {
           return null;
         }
@@ -14027,11 +14077,44 @@
             console.log(`ℹ️ ${username} ya tiene todos los logros de insignias disponibles`);
           }
           
-          // Actualizar stats con estados de insignias
+          // Actualizar stats con estados de insignias y conteos reales
           if (!data.stats) data.stats = {};
           data.stats.isVip = isVip;
           data.stats.isZ0Vip = isZ0Vip;
           data.stats.isDonador = isDonador;
+
+          // --- NUEVO: Evaluar logros de actividad (Canciones, Días, etc.) ---
+          const s = data.stats;
+          const songAchievements = [
+            { id: 'first_song', target: 1, points: 25, title: 'Primera Canción' },
+            { id: 'music_lover', target: 10, points: 50, title: 'Amante de la Música' },
+            { id: 'music_addict', target: 50, points: 100, title: 'Adicto a la Música' },
+            { id: 'music_master', target: 100, points: 200, title: 'Maestro Musical' }
+          ];
+
+          songAchievements.forEach(ach => {
+            if (!data.achievements.includes(ach.id) && (s.totalPlayedSongs || s.songCount || 0) >= ach.target) {
+              console.log(`🎉 Otorgando logro de actividad ${ach.id} a ${username}`);
+              data.achievements.push(ach.id);
+              data.points += ach.points;
+              data.xp += ach.points;
+              achievementsGranted.push(`${ach.title} (+${ach.points} pts)`);
+            }
+          });
+
+          // Logros de Diversidad
+          if (!data.achievements.includes('diverse_taste') && (s.uniqueArtistsPlayed || 0) >= 10) {
+              data.achievements.push('diverse_taste');
+              data.points += 75;
+              data.xp += 75;
+              achievementsGranted.push('Gusto Diverso (+75 pts)');
+          }
+
+          if (achievementsGranted.length > 0) {
+            data.level = calculateLevel(data.xp);
+            saveGamificationDataForUser(data, username);
+            console.log(`✅ Logros de actividad otorgados a ${username}:`, achievementsGranted);
+          }
           
           return data;
         } catch (error) {
@@ -14582,10 +14665,22 @@
           if (freshStats) {
             data.streaks.current = freshStats.currentStreak;
             data.streaks.best = freshStats.bestStreak;
+            
+            // ACTUALIZAR STATS PARA EVALUACIÓN DE LOGROS
+            data.stats = data.stats || {};
+            data.stats.totalSongs = freshStats.playedCount; // Para compatibilidad
+            data.stats.totalPlayedSongs = freshStats.playedCount;
+            data.stats.songCount = freshStats.playedCount;
+            data.stats.activeDays = freshStats.activeDaysValid;
+            data.stats.uniqueArtists = freshStats.uniqueArtists || (data.stats.uniqueArtists || 0);
+            data.stats.uniqueArtistsPlayed = freshStats.uniqueArtistsPlayed || (data.stats.uniqueArtistsPlayed || 0);
+            data.stats.bestStreak = freshStats.bestStreak;
+
             // Actualizar también puntos si la diferencia es a favor de la reconstrucción
             if (freshStats.total > data.points) {
                data.points = freshStats.total;
                data.xp = freshStats.total;
+               data.level = calculateLevel(data.xp);
             }
           }
         } catch (e) {
@@ -16515,37 +16610,9 @@
             }
           } catch (_) {}
 
-          const usersList = Array.from(set);
-          
-          usersList.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-
-          // Construir opciones del selector
-          const options = '<option value="">Selecciona un usuario</option>' +
-            usersList.map(user => `<option value="${user}">${user}</option>`).join('');
-          
-          rewardsUserSelect.innerHTML = options;
-          
-          // Si no hay usuarios, mostrar mensaje
-          if (usersList.length === 0) {
-            rewardsUserSelect.innerHTML = '<option value="">No hay usuarios disponibles</option>';
-          }
-        } catch (error) {
-          console.error('Error al cargar usuarios para recompensas:', error);
-          // Fallback a localStorage si hay error
-          const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          const users = [...new Set(solicitudes
-            .map(s => s.usuario)
-            .filter(user => user && user.trim() !== '')
-          )];
+          const users = Array.from(set);
           
           users.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-          
-          const options = '<option value="">Selecciona un usuario</option>' +
-            users.map(user => `<option value="${user}">${user}</option>`).join('');
-          
-          rewardsUserSelect.innerHTML = options;
-        }
-      }
 
           // Construir opciones del selector
           const options = '<option value="">Selecciona un usuario</option>' +
@@ -16620,16 +16687,32 @@
         if (!window.db) return;
         
         try {
+           console.log("📊 Calculando estadísticas globales maestras...");
+           
             // NUEVO: Leer historial de canciones reproducidas (HISTORIA REAL)
-            let playedSnapshot;
-            try {
-                // Intentamos leer la colección de historial
-                playedSnapshot = await window.db.collection('playedSongs').get();
-                console.log(`📚 Leídos ${playedSnapshot.size} documentos de historial.`);
-            } catch (e) {
-                console.warn("⚠️ No se pudo leer playedSongs para estadísticas globales:", e);
-            }
+            // Y las solicitudes para enriquecer con metadata (género, etc.)
+            const [playedSnapshot, solicitudesSnapshot, systemEventsSnapshot] = await Promise.all([
+                window.db.collection('playedSongs').get().catch(() => null),
+                window.db.collection('solicitudes').get(),
+                window.db.collection('systemEvents').where('type', '==', 'togglePlayed').get()
+            ]);
+
+            console.log(`📚 Leídos ${systemEventsSnapshot.size} eventos y ${solicitudesSnapshot.size} solicitudes.`);
             
+            // Mapa de metadata
+            const solicitudesMetaMap = {};
+            solicitudesSnapshot.forEach(doc => {
+              const d = doc.data() || {};
+              const sId = String(d.id || doc.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+              if (sId) {
+                  solicitudesMetaMap[sId] = {
+                      genre: d.genre || d.genero || '',
+                      cancion: d.cancion || '',
+                      artista: d.artista || ''
+                  };
+              }
+            });
+
             let totalRequests = 0;
             const artistCount = {};
             const userCount = {};
@@ -16638,29 +16721,30 @@
             const artistOriginal = {};
             const userOriginal = {};
             
-           let systemEventsSnapshot;
-           try {
-               systemEventsSnapshot = await window.db.collection('systemEvents')
-                   .where('type', '==', 'togglePlayed')
-                   .get();
-               
-               console.log(`📚 Leídos ${systemEventsSnapshot.size} eventos de historial.`);
-               
-               systemEventsSnapshot.forEach(doc => {
-                   const d = doc.data() || {};
-                   if (typeof isTestRequestForStats === 'function' && isTestRequestForStats(d)) return;
+            // 1. Procesar Historial REAL (systemEvents)
+            systemEventsSnapshot.forEach(doc => {
+               const d = doc.data() || {};
+               // Ignorar pruebas
+               if (typeof isTestRequestForStats === 'function' && isTestRequestForStats(d)) return;
 
-                   if (d.action === 'mark') {
-                       if (d.cancion && d.artista) {
-                           totalRequests++;
-                           processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
+               // Solo contar si la acción fue marcar como reproducida (y no desmarcar)
+               if (d.action === 'mark') {
+                   if (d.cancion && d.artista) {
+                       totalRequests++;
+                       
+                       // Enriquecer con genre si falta
+                       if (!d.genre) {
+                           const sId = String(d.songId || '').toLowerCase().replace(/[^a-z0-9-]/g,'');
+                           const meta = solicitudesMetaMap[sId] || {};
+                           if (meta.genre) d.genre = meta.genre;
                        }
+                       
+                       processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
                    }
-               });
-           } catch (e) {
-               console.warn("⚠️ No se pudo leer systemEvents para estadísticas globales:", e);
-           }
+               }
+            });
            
+           // (Opcional) Soporte legacy para playedSongs
            if (playedSnapshot) {
                playedSnapshot.forEach(doc => {
                    const d = doc.data() || {};
@@ -16676,148 +16760,160 @@
               const a = (String(d.artista||'').trim().toLowerCase());
               const ao = (String(d.artista||'').trim());
               const s = (String(d.cancion||'').trim().toLowerCase());
+              // NORMALIZACIÓN DE USUARIO (DEDUP)
               const rawU = (String(d.usuario||'').trim());
-              const u = normalizeUserKey(rawU); 
+              const u = normalizeUserKey(rawU); // Usar la función de fusión
               const uo = (String(d.usuarioRaw || d.usuario || '').trim());
-              const g = (String(d.genre||'').trim().toLowerCase()); 
+              const g = (String(d.genre||'').trim().toLowerCase()); // Género
               const go = (String(d.genre||'').trim());
 
-              const isInvalid = (v) => !v || v.length <= 1 || v === 'undefined' || v === 'null' || v === 'n/d' || v === 'unknown' || v === 'none';
-
-              if (a && !isInvalid(a)){ 
+              if (a && a.length > 1 && a !== 'undefined' && a !== 'null'){ 
                   aCount[a]=(aCount[a]||0)+1; 
                   if(!aOrig[a]) aOrig[a]=ao; 
               }
-              if (s && !isInvalid(s)){ 
+              if (s && s.length > 1 && s !== 'undefined' && s !== 'null'){ 
                   sCount[s]=(sCount[s]||0)+1; 
               }
-              if (u && !isInvalid(u)){ 
+              if (u && u.length > 1 && u !== 'undefined' && u !== 'null'){ 
                   uCount[u]=(uCount[u]||0)+1; 
                   if(!uOrig[u]) uOrig[u]=uo; 
               }
-              if (g && !isInvalid(g)){ 
+              if (g && g.length > 1 && g !== 'undefined' && g !== 'null' && g !== 'unknown' && g !== 'n/d'){ 
                   gCount[go]=(gCount[go]||0)+1; 
               }
            }
            
+           // Calcular Tops
+           // Para el Top Usuarios: Solo contar si el usuario tiene nombre válido
+           // Excluir "N/D" o usuarios vacíos
+           
            const topArtists = Object.keys(artistCount)
               .map(k => ({ k, c: artistCount[k], o: artistOriginal[k]||k }))
-              .filter(a => a.k && a.k.length > 1 && a.k !== 'undefined' && a.k !== 'null' && a.k !== 'n/d')
+              .filter(a => a.k && a.k.length > 1 && a.k !== 'undefined' && a.k !== 'null') // FIX: Filtro estricto para artistas también
               .sort((a,b) => b.c - a.c)
               .slice(0, 3)
               .map(it => `${it.o} (${it.c})`);
               
            const topUsers = Object.keys(userCount)
               .map(k => ({ k, c: userCount[k], o: userOriginal[k]||k }))
-              .filter(u => u.k && u.k !== 'undefined' && u.k !== 'null' && u.k.length > 1 && u.k !== 'n/d')
+              .filter(u => u.k && u.k !== 'undefined' && u.k !== 'null' && u.k.length > 1)
               .sort((a,b) => b.c - a.c)
               .slice(0, 3)
               .map(it => `${it.o} (${it.c})`);
 
-           let topPoints3 = [];
            try {
               const userStatsSnapshot = await window.db.collection('userStats').get();
               const aggregatedPoints = new Map();
               userStatsSnapshot.forEach(doc => {
                  const d = doc.data() || {};
                  const rawName = String(d.displayName || doc.id || '').trim();
-                 let normKey = normalizeUserKey(rawName);
-                 
-                 // MEJORA: Si hay un tiktokId, usarlo como llave de fusión secundaria
-                 // para evitar "puntos dobles" de cuentas vinculadas pero no aliaseadas.
-                 if (d.tiktokId) {
-                    const tid = String(d.tiktokId).replace(/^@/, '').toLowerCase();
-                    if (tid && tid.length > 1) normKey = tid;
-                 }
-
-                 if (!normKey || normKey === 'prueba' || normKey.startsWith('prueba') || normKey === 'n/d') return;
+                 // NORMALIZACIÓN PARA TOP PUNTOS
+                 const normKey = normalizeUserKey(rawName);
+                 if (!normKey || normKey === 'prueba' || normKey.startsWith('prueba')) return;
                  
                  const pts = Number(d.totalPoints || 0);
                  if (!Number.isFinite(pts) || pts <= 0) return;
                  
                  if (aggregatedPoints.has(normKey)) {
                     const existing = aggregatedPoints.get(normKey);
-                    // Tomamos el máximo de puntos para cuentas fusionadas
+                    // IMPORTANTE: Al ser totales consolidados, no sumamos, sino que tomamos el máximo
                     existing.points = Math.max(existing.points, pts);
                  } else {
                     aggregatedPoints.set(normKey, { user: rawName, points: pts });
                  }
               });
-              
-              const pointsUsersList = Array.from(aggregatedPoints.values());
-              pointsUsersList.sort((a,b) => {
+              pointsUsers = Array.from(aggregatedPoints.values());
+
+              // Calcular Top Liker desde userStats
+              let topLikerName = 'N/D';
+              let topLikerCountVal = 0;
+              try {
+                 let maxL = 0;
+                 let maxLk = '';
+                 userStatsSnapshot.forEach(doc => {
+                    const ud = doc.data() || {};
+                    const lCount = Number(ud.totalLikes || 0);
+                    if (lCount > maxL) {
+                       maxL = lCount;
+                       maxLk = String(ud.displayName || doc.id || '').trim();
+                    }
+                 });
+                 if (maxLk) {
+                    topLikerName = maxLk;
+                    topLikerCountVal = maxL;
+                 }
+              } catch (e) { console.warn("Error calculando Top Liker:", e); }
+
+              pointsUsers.sort((a,b) => {
                  const diff = b.points - a.points;
                  if (diff !== 0) return diff;
                  return a.user.localeCompare(b.user);
               });
-              topPoints3 = pointsUsersList.slice(0, 3).map(it => `${it.user} (${it.points})`);
-           } catch (e) {
-              console.warn("⚠️ No se pudo leer userStats para top puntos global:", e);
-           }
-           
-           let topSongName = 'N/D';
-           let topSongCountVal = 0;
-           
-           let maxS = 0;
-           let maxSk = '';
-           for (let k in songCount) {
-              if (k && k.length > 1 && k !== 'undefined' && k !== 'null' && k !== 'n/d') {
-                  if (songCount[k] > maxS) {
-                     maxS = songCount[k];
-                     maxSk = k;
+              const topPoints3 = pointsUsers.slice(0, 3).map(it => `${it.user} (${it.points})`);
+              
+              let topSongName = 'N/D';
+              let topSongCountVal = 0;
+              
+              let maxS = 0;
+              let maxSk = '';
+              for (let k in songCount) {
+                 // Filtro estricto para canción: longitud > 1 y que no sea undefined/null
+                 if (k && k.length > 1 && k !== 'undefined' && k !== 'null') {
+                     if (songCount[k] > maxS) {
+                        maxS = songCount[k];
+                        maxSk = k;
+                     }
+                 }
+              }
+              if (maxSk) {
+                 topSongName = maxSk; 
+                 // Capitalizar la primera letra de cada palabra
+                 topSongName = topSongName.replace(/\b\w/g, l => l.toUpperCase());
+                 topSongCountVal = maxS;
+              }
+              
+              // Calcular Top Género
+              let topGenreName = 'N/D';
+              let topGenreCountVal = 0;
+              let maxG = 0;
+              let maxGk = '';
+              for (let k in genreCount) {
+                  if (genreCount[k] > maxG) {
+                      maxG = genreCount[k];
+                      maxGk = k;
                   }
               }
+              if (maxGk) {
+                  topGenreName = maxGk;
+                  topGenreCountVal = maxG;
+              }
+              
+              const globalStatsData = {
+                 totalRequests,
+                 topArtists,
+                 topUsers,
+                 topPoints3,
+                 topSong: topSongName,
+                 topSongCount: topSongCountVal,
+                 topGenre: topGenreName,
+                 topGenreCount: topGenreCountVal,
+                 topLiker: topLikerName,
+                 topLikerCount: topLikerCountVal,
+                 distinctUsers: Object.keys(userCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null').length,
+                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+              };
+              
+              // Usar merge: true para no borrar datos que otros procesos (como el bot) hayan escrito
+              await window.db.collection('globalStats').doc('general').set(globalStatsData, { merge: true });
+              console.log("✅ Estadísticas globales guardadas en 'globalStats/general'");
+              
+           } catch (e) {
+              console.warn("⚠️ No se pudo leer userStats para estadísticas globales:", e);
            }
-           if (maxSk) {
-              topSongName = maxSk; 
-              topSongName = topSongName.replace(/\b\w/g, l => l.toUpperCase());
-              topSongCountVal = maxS;
-           }
-           
-           let topGenreName = 'N/D';
-           let topGenreCountVal = 0;
-           let maxG = 0;
-           let maxGk = '';
-           for (let k in genreCount) {
-                if (genreCount[k] > maxG) {
-                    maxG = genreCount[k];
-                    maxGk = k;
-                }
-           }
-           if (maxGk) {
-               topGenreName = maxGk;
-               topGenreCountVal = maxG;
-           }
-           
-           const globalStatsData = {
-              totalRequests,
-              topArtists,
-              topUsers,
-              topPoints3,
-              topSong: topSongName,
-              topSongCount: topSongCountVal,
-              topGenre: topGenreName,
-              topGenreCount: topGenreCountVal,
-              distinctUsers: Object.keys(userCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null' && k !== 'n/d').length,
-              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-           };
-           
-           await window.db.collection('globalStats').doc('general').set(globalStatsData, { merge: true });
-           console.log("✅ Estadísticas globales guardadas en 'globalStats/general'");
-           
         } catch (e) {
-           console.error("Error calculando stats globales:", e);
+           console.error("Error calculando estadísticas globales:", e);
         }
       }
-
-      // Variable para debouncing de actualización de estadísticas
-      let globalStatsUpdateTimeout = null;
-      window.triggerGlobalStatsUpdate = function() {
-        if (globalStatsUpdateTimeout) clearTimeout(globalStatsUpdateTimeout);
-        globalStatsUpdateTimeout = setTimeout(() => {
-          calculateAndSaveGlobalStats();
-        }, 2000); // Debounce de 2 segundos
-      };
 
       // Análisis periódico cada 5 minutos
       setInterval(() => {
@@ -16830,7 +16926,9 @@
            syncGamificationDataWithCloud(currentUser).catch(() => {});
         }
         
-        // Recalcular estadísticas globales compartidas desde Firestore
+        // Recalcular estadísticas globales compartidas desde Firestore.
+        // Ya no dependemos de que el panel admin esté abierto para mantener
+        // la banda sincronizada entre usuarios.
         calculateAndSaveGlobalStats();
       }, 5 * 60 * 1000); // 5 minutos
 

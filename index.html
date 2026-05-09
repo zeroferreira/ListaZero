@@ -867,6 +867,19 @@
           const hora = `${hh}:${mm}`;
           const songId = `${usuario}-${cancion}-${artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
 
+          // --- DETECCIÓN DE GÉNERO (NUEVO) ---
+          let genre = '';
+          try {
+            const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(cancion + ' ' + artista)}&media=music&limit=1`;
+            const resp = await fetch(searchUrl);
+            const data = await resp.json();
+            if (data.results && data.results.length > 0) {
+              genre = data.results[0].primaryGenreName || '';
+            }
+          } catch (e) {
+            console.warn('No se pudo autodetectar el género:', e);
+          }
+
           // Guardar en Firestore (sincronización multi-dispositivo)
           const solicitudPayload = {
             id: songId,
@@ -874,6 +887,7 @@
             displayName: usuario,
             cancion,
             artista,
+            genre: genre, // Guardar el género detectado
             ts: firebase.firestore.FieldValue.serverTimestamp(),
             status: 'pending',
             day: dayKey,
