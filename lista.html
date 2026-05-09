@@ -4607,6 +4607,8 @@
           };
           const docId = `toggle-${norm}-${idNorm}-${String(payload.day||'')}`.toLowerCase().replace(/[^a-z0-9-]/g,'');
           await db.collection('systemEvents').doc(docId).set(data, { merge: true });
+          // Activación inmediata de estadísticas
+          if (typeof triggerGlobalStatsUpdate === 'function') triggerGlobalStatsUpdate();
         } catch (_){ }
       }
 
@@ -16513,9 +16515,37 @@
             }
           } catch (_) {}
 
-          const users = Array.from(set);
+          const usersList = Array.from(set);
+          
+          usersList.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+          // Construir opciones del selector
+          const options = '<option value="">Selecciona un usuario</option>' +
+            usersList.map(user => `<option value="${user}">${user}</option>`).join('');
+          
+          rewardsUserSelect.innerHTML = options;
+          
+          // Si no hay usuarios, mostrar mensaje
+          if (usersList.length === 0) {
+            rewardsUserSelect.innerHTML = '<option value="">No hay usuarios disponibles</option>';
+          }
+        } catch (error) {
+          console.error('Error al cargar usuarios para recompensas:', error);
+          // Fallback a localStorage si hay error
+          const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          const users = [...new Set(solicitudes
+            .map(s => s.usuario)
+            .filter(user => user && user.trim() !== '')
+          )];
           
           users.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+          
+          const options = '<option value="">Selecciona un usuario</option>' +
+            users.map(user => `<option value="${user}">${user}</option>`).join('');
+          
+          rewardsUserSelect.innerHTML = options;
+        }
+      }
 
           // Construir opciones del selector
           const options = '<option value="">Selecciona un usuario</option>' +
@@ -16590,8 +16620,6 @@
         if (!window.db) return;
         
         try {
-           console.log("📊 Calculando estadísticas globales maestras...");
-           
             // NUEVO: Leer historial de canciones reproducidas (HISTORIA REAL)
             let playedSnapshot;
             try {
@@ -16606,13 +16634,10 @@
             const artistCount = {};
             const userCount = {};
             const songCount = {};
-            const genreCount = {}; // Nuevo: Conteo de géneros
+            const genreCount = {}; 
             const artistOriginal = {};
             const userOriginal = {};
             
-            // 1. Procesar Historial REAL (systemEvents)
-           // La colección 'playedSongs' solo tiene IDs, por lo que usamos 'systemEvents' 
-           // que guarda el detalle completo de cada canción reproducida.
            let systemEventsSnapshot;
            try {
                systemEventsSnapshot = await window.db.collection('systemEvents')
@@ -16623,12 +16648,9 @@
                
                systemEventsSnapshot.forEach(doc => {
                    const d = doc.data() || {};
-                   // Ignorar pruebas
                    if (typeof isTestRequestForStats === 'function' && isTestRequestForStats(d)) return;
 
-                   // Solo contar si la acción fue marcar como reproducida (y no desmarcar)
                    if (d.action === 'mark') {
-                       // Asegurarnos de que tenga datos válidos
                        if (d.cancion && d.artista) {
                            totalRequests++;
                            processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
@@ -16639,13 +16661,10 @@
                console.warn("⚠️ No se pudo leer systemEvents para estadísticas globales:", e);
            }
            
-           // (Opcional) Soporte legacy para playedSongs si tuviera datos antiguos
            if (playedSnapshot) {
                playedSnapshot.forEach(doc => {
                    const d = doc.data() || {};
                    if (typeof isTestRequestForStats === 'function' && isTestRequestForStats(d)) return;
-
-                   // Si es un documento antiguo con artista/cancion directos, lo procesamos
                    if (doc.id !== '__userTotals__' && d.artista && !d.songs) {
                        totalRequests++;
                        processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
@@ -16657,80 +16676,84 @@
               const a = (String(d.artista||'').trim().toLowerCase());
               const ao = (String(d.artista||'').trim());
               const s = (String(d.cancion||'').trim().toLowerCase());
-              // NORMALIZACIÓN DE USUARIO (DEDUP)
               const rawU = (String(d.usuario||'').trim());
-              const u = normalizeUserKey(rawU); // Usar la función de fusión
+              const u = normalizeUserKey(rawU); 
               const uo = (String(d.usuarioRaw || d.usuario || '').trim());
-              const g = (String(d.genre||'').trim().toLowerCase()); // Género
+              const g = (String(d.genre||'').trim().toLowerCase()); 
               const go = (String(d.genre||'').trim());
 
-              if (a && a.length > 1 && a !== 'undefined' && a !== 'null'){ 
+              const isInvalid = (v) => !v || v.length <= 1 || v === 'undefined' || v === 'null' || v === 'n/d' || v === 'unknown' || v === 'none';
+
+              if (a && !isInvalid(a)){ 
                   aCount[a]=(aCount[a]||0)+1; 
                   if(!aOrig[a]) aOrig[a]=ao; 
               }
-              if (s && s.length > 1 && s !== 'undefined' && s !== 'null'){ 
+              if (s && !isInvalid(s)){ 
                   sCount[s]=(sCount[s]||0)+1; 
               }
-              if (u && u.length > 1 && u !== 'undefined' && u !== 'null'){ 
+              if (u && !isInvalid(u)){ 
                   uCount[u]=(uCount[u]||0)+1; 
                   if(!uOrig[u]) uOrig[u]=uo; 
               }
-              if (g && g.length > 1 && g !== 'undefined' && g !== 'null' && g !== 'unknown' && g !== 'n/d'){ 
+              if (g && !isInvalid(g)){ 
                   gCount[go]=(gCount[go]||0)+1; 
               }
            }
            
-           // Calcular Tops
-           // Para el Top Usuarios: Solo contar si el usuario tiene nombre válido
-           // Excluir "N/D" o usuarios vacíos
-           
            const topArtists = Object.keys(artistCount)
               .map(k => ({ k, c: artistCount[k], o: artistOriginal[k]||k }))
-              .filter(a => a.k && a.k.length > 1 && a.k !== 'undefined' && a.k !== 'null') // FIX: Filtro estricto para artistas también
+              .filter(a => a.k && a.k.length > 1 && a.k !== 'undefined' && a.k !== 'null' && a.k !== 'n/d')
               .sort((a,b) => b.c - a.c)
               .slice(0, 3)
               .map(it => `${it.o} (${it.c})`);
               
            const topUsers = Object.keys(userCount)
               .map(k => ({ k, c: userCount[k], o: userOriginal[k]||k }))
-              // Filtrar usuarios inválidos o vacíos antes de ordenar
-              .filter(u => u.k && u.k !== 'undefined' && u.k !== 'null' && u.k.length > 1)
+              .filter(u => u.k && u.k !== 'undefined' && u.k !== 'null' && u.k.length > 1 && u.k !== 'n/d')
               .sort((a,b) => b.c - a.c)
               .slice(0, 3)
               .map(it => `${it.o} (${it.c})`);
 
+           let topPoints3 = [];
            try {
               const userStatsSnapshot = await window.db.collection('userStats').get();
               const aggregatedPoints = new Map();
               userStatsSnapshot.forEach(doc => {
                  const d = doc.data() || {};
                  const rawName = String(d.displayName || doc.id || '').trim();
-                 // NORMALIZACIÓN PARA TOP PUNTOS
-                 const normKey = normalizeUserKey(rawName);
-                 if (!normKey || normKey === 'prueba' || normKey.startsWith('prueba')) return;
+                 let normKey = normalizeUserKey(rawName);
+                 
+                 // MEJORA: Si hay un tiktokId, usarlo como llave de fusión secundaria
+                 // para evitar "puntos dobles" de cuentas vinculadas pero no aliaseadas.
+                 if (d.tiktokId) {
+                    const tid = String(d.tiktokId).replace(/^@/, '').toLowerCase();
+                    if (tid && tid.length > 1) normKey = tid;
+                 }
+
+                 if (!normKey || normKey === 'prueba' || normKey.startsWith('prueba') || normKey === 'n/d') return;
                  
                  const pts = Number(d.totalPoints || 0);
                  if (!Number.isFinite(pts) || pts <= 0) return;
                  
                  if (aggregatedPoints.has(normKey)) {
                     const existing = aggregatedPoints.get(normKey);
-                    // IMPORTANTE: Al ser totales consolidados, no sumamos, sino que tomamos el máximo
+                    // Tomamos el máximo de puntos para cuentas fusionadas
                     existing.points = Math.max(existing.points, pts);
                  } else {
                     aggregatedPoints.set(normKey, { user: rawName, points: pts });
                  }
               });
-              pointsUsers = Array.from(aggregatedPoints.values());
+              
+              const pointsUsersList = Array.from(aggregatedPoints.values());
+              pointsUsersList.sort((a,b) => {
+                 const diff = b.points - a.points;
+                 if (diff !== 0) return diff;
+                 return a.user.localeCompare(b.user);
+              });
+              topPoints3 = pointsUsersList.slice(0, 3).map(it => `${it.user} (${it.points})`);
            } catch (e) {
               console.warn("⚠️ No se pudo leer userStats para top puntos global:", e);
            }
-
-           pointsUsers.sort((a,b) => {
-              const diff = b.points - a.points;
-              if (diff !== 0) return diff;
-              return a.user.localeCompare(b.user);
-           });
-           const topPoints3 = pointsUsers.slice(0, 3).map(it => `${it.user} (${it.points})`);
            
            let topSongName = 'N/D';
            let topSongCountVal = 0;
@@ -16738,8 +16761,7 @@
            let maxS = 0;
            let maxSk = '';
            for (let k in songCount) {
-              // Filtro estricto para canción: longitud > 1 y que no sea undefined/null
-              if (k && k.length > 1 && k !== 'undefined' && k !== 'null') {
+              if (k && k.length > 1 && k !== 'undefined' && k !== 'null' && k !== 'n/d') {
                   if (songCount[k] > maxS) {
                      maxS = songCount[k];
                      maxSk = k;
@@ -16748,21 +16770,19 @@
            }
            if (maxSk) {
               topSongName = maxSk; 
-              // Capitalizar la primera letra de cada palabra
               topSongName = topSongName.replace(/\b\w/g, l => l.toUpperCase());
               topSongCountVal = maxS;
            }
            
-           // Calcular Top Género
            let topGenreName = 'N/D';
            let topGenreCountVal = 0;
            let maxG = 0;
            let maxGk = '';
            for (let k in genreCount) {
-               if (genreCount[k] > maxG) {
-                   maxG = genreCount[k];
-                   maxGk = k;
-               }
+                if (genreCount[k] > maxG) {
+                    maxG = genreCount[k];
+                    maxGk = k;
+                }
            }
            if (maxGk) {
                topGenreName = maxGk;
@@ -16776,20 +16796,28 @@
               topPoints3,
               topSong: topSongName,
               topSongCount: topSongCountVal,
-              topGenre: topGenreName, // Nuevo
-              topGenreCount: topGenreCountVal, // Nuevo
-              distinctUsers: Object.keys(userCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null').length,
+              topGenre: topGenreName,
+              topGenreCount: topGenreCountVal,
+              distinctUsers: Object.keys(userCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null' && k !== 'n/d').length,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
            };
            
-           // Usar merge: true para no borrar datos que otros procesos (como el bot) hayan escrito (ej: topLiker)
            await window.db.collection('globalStats').doc('general').set(globalStatsData, { merge: true });
            console.log("✅ Estadísticas globales guardadas en 'globalStats/general'");
            
         } catch (e) {
-           console.error("Error calculando estadísticas globales:", e);
+           console.error("Error calculando stats globales:", e);
         }
       }
+
+      // Variable para debouncing de actualización de estadísticas
+      let globalStatsUpdateTimeout = null;
+      window.triggerGlobalStatsUpdate = function() {
+        if (globalStatsUpdateTimeout) clearTimeout(globalStatsUpdateTimeout);
+        globalStatsUpdateTimeout = setTimeout(() => {
+          calculateAndSaveGlobalStats();
+        }, 2000); // Debounce de 2 segundos
+      };
 
       // Análisis periódico cada 5 minutos
       setInterval(() => {
@@ -16802,9 +16830,7 @@
            syncGamificationDataWithCloud(currentUser).catch(() => {});
         }
         
-        // Recalcular estadísticas globales compartidas desde Firestore.
-        // Ya no dependemos de que el panel admin esté abierto para mantener
-        // la banda sincronizada entre usuarios.
+        // Recalcular estadísticas globales compartidas desde Firestore
         calculateAndSaveGlobalStats();
       }, 5 * 60 * 1000); // 5 minutos
 
