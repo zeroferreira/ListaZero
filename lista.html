@@ -11335,11 +11335,23 @@
       // Esta función se declara aquí para estar disponible tanto para computeUserBreakdown como para renderPersonalStatsForUser
       async function countTotalToggledSongsForUser(usuario) {
          try {
-           const fused = getFusedIds(usuario);
-           if (!fused || !fused.length) return 0;
-           
-           const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
-           const prefixes = fused.map(f => sanitize(`${f.replace(/^@/,'')}-`));
+            const uNorm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
+            // Obtener todos los IDs vinculados para contar canciones de todos
+            let fused = getFusedIds(uNorm);
+            
+            // Refuerzo: Si el usuario tiene un tiktokId conocido en cache, incluirlo
+            try {
+                const stats = getGamificationDataForUser(uNorm);
+                if (stats && stats.tiktokId) {
+                    const tid = stats.tiktokId.replace(/^@/,'').toLowerCase();
+                    if (!fused.includes(tid)) fused.push(tid);
+                }
+            } catch(_){}
+
+            if (!fused || !fused.length) fused = [uNorm];
+            
+            const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+            const prefixes = fused.map(f => sanitize(`${f.replace(/^@/,'')}-`));
            const ids = new Set();
            
            // 1. Firestore playedSongs (FUENTE DE VERDAD)
@@ -11364,7 +11376,7 @@
            
            // 2. System Events (unmark/mark logic corrections)
            try {
-             const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
+             const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario', 'in', fused).get();
              const latest = {};
              qs.forEach(doc => {
                 const d = doc.data()||{};
@@ -11438,8 +11450,26 @@
         const usuario = rawUser.replace(/^@/, '');
         const unameLc = String(usuario||'').trim().toLowerCase();
         
-        // --- VINCULACIÓN / FUSIÓN ---
-        const fusedIds = getFusedIds(usuario);
+        // --- DESCUBRIMIENTO DINÁMICO DE FUSED IDS (NUEVO) ---
+        const initialFused = getFusedIds(usuario);
+        const fusedSet = new Set(initialFused);
+        
+        try {
+           // Descubrir tiktokId para ver si hay otros vinculados al mismo
+           const mainStats = await fetchBestUserStatsDoc(unameLc);
+           if (mainStats && mainStats.data) {
+               const tid = mainStats.data.tiktokId || mainStats.data.tiktokAlias;
+               if (tid) {
+                   tiktokId = tid.replace(/^@/,'').toLowerCase();
+                   fusedSet.add(tiktokId);
+                   // Buscar compañeros de este tiktokId
+                   const sharingSnap = await db.collection('userStats').where('tiktokId', '==', tiktokId).get();
+                   sharingSnap.forEach(doc => fusedSet.add(doc.id.toLowerCase()));
+               }
+           }
+        } catch(e) {}
+        
+        const fusedIds = Array.from(fusedSet);
         const norm = (s) => String(s || '').trim().replace(/^@/, '').toLowerCase();
         const rawLc = String(rawUser||'').trim().toLowerCase();
         let isVip = (window.vipSet && (window.vipSet.has(unameLc) || window.vipSet.has(rawLc))) || (window.z0VipSet && (window.z0VipSet.has(unameLc) || window.z0VipSet.has(rawLc)));
@@ -15033,74 +15063,8 @@
         }
       }
 
-      // NUEVA función simplificada para contar canciones toggleadas (Reproducidas)
-      async function countTotalToggledSongsForUser(usuario) {
-         try {
-           const norm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
-           const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
-           const prefix = sanitize(`${norm}-`);
-           const ids = new Set();
-           
-           // 1. Firestore playedSongs (FUENTE DE VERDAD)
-           try {
-             const snap = await db.collection('playedSongs').get();
-             snap.forEach(doc => {
-               const day = doc.id;
-               if (!isOnOrAfterStart(day)) return;
-               const d = doc.data()||{};
-               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
-               arr.forEach(x => {
-                 const id = sanitize(x);
-                 if (id.startsWith(prefix)) ids.add(id);
-               });
-             });
-           } catch(e){}
-           
-           // 2. System Events (unmark/mark logic)
-           try {
-             const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
-             const latest = {};
-             qs.forEach(doc => {
-                const d = doc.data()||{};
-                const sid = sanitize(d.songId);
-                if (!sid) return;
-                const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
-                const k = sid; // Solo ID importa, no el día
-                if (!latest[k] || ts > latest[k].ts) {
-                  latest[k] = { action: d.action, ts };
-                }
-             });
-             Object.keys(latest).forEach(sid => {
-                if (latest[sid].action === 'mark') ids.add(sid);
-                else if (latest[sid].action === 'unmark') ids.delete(sid);
-             });
-           } catch(e){}
+      // --- Utilidades consolidadas ---
 
-           // 3. SOLO SI ES EL USUARIO PROPIO (Admin viendo su propia sesión o User viéndose a sí mismo)
-           // Mezclar con LocalStorage para dar feedback instantáneo de lo que acaba de hacer.
-           // Pero si estamos viendo a OTRO usuario, NO usar nuestro LocalStorage.
-           const currentUser = getCurrentUser(); // Usar el usuario logueado REAL (no el del perfil seleccionado)
-           const isAdmin = String(currentUser).toLowerCase().includes('admin'); // O lógica de admin si existe
-           const isOwner = String(currentUser).toLowerCase().includes(norm);
-           const viewingSelf = isOwner; // Solo usar local si es el PROPIO usuario. Admin NO debe ver su local en otros.
-           
-           if (viewingSelf) {
-               try {
-                 const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-                 Object.keys(localPlayed).forEach(day => {
-                   if (!isOnOrAfterStart(day)) return;
-                   const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
-                   arr.forEach(x => {
-                     const id = sanitize(x);
-                     if (id.startsWith(prefix)) ids.add(id);
-                   });
-                 });
-               } catch(e){}
-           }
-
-           return ids.size;
-         } catch(e) { return 0; }
-      }
 
       // NUEVA función para contar solicitudes históricas de un usuario (TOTALES)
       async function countTotalRequestedSongsForUser(usuario) {
