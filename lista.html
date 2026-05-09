@@ -2337,6 +2337,38 @@
               }
           }
         }, err => console.error('Error syncing user aliases:', err));
+
+        // --- LISTENER DE NOTIFICACIONES PARA VINCULACIÓN EXITOSA ---
+        let _lastNotifTime = Date.now();
+        db.collection('notifications')
+          .orderBy('timestamp', 'desc')
+          .limit(1)
+          .onSnapshot(snap => {
+            if (snap.empty) return;
+            const doc = snap.docs[0];
+            const data = doc.data();
+            const ts = data.timestamp ? (data.timestamp.toMillis ? data.timestamp.toMillis() : new Date(data.timestamp).getTime()) : 0;
+            
+            // Solo procesar notificaciones nuevas (posteriores al inicio de la app)
+            if (ts <= _lastNotifTime) return;
+            _lastNotifTime = ts;
+
+            if (data.type === 'success' && data.message && data.message.includes('vinculada')) {
+                const currentUser = getCurrentUser();
+                const normCurrent = String(currentUser || '').toLowerCase().replace(/^@/,'');
+                
+                // Extraer el nombre de usuario web del mensaje (ej: "✅ Cuenta vinculada con zero")
+                const parts = data.message.split(' con ');
+                const linkedWebUser = parts.length > 1 ? parts[1].trim() : '';
+                
+                if (linkedWebUser && normCurrent === linkedWebUser.toLowerCase().replace(/^@/,'')) {
+                    console.log('🎁 Notificación de vinculación para el usuario actual détectada!');
+                    if (typeof showLinkingSuccessPopup === 'function') {
+                        showLinkingSuccessPopup(data.user || 'TikTok', linkedWebUser);
+                    }
+                }
+            }
+          }, err => console.warn('Error en listener de notificaciones:', err));
       }
       window.START_POINTS_DAY = window.START_POINTS_DAY || '';
       function normalizeDay(str){
@@ -11712,26 +11744,41 @@
         let likesPerPoint = 1;
         let giftPoints = 0;
         let totalCoinsDonated = 0;
+        
+        // Mapa para guardar cuánto aporta cada cuenta individualmente
+        const contributions = {};
 
         try {
            for (const fid of fusedIds) {
              const bestStats = await fetchBestUserStatsDoc(fid);
              const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
              
-             // NUEVO: Sumar los puntos de todas las cuentas vinculadas (Web + TikTok)
-             // para mostrar el total acumulado en lugar del máximo.
-             checkInPoints += Number(statsDoc.totalCheckInPoints || 0);
-             
-             const lCount = Number(statsDoc.totalLikes || 0);
-             const lPerPoint = Number(statsDoc.likesPerPoint || 300); 
-             let lPoints = Number(statsDoc.totalLikesPoints || 0);
-             if (lCount > 0 && lPoints === 0) {
-                 lPoints = Math.floor(lCount / lPerPoint);
+             // Extraer datos de esta cuenta específica
+             const accCheckIn = Number(statsDoc.totalCheckInPoints || 0);
+             const accLikesCount = Number(statsDoc.totalLikes || 0);
+             const accLPerPoint = Number(statsDoc.likesPerPoint || 300); 
+             let accLPoints = Number(statsDoc.totalLikesPoints || 0);
+             if (accLikesCount > 0 && accLPoints === 0) {
+                 accLPoints = Math.floor(accLikesCount / accLPerPoint);
              }
-             likesPoints += lPoints;
-             likesCount += lCount;
-             giftPoints += Number(statsDoc.totalGiftPoints || 0);
-             totalCoinsDonated += Number(statsDoc.totalCoinsDonated || 0);
+             const accGiftPoints = Number(statsDoc.totalGiftPoints || 0);
+             const accCoins = Number(statsDoc.totalCoinsDonated || 0);
+             
+             // Sumar al total global
+             checkInPoints += accCheckIn;
+             likesPoints += accLPoints;
+             likesCount += accLikesCount;
+             giftPoints += accGiftPoints;
+             totalCoinsDonated += accCoins;
+             
+             // Guardar aporte individual
+             contributions[fid] = {
+                 checkIn: accCheckIn,
+                 likes: accLPoints,
+                 gifts: accGiftPoints,
+                 coins: accCoins,
+                 total: accCheckIn + accLPoints + accGiftPoints
+             };
              
              if (!tiktokId) tiktokId = statsDoc.tiktokId || statsDoc.tiktokAlias || null;
            }
@@ -11877,6 +11924,7 @@
           totalCoinsDonated,
           tiktokId,
           fusedIds,
+          contributions,
           usuario,
           currentStreak: currentStreakComputed || 0,
           bestStreak: Math.max(bestStreakComputed || 0, bestStreakVal || 0)
@@ -11989,11 +12037,41 @@
           if (bd.fusedIds && bd.fusedIds.length > 1) {
              const norm = (s) => String(s || '').trim().replace(/^@/, '').toLowerCase();
              const currentId = norm(bd.usuario);
-             const otherId = bd.fusedIds.find(id => norm(id) !== currentId);
-             if (otherId) {
-                const label = otherId.includes('@') || bd.tiktokId === otherId ? `Puntos TikTok (@${otherId.replace(/^@/,'')})` : `Puntos Cuenta Web (${otherId})`;
-                lines.push(`<div class="genre-chip"><span>💰 ${label}</span><span class="pts-val-white">${bd.total} pts</span></div>`);
-             }
+             
+             // Generar lista de contribuciones
+             const contribList = bd.fusedIds.map(fid => {
+                 const c = (bd.contributions && bd.contributions[fid]) || { total: 0 };
+                 const isTikTok = fid.includes('@') || bd.tiktokId === fid || fid.toLowerCase().startsWith('tik');
+                 const label = isTikTok ? `@${fid.replace(/^@/,'')}` : fid;
+                 return { fid, label, total: c.total, isTikTok };
+             }).sort((a,b) => b.total - a.total);
+
+             const itemsHtml = contribList.map(c => `
+                <div style="display:flex; justify-content:space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); opacity: 0.8;">
+                  <span>${c.isTikTok ? '📱' : '💻'} ${c.label}</span>
+                  <span>${c.total} pts</span>
+                </div>
+             `).join('');
+
+             const fusedHtml = `
+                <div id="fused-accounts-breakdown-list" style="display:none; width:100%; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 8px; margin-top: 8px; font-size: 0.9em; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);">
+                  ${itemsHtml}
+                  <div style="padding-top: 4px; font-size: 0.8em; color: var(--text-secondary); text-align: center;">*Solo incluye puntos base de la cuenta (Check-ins, Likes, Regalos)</div>
+                </div>
+             `;
+
+             lines.push(`
+               <div class="genre-chip" style="flex-direction: column; align-items: stretch; height: auto; padding: 10px 15px; border: 1px border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03);">
+                 <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                   <span style="display:flex; align-items:center; gap:10px;">
+                     💰 Cuentas Vinculadas (${bd.fusedIds.length})
+                     <button onclick="const list = document.getElementById('fused-accounts-breakdown-list'); list.style.display = list.style.display === 'none' ? 'block' : 'none'; this.textContent = list.style.display === 'none' ? '+' : '-';" style="background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:6px; width:24px; height:24px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition: all 0.2s ease; font-weight:bold;">+</button>
+                   </span>
+                   <span class="pts-val-white" style="font-weight:bold;">${bd.total} pts</span>
+                 </div>
+                 ${fusedHtml}
+               </div>
+             `);
           }
 
           // Canciones
@@ -15310,32 +15388,24 @@
         return new Promise((resolve) => {
           console.log('🔍 showConfirmation llamada con opciones:', options);
           
-          // Verificar que los elementos existen
           if (!confirmationModal || !confirmationCancelBtn || !confirmationConfirmBtn) {
             console.error('❌ Elementos del modal de confirmación no encontrados');
             resolve(false);
             return;
           }
           
-          // Configurar el modal
           confirmationIcon.textContent = options.icon || 'ℹ️';
           confirmationTitle.textContent = options.title || 'Confirmación';
           confirmationMessage.textContent = options.message || '¿Estás seguro?';
           
-          // Configurar botones
           const cancelText = options.cancelText !== undefined ? options.cancelText : 'Cancelar';
           const confirmText = options.confirmText || 'Confirmar';
           
-          // Establecer texto usando múltiples métodos para asegurar que funcione
           confirmationCancelBtn.textContent = cancelText;
           confirmationCancelBtn.innerHTML = cancelText;
           confirmationConfirmBtn.textContent = confirmText;
           confirmationConfirmBtn.innerHTML = confirmText;
           
-          console.log('📝 Textos configurados - Cancelar:', cancelText, 'Confirmar:', confirmText);
-          console.log('📝 Texto actual en botones - Cancelar:', confirmationCancelBtn.textContent, 'Confirmar:', confirmationConfirmBtn.textContent);
-          
-          // Mostrar/ocultar botón cancelar
           if (cancelText === '') {
             confirmationCancelBtn.style.display = 'none';
           } else {
@@ -15345,26 +15415,53 @@
             confirmationCancelBtn.style.pointerEvents = 'auto';
           }
           
-          // Asegurar que el botón confirmar sea visible
           confirmationConfirmBtn.style.display = 'inline-flex';
           confirmationConfirmBtn.style.visibility = 'visible';
           confirmationConfirmBtn.style.opacity = '1';
           confirmationConfirmBtn.style.pointerEvents = 'auto';
           
-          // Forzar reflow para asegurar que los cambios se apliquen
           confirmationCancelBtn.offsetHeight;
           confirmationConfirmBtn.offsetHeight;
           
-          console.log('👁️ Estilos de botones aplicados');
-          console.log('Cancelar visible:', window.getComputedStyle(confirmationCancelBtn).display);
-          console.log('Confirmar visible:', window.getComputedStyle(confirmationConfirmBtn).display);
-          
-          // Guardar el resolver actual
           currentConfirmationResolver = resolve;
-          
-          // Mostrar modal
           confirmationModal.hidden = false;
           console.log('✅ Modal mostrado');
+        });
+      }
+
+      function showLinkingSuccessPopup(tiktokId, webUser) {
+        console.log('🎉 Celebrando vinculación exitosa:', tiktokId, '->', webUser);
+        
+        showConfirmation({
+          icon: '🎊',
+          title: '¡CUENTA VINCULADA!',
+          message: `¡Felicidades! Tu cuenta de TikTok (@${tiktokId.replace(/^@/,'')}) ha sido vinculada exitosamente con tu perfil web (${webUser}).\n\nAhora tus puntos se sumarán automáticamente.`,
+          confirmText: '¡Genial!',
+          cancelText: ''
+        });
+
+        const colors = ['🎉', '✨', '🎊', '⭐️', '🔥', '💎'];
+        for(let i=0; i<30; i++) {
+           const el = document.createElement('div');
+           el.textContent = colors[Math.floor(Math.random()*colors.length)];
+           el.style.position = 'fixed';
+           el.style.left = Math.random()*100 + 'vw';
+           el.style.top = '-50px';
+           el.style.fontSize = (Math.random()*20 + 20) + 'px';
+           el.style.zIndex = '10000';
+           el.style.pointerEvents = 'none';
+           el.style.transition = `transform ${Math.random()*2 + 1}s linear, opacity 1s`;
+           document.body.appendChild(el);
+           
+           setTimeout(() => {
+              el.style.transform = `translateY(${window.innerHeight + 100}px) rotate(${Math.random()*360}deg)`;
+              setTimeout(() => {
+                 el.style.opacity = '0';
+                 setTimeout(() => el.remove(), 1000);
+              }, 2000);
+           }, 100);
+        }
+      }
           
           // Asegurar que los estilos se apliquen después de mostrar el modal
           setTimeout(() => {
