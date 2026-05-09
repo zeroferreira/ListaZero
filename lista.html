@@ -7820,28 +7820,36 @@
                 artista: data.artista,
                 day: data.day,
                 ts: data.ts ? data.ts.toMillis() : Date.now(),
-                hora: data.hora || '',
                 isTest: typeof isTestRequestForStats === 'function' ? isTestRequestForStats(data) : false
               });
             }
           });
+
+          // 3. Soporte Legacy
+          try {
+            const playedSnapshot = await db.collection('playedSongs').get();
+            playedSnapshot.forEach(doc => {
+              const d = doc.data() || {};
+              if (doc.id !== '__userTotals__' && d.artista && !d.songs) {
+                firestoreSolicitudes.push({
+                  usuario: d.usuario || 'Desconocido',
+                  cancion: d.cancion || 'Antigua',
+                  artista: d.artista,
+                  day: d.day || doc.id,
+                  ts: Date.now(),
+                  isLegacy: true
+                });
+              }
+            });
+          } catch (_) {}
           
-          // IMPORTANTE: Para estadísticas globales compartidas, usar SOLO Firestore.
-          // Mezclar localStorage aquí provoca que cada PC vea números distintos.
           const allSolicitudesMap = new Map();
 
-          // Agregar solicitudes de Firestore
+          // Agregar solicitudes con LLAVE UNIFICADA (sin hora para evitar duplicados por micro-diferencias)
           firestoreSolicitudes.forEach(s => {
-            const hora = String(s.hora || '').trim() || (() => {
-              try {
-                const d = new Date(Number(s.ts) || 0);
-                return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-              } catch (_) {
-                return '';
-              }
-            })();
             const day = String(s.day || '').trim();
-            const key = `${s.usuario}-${s.cancion}-${s.artista}-${hora}-${day}`.replace(/[^a-zA-Z0-9-]/g, '');
+            // Llave robusta: usuario-cancion-artista-dia
+            const key = `${s.usuario}-${s.cancion}-${s.artista}-${day}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
             allSolicitudesMap.set(key, s);
           });
           
