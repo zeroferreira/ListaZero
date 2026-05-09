@@ -7791,70 +7791,44 @@
             db.collection('systemEvents').where('type', '==', 'togglePlayed').get()
           ]);
           
-          const firestoreSolicitudes = [];
+          const allSolicitudes = [];
           
-          firestoreSnapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.usuario && data.cancion && data.artista) {
-              firestoreSolicitudes.push({
-                usuario: data.usuario,
-                cancion: data.cancion,
-                artista: data.artista,
-                day: data.day,
-                ts: data.ts ? data.ts.toMillis() : Date.now(),
-                hora: data.hora || '',
-                isSimulation: data.isSimulation === true,
-                isTest: data.isTest === true,
-                source: data.source || ''
-              });
-            }
-          });
-
-          // 2. Agregar Historial de Eventos
+          // 1. Agregar Historial de Eventos (Solo canciones reproducidas)
           systemEventsSnapshot.forEach(doc => {
             const data = doc.data();
             if (data.action === 'mark' && data.usuario && data.cancion && data.artista) {
-              firestoreSolicitudes.push({
+              const s = {
+                id: doc.id,
                 usuario: data.usuario,
                 cancion: data.cancion,
                 artista: data.artista,
                 day: data.day,
                 ts: data.ts ? data.ts.toMillis() : Date.now(),
                 isTest: typeof isTestRequestForStats === 'function' ? isTestRequestForStats(data) : false
-              });
+              };
+              if (!isTestRequestForStats(s)) allSolicitudes.push(s);
             }
           });
 
-          // 3. Soporte Legacy
+          // Soporte Legacy
           try {
             const playedSnapshot = await db.collection('playedSongs').get();
             playedSnapshot.forEach(doc => {
               const d = doc.data() || {};
               if (doc.id !== '__userTotals__' && d.artista && !d.songs) {
-                firestoreSolicitudes.push({
+                const s = {
+                  id: doc.id,
                   usuario: d.usuario || 'Desconocido',
                   cancion: d.cancion || 'Antigua',
                   artista: d.artista,
                   day: d.day || doc.id,
                   ts: Date.now(),
                   isLegacy: true
-                });
+                };
+                if (!isTestRequestForStats(s)) allSolicitudes.push(s);
               }
             });
           } catch (_) {}
-          
-          const allSolicitudesMap = new Map();
-
-          // Agregar solicitudes con LLAVE UNIFICADA (sin hora para evitar duplicados por micro-diferencias)
-          firestoreSolicitudes.forEach(s => {
-            const day = String(s.day || '').trim();
-            // Llave robusta: usuario-cancion-artista-dia
-            const key = `${s.usuario}-${s.cancion}-${s.artista}-${day}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
-            allSolicitudesMap.set(key, s);
-          });
-          
-          const allSolicitudesRaw = Array.from(allSolicitudesMap.values());
-          const allSolicitudes = allSolicitudesRaw.filter(s => !isTestRequestForStats(s));
 
           const norm = (v) => String(v || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ');
           const normUser = (v) => norm(v);
@@ -16463,39 +16437,25 @@
         try {
            console.log("📊 Calculando estadísticas globales maestras...");
            
-           // Leemos la colección completa de solicitudes (PENDIENTES)
-           const snapshot = await window.db.collection('solicitudes').get();
-           
-           // NUEVO: Leer historial de canciones reproducidas (HISTORIA REAL)
-           let playedSnapshot;
-           try {
-               // Intentamos leer la colección de historial
-               playedSnapshot = await window.db.collection('playedSongs').get();
-               console.log(`📚 Leídos ${playedSnapshot.size} documentos de historial.`);
-           } catch (e) {
-               console.warn("⚠️ No se pudo leer playedSongs para estadísticas globales:", e);
-           }
-           
-           let totalRequests = 0;
-           const artistCount = {};
-           const userCount = {};
-           const songCount = {};
-           const genreCount = {}; // Nuevo: Conteo de géneros
-           let pointsUsers = [];
-           const artistOriginal = {};
-           const userOriginal = {};
-           
-           // 1. Procesar Solicitudes Pendientes
-           snapshot.forEach(doc => {
-              const d = doc.data() || {};
-              // Ignorar pruebas
-              if (typeof isTestRequestForStats === 'function' && isTestRequestForStats(d)) return;
-              
-              totalRequests++;
-              processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
-           });
-
-           // 2. Procesar Historial REAL (systemEvents)
+            // NUEVO: Leer historial de canciones reproducidas (HISTORIA REAL)
+            let playedSnapshot;
+            try {
+                // Intentamos leer la colección de historial
+                playedSnapshot = await window.db.collection('playedSongs').get();
+                console.log(`📚 Leídos ${playedSnapshot.size} documentos de historial.`);
+            } catch (e) {
+                console.warn("⚠️ No se pudo leer playedSongs para estadísticas globales:", e);
+            }
+            
+            let totalRequests = 0;
+            const artistCount = {};
+            const userCount = {};
+            const songCount = {};
+            const genreCount = {}; // Nuevo: Conteo de géneros
+            const artistOriginal = {};
+            const userOriginal = {};
+            
+            // 1. Procesar Historial REAL (systemEvents)
            // La colección 'playedSongs' solo tiene IDs, por lo que usamos 'systemEvents' 
            // que guarda el detalle completo de cada canción reproducida.
            let systemEventsSnapshot;
