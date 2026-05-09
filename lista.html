@@ -11217,27 +11217,24 @@
            } catch(e){}
            
            // 2. System Events (unmark/mark logic corrections)
-            try {
-              const latest = {};
-              // Iteramos sobre todos los IDs vinculados para recolectar sus eventos de marcado/desmarcado
-              for (const fid of fused) {
-                const fnorm = String(fid||'').trim().toLowerCase().replace(/^@/,'');
-                const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',fnorm).get();
-                qs.forEach(doc => {
-                   const d = doc.data()||{};
-                   const sid = sanitize(d.songId);
-                   if (!sid) return;
-                   const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
-                   if (!latest[sid] || ts > latest[sid].ts) {
-                     latest[sid] = { action: d.action, ts };
-                   }
-                });
-              }
-              Object.keys(latest).forEach(sid => {
-                 if (latest[sid].action === 'mark') ids.add(sid);
-                 else if (latest[sid].action === 'unmark') ids.delete(sid);
-              });
-            } catch(e){ console.error(e); }
+           try {
+             const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
+             const latest = {};
+             qs.forEach(doc => {
+                const d = doc.data()||{};
+                const sid = sanitize(d.songId);
+                if (!sid) return;
+                const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+                const k = sid;
+                if (!latest[k] || ts > latest[k].ts) {
+                  latest[k] = { action: d.action, ts };
+                }
+             });
+             Object.keys(latest).forEach(sid => {
+                if (latest[sid].action === 'mark') ids.add(sid);
+                else if (latest[sid].action === 'unmark') ids.delete(sid);
+             });
+           } catch(e){}
 
            // 3. SOLO SI ES EL USUARIO PROPIO (Admin viendo su propia sesión o User viéndose a sí mismo)
            // Mezclar con LocalStorage para dar feedback instantáneo de lo que acaba de hacer.
@@ -11551,27 +11548,31 @@
               // Bono de racha aproximado por mejor racha
               try {
                 const steps = Math.min(Math.max((fastBestStreak || 0) - 1, 0), 10);
-              // Calcular logros únicamente desbloqueados (union de todos los alias)
-              await Promise.all(fusedIds.map(async (fid) => {
-                const fuid = norm(fid);
-                try {
-                  const statsDoc = await db.collection('userStats').doc(fuid).get();
-                  if (statsDoc.exists) {
-                    const sdata = statsDoc.data() || {};
-                    const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
-                    (statAch || []).forEach(id => idSet.add(String(id)));
-                  }
-                } catch (_){}
-                try {
-                  const achDoc = await db.collection('userAchievements').doc(fuid).get();
-                  if (achDoc.exists) {
-                    const a = achDoc.data() || {};
-                    const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
-                    (ids || []).forEach(id => idSet.add(String(id)));
-                  }
-                } catch (_){}
-              }));
-
+                const tri = (steps * (steps + 1)) / 2;
+                const mult = (POINTS_CONFIG && typeof POINTS_CONFIG.STREAK_MULTIPLIER === 'number') ? POINTS_CONFIG.STREAK_MULTIPLIER : 2;
+                streakBonus = tri * mult;
+              } catch (_){}
+              // Calcular logros únicamente desbloqueados (union)
+              try {
+                const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
+                (localAch || []).forEach(id => idSet.add(String(id)));
+              } catch (_){}
+              try {
+                const statsDoc = await db.collection('userStats').doc(uid).get();
+                if (statsDoc.exists) {
+                  const sdata = statsDoc.data() || {};
+                  const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
+                  (statAch || []).forEach(id => idSet.add(String(id)));
+                }
+              } catch (_){}
+              try {
+                const achDoc = await db.collection('userAchievements').doc(uid).get();
+                if (achDoc.exists) {
+                  const a = achDoc.data() || {};
+                  const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
+                  (ids || []).forEach(id => idSet.add(String(id)));
+                }
+              } catch (_){}
               achievements = Array.from(idSet).reduce((sum, id) => {
                 const found = ACHIEVEMENTS && ACHIEVEMENTS.find ? ACHIEVEMENTS.find(x => x.id === id) : null;
                 return sum + (found && typeof found.points === 'number' ? found.points : 0);
@@ -11598,33 +11599,27 @@
               };
             }
           } catch (_){}
-          // Recolectar logros de todos los IDs vinculados (Unión)
-          await Promise.all(fusedIds.map(async (fid) => {
-            const fuid = norm(fid);
-            try {
-              const achDoc = await db.collection('userAchievements').doc(fuid).get();
-              if (achDoc.exists) {
-                const a = achDoc.data() || {};
-                const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
-                (ids || []).forEach(id => idSet.add(String(id)));
-              }
-            } catch (_){}
-            try {
-              const statsDoc2 = await db.collection('userStats').doc(fuid).get();
-              if (statsDoc2.exists) {
-                const sdata2 = statsDoc2.data() || {};
-                const statAch = Array.isArray(sdata2.achievements) ? sdata2.achievements : [];
-                (statAch || []).forEach(id => idSet.add(String(id)));
-              }
-            } catch (_){}
-          }));
-
+          try {
+            const achDoc = await db.collection('userAchievements').doc(uid).get();
+            if (achDoc.exists) {
+              const a = achDoc.data() || {};
+              const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
+              (ids || []).forEach(id => idSet.add(String(id)));
+            }
+          } catch (_){}
+          try {
+            const bestStats = await fetchBestUserStatsDoc(uid);
+            if (bestStats && bestStats.data) {
+              const sdata = bestStats.data || {};
+              const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
+              (statAch || []).forEach(id => idSet.add(String(id)));
+            }
+          } catch (_){}
           try {
             const localData = getLocalGamificationData(usuario) || {};
             const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
             (localAch || []).forEach(id => idSet.add(String(id)));
           } catch (_){}
-
           achievements = Array.from(idSet).reduce((sum, id) => {
             const found = ACHIEVEMENTS && ACHIEVEMENTS.find ? ACHIEVEMENTS.find(x => x.id === id) : null;
             return sum + (found && typeof found.points === 'number' ? found.points : 0);
@@ -11632,25 +11627,15 @@
           // Ensure achievements is never negative
           achievements = Math.max(0, achievements);
         } catch (_) {}
-
         let cloudTotal = 0;
         let bestStreakVal = 0;
         let lastManualAdjustment = null;
         try {
-          // SUMAR puntos de nube y tomar MEJOR racha de todos los alias
-          for (const fid of fusedIds) {
-             const bestStats = await fetchBestUserStatsDoc(fid);
-             if (bestStats && bestStats.data) {
-                const statsDoc = bestStats.data || {};
-                cloudTotal += Number((statsDoc.totalPoints || 0));
-                if (typeof statsDoc.bestStreak === 'number') {
-                   bestStreakVal = Math.max(bestStreakVal, statsDoc.bestStreak);
-                }
-                if (statsDoc.lastManualAdjustment && !lastManualAdjustment) {
-                   lastManualAdjustment = statsDoc.lastManualAdjustment;
-                }
-             }
-          }
+          const bestStats = await fetchBestUserStatsDoc(usuario);
+          const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
+          cloudTotal = Number((statsDoc.totalPoints || 0));
+          if (typeof statsDoc.bestStreak === 'number') bestStreakVal = statsDoc.bestStreak;
+          if (statsDoc.lastManualAdjustment) lastManualAdjustment = statsDoc.lastManualAdjustment;
         } catch (_) {}
         // Fallback a localData para bestStreak si no se encontró en nube
         try {
@@ -11724,16 +11709,17 @@
         let checkInPoints = 0;
         let likesPoints = 0;
         let likesCount = 0;
+        let likesPerPoint = 1;
         let giftPoints = 0;
         let totalCoinsDonated = 0;
-        let manualBonusTotal = 0;
 
         try {
            for (const fid of fusedIds) {
              const bestStats = await fetchBestUserStatsDoc(fid);
              const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
              
-             // SUMAR puntos de todas las cuentas vinculadas
+             // NUEVO: Sumar los puntos de todas las cuentas vinculadas (Web + TikTok)
+             // para mostrar el total acumulado en lugar del máximo.
              checkInPoints += Number(statsDoc.totalCheckInPoints || 0);
              
              const lCount = Number(statsDoc.totalLikes || 0);
@@ -11748,20 +11734,8 @@
              totalCoinsDonated += Number(statsDoc.totalCoinsDonated || 0);
              
              if (!tiktokId) tiktokId = statsDoc.tiktokId || statsDoc.tiktokAlias || null;
-             
-             // Sumar ajustes manuales por ID
-             try {
-                const normFid = String(fid||'').trim().toLowerCase().replace(/^@/,'');
-                const mDoc = await db.collection('manualAdjustments').doc(normFid).get();
-                if (mDoc.exists) {
-                   manualBonusTotal += Number(mDoc.data().amount || 0);
-                }
-             } catch(_) {}
            }
         } catch (_) {}
-
-        // Sobrescribir manualBonus con el total acumulado de todos los IDs
-        manualBonus = manualBonusTotal;
 
         const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus + checkInPoints + likesPoints + giftPoints;
         
@@ -13310,62 +13284,53 @@
               const currentNorm = normalizeUserKey(u);
               const lookingFor = normalizeUserKey(username);
               
-              // Si ya no estamos viendo a este usuario, ignorar actualización
               if (currentNorm !== lookingFor) return;
               
-              const arr = Object.values(latest).filter(Boolean);
-              if (!arr.length) return;
+              const docs = Object.values(latest).filter(Boolean);
+              if (!docs.length) return;
               
-              // Ordenar para encontrar el "mejor" documento
-              arr.sort((x, y) => {
-                const px = Number(x.totalPoints || 0);
-                const py = Number(y.totalPoints || 0);
-                
-                // MODO ADMIN FIX: Si somos Admin, queremos ver la "Verdad de la Nube".
-                // Pero si hay documentos duplicados (por alias), esto elige el que tiene más puntos.
-                // Si el canje restó puntos en UNO de ellos, pero el otro sigue alto, veremos el alto (incorrecto).
-                // ESTRATEGIA: Priorizar el documento más RECIENTE (updatedAt) si la diferencia es grande.
-                
-                const tx = Math.max(getMillisFromTs(x.updatedAt), getMillisFromTs(x.lastUpdated));
-                const ty = Math.max(getMillisFromTs(y.updatedAt), getMillisFromTs(y.lastUpdated));
-                
-                // Si uno se actualizó hace poco (ej. canje reciente), ese es el válido, aunque tenga MENOS puntos.
-                if (Math.abs(tx - ty) > 5000) { // 5 segundos de diferencia
-                    return ty - tx; // El más reciente gana
-                }
-                
-                // Si son simultáneos, usar el de mayor puntaje (comportamiento legacy)
-                return py - px;
+              // 1. Agrupar documentos por "Cuenta Real" (ID normalizado)
+              // Esto evita sumar dos documentos que representen a la misma persona (ej: 'user' y '@user')
+              const byAccount = {};
+              docs.forEach(d => {
+                  const accId = normalizeUserKeyLoose(d._docId || '');
+                  if (!byAccount[accId]) byAccount[accId] = [];
+                  byAccount[accId].push(d);
               });
+
+              let cloudTotalSum = 0;
               
-              const best = arr[0];
-              const cloudPoints = Number(best.totalPoints || 0);
-              
-              // Actualizar cache de memoria y UI
+              // 2. Para cada cuenta vinculada, elegir su "Mejor" documento (el más reciente o con más puntos)
+              Object.keys(byAccount).forEach(accId => {
+                  const accountDocs = byAccount[accId];
+                  accountDocs.sort((x, y) => {
+                      const tx = Math.max(getMillisFromTs(x.updatedAt), getMillisFromTs(x.lastUpdated));
+                      const ty = Math.max(getMillisFromTs(y.updatedAt), getMillisFromTs(y.lastUpdated));
+                      if (Math.abs(tx - ty) > 5000) return ty - tx;
+                      return Number(y.totalPoints || 0) - Number(x.totalPoints || 0);
+                  });
+                  cloudTotalSum += Number(accountDocs[0].totalPoints || 0);
+              });
+
+              // 3. Actualizar memoria y UI con la SUMA total
               const local = getGamificationDataForUser(u) || {};
+              local.points = cloudTotalSum;
+              local._cloudSyncedPoints = cloudTotalSum;
               
-              // FIX CRÍTICO: Sobrescribir puntos locales con los de la nube
-              local.points = cloudPoints;
-              local._cloudSyncedPoints = cloudPoints;
-              
-              // Actualizar memoria (y localStorage si corresponde)
               saveGamificationDataForUser(local, u);
               
-              // Actualizar UI directamente
               const ptsEl = document.getElementById('user-points');
-              if (ptsEl) ptsEl.textContent = String(cloudPoints);
+              if (ptsEl) ptsEl.textContent = String(cloudTotalSum);
               
               const rewardsPtsEl = document.getElementById('rewards-user-points');
-              if (rewardsPtsEl) rewardsPtsEl.textContent = String(cloudPoints);
+              if (rewardsPtsEl) rewardsPtsEl.textContent = String(cloudTotalSum);
               
-              // Forzar actualización del breakdown para asegurar coherencia
               if (window.renderPointsBreakdownForUser) {
-                  // Pasar cloudPoints explícitamente para evitar recálculos erróneos
-                  local.cloudTotal = cloudPoints;
+                  local.cloudTotal = cloudTotalSum;
                   renderPointsBreakdownForUser(u, true);
               }
               
-            } catch (_) {}
+            } catch (e) { console.error('Error en applyBest (suma):', e); }
           };
           
           keys.forEach((k) => {
@@ -14887,6 +14852,74 @@
         }
       }
 
+      // NUEVA función simplificada para contar canciones toggleadas (Reproducidas)
+      async function countTotalToggledSongsForUser(usuario) {
+         try {
+           const norm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
+           const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+           const prefix = sanitize(`${norm}-`);
+           const ids = new Set();
+           
+           // 1. Firestore playedSongs (FUENTE DE VERDAD)
+           try {
+             const snap = await db.collection('playedSongs').get();
+             snap.forEach(doc => {
+               const day = doc.id;
+               if (!isOnOrAfterStart(day)) return;
+               const d = doc.data()||{};
+               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
+               arr.forEach(x => {
+                 const id = sanitize(x);
+                 if (id.startsWith(prefix)) ids.add(id);
+               });
+             });
+           } catch(e){}
+           
+           // 2. System Events (unmark/mark logic)
+           try {
+             const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
+             const latest = {};
+             qs.forEach(doc => {
+                const d = doc.data()||{};
+                const sid = sanitize(d.songId);
+                if (!sid) return;
+                const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+                const k = sid; // Solo ID importa, no el día
+                if (!latest[k] || ts > latest[k].ts) {
+                  latest[k] = { action: d.action, ts };
+                }
+             });
+             Object.keys(latest).forEach(sid => {
+                if (latest[sid].action === 'mark') ids.add(sid);
+                else if (latest[sid].action === 'unmark') ids.delete(sid);
+             });
+           } catch(e){}
+
+           // 3. SOLO SI ES EL USUARIO PROPIO (Admin viendo su propia sesión o User viéndose a sí mismo)
+           // Mezclar con LocalStorage para dar feedback instantáneo de lo que acaba de hacer.
+           // Pero si estamos viendo a OTRO usuario, NO usar nuestro LocalStorage.
+           const currentUser = getCurrentUser(); // Usar el usuario logueado REAL (no el del perfil seleccionado)
+           const isAdmin = String(currentUser).toLowerCase().includes('admin'); // O lógica de admin si existe
+           const isOwner = String(currentUser).toLowerCase().includes(norm);
+           const viewingSelf = isOwner; // Solo usar local si es el PROPIO usuario. Admin NO debe ver su local en otros.
+           
+           if (viewingSelf) {
+               try {
+                 const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+                 Object.keys(localPlayed).forEach(day => {
+                   if (!isOnOrAfterStart(day)) return;
+                   const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+                   arr.forEach(x => {
+                     const id = sanitize(x);
+                     if (id.startsWith(prefix)) ids.add(id);
+                   });
+                 });
+               } catch(e){}
+           }
+
+           return ids.size;
+         } catch(e) { return 0; }
+      }
 
       // NUEVA función para contar solicitudes históricas de un usuario (TOTALES)
       async function countTotalRequestedSongsForUser(usuario) {
