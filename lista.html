@@ -2327,6 +2327,15 @@
           });
           window.userAliasesMap = map;
           console.log('User aliases updated:', Object.keys(map).length);
+          // Si el modal de gamificación está abierto, re-suscribir para incluir los nuevos alias
+          const modal = document.getElementById('gamification-modal');
+          if (modal && !modal.hidden) {
+              const u = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : null;
+              if (u && typeof subscribeUserStatsPointsForUser === 'function') {
+                  console.log('Re-subscribing points due to alias update for:', u);
+                  subscribeUserStatsPointsForUser(u);
+              }
+          }
         }, err => console.error('Error syncing user aliases:', err));
       }
       window.START_POINTS_DAY = window.START_POINTS_DAY || '';
@@ -13172,9 +13181,10 @@
         // 1. Normalización base para buscar en alias (sin @, minúsculas)
         const key = raw.replace(/^@/, '').toLowerCase();
         
-        // 2. Verificar si es un alias conocido
-        if (USER_ALIASES_MAP && USER_ALIASES_MAP[key]) {
-            const aliasTarget = USER_ALIASES_MAP[key];
+        // 2. Verificar si es un alias conocido (priorizar window.userAliasesMap que es real-time)
+        const map = (window.userAliasesMap && Object.keys(window.userAliasesMap).length > 0) ? window.userAliasesMap : (USER_ALIASES_MAP || {});
+        if (map[key]) {
+            const aliasTarget = map[key];
             // Si el alias apunta a sí mismo (ignorando @ y case), romper ciclo
             if (aliasTarget.replace(/^@/, '').toLowerCase() === key) {
                 return key.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -13191,9 +13201,16 @@
       }
 
       function getUserStatsDocKeys(username) {
-        const a = normalizeUserKey(username);
-        const b = normalizeUserKeyLoose(username);
-        return Array.from(new Set([a, b].filter(Boolean)));
+        if (!username) return [];
+        const fused = typeof getFusedIds === 'function' ? getFusedIds(username) : [username];
+        const keys = new Set();
+        fused.forEach(id => {
+          const a = normalizeUserKey(id);
+          const b = normalizeUserKeyLoose(id);
+          if (a) keys.add(a);
+          if (b) keys.add(b);
+        });
+        return Array.from(keys);
       }
 
       function getMillisFromTs(ts) {

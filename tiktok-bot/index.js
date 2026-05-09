@@ -1307,10 +1307,16 @@ function setupListeners() {
                     // FIX: Usar userId (uniqueId/handle) en lugar de nickname
                     const tiktokHandle = userId.replace(/^@/, '').toLowerCase(); 
 
-                    // 1. Crear el vínculo en systemConfig/userAliases
+                    // 1. Crear el vínculo en systemConfig/userAliases (Compatibilidad Legacy)
                     await setDoc(doc(db, 'systemConfig', 'userAliases'), {
                         [tiktokHandle]: webUser
                     }, { merge: true });
+
+                    // 1.1 Crear el vínculo en la colección userAliases (Real-time para la Web)
+                    await setDoc(doc(db, 'userAliases', tiktokHandle), {
+                        aliasedTo: webUser,
+                        updatedAt: serverTimestamp()
+                    });
                     
                     // Actualizar mapa en memoria inmediatamente
                     USER_ALIASES_MAP[tiktokHandle] = webUser;
