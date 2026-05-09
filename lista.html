@@ -489,6 +489,84 @@
         width: 100%;
       }
     }
+
+    /* Popup de Vinculación Exitosa (Estilo Ganador) */
+    .linking-success-popup {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.5);
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(20px);
+      border: 2px solid #ff0050;
+      border-radius: 24px;
+      padding: 30px;
+      z-index: 2147483647;
+      text-align: center;
+      color: white;
+      box-shadow: 0 0 50px rgba(255, 0, 80, 0.4), inset 0 0 20px rgba(255, 255, 255, 0.1);
+      opacity: 0;
+      transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      max-width: 90%;
+      width: 400px;
+      pointer-events: auto;
+    }
+    .linking-success-popup.show {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
+    }
+    .linking-success-popup .icon {
+      font-size: 60px;
+      margin-bottom: 15px;
+      display: block;
+      animation: popup-bounce 1s infinite alternate;
+    }
+    .linking-success-popup h2 {
+      font-size: 28px;
+      font-weight: 900;
+      margin-bottom: 10px;
+      background: linear-gradient(to right, #fff, #ff0050);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .linking-success-popup p {
+      font-size: 16px;
+      opacity: 0.9;
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+    .linking-success-popup .user-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+    @keyframes popup-bounce {
+      from { transform: translateY(0); }
+      to { transform: translateY(-10px); }
+    }
+    
+    .linking-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(4px);
+      z-index: 2147483646;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+    }
+    .linking-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
   </style>
   
   <!-- Script de sincronización de temas -->
@@ -2317,6 +2395,7 @@
       // --- Sincronización de Alias (Vinculación TikTok/Web) ---
       window.userAliasesMap = {};
       if (db) {
+        let firstSync = true;
         db.collection('userAliases').onSnapshot(snap => {
           const map = {};
           snap.forEach(doc => {
@@ -2325,8 +2404,31 @@
               map[doc.id.toLowerCase()] = data.aliasedTo.toLowerCase();
             }
           });
+          
+          const oldMap = window.userAliasesMap || {};
           window.userAliasesMap = map;
           console.log('User aliases updated:', Object.keys(map).length);
+
+          // TAREA: Lanzar popup si se detecta una NUEVA vinculación para el usuario actual
+          try {
+              const currentUser = typeof getCurrentUser === 'function' ? getCurrentUser() : localStorage.getItem('savedUsername');
+              if (currentUser) {
+                  const norm = currentUser.replace(/^@/, '').toLowerCase();
+                  const currentLink = map[norm];
+                  const oldLink = oldMap[norm];
+                  
+                  // Si antes no estaba vinculado y ahora sí (o cambió el vínculo)
+                  if (currentLink && currentLink !== oldLink && !firstSync) {
+                      console.log('🎉 ¡Nueva vinculación detectada!', norm, '->', currentLink);
+                      if (typeof showLinkingSuccessPopup === 'function') {
+                          showLinkingSuccessPopup(norm, currentLink);
+                      }
+                  }
+              }
+          } catch (e) { console.error('Error en detector de vinculación:', e); }
+          
+          firstSync = false;
+
           // Si el modal de gamificación está abierto, re-suscribir para incluir los nuevos alias
           const modal = document.getElementById('gamification-modal');
           if (modal && !modal.hidden) {
@@ -2337,38 +2439,6 @@
               }
           }
         }, err => console.error('Error syncing user aliases:', err));
-
-        // --- LISTENER DE NOTIFICACIONES PARA VINCULACIÓN EXITOSA ---
-        let _lastNotifTime = Date.now();
-        db.collection('notifications')
-          .orderBy('timestamp', 'desc')
-          .limit(1)
-          .onSnapshot(snap => {
-            if (snap.empty) return;
-            const doc = snap.docs[0];
-            const data = doc.data();
-            const ts = data.timestamp ? (data.timestamp.toMillis ? data.timestamp.toMillis() : new Date(data.timestamp).getTime()) : 0;
-            
-            // Solo procesar notificaciones nuevas (posteriores al inicio de la app)
-            if (ts <= _lastNotifTime) return;
-            _lastNotifTime = ts;
-
-            if (data.type === 'success' && data.message && data.message.includes('vinculada')) {
-                const currentUser = getCurrentUser();
-                const normCurrent = String(currentUser || '').toLowerCase().replace(/^@/,'');
-                
-                // Extraer el nombre de usuario web del mensaje (ej: "✅ Cuenta vinculada con zero")
-                const parts = data.message.split(' con ');
-                const linkedWebUser = parts.length > 1 ? parts[1].trim() : '';
-                
-                if (linkedWebUser && normCurrent === linkedWebUser.toLowerCase().replace(/^@/,'')) {
-                    console.log('🎁 Notificación de vinculación para el usuario actual détectada!');
-                    if (typeof showLinkingSuccessPopup === 'function') {
-                        showLinkingSuccessPopup(data.user || 'TikTok', linkedWebUser);
-                    }
-                }
-            }
-          }, err => console.warn('Error en listener de notificaciones:', err));
       }
       window.START_POINTS_DAY = window.START_POINTS_DAY || '';
       function normalizeDay(str){
@@ -7427,6 +7497,50 @@
         modal.hidden = false;
       };
 
+      // === POPUP DE VINCULACIÓN EXITOSA (ESTILO GANADOR) ===
+      window.showLinkingSuccessPopup = function(webUser, tiktokUser) {
+          const overlay = document.createElement('div');
+          overlay.className = 'linking-overlay';
+          
+          const popup = document.createElement('div');
+          popup.className = 'linking-success-popup';
+          
+          popup.innerHTML = `
+              <span class="icon">🎊</span>
+              <h2>¡Cuenta Vinculada!</h2>
+              <p>Tu cuenta web y TikTok ahora son una sola. ¡Tus puntos y logros se han unificado con éxito!</p>
+              <div class="user-badge">
+                  <span>@${webUser}</span>
+                  <span>🔗</span>
+                  <span>@${tiktokUser.replace(/^@/,'')}</span>
+              </div>
+              <div class="actions" style="justify-content: center;">
+                  <button type="button" class="btn btn-primary" style="width: 100%; padding: 12px; font-weight: 900;">¡GENIAL! 🚀</button>
+              </div>
+          `;
+          
+          document.body.appendChild(overlay);
+          document.body.appendChild(popup);
+          
+          // Forzar reflow para animación
+          setTimeout(() => {
+              overlay.classList.add('show');
+              popup.classList.add('show');
+          }, 10);
+          
+          const close = () => {
+              overlay.classList.remove('show');
+              popup.classList.remove('show');
+              setTimeout(() => {
+                  overlay.remove();
+                  popup.remove();
+              }, 600);
+          };
+          
+          popup.querySelector('button').addEventListener('click', close);
+          overlay.addEventListener('click', close);
+      };
+
       // === COMPENSACIÓN MANUAL DE PUNTOS (Listener) ===
       document.getElementById('grant-comp-points-btn')?.addEventListener('click', async () => {
          const select = document.getElementById('comp-user-select');
@@ -11744,40 +11858,34 @@
         let likesPerPoint = 1;
         let giftPoints = 0;
         let totalCoinsDonated = 0;
-        
-        // Mapa para guardar cuánto aporta cada cuenta individualmente
-        const contributions = {};
+        const fusedDetails = {};
 
         try {
            for (const fid of fusedIds) {
              const bestStats = await fetchBestUserStatsDoc(fid);
              const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
              
-             // Extraer datos de esta cuenta específica
-             const accCheckIn = Number(statsDoc.totalCheckInPoints || 0);
-             const accLikesCount = Number(statsDoc.totalLikes || 0);
-             const accLPerPoint = Number(statsDoc.likesPerPoint || 300); 
-             let accLPoints = Number(statsDoc.totalLikesPoints || 0);
-             if (accLikesCount > 0 && accLPoints === 0) {
-                 accLPoints = Math.floor(accLikesCount / accLPerPoint);
+             // NUEVO: Sumar los puntos de todas las cuentas vinculadas (Web + TikTok)
+             // para mostrar el total acumulado en lugar del máximo.
+             checkInPoints += Number(statsDoc.totalCheckInPoints || 0);
+             
+             const lCount = Number(statsDoc.totalLikes || 0);
+             const lPerPoint = Number(statsDoc.likesPerPoint || 300); 
+             let lPoints = Number(statsDoc.totalLikesPoints || 0);
+             if (lCount > 0 && lPoints === 0) {
+                 lPoints = Math.floor(lCount / lPerPoint);
              }
-             const accGiftPoints = Number(statsDoc.totalGiftPoints || 0);
-             const accCoins = Number(statsDoc.totalCoinsDonated || 0);
+             likesPoints += lPoints;
+             likesCount += lCount;
+             giftPoints += Number(statsDoc.totalGiftPoints || 0);
+             totalCoinsDonated += Number(statsDoc.totalCoinsDonated || 0);
              
-             // Sumar al total global
-             checkInPoints += accCheckIn;
-             likesPoints += accLPoints;
-             likesCount += accLikesCount;
-             giftPoints += accGiftPoints;
-             totalCoinsDonated += accCoins;
-             
-             // Guardar aporte individual
-             contributions[fid] = {
-                 checkIn: accCheckIn,
-                 likes: accLPoints,
-                 gifts: accGiftPoints,
-                 coins: accCoins,
-                 total: accCheckIn + accLPoints + accGiftPoints
+             fusedDetails[fid] = {
+                 checkIn: Number(statsDoc.totalCheckInPoints || 0),
+                 likes: lPoints,
+                 gifts: Number(statsDoc.totalGiftPoints || 0),
+                 coins: Number(statsDoc.totalCoinsDonated || 0),
+                 total: Number(statsDoc.totalPoints || 0)
              };
              
              if (!tiktokId) tiktokId = statsDoc.tiktokId || statsDoc.tiktokAlias || null;
@@ -11924,8 +12032,7 @@
           totalCoinsDonated,
           tiktokId,
           fusedIds,
-          contributions,
-          usuario,
+          fusedDetails,
           currentStreak: currentStreakComputed || 0,
           bestStreak: Math.max(bestStreakComputed || 0, bestStreakVal || 0)
         };
@@ -12037,41 +12144,37 @@
           if (bd.fusedIds && bd.fusedIds.length > 1) {
              const norm = (s) => String(s || '').trim().replace(/^@/, '').toLowerCase();
              const currentId = norm(bd.usuario);
+             const otherId = bd.fusedIds.find(id => norm(id) !== currentId);
              
-             // Generar lista de contribuciones
-             const contribList = bd.fusedIds.map(fid => {
-                 const c = (bd.contributions && bd.contributions[fid]) || { total: 0 };
-                 const isTikTok = fid.includes('@') || bd.tiktokId === fid || fid.toLowerCase().startsWith('tik');
-                 const label = isTikTok ? `@${fid.replace(/^@/,'')}` : fid;
-                 return { fid, label, total: c.total, isTikTok };
-             }).sort((a,b) => b.total - a.total);
+             if (otherId) {
+                const details = (bd.fusedDetails && bd.fusedDetails[otherId]) ? bd.fusedDetails[otherId] : null;
+                const label = otherId.includes('@') || bd.tiktokId === otherId ? `Puntos TikTok (@${otherId.replace(/^@/,'')})` : `Puntos Cuenta Web (${otherId})`;
+                const detailId = `fused-detail-${otherId.replace(/[^a-z0-9]/g, '')}`;
+                
+                let detailHtml = '';
+                if (details) {
+                    detailHtml = `
+                        <div id="${detailId}" style="display:none; width:100%; padding: 10px 14px; background: rgba(0,0,0,0.3); border-radius: 10px; margin-top: 10px; font-size: 0.9em; box-shadow: inset 0 2px 5px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05);">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:4px; opacity:0.8;"><span>📅 Check-ins</span><span>${details.checkIn} pts</span></div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom:4px; opacity:0.8;"><span>❤️ Likes</span><span>${details.likes} pts</span></div>
+                            <div style="display:flex; justify-content:space-between; opacity:0.8;"><span>🎁 Regalos</span><span>${details.gifts} pts</span></div>
+                        </div>
+                    `;
+                }
 
-             const itemsHtml = contribList.map(c => `
-                <div style="display:flex; justify-content:space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); opacity: 0.8;">
-                  <span>${c.isTikTok ? '📱' : '💻'} ${c.label}</span>
-                  <span>${c.total} pts</span>
-                </div>
-             `).join('');
-
-             const fusedHtml = `
-                <div id="fused-accounts-breakdown-list" style="display:none; width:100%; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 8px; margin-top: 8px; font-size: 0.9em; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);">
-                  ${itemsHtml}
-                  <div style="padding-top: 4px; font-size: 0.8em; color: var(--text-secondary); text-align: center;">*Solo incluye puntos base de la cuenta (Check-ins, Likes, Regalos)</div>
-                </div>
-             `;
-
-             lines.push(`
-               <div class="genre-chip" style="flex-direction: column; align-items: stretch; height: auto; padding: 10px 15px; border: 1px border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03);">
-                 <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
-                   <span style="display:flex; align-items:center; gap:10px;">
-                     💰 Cuentas Vinculadas (${bd.fusedIds.length})
-                     <button onclick="const list = document.getElementById('fused-accounts-breakdown-list'); list.style.display = list.style.display === 'none' ? 'block' : 'none'; this.textContent = list.style.display === 'none' ? '+' : '-';" style="background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:6px; width:24px; height:24px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition: all 0.2s ease; font-weight:bold;">+</button>
-                   </span>
-                   <span class="pts-val-white" style="font-weight:bold;">${bd.total} pts</span>
-                 </div>
-                 ${fusedHtml}
-               </div>
-             `);
+                lines.push(`
+                  <div class="genre-chip" style="flex-direction: column; align-items: stretch; height: auto; padding: 10px 15px; border: 1px solid rgba(0, 229, 255, 0.2); background: rgba(0, 229, 255, 0.05);">
+                    <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                      <span style="display:flex; align-items:center; gap:10px;">
+                        💰 ${label}
+                        ${details ? `<button onclick="const el = document.getElementById('${detailId}'); el.style.display = el.style.display === 'none' ? 'block' : 'none'; this.textContent = el.style.display === 'none' ? '+' : '-';" style="background:rgba(0, 229, 255, 0.2); border:1px solid rgba(0, 229, 255, 0.3); color:white; border-radius:6px; width:24px; height:24px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-weight:bold;">+</button>` : ''}
+                      </span>
+                      <span class="pts-val-white" style="font-weight:900;">${details ? details.total : 0} pts</span>
+                    </div>
+                    ${detailHtml}
+                  </div>
+                `);
+             }
           }
 
           // Canciones
@@ -15388,24 +15491,32 @@
         return new Promise((resolve) => {
           console.log('🔍 showConfirmation llamada con opciones:', options);
           
+          // Verificar que los elementos existen
           if (!confirmationModal || !confirmationCancelBtn || !confirmationConfirmBtn) {
             console.error('❌ Elementos del modal de confirmación no encontrados');
             resolve(false);
             return;
           }
           
+          // Configurar el modal
           confirmationIcon.textContent = options.icon || 'ℹ️';
           confirmationTitle.textContent = options.title || 'Confirmación';
           confirmationMessage.textContent = options.message || '¿Estás seguro?';
           
+          // Configurar botones
           const cancelText = options.cancelText !== undefined ? options.cancelText : 'Cancelar';
           const confirmText = options.confirmText || 'Confirmar';
           
+          // Establecer texto usando múltiples métodos para asegurar que funcione
           confirmationCancelBtn.textContent = cancelText;
           confirmationCancelBtn.innerHTML = cancelText;
           confirmationConfirmBtn.textContent = confirmText;
           confirmationConfirmBtn.innerHTML = confirmText;
           
+          console.log('📝 Textos configurados - Cancelar:', cancelText, 'Confirmar:', confirmText);
+          console.log('📝 Texto actual en botones - Cancelar:', confirmationCancelBtn.textContent, 'Confirmar:', confirmationConfirmBtn.textContent);
+          
+          // Mostrar/ocultar botón cancelar
           if (cancelText === '') {
             confirmationCancelBtn.style.display = 'none';
           } else {
@@ -15415,53 +15526,26 @@
             confirmationCancelBtn.style.pointerEvents = 'auto';
           }
           
+          // Asegurar que el botón confirmar sea visible
           confirmationConfirmBtn.style.display = 'inline-flex';
           confirmationConfirmBtn.style.visibility = 'visible';
           confirmationConfirmBtn.style.opacity = '1';
           confirmationConfirmBtn.style.pointerEvents = 'auto';
           
+          // Forzar reflow para asegurar que los cambios se apliquen
           confirmationCancelBtn.offsetHeight;
           confirmationConfirmBtn.offsetHeight;
           
+          console.log('👁️ Estilos de botones aplicados');
+          console.log('Cancelar visible:', window.getComputedStyle(confirmationCancelBtn).display);
+          console.log('Confirmar visible:', window.getComputedStyle(confirmationConfirmBtn).display);
+          
+          // Guardar el resolver actual
           currentConfirmationResolver = resolve;
+          
+          // Mostrar modal
           confirmationModal.hidden = false;
           console.log('✅ Modal mostrado');
-        });
-      }
-
-      function showLinkingSuccessPopup(tiktokId, webUser) {
-        console.log('🎉 Celebrando vinculación exitosa:', tiktokId, '->', webUser);
-        
-        showConfirmation({
-          icon: '🎊',
-          title: '¡CUENTA VINCULADA!',
-          message: `¡Felicidades! Tu cuenta de TikTok (@${tiktokId.replace(/^@/,'')}) ha sido vinculada exitosamente con tu perfil web (${webUser}).\n\nAhora tus puntos se sumarán automáticamente.`,
-          confirmText: '¡Genial!',
-          cancelText: ''
-        });
-
-        const colors = ['🎉', '✨', '🎊', '⭐️', '🔥', '💎'];
-        for(let i=0; i<30; i++) {
-           const el = document.createElement('div');
-           el.textContent = colors[Math.floor(Math.random()*colors.length)];
-           el.style.position = 'fixed';
-           el.style.left = Math.random()*100 + 'vw';
-           el.style.top = '-50px';
-           el.style.fontSize = (Math.random()*20 + 20) + 'px';
-           el.style.zIndex = '10000';
-           el.style.pointerEvents = 'none';
-           el.style.transition = `transform ${Math.random()*2 + 1}s linear, opacity 1s`;
-           document.body.appendChild(el);
-           
-           setTimeout(() => {
-              el.style.transform = `translateY(${window.innerHeight + 100}px) rotate(${Math.random()*360}deg)`;
-              setTimeout(() => {
-                 el.style.opacity = '0';
-                 setTimeout(() => el.remove(), 1000);
-              }, 2000);
-           }, 100);
-        }
-      }
           
           // Asegurar que los estilos se apliquen después de mostrar el modal
           setTimeout(() => {
