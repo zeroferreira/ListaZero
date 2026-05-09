@@ -11217,24 +11217,27 @@
            } catch(e){}
            
            // 2. System Events (unmark/mark logic corrections)
-           try {
-             const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
-             const latest = {};
-             qs.forEach(doc => {
-                const d = doc.data()||{};
-                const sid = sanitize(d.songId);
-                if (!sid) return;
-                const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
-                const k = sid;
-                if (!latest[k] || ts > latest[k].ts) {
-                  latest[k] = { action: d.action, ts };
-                }
-             });
-             Object.keys(latest).forEach(sid => {
-                if (latest[sid].action === 'mark') ids.add(sid);
-                else if (latest[sid].action === 'unmark') ids.delete(sid);
-             });
-           } catch(e){}
+            try {
+              const latest = {};
+              // Iteramos sobre todos los IDs vinculados para recolectar sus eventos de marcado/desmarcado
+              for (const fid of fused) {
+                const fnorm = String(fid||'').trim().toLowerCase().replace(/^@/,'');
+                const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',fnorm).get();
+                qs.forEach(doc => {
+                   const d = doc.data()||{};
+                   const sid = sanitize(d.songId);
+                   if (!sid) return;
+                   const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+                   if (!latest[sid] || ts > latest[sid].ts) {
+                     latest[sid] = { action: d.action, ts };
+                   }
+                });
+              }
+              Object.keys(latest).forEach(sid => {
+                 if (latest[sid].action === 'mark') ids.add(sid);
+                 else if (latest[sid].action === 'unmark') ids.delete(sid);
+              });
+            } catch(e){ console.error(e); }
 
            // 3. SOLO SI ES EL USUARIO PROPIO (Admin viendo su propia sesión o User viéndose a sí mismo)
            // Mezclar con LocalStorage para dar feedback instantáneo de lo que acaba de hacer.
@@ -11548,31 +11551,27 @@
               // Bono de racha aproximado por mejor racha
               try {
                 const steps = Math.min(Math.max((fastBestStreak || 0) - 1, 0), 10);
-                const tri = (steps * (steps + 1)) / 2;
-                const mult = (POINTS_CONFIG && typeof POINTS_CONFIG.STREAK_MULTIPLIER === 'number') ? POINTS_CONFIG.STREAK_MULTIPLIER : 2;
-                streakBonus = tri * mult;
-              } catch (_){}
-              // Calcular logros únicamente desbloqueados (union)
-              try {
-                const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
-                (localAch || []).forEach(id => idSet.add(String(id)));
-              } catch (_){}
-              try {
-                const statsDoc = await db.collection('userStats').doc(uid).get();
-                if (statsDoc.exists) {
-                  const sdata = statsDoc.data() || {};
-                  const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
-                  (statAch || []).forEach(id => idSet.add(String(id)));
-                }
-              } catch (_){}
-              try {
-                const achDoc = await db.collection('userAchievements').doc(uid).get();
-                if (achDoc.exists) {
-                  const a = achDoc.data() || {};
-                  const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
-                  (ids || []).forEach(id => idSet.add(String(id)));
-                }
-              } catch (_){}
+              // Calcular logros únicamente desbloqueados (union de todos los alias)
+              await Promise.all(fusedIds.map(async (fid) => {
+                const fuid = norm(fid);
+                try {
+                  const statsDoc = await db.collection('userStats').doc(fuid).get();
+                  if (statsDoc.exists) {
+                    const sdata = statsDoc.data() || {};
+                    const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
+                    (statAch || []).forEach(id => idSet.add(String(id)));
+                  }
+                } catch (_){}
+                try {
+                  const achDoc = await db.collection('userAchievements').doc(fuid).get();
+                  if (achDoc.exists) {
+                    const a = achDoc.data() || {};
+                    const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
+                    (ids || []).forEach(id => idSet.add(String(id)));
+                  }
+                } catch (_){}
+              }));
+
               achievements = Array.from(idSet).reduce((sum, id) => {
                 const found = ACHIEVEMENTS && ACHIEVEMENTS.find ? ACHIEVEMENTS.find(x => x.id === id) : null;
                 return sum + (found && typeof found.points === 'number' ? found.points : 0);
@@ -11599,27 +11598,33 @@
               };
             }
           } catch (_){}
-          try {
-            const achDoc = await db.collection('userAchievements').doc(uid).get();
-            if (achDoc.exists) {
-              const a = achDoc.data() || {};
-              const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
-              (ids || []).forEach(id => idSet.add(String(id)));
-            }
-          } catch (_){}
-          try {
-            const bestStats = await fetchBestUserStatsDoc(uid);
-            if (bestStats && bestStats.data) {
-              const sdata = bestStats.data || {};
-              const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
-              (statAch || []).forEach(id => idSet.add(String(id)));
-            }
-          } catch (_){}
+          // Recolectar logros de todos los IDs vinculados (Unión)
+          await Promise.all(fusedIds.map(async (fid) => {
+            const fuid = norm(fid);
+            try {
+              const achDoc = await db.collection('userAchievements').doc(fuid).get();
+              if (achDoc.exists) {
+                const a = achDoc.data() || {};
+                const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
+                (ids || []).forEach(id => idSet.add(String(id)));
+              }
+            } catch (_){}
+            try {
+              const statsDoc2 = await db.collection('userStats').doc(fuid).get();
+              if (statsDoc2.exists) {
+                const sdata2 = statsDoc2.data() || {};
+                const statAch = Array.isArray(sdata2.achievements) ? sdata2.achievements : [];
+                (statAch || []).forEach(id => idSet.add(String(id)));
+              }
+            } catch (_){}
+          }));
+
           try {
             const localData = getLocalGamificationData(usuario) || {};
             const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
             (localAch || []).forEach(id => idSet.add(String(id)));
           } catch (_){}
+
           achievements = Array.from(idSet).reduce((sum, id) => {
             const found = ACHIEVEMENTS && ACHIEVEMENTS.find ? ACHIEVEMENTS.find(x => x.id === id) : null;
             return sum + (found && typeof found.points === 'number' ? found.points : 0);
@@ -11627,15 +11632,25 @@
           // Ensure achievements is never negative
           achievements = Math.max(0, achievements);
         } catch (_) {}
+
         let cloudTotal = 0;
         let bestStreakVal = 0;
         let lastManualAdjustment = null;
         try {
-          const bestStats = await fetchBestUserStatsDoc(usuario);
-          const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
-          cloudTotal = Number((statsDoc.totalPoints || 0));
-          if (typeof statsDoc.bestStreak === 'number') bestStreakVal = statsDoc.bestStreak;
-          if (statsDoc.lastManualAdjustment) lastManualAdjustment = statsDoc.lastManualAdjustment;
+          // SUMAR puntos de nube y tomar MEJOR racha de todos los alias
+          for (const fid of fusedIds) {
+             const bestStats = await fetchBestUserStatsDoc(fid);
+             if (bestStats && bestStats.data) {
+                const statsDoc = bestStats.data || {};
+                cloudTotal += Number((statsDoc.totalPoints || 0));
+                if (typeof statsDoc.bestStreak === 'number') {
+                   bestStreakVal = Math.max(bestStreakVal, statsDoc.bestStreak);
+                }
+                if (statsDoc.lastManualAdjustment && !lastManualAdjustment) {
+                   lastManualAdjustment = statsDoc.lastManualAdjustment;
+                }
+             }
+          }
         } catch (_) {}
         // Fallback a localData para bestStreak si no se encontró en nube
         try {
@@ -11709,18 +11724,17 @@
         let checkInPoints = 0;
         let likesPoints = 0;
         let likesCount = 0;
-        let likesPerPoint = 1;
         let giftPoints = 0;
         let totalCoinsDonated = 0;
+        let manualBonusTotal = 0;
 
         try {
            for (const fid of fusedIds) {
              const bestStats = await fetchBestUserStatsDoc(fid);
              const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
              
-             // IMPORTANTE: Estos valores ya suelen estar consolidados. 
-             // Usamos Math.max para evitar duplicar si varios documentos tienen el mismo total.
-             checkInPoints = Math.max(checkInPoints, Number(statsDoc.totalCheckInPoints || 0));
+             // SUMAR puntos de todas las cuentas vinculadas
+             checkInPoints += Number(statsDoc.totalCheckInPoints || 0);
              
              const lCount = Number(statsDoc.totalLikes || 0);
              const lPerPoint = Number(statsDoc.likesPerPoint || 300); 
@@ -11728,12 +11742,26 @@
              if (lCount > 0 && lPoints === 0) {
                  lPoints = Math.floor(lCount / lPerPoint);
              }
-             likesPoints = Math.max(likesPoints, lPoints);
-             giftPoints = Math.max(giftPoints, Number(statsDoc.totalGiftPoints || 0));
+             likesPoints += lPoints;
+             likesCount += lCount;
+             giftPoints += Number(statsDoc.totalGiftPoints || 0);
+             totalCoinsDonated += Number(statsDoc.totalCoinsDonated || 0);
              
              if (!tiktokId) tiktokId = statsDoc.tiktokId || statsDoc.tiktokAlias || null;
+             
+             // Sumar ajustes manuales por ID
+             try {
+                const normFid = String(fid||'').trim().toLowerCase().replace(/^@/,'');
+                const mDoc = await db.collection('manualAdjustments').doc(normFid).get();
+                if (mDoc.exists) {
+                   manualBonusTotal += Number(mDoc.data().amount || 0);
+                }
+             } catch(_) {}
            }
         } catch (_) {}
+
+        // Sobrescribir manualBonus con el total acumulado de todos los IDs
+        manualBonus = manualBonusTotal;
 
         const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus + checkInPoints + likesPoints + giftPoints;
         
@@ -14859,74 +14887,6 @@
         }
       }
 
-      // NUEVA función simplificada para contar canciones toggleadas (Reproducidas)
-      async function countTotalToggledSongsForUser(usuario) {
-         try {
-           const norm = String(usuario||'').trim().toLowerCase().replace(/^@/,'');
-           const sanitize = (s) => String(s||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
-           const prefix = sanitize(`${norm}-`);
-           const ids = new Set();
-           
-           // 1. Firestore playedSongs (FUENTE DE VERDAD)
-           try {
-             const snap = await db.collection('playedSongs').get();
-             snap.forEach(doc => {
-               const day = doc.id;
-               if (!isOnOrAfterStart(day)) return;
-               const d = doc.data()||{};
-               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
-               arr.forEach(x => {
-                 const id = sanitize(x);
-                 if (id.startsWith(prefix)) ids.add(id);
-               });
-             });
-           } catch(e){}
-           
-           // 2. System Events (unmark/mark logic)
-           try {
-             const qs = await db.collection('systemEvents').where('type','==','togglePlayed').where('usuario','==',norm).get();
-             const latest = {};
-             qs.forEach(doc => {
-                const d = doc.data()||{};
-                const sid = sanitize(d.songId);
-                if (!sid) return;
-                const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
-                const k = sid; // Solo ID importa, no el día
-                if (!latest[k] || ts > latest[k].ts) {
-                  latest[k] = { action: d.action, ts };
-                }
-             });
-             Object.keys(latest).forEach(sid => {
-                if (latest[sid].action === 'mark') ids.add(sid);
-                else if (latest[sid].action === 'unmark') ids.delete(sid);
-             });
-           } catch(e){}
-
-           // 3. SOLO SI ES EL USUARIO PROPIO (Admin viendo su propia sesión o User viéndose a sí mismo)
-           // Mezclar con LocalStorage para dar feedback instantáneo de lo que acaba de hacer.
-           // Pero si estamos viendo a OTRO usuario, NO usar nuestro LocalStorage.
-           const currentUser = getCurrentUser(); // Usar el usuario logueado REAL (no el del perfil seleccionado)
-           const isAdmin = String(currentUser).toLowerCase().includes('admin'); // O lógica de admin si existe
-           const isOwner = String(currentUser).toLowerCase().includes(norm);
-           const viewingSelf = isOwner; // Solo usar local si es el PROPIO usuario. Admin NO debe ver su local en otros.
-           
-           if (viewingSelf) {
-               try {
-                 const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-                 Object.keys(localPlayed).forEach(day => {
-                   if (!isOnOrAfterStart(day)) return;
-                   const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
-                   arr.forEach(x => {
-                     const id = sanitize(x);
-                     if (id.startsWith(prefix)) ids.add(id);
-                   });
-                 });
-               } catch(e){}
-           }
-
-           return ids.size;
-         } catch(e) { return 0; }
-      }
 
       // NUEVA función para contar solicitudes históricas de un usuario (TOTALES)
       async function countTotalRequestedSongsForUser(usuario) {
