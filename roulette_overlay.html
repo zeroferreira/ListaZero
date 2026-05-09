@@ -1782,11 +1782,23 @@
           });
           return;
         }
-        if (data.type === 'layout' && data.wheelState && data.updatedBy !== rouletteLiveClientId) {
-          if (Number.isFinite(data.wheelState.x)) wheelState.x = data.wheelState.x;
-          if (Number.isFinite(data.wheelState.y)) wheelState.y = data.wheelState.y;
-          if (Number.isFinite(data.wheelState.size)) wheelState.size = data.wheelState.size;
-          applyWheelState();
+        if (data.type === 'layout' && data.updatedBy !== rouletteLiveClientId) {
+          if (data.wheelState) {
+            if (Number.isFinite(data.wheelState.x)) wheelState.x = data.wheelState.x;
+            if (Number.isFinite(data.wheelState.y)) wheelState.y = data.wheelState.y;
+            if (Number.isFinite(data.wheelState.size)) wheelState.size = data.wheelState.size;
+            applyWheelState();
+          }
+          if (Array.isArray(data.manualParticipants)) {
+            manualParticipants = [...data.manualParticipants];
+          }
+          if (Array.isArray(data.excludedParticipants)) {
+            excludedParticipants = new Set(data.excludedParticipants);
+          }
+          if (data.activeSourceTab && data.activeSourceTab !== activeSourceTab) {
+            setSourceTab(data.activeSourceTab, { broadcast: false });
+          }
+          recomputeParticipants();
         }
         if (data.type === 'idle' && data.closeToken && data.closeToken !== lastHandledLiveCloseToken) {
           lastHandledLiveCloseToken = data.closeToken;
@@ -1962,7 +1974,10 @@
         localStorage.setItem(getWheelStateStorageKey(), JSON.stringify(wheelState));
         publishRouletteLiveState({
           type: 'layout',
-          wheelState
+          wheelState,
+          manualParticipants,
+          excludedParticipants: Array.from(excludedParticipants),
+          activeSourceTab
         });
       } catch (_) {}
     }
@@ -2063,7 +2078,7 @@
       drawWheel();
     }
 
-    function setSourceTab(tab) {
+    function setSourceTab(tab, options = {}) {
       activeSourceTab = ['list', 'rewards', 'manual'].includes(tab) ? tab : 'list';
       ['list', 'rewards', 'manual'].forEach(key => {
         const btn = document.getElementById(`source-tab-${key}`);
@@ -2073,6 +2088,7 @@
         btn.setAttribute('aria-selected', active ? 'true' : 'false');
       });
       renderParticipantsList();
+      if (options.broadcast !== false) saveWheelState();
     }
 
     function loadNewRoulette() {
@@ -2194,17 +2210,25 @@
     function updateParticipants() {
       const pending = allRequests.filter(req => {
         const sid = req.__rouletteSongId || buildRouletteSongId(req);
-        if (!sid) return false;
-        return !playedSongIds.has(sid);
+        return sid && !playedSongIds.has(sid);
       });
       
-      const users = new Set();
+      const names = new Set();
       pending.forEach(req => {
-        const u = req.displayName || req.usuario || req.user || '';
-        if (u && !excludedParticipants.has(normalizeParticipantName(u))) users.add(u);
+        const u = (req.displayName || req.usuario || req.user || 'Anónimo').trim();
+        if (!excludedParticipants.has(normalizeParticipantName(u))) {
+           names.add(u);
+        }
       });
 
-      firebaseParticipants = Array.from(users);
+      firebaseParticipants = Array.from(names);
+      
+      // Sincronizar participantes de canjes
+      const activeRewards = rouletteRewardRequests.filter(req => {
+         if (req.rouletteSongId && playedSongIds.has(req.rouletteSongId)) return false;
+         return true;
+      });
+      
       recomputeParticipants();
     }
 
@@ -2346,6 +2370,7 @@
         excludedParticipants.add(normalizeParticipantName(name));
       }
       recomputeParticipants();
+      saveWheelState();
     }
 
     function addManualParticipant() {

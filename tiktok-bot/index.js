@@ -294,6 +294,7 @@ const badgeSets = {
     superfan: new Set(),
     selected: new Map()
 };
+let USER_ALIASES_MAP = {}; // Mapa de vinculación (TikTok Handle -> Web User)
 const runtimeSuperfanUsers = new Set();
 const tempDonadorUsers = new Set();
 let badgeSetsUpdatedAt = 0;
@@ -405,10 +406,26 @@ async function refreshBadgeSets() {
         badgeSets.selected = nextMap;
         badgeSetsUpdatedAt = Date.now();
         console.log(`🏷️ Insignias sincronizadas: superfan=${badgeSets.superfan.size} vip=${badgeSets.vip.size} z0Vip=${badgeSets.z0Vip.size} donador=${badgeSets.donador.size} z0Fan=${badgeSets.z0Fan.size} z0Platino=${badgeSets.z0Platinum.size} selected=${badgeSets.selected.size}`);
+        
+        // Sincronizar también los alias de vinculación
+        await refreshUserAliases();
     } catch (e) {
         console.warn('⚠️ No se pudieron actualizar insignias (vip/z0/donador):', e && e.message ? e.message : String(e));
     } finally {
         badgeSetsRefreshing = false;
+    }
+}
+
+async function refreshUserAliases() {
+    if (!db) return;
+    try {
+        const docSnap = await getDoc(doc(db, 'systemConfig', 'userAliases'));
+        if (docSnap.exists()) {
+            USER_ALIASES_MAP = docSnap.data() || {};
+            console.log(`🔗 Alias de vinculación cargados: ${Object.keys(USER_ALIASES_MAP).length}`);
+        }
+    } catch (e) {
+        console.warn('⚠️ Error cargando userAliases:', e.message);
     }
 }
 
@@ -450,14 +467,34 @@ async function getCanonicalUserKey(userId, displayName) {
     let userKey = uid || name || 'anon';
     let bestDisplay = String(displayName || '').trim() || String(userId || '').trim() || userKey;
 
+    // 0. Resolver Alias (Vinculación) - Recursivo hasta 5 niveles
+    const resolveAlias = (key, depth = 0) => {
+        if (!key || depth > 5) return key;
+        const normKey = key.replace(/^@/, '').toLowerCase();
+        if (USER_ALIASES_MAP && USER_ALIASES_MAP[normKey]) {
+            const target = USER_ALIASES_MAP[normKey];
+            // Si el alias apunta a sí mismo (ignorando @ y case), romper ciclo
+            if (target.replace(/^@/, '').toLowerCase() === normKey) return normKey;
+            return resolveAlias(target, depth + 1);
+        }
+        return normKey;
+    };
+
+    const aliasedKey = resolveAlias(uid || name);
+    if (aliasedKey && aliasedKey !== (uid || name)) {
+        userKey = aliasedKey;
+        // console.log(`🔗 Usando alias para ${uid || name} -> ${userKey}`);
+    }
+
     try {
         if (db && typeof getDoc === 'function' && typeof doc === 'function') {
             let found = false;
 
-            // 1. Intentar buscar por ID directo (uid o name)
+            // 1. Intentar buscar por ID directo (aliasedKey o uid o name)
             const candidates = [];
-            if (uid) candidates.push(uid);
-            if (name && name !== uid) candidates.push(name);
+            if (userKey) candidates.push(userKey);
+            if (uid && uid !== userKey) candidates.push(uid);
+            if (name && name !== uid && name !== userKey) candidates.push(name);
             
             // FALLBACK: Probar versión limpia de emojis si no se encuentra
             // Esto ayuda si la BD tiene "Juan" pero TikTok manda "Juan ⚡️"
@@ -1043,6 +1080,11 @@ function startBot() {
     
     // --- LISTENER DE NOTIFICACIONES PARA LA RULETA Y OTROS ---
     setupNotificationListener();
+
+    // Sincronizar datos iniciales (Insignias y Alias)
+    try {
+        refreshBadgeSets().catch(e => console.warn('⚠️ Error en sincronización inicial:', e.message));
+    } catch (_) {}
 }
 
 function setupNotificationListener() {
@@ -1262,21 +1304,35 @@ function setupListeners() {
                     }
 
                     const webUser = linkData.webUser;
-                    // El usuario de TikTok es el userId (o displayName, pero userId es más seguro)
-                    const tiktokAlias = displayName.replace(/^@/, '').toLowerCase(); 
+                    // FIX: Usar userId (uniqueId/handle) en lugar de nickname
+                    const tiktokHandle = userId.replace(/^@/, '').toLowerCase(); 
 
                     // 1. Crear el vínculo en systemConfig/userAliases
                     await setDoc(doc(db, 'systemConfig', 'userAliases'), {
-                        [tiktokAlias]: webUser
+                        [tiktokHandle]: webUser
                     }, { merge: true });
+                    
+                    // Actualizar mapa en memoria inmediatamente
+                    USER_ALIASES_MAP[tiktokHandle] = webUser;
 
-                    // 2. Eliminar el código usado para que no se pueda reutilizar (seguridad)
+                    // 2. Marcar en userStats del usuario web para búsqueda reversa rápida
+                    try {
+                        await setDoc(doc(db, 'userStats', webUser), {
+                            tiktokId: tiktokHandle,
+                            tiktokDisplayName: displayName,
+                            lastLinkedAt: serverTimestamp()
+                        }, { merge: true });
+                    } catch (e) {
+                        console.warn(`Error actualizando tiktokId en userStats/${webUser}:`, e.message);
+                    }
+
+                    // 3. Eliminar el código usado para que no se pueda reutilizar (seguridad)
                     if (typeof deleteDoc === 'function') {
                         await deleteDoc(linkDocRef);
                     }
 
-                    // 3. Notificar éxito
-                    console.log(`✅ ¡VINCULACIÓN EXITOSA! @${tiktokAlias} -> ${webUser}`);
+                    // 4. Notificar éxito
+                    console.log(`✅ ¡VINCULACIÓN EXITOSA! @${tiktokHandle} -> ${webUser}`);
                     
                     if (db && typeof addDoc === 'function' && typeof collection === 'function') {
                         await addDoc(collection(db, 'notifications'), {
@@ -1506,6 +1562,9 @@ async function updateGlobalTopLiker(name, count) {
 
 // Flush periódico de likes (cada 30 segundos para dar tiempo a acumular)
 setInterval(async () => {
+    // Asegurar que insignias y alias estén frescos
+    try { await ensureBadgeSetsFresh(); } catch (_) {}
+    
     if (likeBuffer.size === 0) return;
 
     console.log(`❤️ Procesando buffer de likes (${likeBuffer.size} usuarios)...`);
