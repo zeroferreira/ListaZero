@@ -10903,13 +10903,22 @@ function shouldShowStatsTicker() {
           return { total: 0, corrected: 0, skipped: true };
         }
         window.__ADMIN_POINTS_REBUILD_RUNNING__ = true;
+        
+        const reportBox = document.getElementById('recalc-report-box');
+        const reportText = document.getElementById('recalc-report-text');
+        
+        if (reportBox && reportText) {
+          reportBox.hidden = false;
+          reportText.textContent = 'Iniciando recálculo masivo...';
+          reportText.style.color = 'var(--text-main)';
+        }
+
         console.log('🔧 INICIANDO RECÁLCULO MASIVO COMPLETO DE PUNTOS...');
 
         try {
-          const reportBox = document.getElementById('recalc-report-box');
-          const reportText = document.getElementById('recalc-report-text');
           const allUsers = await collectUsersForAdminRebuild();
-          console.log(`📊 Recalculando puntos completos para ${allUsers.size} usuarios...`);
+          const totalUsers = allUsers.length;
+          console.log(`📊 Recalculando puntos completos para ${totalUsers} usuarios...`);
 
           let correctedCount = 0;
           let processed = 0;
@@ -10919,7 +10928,13 @@ function shouldShowStatsTicker() {
           for (const username of allUsers) {
             try {
               processed++;
-              console.log(`🔄 [${processed}/${allUsers.size}] Recalculando ${username}...`);
+              
+              // Actualizar progreso en el reporte
+              if (reportText) {
+                reportText.textContent = `Procesando: ${processed} / ${totalUsers}\nUsuario actual: ${username}\nCorregidos: ${correctedCount}`;
+              }
+
+              console.log(`🔄 [${processed}/${totalUsers}] Recalculando ${username}...`);
               const beforeDoc = await fetchBestUserStatsDoc(username).catch(() => null);
               const beforeTotal = Number(beforeDoc?.data?.totalPoints || 0);
 
@@ -10930,6 +10945,7 @@ function shouldShowStatsTicker() {
               const afterTotal = Number(breakdown?.total || 0);
               const delta = afterTotal - beforeTotal;
               deltas.push({ username, beforeTotal, afterTotal, delta });
+              
               if (Math.abs(afterTotal - beforeTotal) > 0.1) {
                 correctedCount++;
                 console.log(`✅ ${username}: ${beforeTotal} → ${afterTotal} puntos`);
@@ -10944,39 +10960,46 @@ function shouldShowStatsTicker() {
             .filter(item => Math.abs(item.delta) > 0.1)
             .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
             .slice(0, 5);
+            
           const reportLines = [
-            `Procesados: ${allUsers.size}`,
+            `✅ RECÁLCULO FINALIZADO`,
+            `------------------------`,
+            `Total usuarios: ${totalUsers}`,
             `Ajustados: ${correctedCount}`,
-            `Errores: ${errorCount}`
+            `Errores: ${errorCount}`,
+            ''
           ];
+          
           if (topChanges.length) {
             reportLines.push('Mayores cambios:');
             topChanges.forEach(item => {
               const sign = item.delta > 0 ? '+' : '';
-              reportLines.push(`- ${item.username}: ${item.beforeTotal} → ${item.afterTotal} (${sign}${item.delta})`);
+              reportLines.push(`- ${item.username}: ${item.beforeTotal} → ${item.afterTotal} (${sign}${item.delta.toFixed(1)})`);
             });
           }
+          
           const reportTextValue = reportLines.join('\n');
 
-          console.log(`🎉 RECÁLCULO COMPLETO FINALIZADO: ${correctedCount} ajustados de ${allUsers.size}`);
-          console.table(deltas);
-          showSuccessNotification(`Recálculo completo listo: ${correctedCount} usuarios ajustados de ${allUsers.size}. Errores: ${errorCount}.`);
-          if (reportBox && reportText) {
-            reportBox.hidden = false;
+          console.log(`🎉 RECÁLCULO COMPLETO FINALIZADO: ${correctedCount} ajustados de ${totalUsers}`);
+          showSuccessNotification(`Recálculo completado: ${correctedCount} ajustes.`);
+          
+          if (reportText) {
             reportText.textContent = reportTextValue;
+            reportText.style.color = '#10b981'; // Verde éxito
           }
-          setTimeout(() => {
-            try { alert(reportTextValue); } catch (_) { }
-          }, 50);
 
           try {
             const currentProfile = getCurrentProfileUser?.();
             if (currentProfile) await renderPointsBreakdownForUser(currentProfile, true);
           } catch (_) { }
 
-          return { total: allUsers.size, corrected: correctedCount, errors: errorCount, deltas };
+          return { total: totalUsers, corrected: correctedCount, errors: errorCount, deltas };
         } catch (error) {
           console.error('Error en recálculo masivo completo:', error);
+          if (reportText) {
+            reportText.textContent = '❌ ERROR: ' + error.message;
+            reportText.style.color = '#ef4444';
+          }
           showErrorNotification('Error durante el recálculo completo de puntos.');
           throw error;
         } finally {

@@ -64,3 +64,12 @@ Este proyecto es de uso privado para **Zero FM**. Todos los derechos reservados.
 
 ---
 *Desarrollado con ❤️ por Zero Ferreira & Antigravity AI*
+
+## 📝 Próximos Pasos (TODO)
+
+### 🛡️ Seguridad y Firebase
+- [ ] **Migrar Bot de TikTok a Firebase Admin SDK**: Actualmente el bot usa el Web SDK y escribe de forma pública. Para cerrar la seguridad de Firestore sin romper el bot, debemos migrarlo a `firebase-admin` usando una Service Account.
+- [ ] **Restringir Reglas de Firestore**: Una vez migrado el bot, cambiar `allow write: if true;` por restricciones basadas en `request.auth`.
+
+### ⚡ Optimizaciones
+- [ ] **Paginación en Recálculo**: Si la base de usuarios crece, implementar lectura por lotes en `runFullAdminPointsRebuild`.
