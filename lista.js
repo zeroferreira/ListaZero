@@ -9898,7 +9898,7 @@ function shouldShowStatsTicker() {
           }
           redemptions = Array.from(map.values()).sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
           redemptionsSpent = redemptions
-            .filter(r => r && (r.status === 'pending' || r.status === 'approved'))
+            .filter(r => r && (r.status === 'pending' || r.status === 'approved' || r.status === 'completed' || r.status === 'delivered'))
             .reduce((sum, r) => sum + Math.max(0, Number(r.cost || 0)), 0);
         } catch (_) { }
 
@@ -9977,16 +9977,14 @@ function shouldShowStatsTicker() {
         let adjustment = 0;
 
         // --- CALCULO FINAL DE COHERENCIA ---
-        // predictedNet es lo que podemos explicar con el historial (ganado - gastado).
-        // cloudTotal es lo que la nube dice que el usuario tiene.
+        const isActuallyAdminRebuild = window.__ADMIN_POINTS_REBUILD_RUNNING__ === true;
 
-        if (cloudTotal !== undefined && cloudTotal > predictedNet) {
-          // El usuario tiene MÁS puntos en la nube de los que podemos explicar.
-          // Los mantenemos como un ajuste positivo para que el total coincida con el header.
+        if (cloudTotal !== undefined && cloudTotal > predictedNet && !isActuallyAdminRebuild) {
+          // El usuario tiene MÁS puntos en la nube. Mantenemos el ajuste solo si NO estamos en reconstrucción masiva.
           adjustment = cloudTotal - predictedNet;
           displayTotal = cloudTotal;
         } else {
-          // El cálculo local explica todo o incluso supera a la nube (o no hay nube).
+          // Si es reconstrucción ADMIN o el cálculo local es mayor, mandamos nosotros.
           displayTotal = Math.max(0, predictedNet);
           adjustment = 0;
         }
