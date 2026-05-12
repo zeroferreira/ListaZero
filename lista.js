@@ -5549,9 +5549,10 @@ function shouldShowStatsTicker() {
             const docRef = db.collection('userStats').doc(norm);
 
             // Usar FieldValue.increment para operación atómica eficiente
-            // Esto evita leer el documento antes de escribir y reduce costos/cuota
+            // totalManualAdjustment guarda la suma histórica de bonos/penalizaciones
             await docRef.set({
               totalPoints: firebase.firestore.FieldValue.increment(points),
+              totalManualAdjustment: firebase.firestore.FieldValue.increment(points),
               lastManualAdjustment: {
                 amount: points,
                 reason: reason,
@@ -5560,6 +5561,18 @@ function shouldShowStatsTicker() {
               },
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
+
+            // REGISTRAR EVENTO DE SISTEMA PARA AUDITORÍA
+            try {
+              await db.collection('systemEvents').add({
+                type: 'manualAdjustment',
+                usuario: norm,
+                amount: points,
+                reason: reason,
+                by: 'Admin',
+                ts: firebase.firestore.FieldValue.serverTimestamp()
+              });
+            } catch (e) { console.warn('Error registrando evento de ajuste:', e); }
 
             // Mostrar modal de éxito personalizado
             showMessageModal({
@@ -9182,20 +9195,14 @@ function shouldShowStatsTicker() {
             const normUser = normalizeUserKey(targetUser);
             // SEGURIDAD: No permitir que el cálculo local baje los puntos de la nube drásticamente
             // sin una razón válida (un canje), para evitar regresiones por fallos de carga.
-            db.collection('userStats').doc(normUser).get().then(snap => {
-              const cloudVal = snap.exists ? Number(snap.data().totalPoints || 0) : 0;
-              if (data.points >= cloudVal || (cloudVal - data.points) < 50) {
-                db.collection('userStats').doc(normUser).set({
-                  totalPoints: data.points,
-                  level: data.level,
-                  achievements: data.achievements,
-                  gamification: data,
-                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true }).catch(err => console.error('Error guardando stats:', err));
-              } else {
-                console.warn(`🛡️ Bloqueada sobrescritura de puntos: Cloud(${cloudVal}) > Local(${data.points}). Posible carga incompleta.`);
-              }
-            });
+              // SINCRONIZACIÓN DIRECTA: Confiamos en el cálculo reconstruido
+              db.collection('userStats').doc(normUser).set({
+                totalPoints: data.points,
+                level: data.level,
+                achievements: data.achievements,
+                gamification: data,
+                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+              }, { merge: true }).catch(err => console.error('Error guardando stats:', err));
           } else {
             console.log(`🔒 Evitando sobrescritura de Cloud Stats (No soy Owner o modo Admin activo)`);
           }
@@ -9353,13 +9360,10 @@ function shouldShowStatsTicker() {
       }
       // NUEVA función unificada para contar canciones toggleadas (Reproducidas)
       // Esta función se declara aquí para estar disponible tanto para computeUserBreakdown como para renderPersonalStatsForUser
-      async function countTotalToggledSongsForUser(usuario) {
+      async function getGlobalPlayedSongsSetForUser(usuario) {
         try {
           const uNorm = String(usuario || '').trim().toLowerCase().replace(/^@/, '');
-          // Obtener todos los IDs vinculados para contar canciones de todos
           let fused = getFusedIds(uNorm);
-
-          // Refuerzo: Si el usuario tiene un tiktokId conocido en cache, incluirlo
           try {
             const stats = getGamificationDataForUser(uNorm);
             if (stats && stats.tiktokId) {
@@ -9367,34 +9371,28 @@ function shouldShowStatsTicker() {
               if (!fused.includes(tid)) fused.push(tid);
             }
           } catch (_) { }
-
           if (!fused || !fused.length) fused = [uNorm];
-
           const sanitize = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
           const prefixes = fused.map(f => sanitize(`${f.replace(/^@/, '')}-`));
           const ids = new Set();
-
-          // 1. Firestore playedSongs (FUENTE DE VERDAD)
           try {
             const snap = await db.collection('playedSongs').get();
             snap.forEach(doc => {
               const day = doc.id;
-              if (!isOnOrAfterStart(day)) return;
+              if (typeof isOnOrAfterStart === 'function' && !isOnOrAfterStart(day)) return;
               const d = doc.data() || {};
               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
               arr.forEach(x => {
                 const id = sanitize(x);
                 const parts = id.split('-');
                 if (parts.length >= 2) {
-                  parts.pop(); // Quitar timestamp
+                  parts.pop();
                   const usernameInId = parts.join('-');
                   if (fused.some(f => sanitize(f) === usernameInId)) ids.add(id);
                 }
               });
             });
           } catch (e) { }
-
-          // 2. System Events (unmark/mark logic corrections)
           try {
             const qs = await db.collection('systemEvents').where('type', '==', 'togglePlayed').where('usuario', 'in', fused).get();
             const latest = {};
@@ -9404,33 +9402,23 @@ function shouldShowStatsTicker() {
               if (!sid) return;
               const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
               const k = sid;
-              if (!latest[k] || ts > latest[k].ts) {
-                latest[k] = { action: d.action, ts };
-              }
+              if (!latest[k] || ts > latest[k].ts) latest[k] = { action: d.action, ts };
             });
             Object.keys(latest).forEach(sid => {
               if (latest[sid].action === 'mark') ids.add(sid);
               else if (latest[sid].action === 'unmark') ids.delete(sid);
             });
           } catch (e) { }
-
-          // 3. SOLO SI ES EL USUARIO PROPIO (Admin viendo su propia sesión o User viéndose a sí mismo)
-          // Mezclar con LocalStorage para dar feedback instantáneo de lo que acaba de hacer.
-          // Pero si estamos viendo a OTRO usuario, NO usar nuestro LocalStorage.
-          const currentUser = getCurrentUser(); // El usuario real logueado en el navegador
-          const targetUser = getCurrentSelectedUser(); // El usuario que estamos viendo
-
-          // Verificar si soy el dueño de los datos que estoy viendo
+          const currentUser = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+          const targetUser = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : null;
           const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
           const normTarget = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
-          // También validar contra el usuario solicitado en la función
           const isOwner = normCurrent === uNorm && normCurrent === normTarget;
-
           if (isOwner) {
             try {
               const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
               Object.keys(localPlayed).forEach(day => {
-                if (!isOnOrAfterStart(day)) return;
+                if (typeof isOnOrAfterStart === 'function' && !isOnOrAfterStart(day)) return;
                 const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
                 arr.forEach(x => {
                   const id = sanitize(x);
@@ -9438,13 +9426,14 @@ function shouldShowStatsTicker() {
                 });
               });
             } catch (e) { }
-          } else {
-            console.log(`🔒 countTotalToggledSongsForUser: Ignorando localStorage porque ${normCurrent} está viendo a ${uNorm}`);
           }
+          return ids;
+        } catch (e) { console.error(e); return new Set(); }
+      }
 
-          console.log(`🔢 Conteo final (calculado) para ${uNorm}: ${ids.size}`);
-          return ids.size;
-        } catch (e) { console.error(e); return 0; }
+      async function countTotalToggledSongsForUser(usuario) {
+        const ids = await getGlobalPlayedSongsSetForUser(usuario);
+        return ids.size;
       }
 
       const TOP1_BONUS_START_DATE = '2025-12-19';
@@ -9826,9 +9815,10 @@ function shouldShowStatsTicker() {
         let cloudTotal = 0;
         let bestStreakVal = 0;
         let lastManualAdjustment = null;
+        let statsDoc = {};
         try {
           const bestStats = await fetchBestUserStatsDoc(usuario);
-          const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
+          statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
           cloudTotal = Number((statsDoc.totalPoints || 0));
           if (typeof statsDoc.bestStreak === 'number') bestStreakVal = statsDoc.bestStreak;
           if (statsDoc.lastManualAdjustment) lastManualAdjustment = statsDoc.lastManualAdjustment;
@@ -9853,9 +9843,12 @@ function shouldShowStatsTicker() {
           }
         } catch (_) { streakBonus = 0; }
         const top1Bonus = top1Count * 150;
-        // Calcular manual bonus
+        // Calcular manual bonus (Suma acumulada histórica)
         let manualBonus = 0;
-        if (lastManualAdjustment && typeof lastManualAdjustment.amount === 'number') {
+        if (typeof statsDoc.totalManualAdjustment === 'number') {
+          manualBonus = statsDoc.totalManualAdjustment;
+        } else if (lastManualAdjustment && typeof lastManualAdjustment.amount === 'number') {
+          // Fallback para cuentas antiguas: usar el último registrado
           manualBonus = lastManualAdjustment.amount;
         }
 
@@ -9915,9 +9908,9 @@ function shouldShowStatsTicker() {
             const bestStats = await fetchBestUserStatsDoc(fid);
             const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
 
-            // FIX: Usar Math.max en lugar de suma para evitar duplicidad si los datos ya están consolidados
-            // en las cuentas vinculadas. Si son cuentas independientes, el máximo representará la cuenta principal.
-            checkInPoints = Math.max(checkInPoints, Number(statsDoc.totalCheckInPoints || 0));
+            // AGREGACIÓN ADITIVA: Sumar los puntos de todas las cuentas vinculadas
+            // Esto permite que el usuario gane por distintos medios en distintas cuentas y se consolide.
+            checkInPoints += Number(statsDoc.totalCheckInPoints || 0);
 
             const lCount = Number(statsDoc.totalLikes || 0);
             const lPerPoint = Number(statsDoc.likesPerPoint || 300);
@@ -9925,10 +9918,10 @@ function shouldShowStatsTicker() {
             if (lCount > 0 && lPoints === 0) {
               lPoints = Math.floor(lCount / lPerPoint);
             }
-            likesPoints = Math.max(likesPoints, lPoints);
-            likesCount = Math.max(likesCount, lCount);
-            giftPoints = Math.max(giftPoints, Number(statsDoc.totalGiftPoints || 0));
-            totalCoinsDonated = Math.max(totalCoinsDonated, Number(statsDoc.totalCoinsDonated || 0));
+            likesPoints += lPoints;
+            likesCount += lCount;
+            giftPoints += Number(statsDoc.totalGiftPoints || 0);
+            totalCoinsDonated += Number(statsDoc.totalCoinsDonated || 0);
 
             fusedDetails[fid] = {
               checkIn: Number(statsDoc.totalCheckInPoints || 0),
@@ -9944,24 +9937,9 @@ function shouldShowStatsTicker() {
 
         const earnedTotal = (playedCount * 25) + (isVip ? (playedCount * 40) : 0) + (activeDaysValid * 5) + achievements + streakBonus + top1Bonus + manualBonus + checkInPoints + likesPoints + giftPoints;
 
-        // --- MODO ADMIN: Verdad Absoluta de Nube ---
-        // Si somos Admin viendo a otro usuario, confiamos en el total de la nube.
-        // Si el cálculo local difiere, asumimos que la diferencia son gastos (canjes) que no pudimos consultar.
-        const currentUser = getCurrentUser();
-        const normCurrent = String(currentUser || '').trim().replace(/^@/, '').toLowerCase();
-        const normTarget = String(usuario || '').trim().replace(/^@/, '').toLowerCase();
-        const isAdminMode = localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true';
-        const isOwner = !isAdminMode && (normCurrent === normTarget);
-
-        if (!isOwner && cloudTotal !== undefined) {
-          // Si hay discrepancia y no encontramos canjes, asumimos que la diferencia es lo gastado
-          // FIX: Asegurar que earnedTotal sea lógico antes de calcular diferencias.
-          const calculatedDiff = earnedTotal - cloudTotal;
-          if (calculatedDiff > 0 && redemptionsSpent === 0) {
-            redemptionsSpent = calculatedDiff;
-          }
-        }
-
+        // --- LOGICA DE CANJES ---
+        // Aquí no inventamos canjes "sombra" para que cuadre con la nube.
+        // Si hay discrepancias, es porque falta un canje por registrar o hay puntos fantasma.
         const predictedNet = earnedTotal - redemptionsSpent;
 
         // --- COHERENCIA GLOBAL: Usar siempre el cálculo reconstruido como verdad ---
@@ -9973,21 +9951,11 @@ function shouldShowStatsTicker() {
         // debemos confiar en earnedTotal (el recalculado corregido) para sanear el dato inflado.
         // Antes usábamos 'cloudTotal' si era mayor, lo que perpetuaba el error.
 
-        let displayTotal;
-        let adjustment = 0;
-
-        // --- CALCULO FINAL DE COHERENCIA ---
-        const isActuallyAdminRebuild = window.__ADMIN_POINTS_REBUILD_RUNNING__ === true;
-
-        if (cloudTotal !== undefined && cloudTotal > predictedNet && !isActuallyAdminRebuild) {
-          // El usuario tiene MÁS puntos en la nube. Mantenemos el ajuste solo si NO estamos en reconstrucción masiva.
-          adjustment = cloudTotal - predictedNet;
-          displayTotal = cloudTotal;
-        } else {
-          // Si es reconstrucción ADMIN o el cálculo local es mayor, mandamos nosotros.
-          displayTotal = Math.max(0, predictedNet);
-          adjustment = 0;
-        }
+        // --- CALCULO FINAL ESTRICTO ---
+        // La Verdad es el cálculo reconstruido (predictedNet). 
+        // No protegemos contra la nube si la nube está inflada (puntos fantasma).
+        displayTotal = Math.max(0, predictedNet);
+        adjustment = 0; // Ya no usamos ajustes mágicos para inflar el display
 
         try {
           // IMPORTANTE:
@@ -10875,6 +10843,7 @@ function shouldShowStatsTicker() {
         await db.collection('userStats').doc(normUser).set({
           displayName: username,
           totalPoints: data.points,
+          totalManualAdjustment: Number(breakdown.manualBonus || 0),
           level: data.level,
           achievements: Array.isArray(data.achievements) ? data.achievements : [],
           gamification: data,
@@ -12459,22 +12428,13 @@ function shouldShowStatsTicker() {
           return n.includes('zerofm') || n.includes('zero fm');
         };
 
-        // Determinar si una solicitud está marcada como reproducida
-        const isEntryPlayed = (s) => {
+        // Determinar si una solicitud está marcada como reproducida (Usando set global)
+        const isEntryPlayed = (s, playedSet) => {
           try {
-            const day = getSongDay(s);
-            // Usar la hora almacenada si existe, sino calcularla de forma segura (HH:MM)
             const hour = s.hora || (window.toHourKey ? window.toHourKey(s.ts || s.timestamp || s.time) : toHour(s.ts || s.timestamp || s.time));
-            const sid = `${s.usuario}-${s.cancion}-${s.artista}-${hour}`.replace(/[^a-zA-Z0-9-]/g, '');
-            const playedMap = getLocalPlayedMap();
-            const skippedMap = getLocalSkippedMap();
-            const dayArr = Array.isArray(playedMap[day]) ? playedMap[day] : [];
-            const skippedArr = Array.isArray(skippedMap[day]) ? skippedMap[day] : [];
-            const skippedSet = new Set(skippedArr.map(x => String(x || '')));
-            return sid && dayArr.includes(sid) && !skippedSet.has(String(sid || ''));
-          } catch (_) {
-            return false;
-          }
+            const sid = `${s.usuario}-${s.cancion}-${s.artista}-${hour}`.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+            return playedSet.has(sid);
+          } catch (_) { return false; }
         };
 
         try {
@@ -12483,10 +12443,14 @@ function shouldShowStatsTicker() {
 
           const normTargetUser = normalizeUserKey(targetUser);
           const userSongs = allSolicitudes.filter(s => normalizeUserKey(s.usuario) === normTargetUser && !isTestRequestForStats(s));
+          
+          // OBTENER SET GLOBAL DE REPRODUCIDAS (Firestore + Events + Local)
+          const playedSet = await getGlobalPlayedSongsSetForUser(targetUser);
+          
           console.log(`🎵 ${targetUser}: ${userSongs.length} canciones encontradas de ${allSolicitudes.length} totales`);
 
           const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
-          const playedSongs = userSongs.filter(isEntryPlayed);
+          const playedSongs = userSongs.filter(s => isEntryPlayed(s, playedSet));
           const totalPlayedSongs = playedSongs.length;
           const uniqueArtistsPlayed = [...new Set(playedSongs.map(s => s.artista))].length;
           console.log(`🎤 ${targetUser}: ${uniqueArtists} artistas únicos`);
