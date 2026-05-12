@@ -1498,26 +1498,37 @@ function setupListeners() {
             return;
         }
         
-        // Acumular likes en buffer para no saturar Firestore
-        // OJO:
-        // - `likeCount` representa los likes del usuario en ESTE evento.
-        // - `totalLikeCount` es el total del live completo, no del usuario.
-        // Si usamos `totalLikeCount` como si fuera por usuario, inflamos brutalmente
-        // el conteo individual y el "Top Liker".
+        // --- SOLUCIÓN ANT-INFLACIÓN (Delta Tracking) ---
+        // El conector de TikTok a veces envía el total acumulado de la sesión del usuario.
+        // Si lo sumamos directamente, inflamos los puntos exponencialmente.
+        const lastSeen = lastLikeCountMap.get(uniqueId) || 0;
+        let delta = 0;
+
+        if (safeLikeCount > lastSeen) {
+            // Caso normal: El nuevo número es mayor, la diferencia son los likes nuevos
+            delta = safeLikeCount - lastSeen;
+        } else if (safeLikeCount < lastSeen) {
+            // Caso reinicio: El usuario salió y volvió o el contador se reseteó
+            delta = safeLikeCount;
+        }
+        // Si safeLikeCount === lastSeen, delta es 0 (duplicado), no hacemos nada.
         
-        // Vamos a sumar al buffer.
+        lastLikeCountMap.set(uniqueId, safeLikeCount);
+
+        if (delta <= 0) return; // No hay likes nuevos que procesar
+
+        // Acumular likes en buffer para no saturar Firestore
         const current = likeBuffer.get(uniqueId) || { 
             userId: uniqueId, 
             displayName: nickname, 
             likes: 0 
         };
         current.displayName = nickname || current.displayName || uniqueId;
-        current.likes += safeLikeCount; // Sumar solo el delta real del evento
+        current.likes += delta; // Sumar SOLO la diferencia real
         likeBuffer.set(uniqueId, current);
         
         // Actualizar Top Liker de sesión (memoria)
-        // Nunca usar `totalLikeCount` aquí porque es el total del stream.
-        const sessionTotal = (sessionLikes.get(uniqueId) || 0) + safeLikeCount;
+        const sessionTotal = (sessionLikes.get(uniqueId) || 0) + delta;
         sessionLikes.set(uniqueId, sessionTotal);
 
         if (safeLikeCount >= 200) {
@@ -1536,6 +1547,8 @@ function setupListeners() {
 const likeBuffer = new Map();
 // Tracking de sesión para Top Liker
 const sessionLikes = new Map();
+// Tracking del último contador enviado por TikTok (para Delta Tracking)
+const lastLikeCountMap = new Map();
 let currentTopLiker = { name: 'N/D', count: 0 };
 let activeLiveRoomId = null;
 
@@ -1545,6 +1558,7 @@ function resetLikeTracking(options = {}) {
     try { likeBuffer.clear(); } catch (_) {}
     if (resetSession) {
         try { sessionLikes.clear(); } catch (_) {}
+        try { lastLikeCountMap.clear(); } catch (_) {}
     }
     if (resetTopLiker) {
         currentTopLiker = { name: 'N/D', count: 0 };
