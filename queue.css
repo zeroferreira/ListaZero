@@ -1,0 +1,515 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap');
+
+    :root {
+      /* Variables Configurables */
+      --queue-width: 350px;
+      --queue-bg-color: rgba(0, 0, 0, 1);
+      --queue-bg-color-transparent: rgba(0, 0, 0, 0.6);
+      --queue-bg-color-tertiary: rgba(0, 0, 0, 0.3);
+      --queue-accent-color: #00e5ff;
+      --queue-text-color: #ffffff;
+      --queue-font-family: 'Montserrat', sans-serif;
+      --queue-font-size: 16px;
+      --queue-item-spacing: 15px;
+      --queue-border-radius: 6px;
+      --queue-item-min-height: 80px;
+      --queue-padding: 15px;
+      --queue-text-gap: 4px;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: transparent; /* Importante para OBS */
+      overflow: hidden;
+      font-family: var(--queue-font-family);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center; /* Centrado horizontal */
+      justify-content: flex-start; /* Lista vertical desde arriba */
+    }
+
+    #queue-container {
+      margin: 20px;
+      width: var(--queue-width);
+      display: flex;
+      flex-direction: column;
+      gap: var(--queue-item-spacing);
+    }
+
+    .queue-item {
+      background: transparent;
+      margin-bottom: var(--queue-item-spacing); /* Gap */
+      display: flex;
+      flex-direction: column;
+      /* Animación de layout (colapso al salir) */
+      transition: max-height 0.8s cubic-bezier(0.4, 0, 0.2, 1), 
+                  margin-bottom 0.8s cubic-bezier(0.4, 0, 0.2, 1), 
+                  opacity 0.5s ease;
+      max-height: 200px; /* Aumentado para permitir alturas mayores */
+      overflow: visible; /* Importante para ver el elemento salir volando */
+    }
+
+    /* Caja visual interna */
+    .queue-item-inner {
+      box-sizing: border-box; /* Incluir padding en el cálculo de altura */
+      background: var(--queue-bg-color);
+      border-left: 5px solid var(--queue-accent-color); 
+      border-radius: var(--queue-border-radius);
+      min-height: var(--queue-item-min-height);
+      padding: var(--queue-padding);
+      color: var(--queue-text-color);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+      display: flex;
+      flex-direction: column;
+      justify-content: center; /* Centrar verticalmente si la altura es grande */
+      position: relative;
+      
+      /* Animación de Entrada Base */
+      opacity: 0;
+      transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @property --queue-sweep-angle {
+      syntax: '<angle>';
+      inherits: false;
+      initial-value: 0deg;
+    }
+
+    @keyframes queue-border-sweep {
+      to { --queue-sweep-angle: 360deg; }
+    }
+
+    .queue-item-inner::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      padding: 2px;
+      border-radius: inherit;
+      pointer-events: none;
+      opacity: 0.75;
+      background: conic-gradient(
+        from var(--queue-sweep-angle),
+        transparent 0deg,
+        transparent 280deg,
+        var(--queue-accent-color) 320deg,
+        transparent 360deg
+      );
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      animation: queue-border-sweep 2.8s linear infinite;
+    }
+
+    /* Estilos para tarjetas en cola (2ª) */
+    .queue-item:nth-child(2) .queue-item-inner {
+      background: var(--queue-bg-color-transparent, var(--queue-bg-color));
+    }
+
+    /* Estilos para tarjetas en cola (3ª en adelante) */
+    .queue-item:nth-child(n+3) .queue-item-inner {
+      background: var(--queue-bg-color-tertiary, var(--queue-bg-color-transparent));
+    }
+
+    /* Estado Vacío */
+    #empty-state {
+      display: none;
+      color: var(--queue-text-color);
+      opacity: 0.7;
+      text-align: center;
+      margin-top: 50px;
+      font-weight: 300;
+      background: var(--queue-bg-color-tertiary);
+      padding: 20px;
+      border-radius: var(--queue-border-radius);
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #empty-state.visible {
+      display: block;
+      animation: fadeIn 0.5s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 0.7; } }
+
+    .queue-item:nth-child(n+2) .item-header {
+      display: none !important;
+    }
+
+    /* Variantes de Entrada (se aplican con .show) */
+    
+    /* 1. Slide Left (Original/Default: translateX(-30px)) */
+    .anim-entry-slide-left .queue-item-inner { transform: translateX(-30px); }
+    .anim-entry-slide-left .queue-item.show .queue-item-inner { opacity: 1; transform: translateX(0); }
+
+    /* 2. Slide Up */
+    .anim-entry-slide-up .queue-item-inner { transform: translateY(30px); }
+    .anim-entry-slide-up .queue-item.show .queue-item-inner { opacity: 1; transform: translateY(0); }
+
+    /* 3. Fade */
+    .anim-entry-fade .queue-item-inner { transform: scale(1); }
+    .anim-entry-fade .queue-item.show .queue-item-inner { opacity: 1; }
+
+    /* 4. Zoom In */
+    .anim-entry-zoom .queue-item-inner { transform: scale(0.5); }
+    .anim-entry-zoom .queue-item.show .queue-item-inner { opacity: 1; transform: scale(1); }
+
+
+    /* Variantes de Salida (se aplican con .removing) */
+    /* Nota: .removing en el wrapper colapsa height/margin. La animación visual va en inner */
+    .queue-item.removing {
+      max-height: 0;
+      margin-bottom: 0;
+      /* Delay layout collapse to allow exit animation to play first */
+      transition-delay: 0.5s;
+    }
+
+    /* FIX: Usar transiciones en lugar de animaciones para asegurar consistencia con la entrada */
+    /* La clase .queue-item-inner ya tiene transition: all 0.5s cubic-bezier(...) definida arriba */
+
+    /* 1. Slide Right (Original/Default) */
+    .anim-exit-slide-right .queue-item.removing .queue-item-inner { 
+      transform: translateX(0) !important;
+      opacity: 1 !important;
+    }
+    .anim-exit-slide-right .queue-item.removing.removing-active .queue-item-inner { 
+      transform: translateX(100%) !important;
+      opacity: 0 !important;
+      transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    }
+
+    /* 2. Slide Down */
+    .anim-exit-slide-down .queue-item.removing .queue-item-inner { 
+      transform: translateY(0) !important;
+      opacity: 1 !important;
+    }
+    .anim-exit-slide-down .queue-item.removing.removing-active .queue-item-inner { 
+      transform: translateY(50px) !important;
+      opacity: 0 !important;
+      transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    }
+
+    /* 3. Fade Out */
+    .anim-exit-fade .queue-item.removing .queue-item-inner { 
+      opacity: 1 !important;
+    }
+    .anim-exit-fade .queue-item.removing.removing-active .queue-item-inner { 
+      opacity: 0 !important;
+      transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    }
+
+    /* 4. Zoom Out */
+    .anim-exit-zoom .queue-item.removing .queue-item-inner { 
+      transform: scale(1) !important;
+      opacity: 1 !important;
+    }
+    .anim-exit-zoom .queue-item.removing.removing-active .queue-item-inner { 
+      transform: scale(0.5) !important;
+      opacity: 0 !important;
+      transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    }
+
+
+    /* Keyframes - Ya no se usan para salida, pero se mantienen por si acaso se reusan para otra cosa */
+    @keyframes slideOutRight {
+      from { opacity: 1; transform: translateX(0); }
+      to { opacity: 0; transform: translateX(100%); }
+    }
+    @keyframes slideOutDown {
+      from { opacity: 1; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(50px); }
+    }
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+    @keyframes zoomOut {
+      from { opacity: 1; transform: scale(1); }
+      to { opacity: 0; transform: scale(0.5); }
+    }
+
+    .item-header {
+      font-size: calc(var(--queue-font-size) * 0.7); /* 11px relativo a 16px */
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--queue-accent-color);
+      font-weight: 800;
+      margin-bottom: var(--queue-text-gap);
+      display: flex;
+      justify-content: space-between;
+    }
+    .hide-header .item-header { display: none !important; }
+
+    .item-song {
+      font-size: calc(var(--queue-font-size) * 1.125); /* 18px */
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: calc(var(--queue-text-gap) * 0.5);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .item-artist {
+      font-size: calc(var(--queue-font-size) * 0.875); /* 14px */
+      color: rgba(255,255,255,0.7); /* Usar opacidad para adaptarse al color de texto base */
+      margin-bottom: var(--queue-text-gap);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hide-artist .item-artist { display: none !important; }
+
+    .item-user {
+      font-size: calc(var(--queue-font-size) * 0.7); /* 11px */
+      color: rgba(255,255,255,0.5);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .hide-user .item-user { display: none !important; }
+
+    .user-badge {
+      background: #333;
+      padding: 1px 6px;
+      border-radius: 3px;
+      color: #fff;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+    }
+
+    .user-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .user-insignia {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1px 6px;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 10px;
+      line-height: 1;
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      flex: 0 0 auto;
+    }
+    .user-insignia.vip { background: #000; color: #fff; }
+    .user-insignia.superfan { background: linear-gradient(135deg, #ff0050, #00f2ea); color: #fff; }
+    .user-insignia.z0-vip { background: #e91e63; color: #fff; }
+    .user-insignia.donador { background: #ffa500; color: #fff; }
+    
+    /* Nuevas insignias de donador */
+    .user-insignia.donador-oro { 
+      background: #ffd700; 
+      color: #000; 
+      border: 1px solid #b8860b; 
+      box-shadow: 0 0 4px rgba(255, 215, 0, 0.6);
+    }
+    .user-insignia.donador-plata { 
+      background: #e5e7eb; 
+      color: #374151; 
+      border: 1px solid #9ca3af; 
+    }
+    .user-insignia.donador-bronce { 
+      background: #cd7f32; 
+      color: #fff; 
+      border: 1px solid #8b4513; 
+    }
+
+    .user-insignia.z0-fan {
+      background: #ffffff;
+      color: #000000;
+      border: 1px solid rgba(0,0,0,0.12);
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.08);
+    }
+    .user-insignia.z0-platino {
+      background: linear-gradient(135deg, #c0c0c0, #e6e6e6 50%, #b3b3b3);
+      color: #333333;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+      background-size: 200% 200%;
+    }
+
+    /* Animación de posición */
+    .queue-pos-1 .queue-item-inner { border-left-color: var(--queue-accent-color); }
+    .queue-pos-2 .queue-item-inner { border-left-color: var(--queue-accent-color); opacity: 0.9; filter: brightness(0.8); }
+    .queue-item:not(.queue-pos-1):not(.queue-pos-2) .queue-item-inner { border-left-color: var(--queue-accent-color); opacity: 0.8; filter: brightness(0.6); }
+
+    /* Panel de Configuración */
+    
+    /* Notificaciones Toast */
+    #notification-container {
+      position: fixed;
+      top: 100px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 20000;
+      pointer-events: none;
+    }
+
+    .notification-toast {
+      background: rgba(0, 0, 0, 0.85);
+      border-left: 5px solid #00e5ff;
+      border-radius: 8px;
+      padding: 15px 20px;
+      color: #fff;
+      font-family: 'Montserrat', sans-serif;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+      min-width: 250px;
+      animation: slideInRight 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .notification-toast.points { border-left-color: #ffd700; }
+    
+    .notification-icon { font-size: 24px; }
+    .notification-content { display: flex; flex-direction: column; }
+    .notification-title { font-weight: bold; font-size: 14px; opacity: 0.8; text-transform: uppercase; margin-bottom: 2px; }
+    .notification-msg { font-weight: bold; font-size: 18px; }
+
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes fadeOutRight {
+      to { transform: translateX(100%); opacity: 0; }
+    }
+
+    #settings-btn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 10001;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      border-radius: 50%;
+      cursor: grab;
+      font-size: 20px;
+      transition: background 0.3s ease, transform 0.3s ease, opacity 0.3s ease;
+      
+      width: 50px;
+      height: 50px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      user-select: none;
+      opacity: 0.2;
+    }
+    #settings-btn:active {
+      cursor: grabbing;
+    }
+    #settings-btn:hover { 
+      opacity: 1; 
+      background: rgba(0,0,0,0.8);
+    }
+
+    #settings-panel {
+      position: fixed;
+      top: 70px;
+      left: 20px;
+      transform: none;
+      transform-origin: top left;
+      background: #1a1a1a;
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      width: 300px;
+      z-index: 10002;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+      display: none;
+      max-height: 80vh;
+      overflow-y: auto;
+      font-family: sans-serif;
+    }
+    #settings-panel.open { 
+      display: block; 
+      animation: menu-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes menu-pop {
+      from { opacity: 0; transform: scale(0.5); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    
+    .settings-group { margin-bottom: 15px; }
+    .settings-group label { display: block; margin-bottom: 5px; font-size: 14px; color: #ccc; }
+    .settings-group input[type="text"],
+    .settings-group input[type="number"], 
+    .settings-group select {
+      width: 100%;
+      padding: 8px;
+      background: #333;
+      border: 1px solid #444;
+      color: white;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .settings-group input[type="color"] {
+      width: 100%;
+      height: 40px;
+      border: none;
+      background: none;
+      cursor: pointer;
+    }
+    .settings-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    
+    /* Tab Navigation Styles */
+    .tab-nav {
+      display: flex;
+      border-bottom: 1px solid #444;
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #aaa;
+      padding: 10px 5px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { color: #fff; }
+    .tab-btn.active {
+      color: var(--queue-accent-color, #00e5ff);
+      border-bottom-color: var(--queue-accent-color, #00e5ff);
+      font-weight: bold;
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeInTab 0.3s ease; }
+    @keyframes fadeInTab { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-save { background: #00e5ff; color: #000; }
+    .btn-reset { background: #444; color: #fff; }
+
