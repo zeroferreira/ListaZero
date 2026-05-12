@@ -11049,6 +11049,12 @@ function shouldShowStatsTicker() {
             reportText.textContent = reportTextValue;
           }
 
+          // ACTUALIZACIÓN DE BANDA: Forzar recálculo global al terminar para que el Ticker se actualice
+          if (typeof calculateAndSaveGlobalStats === 'function') {
+            console.log('🔄 Sincronizando Estadísticas Globales (Banda)...');
+            calculateAndSaveGlobalStats().catch(e => console.warn('Error actualizando ticker:', e));
+          }
+
           try {
             const currentProfile = getCurrentProfileUser?.();
             if (currentProfile) await renderPointsBreakdownForUser(currentProfile, true);
@@ -14768,34 +14774,48 @@ function shouldShowStatsTicker() {
           const userOriginal = {};
 
           // 1. Procesar Historial REAL (systemEvents)
+          // 1. Procesar Historial REAL (systemEvents)
           systemEventsSnapshot.forEach(doc => {
             const d = doc.data() || {};
-            // Ignorar pruebas
             if (typeof isTestRequestForStats === 'function' && isTestRequestForStats(d)) return;
-
-            // Solo contar si la acción fue marcar como reproducida (y no desmarcar)
-            if (d.action === 'mark') {
-              if (d.cancion && d.artista) {
-                totalRequests++;
-
-                // Enriquecer con genre si falta
-                if (!d.genre) {
-                  const sId = String(d.songId || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
-                  const meta = solicitudesMetaMap[sId] || {};
-                  if (meta.genre) d.genre = meta.genre;
-                }
-
-                processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
+            if (d.action === 'mark' && d.cancion && d.artista) {
+              totalRequests++;
+              if (!d.genre) {
+                const sId = String(d.songId || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+                const meta = solicitudesMetaMap[sId] || {};
+                if (meta.genre) d.genre = meta.genre;
               }
+              processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
             }
           });
 
-          // (Opcional) Soporte legacy para playedSongs
+          // 2. Soporte para playedSongs (Historial diario)
           if (playedSnapshot) {
             playedSnapshot.forEach(doc => {
+              if (doc.id === '__userTotals__') return;
               const d = doc.data() || {};
-              if (typeof isTestRequestForStats === 'function' && isTestRequestForStats(d)) return;
-              if (doc.id !== '__userTotals__' && d.artista && !d.songs) {
+              const songArr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
+              
+              if (songArr.length > 0) {
+                songArr.forEach(fullId => {
+                  totalRequests++;
+                  const sId = String(fullId || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+                  const meta = solicitudesMetaMap[sId] || {};
+                  let detectedUser = 'N/D';
+                  const parts = String(fullId).split('-');
+                  if (parts.length >= 2) {
+                    parts.pop(); 
+                    detectedUser = parts.join('-');
+                  }
+                  const item = {
+                    artista: meta.artista || 'N/D',
+                    cancion: meta.cancion || 'N/D',
+                    usuario: meta.usuario || detectedUser,
+                    genre: meta.genre || ''
+                  };
+                  processDocStats(item, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
+                });
+              } else if (d.artista && !d.songs && !d.list) {
                 totalRequests++;
                 processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
               }
