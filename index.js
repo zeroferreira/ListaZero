@@ -1,0 +1,1193 @@
+
+// Sincronización global de temas entre pestañas/ventanas
+    window.addEventListener('focus', function() {
+      // Cuando la ventana recibe foco, verificar si hay cambios de tema
+      if (typeof window.applyTheme === 'function') {
+        window.applyTheme();
+      }
+      if (typeof window.updateActiveStates === 'function') {
+        window.updateActiveStates();
+      }
+    });
+
+// Sistema de temas sincronizado
+    (function() {
+      // Función para aplicar tema
+      function applyTheme() {
+        const savedTheme = localStorage.getItem('selectedTheme') || 'light';
+        const savedColor = localStorage.getItem('selectedColor') || 'default';
+        const savedTransparency = parseInt(localStorage.getItem('themeTransparency') || '0');
+        
+        // Limpiar clases anteriores
+        document.body.classList.remove('dark-theme');
+        document.body.classList.remove('theme-blue', 'theme-green', 'theme-purple', 'theme-red', 'theme-pink', 'theme-magenta', 'theme-cyan', 'theme-orange');
+        document.documentElement.removeAttribute('data-theme');
+        
+        // Aplicar tema
+        if (savedTheme === 'dark') {
+          document.body.classList.add('dark-theme');
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+        
+        // Aplicar color de acento
+        if (savedColor !== 'default') {
+          document.body.classList.add(`theme-${savedColor}`);
+        }
+
+        // Aplicar transparencia
+        const isDark = savedTheme === 'dark';
+        const baseAlpha = isDark ? 0.88 : 0.96;
+        const minAlpha = 0.2;
+        const currentAlpha = baseAlpha - (savedTransparency / 100) * (baseAlpha - minAlpha);
+        document.documentElement.style.setProperty('--card-bg-alpha', currentAlpha);
+      }
+      
+      // Aplicar tema al cargar
+      applyTheme();
+      
+      // Escuchar cambios en localStorage desde otras páginas
+      window.addEventListener('storage', function(e) {
+        if (e.key === 'selectedTheme' || e.key === 'selectedColor') {
+          applyTheme();
+          // Actualizar estados del modal si está abierto
+          if (typeof updateActiveStates === 'function') {
+            updateActiveStates();
+          }
+        }
+      });
+      
+      // Hacer la función global para uso en el modal
+      window.applyTheme = applyTheme;
+    })();
+
+    // Manejo del modal de tema
+    document.addEventListener('DOMContentLoaded', function() {
+      const themeBtn = document.getElementById('theme-btn');
+      const themeModal = document.getElementById('theme-modal');
+      const modalCloseBtn = themeModal.querySelector('.modal-close-btn');
+      const themeCloseBtn = document.getElementById('theme-close');
+      const themeResetBtn = document.getElementById('theme-reset');
+      const themeOptions = document.querySelectorAll('.theme-option');
+      const themeColors = document.querySelectorAll('.theme-color');
+      const themeShapes = document.querySelectorAll('.theme-shape');
+      const themeParticles = document.getElementById('theme-particles');
+      const themeTransparency = document.getElementById('theme-transparency');
+
+      // Abrir modal
+      (function setupThemeBtnDraggable() {
+        if (!themeBtn) return;
+        const storageKey = `widget_btn_pos:${location.pathname}:theme-btn`;
+        let isDragging = false;
+        let hasMoved = false;
+        let startX = 0;
+        let startY = 0;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        try {
+          const saved = localStorage.getItem(storageKey);
+          if (saved) {
+            const pos = JSON.parse(saved);
+            if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
+              themeBtn.style.position = 'fixed';
+              themeBtn.style.left = `${pos.left}px`;
+              themeBtn.style.top = `${pos.top}px`;
+              themeBtn.style.marginLeft = '0';
+              themeBtn.style.zIndex = '10000';
+              themeBtn.style.cursor = 'grab';
+            }
+          }
+        } catch (_) {}
+
+        themeBtn.addEventListener('mousedown', (e) => {
+          isDragging = true;
+          hasMoved = false;
+          startX = e.clientX;
+          startY = e.clientY;
+          const rect = themeBtn.getBoundingClientRect();
+          dragOffsetX = e.clientX - rect.left;
+          dragOffsetY = e.clientY - rect.top;
+          themeBtn.style.cursor = 'grabbing';
+          themeBtn.style.transition = 'none';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+          if (!isDragging) return;
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
+          const left = e.clientX - dragOffsetX;
+          const top = e.clientY - dragOffsetY;
+
+          themeBtn.style.position = 'fixed';
+          themeBtn.style.left = `${left}px`;
+          themeBtn.style.top = `${top}px`;
+          themeBtn.style.marginLeft = '0';
+          themeBtn.style.zIndex = '10000';
+        });
+
+        window.addEventListener('mouseup', () => {
+          if (!isDragging) return;
+          isDragging = false;
+          themeBtn.style.cursor = 'grab';
+          themeBtn.style.transition = '';
+
+          if (hasMoved) {
+            const rect = themeBtn.getBoundingClientRect();
+            const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
+            const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
+            themeBtn.style.left = `${left}px`;
+            themeBtn.style.top = `${top}px`;
+            try {
+              localStorage.setItem(storageKey, JSON.stringify({ left, top }));
+            } catch (_) {}
+          }
+        });
+
+        themeBtn.addEventListener('click', function(e) {
+          if (hasMoved) return;
+          themeModal.hidden = false;
+          updateActiveStates();
+          e.stopPropagation();
+        });
+      })();
+
+      // Lógica de Acordeón
+      const accordionHeaders = themeModal.querySelectorAll('.accordion-header');
+      accordionHeaders.forEach(header => {
+        header.addEventListener('click', () => {
+          const item = header.parentElement;
+          const isActive = item.classList.contains('active');
+
+          // Cerrar otros items
+          themeModal.querySelectorAll('.accordion-item').forEach(otherItem => {
+            if (otherItem !== item) {
+              otherItem.classList.remove('active');
+            }
+          });
+
+          // Alternar item actual
+          if (!isActive) {
+            item.classList.add('active');
+          } else {
+             item.classList.remove('active');
+          }
+        });
+      });
+
+      // Cerrar modal
+      function closeModal() {
+        themeModal.hidden = true;
+      }
+
+      modalCloseBtn.addEventListener('click', closeModal);
+      themeCloseBtn?.addEventListener('click', closeModal);
+      themeModal.addEventListener('click', function(e) {
+        if (e.target === themeModal) closeModal();
+      });
+
+      // Actualizar estados activos
+      function updateActiveStates() {
+        const currentTheme = localStorage.getItem('selectedTheme') || 'light';
+        const currentColor = localStorage.getItem('selectedColor') || 'default';
+        const currentShape = localStorage.getItem('selectedShape') || 'orb';
+        const currentParticles = localStorage.getItem('particleCount') || '800';
+        const currentTransparency = localStorage.getItem('themeTransparency') || '0';
+
+        themeOptions.forEach(option => {
+          option.classList.toggle('active', option.dataset.theme === currentTheme);
+        });
+
+        themeColors.forEach(color => {
+          color.classList.toggle('active', color.dataset.color === currentColor);
+        });
+
+        themeShapes.forEach(shape => {
+          shape.classList.toggle('active', shape.dataset.shape === currentShape);
+        });
+        
+        if (themeParticles) {
+          themeParticles.value = currentParticles;
+        }
+
+        if (themeTransparency) {
+          themeTransparency.value = currentTransparency;
+        }
+      }
+      
+      // Hacer la función global
+      window.updateActiveStates = updateActiveStates;
+
+      // Cambiar tema
+      themeOptions.forEach(option => {
+        option.addEventListener('click', function() {
+          const theme = this.dataset.theme;
+          
+          // Guardar en localStorage
+          localStorage.setItem('selectedTheme', theme);
+          
+          // Aplicar tema usando la función global
+          window.applyTheme();
+          
+          // Actualizar estados
+          updateActiveStates();
+          
+          // Disparar evento personalizado para sincronización
+          window.dispatchEvent(new CustomEvent('themeChanged', { 
+            detail: { theme, color: localStorage.getItem('selectedColor') || 'default' }
+          }));
+        });
+      });
+
+      // Cambiar color
+      themeColors.forEach(color => {
+        color.addEventListener('click', function() {
+          const colorName = this.dataset.color;
+          
+          // Guardar en localStorage
+          localStorage.setItem('selectedColor', colorName);
+          
+          // Aplicar tema usando la función global
+          window.applyTheme();
+          
+          // Actualizar estados
+          updateActiveStates();
+          
+          // Disparar evento personalizado para sincronización
+          window.dispatchEvent(new CustomEvent('themeChanged', { 
+            detail: { theme: localStorage.getItem('selectedTheme') || 'light', color: colorName }
+          }));
+        });
+      });
+
+      // Cambiar forma del fondo
+      themeShapes.forEach(shape => {
+        shape.addEventListener('click', () => {
+          const shapeName = shape.dataset.shape;
+          localStorage.setItem('selectedShape', shapeName);
+          updateActiveStates();
+          window.dispatchEvent(new CustomEvent('shapeChanged', { detail: { shape: shapeName } }));
+        });
+      });
+
+      // Cambiar cantidad de partículas
+      themeParticles?.addEventListener('input', function() {
+        localStorage.setItem('particleCount', this.value);
+        if (typeof window.updateParticleSystem === 'function') {
+           window.updateParticleSystem();
+        }
+      });
+
+      // Control de transparencia
+      themeTransparency?.addEventListener('input', (e) => {
+        const val = e.target.value;
+        localStorage.setItem('themeTransparency', val);
+        window.applyTheme();
+        
+        window.dispatchEvent(new CustomEvent('themeChanged', { 
+          detail: { 
+            theme: localStorage.getItem('selectedTheme') || 'light', 
+            color: localStorage.getItem('selectedColor') || 'default',
+            transparency: val
+          }
+        }));
+      });
+
+      // Interacción visual durante ajuste de transparencia
+      const startTransparencyInteraction = () => {
+        themeModal.classList.add('interacting-transparency');
+      };
+      
+      const endTransparencyInteraction = () => {
+        themeModal.classList.remove('interacting-transparency');
+      };
+
+      themeTransparency?.addEventListener('mousedown', startTransparencyInteraction);
+      themeTransparency?.addEventListener('touchstart', startTransparencyInteraction);
+      
+      themeTransparency?.addEventListener('mouseup', endTransparencyInteraction);
+      themeTransparency?.addEventListener('touchend', endTransparencyInteraction);
+      themeTransparency?.addEventListener('mouseleave', endTransparencyInteraction);
+
+      themeParticles?.addEventListener('mousedown', startTransparencyInteraction);
+      themeParticles?.addEventListener('touchstart', startTransparencyInteraction);
+      
+      themeParticles?.addEventListener('mouseup', endTransparencyInteraction);
+      themeParticles?.addEventListener('touchend', endTransparencyInteraction);
+      themeParticles?.addEventListener('mouseleave', endTransparencyInteraction);
+
+      // Restablecer tema
+      themeResetBtn?.addEventListener('click', function() {
+        localStorage.removeItem('selectedTheme');
+        localStorage.removeItem('selectedColor');
+        localStorage.removeItem('selectedShape');
+        localStorage.removeItem('themeTransparency');
+        
+        // Aplicar tema usando la función global
+        window.applyTheme();
+        
+        // Actualizar estados
+        updateActiveStates();
+        
+        // Resetear forma
+        window.dispatchEvent(new CustomEvent('shapeChanged', { 
+          detail: { shape: 'orb' } 
+        }));
+
+        // Disparar evento personalizado para sincronización
+        window.dispatchEvent(new CustomEvent('themeChanged', { 
+          detail: { theme: 'light', color: 'default', transparency: '0' }
+        }));
+      });
+
+      // Cerrar con Escape
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && !themeModal.hidden) {
+          closeModal();
+        }
+      });
+    });
+
+    (function () {
+      function getLocalDateKey(ts) {
+        const d = ts ? new Date(ts) : new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+      }
+
+      // Inicializa Firebase si aún no está
+      const firebaseConfig = {
+        apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+        authDomain: "zero-strom-web.firebaseapp.com",
+        projectId: "zero-strom-web",
+        storageBucket: "zero-strom-web.firebasestorage.app",
+        messagingSenderId: "758369466349",
+        appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+      };
+
+      let db = null;
+      let liveCodeRequired = false;
+      let authReadyPromise = Promise.resolve(true);
+      try {
+        if (typeof firebase !== 'undefined' && firebase.apps) {
+          if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+          }
+          db = firebase.firestore();
+          
+          // Autenticación anónima para permitir reglas basadas en usuarios no registrados
+          if (firebase.auth) {
+            authReadyPromise = new Promise((resolve) => {
+              firebase.auth().onAuthStateChanged((user) => {
+                if (user) return resolve(true);
+                firebase.auth().signInAnonymously().catch((err) => {
+                  console.error('Error al autenticar anónimamente:', err);
+                });
+              });
+            });
+          }
+        } else {
+           console.warn('Firebase SDK not loaded - Offline mode');
+        }
+      } catch (e) {
+        console.error('Error initializing Firebase:', e);
+      }
+
+      const form = document.getElementById('formulario');
+      const usuarioInput = document.getElementById('usuario');
+      const usuarioSelect = document.getElementById('usuario-registrado');
+
+      // Cargar lista de usuarios registrados
+      async function loadUserList() {
+        if (!db || !usuarioSelect) return;
+        try {
+          const userMap = new Set();
+          
+          // 1. Obtener de userStats
+          const statsSnap = await db.collection('userStats').get();
+          statsSnap.forEach(doc => { if (doc.id) userMap.add(doc.id); });
+          
+          // 2. Obtener de la colección users
+          const usersSnap = await db.collection('users').get();
+          usersSnap.forEach(doc => {
+            const d = doc.data() || {};
+            if (d.name) userMap.add(d.name);
+          });
+
+          // Limpiar y poblar dropdown
+          usuarioSelect.innerHTML = '<option value="">Selecciona un usuario</option>';
+          const sortedUsers = Array.from(userMap).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+          
+          sortedUsers.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u;
+            opt.textContent = u;
+            usuarioSelect.appendChild(opt);
+          });
+        } catch (e) {
+          console.error("Error al cargar lista de usuarios:", e);
+        }
+      }
+
+      // Sincronizar dropdown con input
+      if (usuarioSelect && usuarioInput) {
+        usuarioSelect.addEventListener('change', () => {
+          if (usuarioSelect.value) {
+            usuarioInput.value = usuarioSelect.value;
+          }
+        });
+      }
+
+      loadUserList();
+
+      async function fetchLiveCodeStatus() {
+        try {
+          if (!db) return { required: false, code: '' };
+          const st = await db.collection('system').doc('status').get();
+          const d = st && st.exists ? (st.data() || {}) : {};
+          const code = String(d.liveCode || '').trim();
+          liveCodeRequired = code.length >= 4;
+          return { required: liveCodeRequired, code };
+        } catch (_) {
+          return { required: false, code: '' };
+        }
+      }
+
+      function toFirestoreValue(value) {
+        if (value === null || typeof value === 'undefined') return { nullValue: null };
+        if (typeof value === 'string') return { stringValue: value };
+        if (typeof value === 'boolean') return { booleanValue: value };
+        if (typeof value === 'number') {
+          return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+        }
+        if (Array.isArray(value)) {
+          return { arrayValue: { values: value.map(toFirestoreValue) } };
+        }
+        if (typeof value === 'object') {
+          const fields = {};
+          Object.entries(value).forEach(([k, v]) => {
+            fields[k] = toFirestoreValue(v);
+          });
+          return { mapValue: { fields } };
+        }
+        return { stringValue: String(value) };
+      }
+
+      async function getAuthTokenForRest() {
+        if (firebase?.auth) {
+          if (!firebase.auth().currentUser) {
+            const ok = await Promise.race([
+              authReadyPromise,
+              new Promise((resolve) => setTimeout(() => resolve(false), 6000))
+            ]);
+            if (!ok || !firebase.auth().currentUser) {
+              throw new Error('AUTH_TOKEN_UNAVAILABLE');
+            }
+          }
+          return firebase.auth().currentUser.getIdToken();
+        }
+        throw new Error('AUTH_NOT_AVAILABLE');
+      }
+
+      async function commitFirestoreWritesViaRest(writes) {
+        const token = await getAuthTokenForRest();
+        const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents:commit`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ writes })
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`REST_COMMIT_FAILED:${res.status}:${text}`);
+        }
+        return res.json().catch(() => ({}));
+      }
+
+      async function addSolicitudViaRest(payload) {
+        const docId = `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const name = `projects/${firebaseConfig.projectId}/databases/(default)/documents/solicitudes/${docId}`;
+        const fields = { ...payload };
+        delete fields.ts;
+        await commitFirestoreWritesViaRest([
+          {
+            update: {
+              name,
+              fields: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, toFirestoreValue(v)]))
+            },
+            updateTransforms: [
+              { fieldPath: 'ts', setToServerValue: 'REQUEST_TIME' }
+            ]
+          }
+        ]);
+        return docId;
+      }
+
+      async function upsertUserViaRest(usuario) {
+        const name = `projects/${firebaseConfig.projectId}/databases/(default)/documents/users/${String(usuario || '').trim().toLowerCase()}`;
+        await commitFirestoreWritesViaRest([
+          {
+            update: {
+              name,
+              fields: {
+                name: { stringValue: usuario }
+              }
+            }
+          }
+        ]);
+      }
+
+      // Poblar lista de usuarios registrados desde localStorage y Firestore
+      async function collectRegisteredUsers() {
+        const set = new Set();
+        
+        // 1. Obtener desde localStorage (sincrono)
+        try {
+          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+          Object.values(byDay).forEach(arr => (arr || []).forEach(it => {
+            const original = String(it.usuario || '').trim().replace(/^@/, '');
+            if (original) set.add(original);
+          }));
+          const legacy = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+          (legacy || []).forEach(it => {
+            const original = String(it.usuario || '').trim().replace(/^@/, '');
+            if (original) set.add(original);
+          });
+        } catch (e) {}
+        
+        const arr = Array.from(set);
+        arr.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        return arr;
+      }
+
+      async function populateRegisteredUsers() {
+        if (!usuarioSelect) return;
+        const users = await collectRegisteredUsers();
+        usuarioSelect.innerHTML = '<option value="">Selecciona un usuario</option>' +
+          users.map(u => `<option value="${u}">@${u}</option>`).join('');
+      }
+
+      populateRegisteredUsers();
+
+      // Cargar el último usuario utilizado
+      const lastUser = localStorage.getItem('currentUser');
+      if (lastUser) {
+        const usuarioEl = document.getElementById('usuario');
+        if (usuarioEl) {
+          usuarioEl.value = lastUser;
+          // Actualizar indicador de puntos para el usuario cargado
+          // Se difiere la actualización para asegurar que las funciones de gamificación estén disponibles
+          setTimeout(function() {
+            if (typeof updatePointsIndicator === 'function') {
+              try { updatePointsIndicator(); } catch (e) {}
+            }
+          }, 0);
+        }
+      }
+
+      // Actualizar indicador de puntos cuando se selecciona usuario
+      function updatePointsIndicator() {
+        const usuarioEl = document.getElementById('usuario');
+        const usuarioText = (usuarioEl.value || '').trim().replace(/^@/, '');
+        const usuarioSel = (usuarioSelect?.value || '').trim().replace(/^@/, '');
+        const usuario = usuarioText || usuarioSel;
+        
+        const pointsIndicator = document.getElementById('user-points-indicator');
+        const pointsValue = document.getElementById('header-points');
+        
+        if (usuario) {
+          const data = getGamificationData(usuario);
+          pointsValue.textContent = data.points;
+          pointsIndicator.style.display = 'flex';
+        } else {
+          pointsIndicator.style.display = 'none';
+        }
+      }
+
+      // Event listeners para actualizar puntos
+      document.getElementById('usuario')?.addEventListener('input', updatePointsIndicator);
+      usuarioSelect?.addEventListener('change', updatePointsIndicator);
+
+      // Flags globales para evitar doble registro y doble ejecución
+      window.__FORM_SUBMIT_HANDLER_ADDED__ = window.__FORM_SUBMIT_HANDLER_ADDED__ || false;
+      window.__FORM_SUBMITTED__ = window.__FORM_SUBMITTED__ || false;
+
+      // Handler de envío (localStorage + Firestore)
+      if (form && !window.__FORM_SUBMIT_HANDLER_ADDED__) {
+        window.__FORM_SUBMIT_HANDLER_ADDED__ = true;
+
+        form.addEventListener('submit', async function (e) {
+          e.preventDefault();
+
+          // Si ya se procesó una vez (por duplicidad), no volver a validar ni alertar
+          if (window.__FORM_SUBMITTED__) return;
+
+          const usuarioEl = document.getElementById('usuario');
+          const cancionEl = document.getElementById('cancion');
+          const artistaEl = document.getElementById('artista');
+
+          const usuarioText = (usuarioEl.value || '').trim().replace(/^@/, '');
+          const usuarioSel = (usuarioSelect?.value || '').trim().replace(/^@/, '');
+          const usuario = usuarioText || usuarioSel;
+
+          const cancion = (cancionEl.value || '').trim();
+          const artista = (artistaEl.value || '').trim();
+
+          if (!usuario || !cancion || !artista) {
+            alert('Por favor completa Usuario (escribe o selecciona), Canción y Artista.');
+            return;
+          }
+
+          const ts = Date.now();
+          const dayKey = getLocalDateKey(ts);
+
+          let liveCode = '';
+          const liveStatus = await fetchLiveCodeStatus();
+          if (liveStatus.required) {
+            liveCode = String(window.prompt('Ingresa el Código del Live para enviar tu solicitud:') || '').trim();
+            if (!liveCode) {
+              alert('Se requiere Código del Live para enviar la solicitud.');
+              return;
+            }
+          }
+
+          const now = new Date(ts);
+          const hh = String(now.getHours()).padStart(2, '0');
+          const mm = String(now.getMinutes()).padStart(2, '0');
+          const hora = `${hh}:${mm}`;
+          const songId = `${usuario}-${cancion}-${artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+
+          // --- DETECCIÓN DE GÉNERO (NUEVO) ---
+          let genre = '';
+          try {
+            const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(cancion + ' ' + artista)}&media=music&limit=1`;
+            const resp = await fetch(searchUrl);
+            const data = await resp.json();
+            if (data.results && data.results.length > 0) {
+              genre = data.results[0].primaryGenreName || '';
+            }
+          } catch (e) {
+            console.warn('No se pudo autodetectar el género:', e);
+          }
+
+          // Guardar en Firestore (sincronización multi-dispositivo)
+          const solicitudPayload = {
+            id: songId,
+            usuario,
+            displayName: usuario,
+            cancion,
+            artista,
+            genre: genre, // Guardar el género detectado
+            ts: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'pending',
+            day: dayKey,
+            source: 'web',
+            ...(liveCode ? { liveCode } : {})
+          };
+          let remotePersisted = false;
+
+          try {
+            if (db) {
+              if (firebase?.auth) {
+                const hasUser = !!firebase.auth().currentUser;
+                if (!hasUser) {
+                  const ok = await Promise.race([
+                    authReadyPromise,
+                    new Promise((resolve) => setTimeout(() => resolve(false), 6000))
+                  ]);
+                  if (!ok || !firebase.auth().currentUser) {
+                    console.warn('No se pudo autenticar completamente, pero seguimos con localStorage');
+                  }
+                }
+              }
+
+              await Promise.race([
+                db.collection('solicitudes').add(solicitudPayload),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('WRITE_TIMEOUT')), 8000))
+              ]);
+              remotePersisted = true;
+            } else {
+               console.warn('Firestore no disponible. Se guardó localmente.');
+            }
+          } catch (err) {
+            console.error('Error guardando en Firestore:', err);
+            const msg = String(err && err.message ? err.message : err);
+            const code = String(err && err.code ? err.code : '');
+            const isPerm = msg.includes('PERMISSION_DENIED') || msg.includes('permission');
+            
+            // Si es error de permisos o cualquier otro, GUARDAMOS LOCALMENTE y continuamos
+            console.warn('Error en Firestore, guardando solo en localStorage');
+            
+            // Guardar en localStorage PRIMERO para no perder la solicitud
+            try {
+              const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+              (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
+              localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+              const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+              arr.push({ usuario, cancion, artista, time: ts });
+              localStorage.setItem('solicitudes', JSON.stringify(arr));
+            } catch (e) {
+              console.error('Error guardando en localStorage:', e);
+            }
+            
+            // Guardar el último usuario utilizado
+            localStorage.setItem('currentUser', usuario);
+            
+            // Marca que ya se procesó
+            window.__FORM_SUBMITTED__ = true;
+            
+            // Resetear formulario y redirigir
+            form.reset();
+            window.location.href = 'lista.html';
+            return;
+          }
+          // Guardar el último usuario utilizado para facilitar próximas solicitudes
+          localStorage.setItem('currentUser', usuario);
+
+          // Gamificación: puntos se otorgan solo al marcar reproducción
+
+          // Marca que ya se procesó para evitar que otro handler muestre el alerta
+          window.__FORM_SUBMITTED__ = true;
+
+          form.reset();
+          window.location.href = 'lista.html';
+        });
+      }
+
+      // Modo Admin: gestión de VIP y visualización de usuarios registrados
+      const ADMIN_PASS = '1415130*';
+      const adminBtn = document.getElementById('admin-btn');
+      const adminPanel = document.getElementById('admin-panel');
+
+      // Referencias del modal
+      const adminModal = document.getElementById('admin-modal');
+      const adminPassInput = document.getElementById('admin-pass-input');
+      const adminPassError = document.getElementById('admin-pass-error');
+      const adminPassCancelBtn = document.getElementById('admin-pass-cancel');
+      const adminPassConfirmBtn = document.getElementById('admin-pass-confirm');
+
+      const vipAddBtn = document.getElementById('vip-add');
+      const vipListEl = document.getElementById('vip-list');
+      const usersSelectEl = document.getElementById('all-users-select');
+      const wipeAllBtn = document.getElementById('wipe-all');
+
+      function normUser(u) {
+        return String(u || '').trim().toLowerCase().replace(/^@/, '');
+      }
+      function escapeHTML(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function getVipUsers() {
+        const arr = JSON.parse(localStorage.getItem('vipUsers') || '[]');
+        return Array.isArray(arr) ? arr : [];
+      }
+      function setVipUsers(arr) {
+        localStorage.setItem('vipUsers', JSON.stringify(arr));
+      }
+      function renderVipList() {
+        const vipUsers = getVipUsers();
+        vipListEl.innerHTML = vipUsers.map(u => `
+          <li>
+            <span>@${escapeHTML(u)}</span>
+            <button type="button" class="remove-btn" data-user="${escapeHTML(u)}">Eliminar</button>
+          </li>
+        `).join('');
+      }
+      async function renderAllUsersSelect() {
+        if (!usersSelectEl) return;
+        const users = await collectRegisteredUsers();
+        usersSelectEl.innerHTML = '<option value="">Selecciona un usuario</option>' +
+          users.map(u => `<option value="${escapeHTML(u)}">@${escapeHTML(u)}</option>`).join('');
+      }
+
+      // Asegurar oculto al cargar
+      adminModal && (adminModal.hidden = true);
+      adminPanel && (adminPanel.hidden = true);
+
+      // Abrir modal solo al hacer click en "Modo Admin"
+      adminBtn?.addEventListener('click', () => {
+        if (!adminModal || !adminPassInput || !adminPassError) return;
+        adminModal.hidden = false;
+        adminPassInput.value = '';
+        adminPassError.hidden = true;
+        adminPassInput.focus();
+      });
+
+      function tryOpenAdmin() {
+        const pass = adminPassInput?.value;
+        if (pass === ADMIN_PASS) {
+          if (!adminModal || !adminPanel) return;
+          adminModal.hidden = true;
+          adminPanel.hidden = false;
+          // Inicializar contenido del panel
+          renderVipList?.();
+          renderAllUsersSelect?.();
+        } else {
+          if (!adminPassError || !adminPassInput) return;
+          adminPassError.hidden = false;
+          adminPassInput.focus();
+        }
+      }
+
+      adminPassConfirmBtn?.addEventListener('click', tryOpenAdmin);
+      adminPassCancelBtn?.addEventListener('click', () => {
+        if (adminModal) adminModal.hidden = true; // cerrar modal sin abrir panel
+      });
+      adminPassInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          tryOpenAdmin();
+        }
+      });
+
+      vipAddBtn?.addEventListener('click', async () => {
+          const raw = usersSelectEl?.value || '';
+          const user = normUser(raw);
+          if (!user) {
+            alert('Selecciona un usuario registrado.');
+            return;
+          }
+          const vipUsers = getVipUsers();
+          if (vipUsers.includes(user)) {
+            alert('Ese usuario ya es VIP.');
+            return;
+          }
+          
+          try {
+            await db.collection('vipUsers').doc(user).set({ 
+              name: user,
+              activatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            
+            vipUsers.push(user);
+            setVipUsers(vipUsers);
+            renderVipList();
+            alert('Usuario VIP agregado correctamente.');
+          } catch (err) {
+            console.error('Error guardando VIP:', err);
+            alert('Error al guardar VIP en la nube.');
+          }
+        });
+
+      vipListEl?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.remove-btn');
+        if (!btn) return;
+        const user = btn.getAttribute('data-user');
+        if (!user) return;
+        const vipUsers = getVipUsers().filter(u => u !== user);
+        setVipUsers(vipUsers);
+        renderVipList();
+      });
+
+      wipeAllBtn?.addEventListener('click', () => {
+        const ok = confirm('Esto borrará todas las solicitudes guardadas (todos los días). ¿Quieres continuar?');
+        if (!ok) return;
+        localStorage.removeItem('solicitudes_by_day');
+        localStorage.removeItem('solicitudes');
+        renderAllUsersSelect();
+        alert('Solicitudes borradas. La lista está limpia.');
+      });
+    })();
+
+// Autenticación: ya se gestiona arriba durante la inicialización principal.
+
+  // ===== FUNCIONES DE GAMIFICACIÓN =====
+  
+  function getSongDay(s) {
+    const t = s?.timestamp || s?.ts || s?.time;
+    try {
+      const d = t ? new Date(t) : new Date();
+      return d.toISOString().split('T')[0];
+    } catch (_) {
+      return '';
+    }
+  }
+
+  // Configuración del sistema de puntos
+  const POINTS_CONFIG = {
+    SONG_REQUEST: 25,
+    DAILY_BONUS: 5,
+    STREAK_MULTIPLIER: 2,
+    VIP_BONUS: 40
+  };
+
+  function getGamificationData(usuario) {
+    const allStr = localStorage.getItem('gamificationData') || '{}';
+    const all = JSON.parse(allStr);
+    const u = (usuario || '').toLowerCase();
+    const d = all[u];
+    return d || {
+      points: 0,
+      level: 1,
+      xp: 0,
+      achievements: [],
+      streaks: { current: 0, best: 0, lastActivity: null, calendar: {} },
+      stats: { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false }
+    };
+  }
+
+  function saveGamificationData(usuario, data) {
+    if (!usuario || usuario === 'null' || usuario === 'undefined' || usuario.toLowerCase() === 'text/plain') {
+      console.warn(`⚠️ Intento de guardar datos para usuario inválido: ${usuario}`);
+      return;
+    }
+    const u = (usuario || '').toLowerCase();
+    const allStr = localStorage.getItem('gamificationData') || '{}';
+    const all = JSON.parse(allStr);
+    all[u] = data;
+    localStorage.setItem('gamificationData', JSON.stringify(all));
+    try {
+      const db = firebase.firestore();
+      db.collection('userStats').doc(u).set({
+        totalPoints: Number(data.points || 0),
+        currentStreak: Number((data.streaks && data.streaks.current) || 0),
+        bestStreak: Number((data.streaks && data.streaks.best) || 0),
+        lastActivity: (data.streaks && data.streaks.lastActivity) || null,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (_) {}
+  }
+
+  function addPoints(usuario, points) {
+    const data = getGamificationData(usuario);
+    data.points += points;
+    data.xp += points;
+    const newLevel = calculateLevel(data.xp);
+    if (newLevel > data.level) data.level = newLevel;
+    saveGamificationData(usuario, data);
+    return data;
+  }
+
+  function calculateLevel(xp) {
+    const levels = [
+      { level: 1, xpRequired: 0 },
+      { level: 2, xpRequired: 100 },
+      { level: 3, xpRequired: 250 },
+      { level: 4, xpRequired: 500 },
+      { level: 5, xpRequired: 1000 },
+      { level: 6, xpRequired: 2000 },
+      { level: 7, xpRequired: 5000 }
+    ];
+    
+    for (let i = levels.length - 1; i >= 0; i--) {
+      if (xp >= levels[i].xpRequired) {
+        return levels[i].level;
+      }
+    }
+    return 1;
+  }
+
+  function updateStreak(usuario) {
+    const data = getGamificationData(usuario);
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    function getRequestsForDay(day) {
+      const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+      if (Array.isArray(byDay[day]) && byDay[day].length) return byDay[day];
+      const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+      return arr.filter(s => {
+        const sday = s.day || getSongDay(s);
+        return sday === day;
+      });
+    }
+
+    const norm = v => String(v || '').trim().replace(/^@/, '').toLowerCase();
+    const todayRequests = getRequestsForDay(today);
+    const distinctUsersToday = new Set(todayRequests.map(s => s && norm(s.usuario))).size;
+    const userRequestedToday = todayRequests.some(s => s && norm(s.usuario) === norm(usuario));
+
+    // Día válido: 2+ usuarios distintos y el usuario actual solicitó
+    const todayValid = distinctUsersToday >= 2 && userRequestedToday;
+
+    if (!todayValid) {
+      // Día inválido: no modificar la racha ni el calendario
+      saveGamificationData(usuario, data);
+      return data.streaks.current;
+    }
+
+    // Consecutividad: incrementa solo si ayer también fue válido
+    const yesterdayValid = !!data.streaks.calendar[yesterday];
+    if (yesterdayValid) {
+      data.streaks.current++;
+    } else if (data.streaks.lastActivity !== today) {
+      data.streaks.current = 1;
+    }
+
+    // Record: conservar y actualizar si se supera
+    if (data.streaks.current > data.streaks.best) {
+      data.streaks.best = data.streaks.current;
+    }
+
+    data.streaks.lastActivity = today;
+    data.streaks.calendar[today] = true; // solo marcamos días válidos
+
+    saveGamificationData(usuario, data);
+    return data.streaks.current;
+  }
+
+  (function migrateLegacyGamification(){
+    try {
+      const keys = Object.keys(localStorage);
+      const allStr = localStorage.getItem('gamificationData') || '{}';
+      const all = JSON.parse(allStr);
+      keys.forEach(k => {
+        if (k.startsWith('gamificationData_')) {
+          const user = k.replace('gamificationData_','').toLowerCase();
+          const d = JSON.parse(localStorage.getItem(k) || '{}');
+          if (d && Object.keys(d).length) {
+            all[user] = d;
+            localStorage.removeItem(k);
+          }
+        }
+      });
+      localStorage.setItem('gamificationData', JSON.stringify(all));
+    } catch (_){}
+  })();
+  function calculateUserStats(usuario) {
+    const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+    const vipUsers = JSON.parse(localStorage.getItem('vipUsers') || '[]');
+    
+    const userSongs = solicitudes.filter(s => s.usuario === usuario);
+    const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
+    const uniqueDays = [...new Set(userSongs.map(s => s.fecha?.split('T')[0]))].length;
+    const isVip = vipUsers.includes(usuario);
+
+    return {
+      totalSongs: userSongs.length,
+      uniqueArtists,
+      activeDays: uniqueDays,
+      isVip
+    };
+  }
+
+  function processNewSongRequest(usuario) {
+    const streakDays = updateStreak(usuario);
+    let points = POINTS_CONFIG.SONG_REQUEST;
+    
+    // Bonus por racha
+    if (streakDays > 1) {
+      points += POINTS_CONFIG.STREAK_MULTIPLIER * Math.min(streakDays - 1, 10);
+    }
+    
+    // Bonus VIP
+    const vipUsers = JSON.parse(localStorage.getItem('vipUsers') || '[]');
+    if (vipUsers.includes(usuario)) {
+      points += POINTS_CONFIG.VIP_BONUS;
+    }
+    
+    const data = addPoints(usuario, points);
+    
+    // Actualizar estadísticas
+    const stats = calculateUserStats(usuario);
+    data.stats = { ...data.stats, ...stats };
+    saveGamificationData(usuario, data);
+    
+    // Mostrar notificación de puntos ganados
+    showPointsNotification(points, streakDays);
+  }
+
+  function showPointsNotification(points, streak) {
+    // Crear notificación temporal
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+      color: white;
+      padding: 16px 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+      animation: slideInRight 0.3s ease;
+      max-width: 300px;
+      font-family: 'Avenir', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+    
+    let message = `+${points} puntos ganados! 🎵`;
+    if (streak > 1) {
+      message += `<br><small>Racha de ${streak} días! 🔥</small>`;
+    }
+    
+    notification.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="font-size: 24px;">🏆</div>
+        <div style="font-size: 14px; line-height: 1.3;">${message}</div>
+      </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+      notification.remove();
+    }, 3000);
+  }
+
+  // Agregar estilos para la animación
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+
+  // Ejemplo: cuando envías la solicitud, asegúrate de usar serverTimestamp() del SDK compat
+  // await db.collection('solicitudes').add({
+  //   usuario, cancion, artista, day,
+  //   ts: firebase.firestore.FieldValue.serverTimestamp(),
+  // });
+  (function hydrateCurrentUserPoints(){
+    try {
+      const current = String(localStorage.getItem('currentUser') || '').trim().replace(/^@/, '').toLowerCase();
+      if (!current) return;
+      const db = firebase.firestore();
+      db.collection('userStats').doc(current).get().then((doc) => {
+        if (!doc || !doc.exists) return;
+        const allStr = localStorage.getItem('gamificationData') || '{}';
+        const all = JSON.parse(allStr);
+        const d = all[current] || {
+          points: 0,
+          level: 1,
+          xp: 0,
+          achievements: [],
+          streaks: { current: 0, best: 0, lastActivity: null, calendar: {} },
+          stats: { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false }
+        };
+        const data = doc.data() || {};
+        if (typeof data.totalPoints === 'number') d.points = data.totalPoints;
+        if (typeof data.currentStreak === 'number') d.streaks.current = data.currentStreak;
+        if (typeof data.bestStreak === 'number') d.streaks.best = data.bestStreak;
+        if (typeof data.lastActivity === 'string') d.streaks.lastActivity = data.lastActivity;
+        all[current] = d;
+        localStorage.setItem('gamificationData', JSON.stringify(all));
+        try { if (typeof updatePointsIndicator === 'function') updatePointsIndicator(); } catch (_){}
+      }).catch(() => {});
+    } catch (_){}
+  })();
+  window.debugUserPoints = async function(usuario){
+    try {
+      const u = String(usuario||'').toLowerCase();
+      const db = firebase.firestore();
+      const doc = await db.collection('userStats').doc(u).get();
+      const cloud = doc.exists ? doc.data() : null;
+      const local = (JSON.parse(localStorage.getItem('gamificationData')||'{}')[u])||null;
+      return { usuario: u, cloud, local };
+    } catch (e) {
+      return { error: String(e&&e.message||e) };
+    }
+  };
+
