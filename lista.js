@@ -10897,6 +10897,35 @@ function shouldShowStatsTicker() {
         }, { merge: true });
       }
 
+      // Flags de control de flujo para el recálculo
+      window.__RECALC_PAUSED__ = false;
+      window.__RECALC_STOPPED__ = false;
+
+      (function attachRecalcControls() {
+        const pauseBtn = document.getElementById('recalc-pause');
+        const stopBtn = document.getElementById('recalc-stop');
+        if (pauseBtn) {
+          pauseBtn.addEventListener('click', () => {
+            window.__RECALC_PAUSED__ = !window.__RECALC_PAUSED__;
+            pauseBtn.textContent = window.__RECALC_PAUSED__ ? '▶️' : '⏸️';
+            pauseBtn.style.background = window.__RECALC_PAUSED__ ? 'rgba(16, 185, 129, 0.2)' : '';
+            const statusBadge = document.getElementById('recalc-status-badge');
+            if (statusBadge) {
+              statusBadge.textContent = window.__RECALC_PAUSED__ ? 'PAUSADO' : 'PROCESANDO';
+              statusBadge.style.color = window.__RECALC_PAUSED__ ? '#f59e0b' : '#22d3ee';
+            }
+          });
+        }
+        if (stopBtn) {
+          stopBtn.addEventListener('click', () => {
+            if (confirm('¿Detener el recálculo masivo ahora?')) {
+              window.__RECALC_STOPPED__ = true;
+              window.__RECALC_PAUSED__ = false;
+            }
+          });
+        }
+      })();
+
       window.runFullAdminPointsRebuild = async function () {
         if (window.__ADMIN_POINTS_REBUILD_RUNNING__) {
           console.warn('⚠️ Ya hay un recálculo masivo en curso.');
@@ -10906,19 +10935,38 @@ function shouldShowStatsTicker() {
         
         const reportBox = document.getElementById('recalc-report-box');
         const reportText = document.getElementById('recalc-report-text');
+        const progressBar = document.getElementById('recalc-progress-bar');
+        const totalUsersVal = document.getElementById('recalc-total-users');
+        const processedUsersVal = document.getElementById('recalc-processed-users');
+        const correctedUsersVal = document.getElementById('recalc-corrected-users');
+        const currentUserVal = document.getElementById('recalc-current-user');
+        const statusBadge = document.getElementById('recalc-status-badge');
+        const singleUserInput = document.getElementById('recalc-single-user');
+        const targetUser = singleUserInput ? String(singleUserInput.value || '').trim() : '';
         
-        if (reportBox && reportText) {
+        if (reportBox) {
           reportBox.hidden = false;
-          reportText.textContent = 'Iniciando recálculo masivo...';
-          reportText.style.color = 'var(--text-main)';
+          if (statusBadge) {
+            statusBadge.textContent = 'PROCESANDO';
+            statusBadge.style.background = 'rgba(34, 211, 238, 0.2)';
+            statusBadge.style.color = '#22d3ee';
+          }
+          if (progressBar) progressBar.style.width = '0%';
         }
 
         console.log('🔧 INICIANDO RECÁLCULO MASIVO COMPLETO DE PUNTOS...');
 
         try {
-          const allUsers = await collectUsersForAdminRebuild();
+          let allUsers = [];
+          if (targetUser) {
+            allUsers = [targetUser];
+          } else {
+            allUsers = await collectUsersForAdminRebuild();
+          }
           const totalUsers = allUsers.length;
-          console.log(`📊 Recalculando puntos completos para ${totalUsers} usuarios...`);
+          if (totalUsersVal) totalUsersVal.textContent = totalUsers;
+          
+          console.log(`📊 Recalculando puntos para ${totalUsers} usuarios...`);
 
           let correctedCount = 0;
           let processed = 0;
@@ -10926,12 +10974,23 @@ function shouldShowStatsTicker() {
           const deltas = [];
 
           for (const username of allUsers) {
+            if (window.__RECALC_STOPPED__) break;
+            while (window.__RECALC_PAUSED__) {
+              await new Promise(r => setTimeout(r, 500));
+              if (window.__RECALC_STOPPED__) break;
+            }
+            if (window.__RECALC_STOPPED__) break;
+
             try {
               processed++;
               
-              // Actualizar progreso en el reporte
-              if (reportText) {
-                reportText.textContent = `Procesando: ${processed} / ${totalUsers}\nUsuario actual: ${username}\nCorregidos: ${correctedCount}`;
+              // Actualizar UI de Escaneo
+              if (processedUsersVal) processedUsersVal.textContent = processed;
+              if (correctedUsersVal) correctedUsersVal.textContent = correctedCount;
+              if (currentUserVal) currentUserVal.textContent = username;
+              if (progressBar) {
+                const percent = (processed / totalUsers) * 100;
+                progressBar.style.width = `${percent}%`;
               }
 
               console.log(`🔄 [${processed}/${totalUsers}] Recalculando ${username}...`);
@@ -10961,10 +11020,11 @@ function shouldShowStatsTicker() {
             .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
             .slice(0, 5);
             
+          const isStopped = window.__RECALC_STOPPED__;
           const reportLines = [
-            `✅ RECÁLCULO FINALIZADO`,
+            isStopped ? `⏹️ RECÁLCULO DETENIDO` : `✅ RECÁLCULO FINALIZADO`,
             `------------------------`,
-            `Total usuarios: ${totalUsers}`,
+            `Procesados: ${processed} de ${totalUsers}`,
             `Ajustados: ${correctedCount}`,
             `Errores: ${errorCount}`,
             ''
@@ -10980,12 +11040,15 @@ function shouldShowStatsTicker() {
           
           const reportTextValue = reportLines.join('\n');
 
-          console.log(`🎉 RECÁLCULO COMPLETO FINALIZADO: ${correctedCount} ajustados de ${totalUsers}`);
-          showSuccessNotification(`Recálculo completado: ${correctedCount} ajustes.`);
+          if (statusBadge) {
+            statusBadge.textContent = isStopped ? 'DETENIDO' : 'FINALIZADO';
+            statusBadge.style.background = isStopped ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)';
+            statusBadge.style.color = isStopped ? '#ef4444' : '#10b981';
+          }
           
           if (reportText) {
+            reportText.hidden = false;
             reportText.textContent = reportTextValue;
-            reportText.style.color = '#10b981'; // Verde éxito
           }
 
           try {
@@ -10996,9 +11059,10 @@ function shouldShowStatsTicker() {
           return { total: totalUsers, corrected: correctedCount, errors: errorCount, deltas };
         } catch (error) {
           console.error('Error en recálculo masivo completo:', error);
-          if (reportText) {
-            reportText.textContent = '❌ ERROR: ' + error.message;
-            reportText.style.color = '#ef4444';
+          if (statusBadge) {
+            statusBadge.textContent = 'ERROR';
+            statusBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+            statusBadge.style.color = '#ef4444';
           }
           showErrorNotification('Error durante el recálculo completo de puntos.');
           throw error;
