@@ -14707,6 +14707,15 @@ function shouldShowStatsTicker() {
         try {
           console.log("📊 Calculando estadísticas globales maestras...");
 
+          // Función auxiliar de normalización y filtrado
+          const isInvalid = (val) => {
+            if (!val) return true;
+            const str = String(val).trim().toLowerCase();
+            if (str.includes('http://') || str.includes('https://') || str.includes('www.') || str.includes('youtu.be')) return true;
+            if (str.length > 100 || str.length <= 1) return true;
+            return ['n/d', 'undefined', 'null', 'unknown', 'various'].includes(str);
+          };
+
           // NUEVO: Leer historial de canciones reproducidas (HISTORIA REAL)
           // Y las solicitudes para enriquecer con metadata (género, etc.)
           const [playedSnapshot, solicitudesSnapshot, systemEventsSnapshot] = await Promise.all([
@@ -14719,36 +14728,36 @@ function shouldShowStatsTicker() {
 
           // 1. Construir Mapa de Metadatos Maestro (Fusión de fuentes)
           const masterMetaMap = {};
+          const artistToGenre = {}; // Mapa para inferir géneros
           
-          // Fuente A: Solicitudes actuales
-          solicitudesSnapshot.forEach(doc => {
-            const d = doc.data() || {};
-            const sId = String(d.id || doc.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
-            if (sId && d.artista && d.cancion) {
+          const fillMaps = (d, sId) => {
+            if (!sId) return;
+            const aRaw = String(d.artista || '').trim();
+            const gRaw = String(d.genre || d.genero || '').trim();
+            const a = aRaw.toLowerCase();
+            
+            if (!isInvalid(gRaw) && !artistToGenre[a]) {
+              artistToGenre[a] = gRaw;
+            }
+
+            if (d.artista && d.cancion) {
               masterMetaMap[sId] = {
-                artista: String(d.artista).trim(),
+                artista: aRaw,
                 cancion: String(d.cancion).trim(),
                 usuario: String(d.usuario || d.displayName || '').trim(),
-                genre: String(d.genre || d.genero || '').trim()
+                genre: gRaw
               };
             }
-          });
+          };
+
+          // Fuente A: Solicitudes actuales
+          solicitudesSnapshot.forEach(doc => fillMaps(doc.data() || {}, String(doc.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase()));
 
           // Fuente B: Historial de Eventos (Recuperar metadata de canciones ya borradas)
-          systemEventsSnapshot.forEach(doc => {
-            const d = doc.data() || {};
-            const sId = String(d.songId || d.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
-            if (sId && d.artista && d.cancion && !masterMetaMap[sId]) {
-              masterMetaMap[sId] = {
-                artista: String(d.artista).trim(),
-                cancion: String(d.cancion).trim(),
-                usuario: String(d.usuario || d.displayName || '').trim(),
-                genre: String(d.genre || d.genero || '').trim()
-              };
-            }
-          });
+          systemEventsSnapshot.forEach(doc => fillMaps(doc.data() || {}, String(doc.data()?.songId || doc.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase()));
 
           console.log(`🧠 Mapa de metadatos consolidado: ${Object.keys(masterMetaMap).length} canciones identificadas.`);
+          console.log(`🏷️ Diccionario de géneros por artista: ${Object.keys(artistToGenre).length} géneros mapeados.`);
 
           let totalRequests = 0;
           const artistCount = {};
@@ -14759,15 +14768,6 @@ function shouldShowStatsTicker() {
           const userOriginal = {};
           const processedIds = new Set(); // Para evitar doble conteo
 
-          // Función auxiliar de normalización y filtrado
-          const isInvalid = (val) => {
-            if (!val) return true;
-            const str = String(val).trim().toLowerCase();
-            if (str.includes('http://') || str.includes('https://') || str.includes('www.') || str.includes('youtu.be')) return true;
-            if (str.length > 100 || str.length <= 1) return true;
-            return ['n/d', 'undefined', 'null', 'unknown', 'various'].includes(str);
-          };
-
           const processItem = (sId, meta) => {
             if (!sId || processedIds.has(sId)) return;
             processedIds.add(sId);
@@ -14776,11 +14776,18 @@ function shouldShowStatsTicker() {
             const aRaw = meta.artista || '';
             const sRaw = meta.cancion || '';
             const uRaw = meta.usuario || '';
-            const gRaw = meta.genre || '';
+            let gRaw = meta.genre || '';
 
             const a = aRaw.trim().toLowerCase();
             const s = sRaw.trim().toLowerCase();
             const u = normalizeUserKey(uRaw);
+
+            // Inferencia de género: si no tiene, buscamos si ya conocemos el género de este artista
+            if (!isInvalid(gRaw)) {
+              if (!artistToGenre[a]) artistToGenre[a] = gRaw.trim();
+            } else if (artistToGenre[a]) {
+              gRaw = artistToGenre[a];
+            }
             const g = gRaw.trim().toLowerCase();
 
             if (!isInvalid(a)) {
@@ -14926,7 +14933,8 @@ function shouldShowStatsTicker() {
               }
             }
             if (maxGk) {
-              topGenreName = maxGk;
+              // Capitalizar la primera letra de cada palabra para una presentación premium
+              topGenreName = maxGk.replace(/\b\w/g, l => l.toUpperCase());
               topGenreCountVal = maxG;
             }
 
