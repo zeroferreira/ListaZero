@@ -610,53 +610,48 @@
       }
 
       // INTELIGENCIA: Autocompletar desde Link
+      async function extractMetadata(url) {
+        if (!url) return null;
+        try {
+          console.log('🔍 Intentando extraer metadatos del link:', url);
+          const resp = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
+          const data = await resp.json();
+          if (data.title) {
+            let title = data.title;
+            let artist = data.author_name || '';
+            if (title.includes(' - ')) {
+              const parts = title.split(' - ');
+              if (artist && parts[0].toLowerCase().includes(artist.toLowerCase().split(' ')[0])) {
+                artist = parts[0].trim();
+                title = parts[1].trim();
+              } else {
+                artist = parts[0].trim();
+                title = parts[1].trim();
+              }
+            }
+            title = title.replace(/\(Official Video\)/gi, '')
+                         .replace(/\[Official Video\]/gi, '')
+                         .replace(/\(Official Audio\)/gi, '')
+                         .replace(/\(Video Oficial\)/gi, '')
+                         .replace(/\(Lyric Video\)/gi, '')
+                         .trim();
+            return { title, artist };
+          }
+        } catch (e) {
+          console.warn('No se pudieron obtener metadatos del link:', e);
+        }
+        return null;
+      }
+
       const linkInput = document.getElementById('link');
       if (linkInput) {
         linkInput.addEventListener('blur', async () => {
-          const url = linkInput.value.trim();
-          if (!url) return;
-
-          try {
-            console.log('🔍 Intentando extraer metadatos del link...');
-            // Usar noembed (servicio gratuito sin CORS para YouTube/Spotify/etc)
-            const resp = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
-            const data = await resp.json();
-            
-            if (data.title) {
-              const cancionEl = document.getElementById('cancion');
-              const artistaEl = document.getElementById('artista');
-              
-              // Intentar separar Título - Artista (patrón común)
-              let title = data.title;
-              let artist = data.author_name || '';
-              
-              if (title.includes(' - ')) {
-                const parts = title.split(' - ');
-                // A veces es Artista - Título o Título - Artista
-                // Probamos heurística: si el autor del canal está en la primera parte, es Artista - Título
-                if (artist && parts[0].toLowerCase().includes(artist.toLowerCase().split(' ')[0])) {
-                  artist = parts[0].trim();
-                  title = parts[1].trim();
-                } else {
-                   // Por defecto asumimos Artista - Título si hay guion
-                   artist = parts[0].trim();
-                   title = parts[1].trim();
-                }
-              }
-
-              // Quitar coletillas de YouTube
-              title = title.replace(/\(Official Video\)/gi, '')
-                           .replace(/\[Official Video\]/gi, '')
-                           .replace(/\(Official Audio\)/gi, '')
-                           .replace(/\(Video Oficial\)/gi, '')
-                           .replace(/\(Lyric Video\)/gi, '')
-                           .trim();
-
-              if (cancionEl && !cancionEl.value) cancionEl.value = title;
-              if (artistaEl && !artistaEl.value) artistaEl.value = artist;
-            }
-          } catch (e) {
-            console.warn('No se pudieron obtener metadatos del link:', e);
+          const meta = await extractMetadata(linkInput.value.trim());
+          if (meta) {
+            const cancionEl = document.getElementById('cancion');
+            const artistaEl = document.getElementById('artista');
+            if (cancionEl && !cancionEl.value) cancionEl.value = meta.title;
+            if (artistaEl && !artistaEl.value) artistaEl.value = meta.artist;
           }
         });
       }
@@ -692,15 +687,27 @@
           const artista = (artistaEl.value || '').trim();
           const link = (linkEl.value || '').trim();
 
+          // Si no hay cancion/artista pero hay link, intentar extraer antes de validar
+          let finalCancion = cancion;
+          let finalArtista = artista;
+
+          if (link && (!finalCancion || !finalArtista)) {
+             const meta = await extractMetadata(link);
+             if (meta) {
+               if (!finalCancion) finalCancion = meta.title;
+               if (!finalArtista) finalArtista = meta.artist;
+             }
+          }
+
           // Nueva validación: Link puede sustituir cancion/artista si se provee
-          if (!usuario || (!link && (!cancion || !artista))) {
+          if (!usuario || (!link && (!finalCancion || !finalArtista))) {
             alert('Por favor completa tu Usuario y al menos la Canción/Artista o un Link de referencia.');
             return;
           }
 
-          // Si no hay cancion/artista pero hay link, poner valores temporales
-          const finalCancion = cancion || (link ? "Enlace Externo" : "");
-          const finalArtista = artista || (link ? "Ver Link" : "");
+          // Si aún no hay datos, poner valores temporales
+          if (!finalCancion) finalCancion = (link ? "Enlace Externo" : "");
+          if (!finalArtista) finalArtista = (link ? "Ver Link" : "");
 
           const ts = Date.now();
           const dayKey = getLocalDateKey(ts);

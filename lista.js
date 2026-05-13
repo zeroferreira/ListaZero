@@ -40,7 +40,7 @@
               }
               if (!d) { setDayState({ items: [], day: d }); return; }
               var q = window.db.collection('solicitudes').where('day', '==', d).orderBy('ts', 'desc');
-              ref.current = q.onSnapshot(function (snap) { var items = []; snap.forEach(function (doc) { var x = doc.data() || {}; if (String(x.usuario || '').trim().toLowerCase() === 'prueba') return; items.push({ usuario: x.usuario, cancion: x.cancion, artista: x.artista, day: d }); }); setDayState({ items: items, day: d }); });
+              ref.current = q.onSnapshot(function (snap) { var items = []; snap.forEach(function (doc) { var x = doc.data() || {}; if (String(x.usuario || '').trim().toLowerCase() === 'prueba') return; items.push({ usuario: x.usuario, cancion: x.cancion, artista: x.artista, link: x.link || '', day: d }); }); setDayState({ items: items, day: d }); });
             }
             resub();
             var el = document.getElementById('day-select');
