@@ -864,6 +864,7 @@ const firebaseConfig = {
       });
 
       rouletteParticipants = merged;
+      liveSpinEntriesOverride = null; // Important: Clear override when participants change
       renderParticipantsList();
       drawWheel();
     }
@@ -987,6 +988,7 @@ const firebaseConfig = {
         excludedParticipants.clear();
         extraDuplicateCounts.clear();
         updateParticipants();
+        liveSpinEntriesOverride = null;
         resetWinner();
       }
     }
@@ -1241,15 +1243,14 @@ const firebaseConfig = {
         if (progress < 1) {
           requestAnimationFrame(animate);
         } else {
-          isSpinning = false;
-          wrapper.classList.remove('spinning');
-          
           // Final bounce animation for the wheel
           wrapper.style.transform = 'scale(1) rotateX(0deg) rotate(5deg)';
           setTimeout(() => {
             wrapper.style.transform = 'scale(1) rotateX(0deg) rotate(-3deg)';
             setTimeout(() => {
               wrapper.style.transform = 'scale(1) rotateX(0deg) rotate(0deg)';
+              wrapper.classList.remove('spinning');
+              isSpinning = false;
               determineWinner({
                 entries,
                 spinId: spinPayload.spinId,
@@ -1276,12 +1277,13 @@ const firebaseConfig = {
       if (angleOnWheel < 0) angleOnWheel += 2 * Math.PI;
       
       const arc = (2 * Math.PI) / count;
-      const index = Math.floor(angleOnWheel / arc);
+      const index = Math.floor(angleOnWheel / arc) % count;
       const winner = entries[index];
 
       if (winner === ROULETTE_SPIN_AGAIN_LABEL) {
+        showSpinAgainFeedback();
         if (options.autoFollowSpinAgain !== false) {
-          setTimeout(() => spinWheel(), 1000);
+          setTimeout(() => spinWheel(), 1200);
         }
         return;
       }
@@ -1513,6 +1515,29 @@ const firebaseConfig = {
       }
     `;
     document.head.appendChild(style);
+    function showSpinAgainFeedback() {
+      playSound('tick');
+      const title = document.getElementById('winner-title');
+      const photo = document.getElementById('winner-photo');
+      const nameEl = document.getElementById('winner-name');
+      
+      const oldTitle = title.innerText;
+      title.innerText = '🎡 ¡GIRA DE NUEVO!';
+      title.style.color = 'var(--roulette-accent-color)';
+      nameEl.innerText = 'Vuelve a tirar...';
+      photo.style.display = 'none';
+      
+      winnerOverlay.classList.add('show');
+      
+      setTimeout(() => {
+        winnerOverlay.classList.remove('show');
+        setTimeout(() => {
+          title.innerText = oldTitle;
+          title.style.color = '';
+          photo.style.display = '';
+        }, 600);
+      }, 1000);
+    }
 
     function resetWinner(options = {}) {
       winnerOverlay.classList.remove('show');

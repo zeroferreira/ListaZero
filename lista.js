@@ -1,4 +1,3 @@
-// Sincronización global de temas entre pestañas/ventanas
     window.addEventListener('focus', function () {
       // Cuando la ventana recibe foco, verificar si hay cambios de tema
       if (typeof window.applyTheme === 'function') {
@@ -8,6 +7,36 @@
         window.updateActiveStates();
       }
     });
+
+    // Función global de validación y filtrado (Bots, Chino, Pruebas, Usuarios Genéricos)
+    window.isInvalid = (val) => {
+      if (!val) return true;
+      const str = String(val).trim();
+      const lower = str.toLowerCase();
+      
+      // FILTRO DE BOTS/CHINO: Omitir si contiene caracteres chinos (ataque de bots)
+      if (/[\u4E00-\u9FFF]/.test(str)) return true;
+      
+      // FILTRO DE PRUEBAS: Omitir si contiene palabras clave de prueba o patrones genéricos
+      const botPatterns = [
+        /^usuario\s*test/i,
+        /^invitado\d*/i,
+        /^moderador(_top)?/i,
+        /^fannumero\d+/i,
+        /^test\s*song/i,
+        /^canción\s*de\s*prueba/i,
+        /^user\d+/i,
+        /^prueba\d*/i,
+        /^test\d*/i
+      ];
+
+      if (botPatterns.some(regex => regex.test(lower))) return true;
+      if (lower === 'prueba' || lower === 'test') return true;
+
+      if (lower.includes('http://') || lower.includes('https://') || lower.includes('www.') || lower.includes('youtu.be')) return true;
+      if (str.length > 100 || str.length <= 1) return true;
+      return ['n/d', 'undefined', 'null', 'unknown', 'various', 'various artists', 'anónimo', 'anonymous'].includes(lower);
+    };
 
 (function(){
       var target = document.getElementById('react-modern-widget');
@@ -1711,6 +1740,18 @@
           console.error('❌ solicitudesList no encontrado');
           return;
         }
+
+        // FILTRO DE SEGURIDAD: Omitir canciones o usuarios inválidos/bots antes de renderizar
+        const originalCount = items.length;
+        items = items.filter(it => 
+          !window.isInvalid(it.cancion) && 
+          !window.isInvalid(it.artista) && 
+          !window.isInvalid(it.usuario)
+        );
+        if (items.length !== originalCount) {
+          console.log(`🛡️ Filtradas ${originalCount - items.length} entradas inválidas (bots/pruebas)`);
+        }
+
         solicitudesList.innerHTML = '';
         if (!items.length) {
           emptyEl.hidden = false;
@@ -5968,11 +6009,20 @@ function shouldShowStatsTicker() {
 
           const data = statsDoc.data() || {};
           
+          // Si faltan los nuevos campos (migración), forzamos un recálculo rápido
+          if (data.distinctArtists === undefined || data.totalTodayRequests === undefined) {
+            if (typeof calculateAndSaveGlobalStats === 'function') {
+              console.log("⚠️ Faltan campos de estadísticas (migración), recalculando...");
+              await calculateAndSaveGlobalStats();
+              return calculateStats(); 
+            }
+          }
+
           // Actualizar UI con la fuente de verdad consolidada
           document.getElementById('total-songs').textContent = data.totalRequests || 0;
           document.getElementById('total-users').textContent = data.distinctUsers || 0;
-          document.getElementById('total-artists').textContent = data.topArtistsFull?.length || 0;
-          document.getElementById('today-songs').textContent = data.totalRequests || 0; // Podríamos mejorar esto con un contador diario
+          document.getElementById('total-artists').textContent = data.distinctArtists || 0;
+          document.getElementById('today-songs').textContent = data.totalTodayRequests || 0;
           document.getElementById('top-genre-name').textContent = data.topGenre || 'N/D';
 
           // Renderizar listas desde los campos 'Full'
@@ -9225,17 +9275,21 @@ function shouldShowStatsTicker() {
       }
       // NUEVA función unificada para contar canciones toggleadas (Reproducidas)
       // Esta función se declara aquí para estar disponible tanto para computeUserBreakdown como para renderPersonalStatsForUser
-      async function getGlobalPlayedSongsSetForUser(usuario) {
+      async function getGlobalPlayedSongsSetForUser(usuario, optionalFused) {
         try {
           const uNorm = String(usuario || '').trim().toLowerCase().replace(/^@/, '');
-          let fused = getFusedIds(uNorm);
-          try {
-            const stats = getGamificationDataForUser(uNorm);
-            if (stats && stats.tiktokId) {
-              const tid = stats.tiktokId.replace(/^@/, '').toLowerCase();
-              if (!fused.includes(tid)) fused.push(tid);
-            }
-          } catch (_) { }
+          let fused = optionalFused || getFusedIds(uNorm);
+          
+          if (!optionalFused) {
+            try {
+              const stats = getGamificationDataForUser(uNorm);
+              if (stats && stats.tiktokId) {
+                const tid = stats.tiktokId.replace(/^@/, '').toLowerCase();
+                if (!fused.includes(tid)) fused.push(tid);
+              }
+            } catch (_) { }
+          }
+
           if (!fused || !fused.length) fused = [uNorm];
           const sanitize = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
           const prefixes = fused.map(f => sanitize(`${f.replace(/^@/, '')}-`));
@@ -9253,7 +9307,14 @@ function shouldShowStatsTicker() {
                 if (parts.length >= 2) {
                   parts.pop();
                   const usernameInId = parts.join('-');
-                  if (fused.some(f => sanitize(f) === usernameInId)) ids.add(id);
+                  // COHERENCIA: Normalizar reemplazando espacios por guiones
+                  const norm = (s) => sanitize(s).replace(/\s+/g, '-');
+                  if (fused.some(f => norm(f) === usernameInId || sanitize(f) === usernameInId)) {
+                    // FILTRO DE SEGURIDAD: Omitir si el ID de la canción indica bot o test
+                    if (!window.isInvalid(usernameInId) && !window.isInvalid(id)) {
+                      ids.add(id);
+                    }
+                  }
                 }
               });
             });
@@ -9296,26 +9357,47 @@ function shouldShowStatsTicker() {
         } catch (e) { console.error(e); return new Set(); }
       }
 
-      async function countTotalToggledSongsForUser(usuario) {
-        const ids = await getGlobalPlayedSongsSetForUser(usuario);
+      async function countTotalToggledSongsForUser(usuario, optionalFused) {
+        const ids = await getGlobalPlayedSongsSetForUser(usuario, optionalFused);
         return ids.size;
       }
 
       const TOP1_BONUS_START_DATE = '2025-12-19';
 
       function getFusedIds(u) {
-        const k = String(u || '').trim().replace(/^@/, '').toLowerCase();
+        const startRaw = String(u || '').trim().replace(/^@/, '');
+        // Normalización para búsqueda de ALIAS (minúsculas y sin @)
+        const start = startRaw.toLowerCase();
         const map = window.userAliasesMap || {};
-        // El canonical es el destino del alias o el ID mismo si no tiene alias
-        let canonical = map[k] || k;
-        const ids = new Set([canonical]);
-        // Buscar todos los que apuntan a ese canonical
-        for (const [alias, target] of Object.entries(map)) {
-          if (target === canonical) {
-            ids.add(alias);
+        const visited = new Set();
+        const queue = [start];
+        const results = new Set();
+        // Preservar formato original para el Set final (importante para IDs de documentos)
+        results.add(startRaw);
+
+        let depth = 0;
+        while (queue.length > 0 && depth < 20) {
+          const current = queue.shift();
+          const normCurrent = current.toLowerCase();
+          if (visited.has(normCurrent)) continue;
+          visited.add(normCurrent);
+          results.add(current);
+
+          if (map[normCurrent]) {
+            const target = map[normCurrent].replace(/^@/, '');
+            if (!visited.has(target.toLowerCase())) queue.push(target);
           }
+
+          for (const [alias, target] of Object.entries(map)) {
+            const normAlias = alias.replace(/^@/, '').toLowerCase();
+            const normTarget = target.replace(/^@/, '').toLowerCase();
+            if (normTarget === normCurrent && !visited.has(normAlias)) {
+              queue.push(alias.replace(/^@/, ''));
+            }
+          }
+          depth++;
         }
-        return Array.from(ids);
+        return Array.from(results);
       }
 
       async function computeUserBreakdown(u, options = {}) {
@@ -9432,7 +9514,8 @@ function shouldShowStatsTicker() {
 
         let playedCount = 0;
         try {
-          playedCount = await countTotalToggledSongsForUser(usuario);
+          // COHERENCIA: Pasar los IDs fusionados que ya descubrimos arriba para un conteo exacto
+          playedCount = await countTotalToggledSongsForUser(usuario, fusedIds);
         } catch (e) { console.error('Error counting played from toggles:', e); }
 
         let activeDaysValid = 0;
@@ -9649,45 +9732,72 @@ function shouldShowStatsTicker() {
               };
             }
           } catch (_) { }
-          try {
-            const achDoc = await db.collection('userAchievements').doc(uid).get();
-            if (achDoc.exists) {
-              const a = achDoc.data() || {};
-              const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
-              (ids || []).forEach(id => idSet.add(String(id)));
-            }
-          } catch (_) { }
-          try {
-            const bestStats = await fetchBestUserStatsDoc(uid);
-            if (bestStats && bestStats.data) {
-              const sdata = bestStats.data || {};
-              const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
-              (statAch || []).forEach(id => idSet.add(String(id)));
-            }
-          } catch (_) { }
+          // AGREGACIÓN DE LOGROS: Iterar por todos los IDs vinculados
+          for (const fid of fusedIds) {
+            const currentUid = norm(fid);
+            try {
+              const achDoc = await db.collection('userAchievements').doc(currentUid).get();
+              if (achDoc.exists) {
+                const a = achDoc.data() || {};
+                const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
+                (ids || []).forEach(id => idSet.add(String(id)));
+              }
+            } catch (_) { }
+            try {
+              const bestStats = await fetchBestUserStatsDoc(currentUid);
+              if (bestStats && bestStats.data) {
+                const sdata = bestStats.data || {};
+                const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
+                (statAch || []).forEach(id => idSet.add(String(id)));
+              }
+            } catch (_) { }
+          }
+          
           try {
             const localData = getLocalGamificationData(usuario) || {};
             const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
             (localAch || []).forEach(id => idSet.add(String(id)));
           } catch (_) { }
+
           achievements = Array.from(idSet).reduce((sum, id) => {
             const found = ACHIEVEMENTS && ACHIEVEMENTS.find ? ACHIEVEMENTS.find(x => x.id === id) : null;
             return sum + (found && typeof found.points === 'number' ? found.points : 0);
           }, 0);
-          // Ensure achievements is never negative
           achievements = Math.max(0, achievements);
         } catch (_) { }
         let cloudTotal = 0;
         let bestStreakVal = 0;
         let lastManualAdjustment = null;
+        let manualBonus = 0;
         let statsDoc = {};
+
         try {
-          const bestStats = await fetchBestUserStatsDoc(usuario);
-          statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
-          cloudTotal = Number((statsDoc.totalPoints || 0));
-          if (typeof statsDoc.bestStreak === 'number') bestStreakVal = statsDoc.bestStreak;
-          if (statsDoc.lastManualAdjustment) lastManualAdjustment = statsDoc.lastManualAdjustment;
+          // AGREGACIÓN DE RACHAS Y AJUSTES: Iterar por todos los IDs vinculados
+          for (const fid of fusedIds) {
+            try {
+              const bestStats = await fetchBestUserStatsDoc(fid);
+              const sDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
+              
+              // Quedarnos con el total acumulado mayor de la nube por si acaso
+              cloudTotal = Math.max(cloudTotal, Number(sDoc.totalPoints || 0));
+              
+              // Quedarnos con la MEJOR racha de cualquiera de las cuentas
+              if (typeof sDoc.bestStreak === 'number') {
+                bestStreakVal = Math.max(bestStreakVal, sDoc.bestStreak);
+              }
+
+              // Sumar TODOS los ajustes manuales históricos de todas las cuentas
+              if (typeof sDoc.totalManualAdjustment === 'number') {
+                manualBonus += sDoc.totalManualAdjustment;
+              } else if (sDoc.lastManualAdjustment && typeof sDoc.lastManualAdjustment.amount === 'number') {
+                manualBonus += sDoc.lastManualAdjustment.amount;
+              }
+
+              if (!statsDoc.totalPoints) statsDoc = sDoc; // Guardar referencia para otros campos
+            } catch (_) { }
+          }
         } catch (_) { }
+
         // Fallback a localData para bestStreak si no se encontró en nube
         try {
           if (!bestStreakVal) {
@@ -9708,14 +9818,7 @@ function shouldShowStatsTicker() {
           }
         } catch (_) { streakBonus = 0; }
         const top1Bonus = top1Count * 150;
-        // Calcular manual bonus (Suma acumulada histórica)
-        let manualBonus = 0;
-        if (typeof statsDoc.totalManualAdjustment === 'number') {
-          manualBonus = statsDoc.totalManualAdjustment;
-        } else if (lastManualAdjustment && typeof lastManualAdjustment.amount === 'number') {
-          // Fallback para cuentas antiguas: usar el último registrado
-          manualBonus = lastManualAdjustment.amount;
-        }
+        // manualBonus ya fue calculado arriba iterando fusedIds
 
         let redemptionsSpent = 0;
         let redemptions = [];
@@ -9930,7 +10033,8 @@ function shouldShowStatsTicker() {
         let bd;
         // Render rápido con conteo consistente (unión de fuentes)
         try {
-          const quickTotalPlayed = await countTotalToggledSongsForUser(u);
+          const fused = typeof getFusedIds === 'function' ? getFusedIds(u) : [u];
+          const quickTotalPlayed = await countTotalToggledSongsForUser(u, fused);
           const quickBase = Number(quickTotalPlayed || 0) * 25;
           const setNum = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = String(val); };
           setNum('breakdown-played-base', quickBase);
@@ -10280,7 +10384,9 @@ function shouldShowStatsTicker() {
 
         const recalcPlayed = () => {
           if (!localPlayedSnapshot) return;
-          const prefix = sanitize(`${u}-`);
+          // COHERENCIA: Usar todos los IDs fusionados para el prefijo, no solo el actual
+          const fused = typeof getFusedIds === 'function' ? getFusedIds(u) : [u];
+          const prefixes = fused.map(fid => sanitize(`${fid.replace(/^@/, '')}-`));
           const ids = new Set();
 
           // Solo procesar si tenemos requests cargados para validar
@@ -10294,7 +10400,7 @@ function shouldShowStatsTicker() {
             const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : (Array.isArray(d.songIds) ? d.songIds : []));
             arr.forEach(x => {
               const id = sanitize(x);
-              if (id.startsWith(prefix)) {
+              if (prefixes.some(p => id.startsWith(p))) {
                 ids.add(id);
               }
             });
@@ -10308,7 +10414,7 @@ function shouldShowStatsTicker() {
               const arr = Array.isArray(localPlayedMap[day]) ? localPlayedMap[day] : [];
               arr.forEach(x => {
                 const id = sanitize(x);
-                if (id.startsWith(prefix)) {
+                if (prefixes.some(p => id.startsWith(p))) {
                   ids.add(id);
                 }
               });
@@ -10335,38 +10441,32 @@ function shouldShowStatsTicker() {
 
         try {
           const pollUserSolicitudes = async () => {
+            const totalSongs = typeof countTotalRequestedSongsForUser === 'function' ? await countTotalRequestedSongsForUser(u) : 0;
+            
+            let userSolicitudes = [];
+            if (typeof getAllCombinedSolicitudes === 'function') {
+              const all = await getAllCombinedSolicitudes();
+              userSolicitudes = all.filter(s => String(s.usuario || '').trim().replace(/^@/, '').toLowerCase() === norm);
+            }
+
+            const artists = new Set(userSolicitudes.map(s => s.artista).filter(Boolean));
+            const days = new Set(userSolicitudes.map(s => String(s.day || (s.fecha || '').split('T')[0] || '').trim()).filter(d => d));
+            
             const snap = await db.collection('solicitudes').where('usuario', '==', u).get();
-            let totalSongs = 0;
-            const artists = new Set();
-            const days = new Set();
             const reqIds = new Set();
             snap.forEach(doc => {
               const d = doc.data() || {};
-              const day = String(d.day || (d.fecha || '').split('T')[0] || '').trim();
-              if (day && !isOnOrAfterStart(day)) return;
-              totalSongs++;
-              if (d.artista) artists.add(String(d.artista));
-              if (day) days.add(day);
-
-              // Construir ID esperado
-              const hora = (window.resolveHourKey ? window.resolveHourKey(d.ts) : '00:00') || (window.resolveHourKey ? window.resolveHourKey(d.time) : '00:00') || String(d.hora || '').trim() || '00:00';
-              const rid = `${d.usuario}-${d.cancion}-${d.artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
-
-              // NEW: También agregar versión sin hora para fallback, por si acaso el formato de hora cambió
-              const ridNoHour = `${d.usuario}-${d.cancion}-${d.artista}`.replace(/[^a-zA-Z0-9-]/g, '');
-
-              const sid = sanitize(rid);
-              reqIds.add(sid);
-              reqIds.add(sanitize(ridNoHour)); // Agregar al set de validación
+              const rid = `${d.usuario}-${d.cancion}-${d.artista}-${d.hora || '00:00'}`.replace(/[^a-zA-Z0-9-]/g, '');
+              reqIds.add(sanitize(rid));
+              reqIds.add(sanitize(`${d.usuario}-${d.cancion}-${d.artista}`.replace(/[^a-zA-Z0-9-]/g, '')));
             });
 
             localRequests = reqIds;
-            window.__userReqPrefixes[norm] = reqIds; // Backup
+            window.__userReqPrefixes[norm] = reqIds; 
             stableSetStat('personal-total-songs', totalSongs, u);
             stableSetStat('personal-unique-artists', artists.size, u);
             stableSetStat('personal-active-days', days.size, u);
 
-            // Recalcular played con la nueva lista de solicitudes
             if (localPlayedSnapshot) recalcPlayed();
           };
           pollUserSolicitudes().catch(() => { });
@@ -10394,18 +10494,19 @@ function shouldShowStatsTicker() {
         } catch (_) { }
         try {
           const pollAllSolicitudes = async () => {
-            const snap = await db.collection('solicitudes').get();
-            const counts = {};
-            snap.forEach(doc => {
-              const d = doc.data() || {};
-              const day = String(d.day || (d.fecha || '').split('T')[0] || '').trim();
-              if (day && !isOnOrAfterStart(day)) return;
-              const key = String(d.usuario || '').trim().replace(/^@/, '').toLowerCase();
-              counts[key] = (counts[key] || 0) + 1;
-            });
-            const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-            const rank = sorted.findIndex(([name]) => name === norm) + 1;
-            stableSetRank('personal-rank', rank, u);
+            // FIX: Para el rank, necesitamos los totales reales de todos, no solo de 'solicitudes'
+            // Leemos del documento 'userTotals' que ya tiene todo consolidado
+            try {
+              const doc = await db.collection('globalStats').doc('userTotals').get();
+              if (doc.exists) {
+                const totals = (doc.data() || {}).totals || {};
+                const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+                const rank = sorted.findIndex(([name]) => name === norm) + 1;
+                stableSetRank('personal-rank', rank, u);
+              }
+            } catch (e) {
+              console.warn("Error en pollAllSolicitudes rank:", e);
+            }
           };
           pollAllSolicitudes().catch(() => { });
           const intervalId = setInterval(() => { pollAllSolicitudes().catch(() => { }); }, 60000);
@@ -11306,21 +11407,20 @@ function shouldShowStatsTicker() {
       function normalizeUserKey(username, depth = 0) {
         if (!username || depth > 5) return '';
         const raw = String(username).trim();
-        // 1. Normalización base para buscar en alias (sin @, minúsculas)
+        // 1. Normalización base para buscar en alias (sin @, minúsculas, preservar espacios para IDs de documentos)
         const key = raw.replace(/^@/, '').toLowerCase();
 
-        // 2. Verificar si es un alias conocido (priorizar window.userAliasesMap que es real-time)
+        // 2. Verificar si es un alias conocido
         const map = (window.userAliasesMap && Object.keys(window.userAliasesMap).length > 0) ? window.userAliasesMap : (USER_ALIASES_MAP || {});
         if (map[key]) {
           const aliasTarget = map[key];
-          // Si el alias apunta a sí mismo (ignorando @ y case), romper ciclo
           if (aliasTarget.replace(/^@/, '').toLowerCase() === key) {
             return key.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
           }
           return normalizeUserKey(aliasTarget, depth + 1);
         }
 
-        // 3. Normalización estándar si no es alias
+        // 3. Normalización estándar (preservar espacios para compatibilidad con Firestore)
         return raw.replace(/^@/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
       }
 
@@ -13047,21 +13147,32 @@ function shouldShowStatsTicker() {
       // NUEVA función para contar solicitudes históricas de un usuario (TOTALES)
       async function countTotalRequestedSongsForUser(usuario) {
         try {
-          const norm = String(usuario || '').trim().toLowerCase().replace(/^@/, '');
+          const norm = typeof normalizeUserKey === 'function' ? normalizeUserKey(usuario) : String(usuario || '').trim().toLowerCase().replace(/^@/, '');
           if (!norm) return 0;
 
-          // FIX: getAllCombinedSolicitudes SOLO trae datos del día seleccionado.
-          // Si queremos el total histórico, debemos consultar Firestore directamente.
-          // Usar la colección 'solicitudes' con un índice por usuario es lo más eficiente.
+          // 1. Intentar leer de la fuente de verdad consolidada (Global Stats)
+          try {
+            const doc = await db.collection('globalStats').doc('userTotals').get();
+            if (doc.exists) {
+              const data = doc.data() || {};
+              // Buscamos en el objeto 'totals' usando la clave normalizada
+              if (data.totals && data.totals[norm] !== undefined) {
+                console.log(`📊 GlobalTruth para ${norm}: ${data.totals[norm]} canciones`);
+                return data.totals[norm];
+              }
+            }
+          } catch (e) {
+            console.warn('Error leyendo userTotals:', e);
+          }
 
+          // 2. Si no está en el resumen global, intentar consulta directa a 'solicitudes'
           try {
             const snap = await db.collection('solicitudes')
               .where('usuario', '==', norm)
               .get();
 
             if (!snap.empty) {
-              // Si hay datos en Firestore, esa es la fuente de verdad histórica
-              console.log(`📚 Histórico Firestore para ${norm}: ${snap.size} solicitudes`);
+              console.log(`📚 Histórico Firestore (Directo) para ${norm}: ${snap.size} solicitudes`);
               return snap.size;
             }
           } catch (e) {
@@ -14096,6 +14207,7 @@ function shouldShowStatsTicker() {
           document.getElementById('rewards-section').hidden = true;
           document.getElementById('rewards-config-section').hidden = true;
           document.getElementById('maintenance-section').hidden = true;
+          if (document.getElementById('links-section')) document.getElementById('links-section').hidden = true;
 
           // 3. Show Target Section
           if (sectionId === 'badges') document.getElementById('badges-section').hidden = false;
@@ -14104,8 +14216,67 @@ function shouldShowStatsTicker() {
             document.getElementById('rewards-config-section').hidden = false;
             renderRewardsConfig();
           }
+          else if (sectionId === 'links') {
+            if (document.getElementById('links-section')) {
+              document.getElementById('links-section').hidden = false;
+              renderAdminLinks();
+            }
+          }
           else if (sectionId === 'maintenance') document.getElementById('maintenance-section').hidden = false;
         });
+      });
+
+      async function renderAdminLinks() {
+        const listEl = document.getElementById('admin-links-list');
+        if (!listEl) return;
+        listEl.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.6;">Cargando vinculaciones...</div>';
+        
+        try {
+          const map = window.userAliasesMap || {};
+          const entries = Object.entries(map);
+          if (entries.length === 0) {
+            listEl.innerHTML = '<p style="padding:20px; text-align:center; opacity:0.5;">No hay cuentas vinculadas activas.</p>';
+            return;
+          }
+          
+          let html = '';
+          const groups = {};
+          entries.forEach(([alias, target]) => {
+            const t = target.replace(/^@/, '').toLowerCase();
+            const a = alias.replace(/^@/, '').toLowerCase();
+            if (!groups[t]) groups[t] = new Set();
+            groups[t].add(a);
+          });
+          
+          Object.entries(groups).forEach(([main, aliases]) => {
+            html += `
+              <div class="vip-item" style="flex-direction: column; align-items: flex-start; padding: 15px; background: rgba(255,255,255,0.03); border-radius: 12px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="display: flex; justify-content: space-between; width: 100%; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px; margin-bottom: 10px;">
+                  <span style="font-weight: 700; color: #fff; font-size: 1.1em;">💎 Principal: <span style="color: var(--accent-primary, #2563eb);">@${main}</span></span>
+                  <span style="font-size: 0.85em; opacity: 0.6; background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 20px;">${aliases.size} aliadas</span>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  ${Array.from(aliases).map(a => `
+                    <span class="genre-chip" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 6px; font-size: 0.9em; display: flex; align-items: center; gap: 5px;">
+                      <span style="opacity:0.5;">🔗</span> @${a}
+                    </span>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          });
+          
+          listEl.innerHTML = html;
+        } catch (e) {
+          listEl.innerHTML = '<p style="color: #ef4444; padding:20px; text-align:center;">Error al cargar vinculaciones.</p>';
+        }
+      }
+
+      // Listener para el botón de refrescar vinculaciones
+      document.addEventListener('click', (e) => {
+        if (e.target && e.target.id === 'refresh-links-btn') {
+          renderAdminLinks();
+        }
       });
 
       // Inicializar notificaciones al cargar
@@ -14570,15 +14741,6 @@ function shouldShowStatsTicker() {
         try {
           console.log("📊 Calculando estadísticas globales maestras...");
 
-          // Función auxiliar de normalización y filtrado
-          const isInvalid = (val) => {
-            if (!val) return true;
-            const str = String(val).trim().toLowerCase();
-            if (str.includes('http://') || str.includes('https://') || str.includes('www.') || str.includes('youtu.be')) return true;
-            if (str.length > 100 || str.length <= 1) return true;
-            return ['n/d', 'undefined', 'null', 'unknown', 'various'].includes(str);
-          };
-
           // NUEVO: Leer historial de canciones reproducidas (HISTORIA REAL)
           // Y las solicitudes para enriquecer con metadata (género, etc.)
           const [playedSnapshot, solicitudesSnapshot, systemEventsSnapshot] = await Promise.all([
@@ -14600,9 +14762,9 @@ function shouldShowStatsTicker() {
             const a = normalizeKeyTextForTicker(aRaw);
             
             // FILTRO DE BASURA: No procesar si el artista es inválido (ej: URL)
-            if (isInvalid(aRaw)) return;
+            if (window.isInvalid(aRaw)) return;
 
-            if (!isInvalid(gRaw) && !artistToGenre[a]) {
+            if (!window.isInvalid(gRaw) && !artistToGenre[a]) {
               artistToGenre[a] = gRaw;
             }
 
@@ -14626,6 +14788,9 @@ function shouldShowStatsTicker() {
           console.log(`🏷️ Diccionario de géneros por artista: ${Object.keys(artistToGenre).length} géneros mapeados.`);
 
           let totalRequests = 0;
+          let totalTodayRequests = 0;
+          const today = new Date().toISOString().split('T')[0];
+
           const artistCount = {};
           const userCount = {};
           const songCount = {};
@@ -14644,33 +14809,33 @@ function shouldShowStatsTicker() {
             const uRaw = meta.usuario || '';
             let gRaw = meta.genre || '';
 
+            // FILTRO ADICIONAL: Omitir si el artista, la canción o el usuario son inválidos/bots
+            if (window.isInvalid(aRaw) || window.isInvalid(sRaw) || window.isInvalid(uRaw)) return;
+
             const a = normalizeKeyTextForTicker(aRaw);
             const s = normalizeKeyTextForTicker(sRaw);
             const u = normalizeUserKey(uRaw);
-            
-            // FILTRO DE PRUEBAS: Ignorar usuarios de test
-            if (u === 'prueba' || u === 'test' || u.startsWith('prueba') || u.startsWith('test')) return;
 
             // Inferencia de género: si no tiene, buscamos si ya conocemos el género de este artista
-            if (!isInvalid(gRaw)) {
+            if (!window.isInvalid(gRaw)) {
               if (!artistToGenre[a]) artistToGenre[a] = gRaw.trim();
             } else if (artistToGenre[a]) {
               gRaw = artistToGenre[a];
             }
             const g = gRaw.trim().toLowerCase();
 
-            if (!isInvalid(a)) {
+            if (!window.isInvalid(a)) {
               artistCount[a] = (artistCount[a] || 0) + 1;
               if (!artistOriginal[a]) artistOriginal[a] = aRaw.trim();
             }
-            if (!isInvalid(s)) {
+            if (!window.isInvalid(s)) {
               songCount[s] = (songCount[s] || 0) + 1;
             }
-            if (u && !isInvalid(u)) {
+            if (u && !window.isInvalid(u)) {
               userCount[u] = (userCount[u] || 0) + 1;
               if (!userOriginal[u]) userOriginal[u] = uRaw.trim();
             }
-            if (!isInvalid(g)) {
+            if (!window.isInvalid(g)) {
               genreCount[g] = (genreCount[g] || 0) + 1;
             }
           };
@@ -14682,10 +14847,13 @@ function shouldShowStatsTicker() {
               const d = doc.data() || {};
               const songArr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
               
+              const isToday = doc.id === today;
+
               songArr.forEach(fullId => {
                 const sId = String(fullId || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
                 const meta = masterMetaMap[sId] || {};
                 processItem(sId, meta);
+                if (isToday) totalTodayRequests++;
               });
             });
           }
@@ -14695,6 +14863,7 @@ function shouldShowStatsTicker() {
             const d = doc.data() || {};
             const sId = String(d.id || doc.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
             processItem(sId, d);
+            if (d.day === today) totalTodayRequests++;
           });
 
           console.log(`📊 Auditoría final: ${totalRequests} peticiones únicas procesadas.`);
@@ -14808,6 +14977,7 @@ function shouldShowStatsTicker() {
 
             const globalStatsData = {
               totalRequests,
+              totalTodayRequests,
               topArtists: topArtists.map(it => `${it.o} (${it.c})`),
               topArtistsFull: topArtists.map(it => ({ name: it.o, count: it.c })),
               topUsers: topUsers.map(it => `${it.o} (${it.c})`),
@@ -14823,12 +14993,24 @@ function shouldShowStatsTicker() {
               topLikerCount: topLikerCountVal,
               totalLikes: globalTotalLikes,
               distinctUsers: Object.keys(userCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null').length,
+              distinctArtists: Object.keys(artistCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null').length,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
 
             // Usar merge: true para no borrar datos que otros procesos (como el bot) hayan escrito
             await window.db.collection('globalStats').doc('general').set(globalStatsData, { merge: true });
             console.log("✅ Estadísticas globales guardadas en 'globalStats/general'");
+
+            // Guardar el desglose COMPLETO por usuario para sincronizar perfiles personales
+            try {
+              await window.db.collection('globalStats').doc('userTotals').set({ 
+                totals: userCount,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+              }, { merge: true });
+              console.log("✅ Desglose de totales por usuario sincronizado.");
+            } catch (e) {
+              console.warn("Error sincronizando userTotals:", e);
+            }
 
           } catch (e) {
             console.warn("⚠️ No se pudo leer userStats para estadísticas globales:", e);
