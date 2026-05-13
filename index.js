@@ -609,6 +609,58 @@
         }
       }
 
+      // INTELIGENCIA: Autocompletar desde Link
+      const linkInput = document.getElementById('link');
+      if (linkInput) {
+        linkInput.addEventListener('blur', async () => {
+          const url = linkInput.value.trim();
+          if (!url) return;
+
+          try {
+            console.log('🔍 Intentando extraer metadatos del link...');
+            // Usar noembed (servicio gratuito sin CORS para YouTube/Spotify/etc)
+            const resp = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
+            const data = await resp.json();
+            
+            if (data.title) {
+              const cancionEl = document.getElementById('cancion');
+              const artistaEl = document.getElementById('artista');
+              
+              // Intentar separar Título - Artista (patrón común)
+              let title = data.title;
+              let artist = data.author_name || '';
+              
+              if (title.includes(' - ')) {
+                const parts = title.split(' - ');
+                // A veces es Artista - Título o Título - Artista
+                // Probamos heurística: si el autor del canal está en la primera parte, es Artista - Título
+                if (artist && parts[0].toLowerCase().includes(artist.toLowerCase().split(' ')[0])) {
+                  artist = parts[0].trim();
+                  title = parts[1].trim();
+                } else {
+                   // Por defecto asumimos Artista - Título si hay guion
+                   artist = parts[0].trim();
+                   title = parts[1].trim();
+                }
+              }
+
+              // Quitar coletillas de YouTube
+              title = title.replace(/\(Official Video\)/gi, '')
+                           .replace(/\[Official Video\]/gi, '')
+                           .replace(/\(Official Audio\)/gi, '')
+                           .replace(/\(Video Oficial\)/gi, '')
+                           .replace(/\(Lyric Video\)/gi, '')
+                           .trim();
+
+              if (cancionEl && !cancionEl.value) cancionEl.value = title;
+              if (artistaEl && !artistaEl.value) artistaEl.value = artist;
+            }
+          } catch (e) {
+            console.warn('No se pudieron obtener metadatos del link:', e);
+          }
+        });
+      }
+
       // Event listeners para actualizar puntos
       document.getElementById('usuario')?.addEventListener('input', updatePointsIndicator);
       usuarioSelect?.addEventListener('change', updatePointsIndicator);
@@ -630,6 +682,7 @@
           const usuarioEl = document.getElementById('usuario');
           const cancionEl = document.getElementById('cancion');
           const artistaEl = document.getElementById('artista');
+          const linkEl = document.getElementById('link');
 
           const usuarioText = (usuarioEl.value || '').trim().replace(/^@/, '');
           const usuarioSel = (usuarioSelect?.value || '').trim().replace(/^@/, '');
@@ -637,11 +690,17 @@
 
           const cancion = (cancionEl.value || '').trim();
           const artista = (artistaEl.value || '').trim();
+          const link = (linkEl.value || '').trim();
 
-          if (!usuario || !cancion || !artista) {
-            alert('Por favor completa Usuario (escribe o selecciona), Canción y Artista.');
+          // Nueva validación: Link puede sustituir cancion/artista si se provee
+          if (!usuario || (!link && (!cancion || !artista))) {
+            alert('Por favor completa tu Usuario y al menos la Canción/Artista o un Link de referencia.');
             return;
           }
+
+          // Si no hay cancion/artista pero hay link, poner valores temporales
+          const finalCancion = cancion || (link ? "Enlace Externo" : "");
+          const finalArtista = artista || (link ? "Ver Link" : "");
 
           const ts = Date.now();
           const dayKey = getLocalDateKey(ts);
@@ -660,7 +719,7 @@
           const hh = String(now.getHours()).padStart(2, '0');
           const mm = String(now.getMinutes()).padStart(2, '0');
           const hora = `${hh}:${mm}`;
-          const songId = `${usuario}-${cancion}-${artista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+          const songId = `${usuario}-${finalCancion}-${finalArtista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
 
           // --- DETECCIÓN DE GÉNERO (NUEVO) ---
           let genre = '';
@@ -680,8 +739,9 @@
             id: songId,
             usuario,
             displayName: usuario,
-            cancion,
-            artista,
+            cancion: finalCancion,
+            artista: finalArtista,
+            link: link || '', // NUEVO: Guardar el enlace
             genre: genre, // Guardar el género detectado
             ts: firebase.firestore.FieldValue.serverTimestamp(),
             status: 'pending',
@@ -726,10 +786,10 @@
             // Guardar en localStorage PRIMERO para no perder la solicitud
             try {
               const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-              (byDay[dayKey] ??= []).push({ usuario, cancion, artista, time: ts });
+              (byDay[dayKey] ??= []).push({ usuario, cancion: finalCancion, artista: finalArtista, link: link || '', time: ts });
               localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
               const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-              arr.push({ usuario, cancion, artista, time: ts });
+              arr.push({ usuario, cancion: finalCancion, artista: finalArtista, link: link || '', time: ts });
               localStorage.setItem('solicitudes', JSON.stringify(arr));
             } catch (e) {
               console.error('Error guardando en localStorage:', e);

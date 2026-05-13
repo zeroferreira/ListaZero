@@ -1871,6 +1871,9 @@
           // Modo edición: draggable
           li.draggable = !!isEditing;
 
+          const linkHtml = it.link ? `<a href="${it.link}" target="_blank" class="song-link-icon" title="Ver enlace" style="text-decoration:none; margin-left:5px; font-size:0.8em; vertical-align:middle;">🔗</a>` : '';
+          const wrapLink = (text, url) => url ? `<a href="${url}" target="_blank" style="color:inherit; text-decoration:underline; text-decoration-style:dotted;">${text}</a>` : text;
+
           li.innerHTML = `
             <span class="col col-time">${it.hora || ''}</span>
             <span class="col col-usuario usuario">
@@ -1878,11 +1881,11 @@
                ${rewardIconHtml}
             </span>
             <span class="col col-cancion">
-              <span class="text">${it.cancion}</span>
-              <button class="copy-chip copy-chip-inline" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>
+              <span class="text">${wrapLink(it.cancion, it.link)}</span>
+              ${it.link ? linkHtml : `<button class="copy-chip copy-chip-inline" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>`}
             </span>
             <span class="col col-artista">
-              <span class="text">${it.artista}</span>
+              <span class="text">${wrapLink(it.artista, it.link)}</span>
               <button class="copy-chip copy-chip-inline" type="button" title="Copiar artista" data-copy="${it.artista}">⧉</button>
             </span>
             <span class="col col-cancion-artista">
@@ -1893,11 +1896,11 @@
                  </div>
               </div>
               <div class="line-with-copy">
-                <div class="cancion-line">${it.cancion}</div>
-                <button class="copy-chip" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>
+                <div class="cancion-line">${wrapLink(it.cancion, it.link)}</div>
+                ${it.link ? linkHtml : `<button class="copy-chip" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>`}
               </div>
               <div class="line-with-copy">
-                <div class="artista-line">${it.artista}</div>
+                <div class="artista-line">${wrapLink(it.artista, it.link)}</div>
                 <button class="copy-chip" type="button" title="Copiar artista" data-copy="${it.artista}">⧉</button>
               </div>
             </span>
