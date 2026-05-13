@@ -4688,20 +4688,27 @@ function shouldShowStatsTicker() {
     }
 
     function normalizeKeyTextForTicker(v) {
-      // Intentar usar la normalización con alias si está disponible (para unificar estadísticas de usuarios vinculados)
+      const raw = String(v || '').trim();
+      if (!raw) return '';
+
+      // FILTRO DE BASURA: Si contiene links de YouTube o URLs, no es un dato válido
+      const low = raw.toLowerCase();
+      if (low.includes('http://') || low.includes('https://') || low.includes('www.') || low.includes('youtu.be')) return '';
+      if (low.length > 100 || low.length <= 1) return '';
+      if (['n/d', 'undefined', 'null', 'unknown'].includes(low)) return '';
+
+      // Intentar usar la normalización con alias si está disponible
       if (typeof normalizeUserKey === 'function') {
         return normalizeUserKey(v);
       }
       try {
-        const raw = String(v || '').trim();
-        if (!raw) return '';
         return raw
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')
           .replace(/\s+/g, ' ')
           .toLowerCase();
       } catch (_) {
-        return String(v || '').trim().toLowerCase();
+        return raw.toLowerCase();
       }
     }
 
@@ -4711,17 +4718,17 @@ function shouldShowStatsTicker() {
 
     function isTestRequestForTicker(it) {
       try {
-        if (typeof window.isTestRequestForStats === 'function') return window.isTestRequestForStats(it);
+        if (typeof window.isTestRequestForStats === 'function' && window.isTestRequestForStats(it)) return true;
       } catch (_) { }
       const u = normalizeKeyTextForTicker(it?.usuario);
-      if (!u) return true;
-      if (u === 'prueba' || u.startsWith('prueba')) return true;
       const s = normalizeKeyTextForTicker(it?.cancion);
       const a = normalizeKeyTextForTicker(it?.artista);
-      if (s === 'prueba' || s.startsWith('prueba')) return true;
-      if (a === 'prueba' || a.startsWith('prueba')) return true;
-      if (it && it.isSimulation === true) return true;
-      if (it && it.isTest === true) return true;
+
+      if (!u || u === 'prueba' || u === 'test' || u.startsWith('prueba')) return true;
+      if (!s || s === 'prueba' || s === 'gasolina' || s.includes('bizarrap')) return true;
+      if (!a || a === 'prueba' || a === 'daddy yankee') return true;
+
+      if (it && (it.isSimulation === true || it.isTest === true)) return true;
       if (it && String(it.source || '').toLowerCase() === 'tiktoktest') return true;
       return false;
     }
