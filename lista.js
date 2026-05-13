@@ -14774,8 +14774,8 @@ function shouldShowStatsTicker() {
                     detectedUser = parts.join('-');
                   }
                   const item = {
-                    artista: meta.artista || 'N/D',
-                    cancion: meta.cancion || 'N/D',
+                    artista: meta.artista || '',
+                    cancion: meta.cancion || '',
                     usuario: meta.usuario || detectedUser,
                     genre: meta.genre || ''
                   };
@@ -14799,11 +14799,17 @@ function shouldShowStatsTicker() {
             const g = (String(d.genre || '').trim().toLowerCase()); // Género
             const go = (String(d.genre || '').trim());
 
-            if (a && a.length > 1 && a !== 'undefined' && a !== 'null') {
+            const isInvalid = (val) => {
+              if (!val) return true;
+              const str = String(val).trim().toLowerCase();
+              return str === 'n/d' || str === 'undefined' || str === 'null' || str === 'unknown' || str.length <= 1;
+            };
+
+            if (!isInvalid(a)) {
               aCount[a] = (aCount[a] || 0) + 1;
               if (!aOrig[a]) aOrig[a] = ao;
             }
-            if (s && s.length > 1 && s !== 'undefined' && s !== 'null') {
+            if (!isInvalid(s)) {
               sCount[s] = (sCount[s] || 0) + 1;
             }
             if (u && u.length > 1 && u !== 'undefined' && u !== 'null') {
