@@ -14717,19 +14717,38 @@ function shouldShowStatsTicker() {
 
           console.log(`📚 Leídos ${systemEventsSnapshot.size} eventos y ${solicitudesSnapshot.size} solicitudes.`);
 
-          // Mapa de metadata
-          const solicitudesMetaMap = {};
+          // 1. Construir Mapa de Metadatos Maestro (Fusión de fuentes)
+          const masterMetaMap = {};
+          
+          // Fuente A: Solicitudes actuales
           solicitudesSnapshot.forEach(doc => {
             const d = doc.data() || {};
             const sId = String(d.id || doc.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
-            if (sId) {
-              solicitudesMetaMap[sId] = {
-                genre: d.genre || d.genero || '',
-                cancion: d.cancion || '',
-                artista: d.artista || ''
+            if (sId && d.artista && d.cancion) {
+              masterMetaMap[sId] = {
+                artista: String(d.artista).trim(),
+                cancion: String(d.cancion).trim(),
+                usuario: String(d.usuario || d.displayName || '').trim(),
+                genre: String(d.genre || d.genero || '').trim()
               };
             }
           });
+
+          // Fuente B: Historial de Eventos (Recuperar metadata de canciones ya borradas)
+          systemEventsSnapshot.forEach(doc => {
+            const d = doc.data() || {};
+            const sId = String(d.songId || d.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+            if (sId && d.artista && d.cancion && !masterMetaMap[sId]) {
+              masterMetaMap[sId] = {
+                artista: String(d.artista).trim(),
+                cancion: String(d.cancion).trim(),
+                usuario: String(d.usuario || d.displayName || '').trim(),
+                genre: String(d.genre || d.genero || '').trim()
+              };
+            }
+          });
+
+          console.log(`🧠 Mapa de metadatos consolidado: ${Object.keys(masterMetaMap).length} canciones identificadas.`);
 
           let totalRequests = 0;
           const artistCount = {};
@@ -14738,88 +14757,71 @@ function shouldShowStatsTicker() {
           const genreCount = {};
           const artistOriginal = {};
           const userOriginal = {};
+          const processedIds = new Set(); // Para evitar doble conteo
 
-          // 1. Procesar Historial REAL (systemEvents)
-          // 1. Procesar Historial REAL (systemEvents)
-          systemEventsSnapshot.forEach(doc => {
-            const d = doc.data() || {};
-            if (typeof isTestRequestForStats === 'function' && isTestRequestForStats(d)) return;
-            if (d.action === 'mark' && d.cancion && d.artista) {
-              totalRequests++;
-              if (!d.genre) {
-                const sId = String(d.songId || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
-                const meta = solicitudesMetaMap[sId] || {};
-                if (meta.genre) d.genre = meta.genre;
-              }
-              processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
+          // Función auxiliar de normalización y filtrado
+          const isInvalid = (val) => {
+            if (!val) return true;
+            const str = String(val).trim().toLowerCase();
+            if (str.includes('http://') || str.includes('https://') || str.includes('www.') || str.includes('youtu.be')) return true;
+            if (str.length > 100 || str.length <= 1) return true;
+            return ['n/d', 'undefined', 'null', 'unknown', 'various'].includes(str);
+          };
+
+          const processItem = (sId, meta) => {
+            if (!sId || processedIds.has(sId)) return;
+            processedIds.add(sId);
+            totalRequests++;
+
+            const aRaw = meta.artista || '';
+            const sRaw = meta.cancion || '';
+            const uRaw = meta.usuario || '';
+            const gRaw = meta.genre || '';
+
+            const a = aRaw.trim().toLowerCase();
+            const s = sRaw.trim().toLowerCase();
+            const u = normalizeUserKey(uRaw);
+            const g = gRaw.trim().toLowerCase();
+
+            if (!isInvalid(a)) {
+              artistCount[a] = (artistCount[a] || 0) + 1;
+              if (!artistOriginal[a]) artistOriginal[a] = aRaw.trim();
             }
-          });
+            if (!isInvalid(s)) {
+              songCount[s] = (songCount[s] || 0) + 1;
+            }
+            if (u && !isInvalid(u)) {
+              userCount[u] = (userCount[u] || 0) + 1;
+              if (!userOriginal[u]) userOriginal[u] = uRaw.trim();
+            }
+            if (!isInvalid(g)) {
+              genreCount[g] = (genreCount[g] || 0) + 1;
+            }
+          };
 
-          // 2. Soporte para playedSongs (Historial diario)
+          // 2. Contar canciones reproducidas (Historial)
           if (playedSnapshot) {
             playedSnapshot.forEach(doc => {
-              if (doc.id === '__userTotals__') return;
+              if (doc.id === 'userTotals' || doc.id === '__userTotals__') return;
               const d = doc.data() || {};
               const songArr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
               
-              if (songArr.length > 0) {
-                songArr.forEach(fullId => {
-                  totalRequests++;
-                  const sId = String(fullId || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
-                  const meta = solicitudesMetaMap[sId] || {};
-                  let detectedUser = 'N/D';
-                  const parts = String(fullId).split('-');
-                  if (parts.length >= 2) {
-                    parts.pop(); 
-                    detectedUser = parts.join('-');
-                  }
-                  const item = {
-                    artista: meta.artista || '',
-                    cancion: meta.cancion || '',
-                    usuario: meta.usuario || detectedUser,
-                    genre: meta.genre || ''
-                  };
-                  processDocStats(item, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
-                });
-              } else if (d.artista && !d.songs && !d.list) {
-                totalRequests++;
-                processDocStats(d, artistCount, userCount, songCount, genreCount, artistOriginal, userOriginal);
-              }
+              songArr.forEach(fullId => {
+                const sId = String(fullId || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+                const meta = masterMetaMap[sId] || {};
+                processItem(sId, meta);
+              });
             });
           }
 
-          function processDocStats(d, aCount, uCount, sCount, gCount, aOrig, uOrig) {
-            const a = (String(d.artista || '').trim().toLowerCase());
-            const ao = (String(d.artista || '').trim());
-            const s = (String(d.cancion || '').trim().toLowerCase());
-            // NORMALIZACIÓN DE USUARIO (DEDUP)
-            const rawU = (String(d.usuario || '').trim());
-            const u = normalizeUserKey(rawU); // Usar la función de fusión
-            const uo = (String(d.usuarioRaw || d.usuario || '').trim());
-            const g = (String(d.genre || '').trim().toLowerCase()); // Género
-            const go = (String(d.genre || '').trim());
+          // 3. Contar solicitudes actuales (Cola)
+          solicitudesSnapshot.forEach(doc => {
+            const d = doc.data() || {};
+            const sId = String(d.id || doc.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+            processItem(sId, d);
+          });
 
-            const isInvalid = (val) => {
-              if (!val) return true;
-              const str = String(val).trim().toLowerCase();
-              return str === 'n/d' || str === 'undefined' || str === 'null' || str === 'unknown' || str.length <= 1;
-            };
-
-            if (!isInvalid(a)) {
-              aCount[a] = (aCount[a] || 0) + 1;
-              if (!aOrig[a]) aOrig[a] = ao;
-            }
-            if (!isInvalid(s)) {
-              sCount[s] = (sCount[s] || 0) + 1;
-            }
-            if (u && u.length > 1 && u !== 'undefined' && u !== 'null') {
-              uCount[u] = (uCount[u] || 0) + 1;
-              if (!uOrig[u]) uOrig[u] = uo;
-            }
-            if (g && g.length > 1 && g !== 'undefined' && g !== 'null' && g !== 'unknown' && g !== 'n/d') {
-              gCount[go] = (gCount[go] || 0) + 1;
-            }
-          }
+          console.log(`📊 Auditoría final: ${totalRequests} peticiones únicas procesadas.`);
 
           // Calcular Tops
           // Para el Top Usuarios: Solo contar si el usuario tiene nombre válido
