@@ -4699,6 +4699,12 @@ function shouldShowStatsTicker() {
 
       // FILTRO DE BASURA: Si contiene links de YouTube o URLs, no es un dato válido
       const low = raw.toLowerCase();
+
+      // UNIFICACIÓN DE ARTISTAS (Aliases comunes)
+      if (low === '5sos' || low === '5 second of summer' || low === '5 seconds of summer') {
+        return '5 seconds of summer';
+      }
+
       if (low.includes('http://') || low.includes('https://') || low.includes('www.') || low.includes('youtu.be')) return '';
       if (low.length > 100 || low.length <= 1) return '';
       if (['n/d', 'undefined', 'null', 'unknown'].includes(low)) return '';
@@ -14591,7 +14597,7 @@ function shouldShowStatsTicker() {
             if (!sId) return;
             const aRaw = String(d.artista || '').trim();
             const gRaw = String(d.genre || d.genero || '').trim();
-            const a = aRaw.toLowerCase();
+            const a = normalizeKeyTextForTicker(aRaw);
             
             // FILTRO DE BASURA: No procesar si el artista es inválido (ej: URL)
             if (isInvalid(aRaw)) return;
@@ -14638,8 +14644,8 @@ function shouldShowStatsTicker() {
             const uRaw = meta.usuario || '';
             let gRaw = meta.genre || '';
 
-            const a = aRaw.trim().toLowerCase();
-            const s = sRaw.trim().toLowerCase();
+            const a = normalizeKeyTextForTicker(aRaw);
+            const s = normalizeKeyTextForTicker(sRaw);
             const u = normalizeUserKey(uRaw);
             
             // FILTRO DE PRUEBAS: Ignorar usuarios de test
