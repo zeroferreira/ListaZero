@@ -5952,8 +5952,8 @@ function shouldShowStatsTicker() {
           // Actualizar UI con la fuente de verdad consolidada
           document.getElementById('total-songs').textContent = data.totalRequests || 0;
           document.getElementById('total-users').textContent = data.distinctUsers || 0;
-          document.getElementById('total-artists').textContent = data.topArtistsFull?.length || 0;
-          document.getElementById('today-songs').textContent = data.totalRequests || 0; // Podríamos mejorar esto con un contador diario
+          document.getElementById('total-artists').textContent = data.distinctArtists || 0;
+          document.getElementById('today-songs').textContent = data.todaySongs || 0;
           document.getElementById('top-genre-name').textContent = data.topGenre || 'N/D';
 
           // Renderizar listas desde los campos 'Full'
@@ -5961,6 +5961,17 @@ function shouldShowStatsTicker() {
           renderStatsList('top-songs-list', data.topSongsFull || []);
           renderStatsList('top-artists-list', data.topArtistsFull || []);
           renderStatsList('top-users-list', data.topUsersFull || []);
+          
+          // Si el panel de Usuarios tiene una lista de puntos, la mostramos también
+          if (data.topPoints10 && data.topPoints10.length > 0) {
+            const userPointsList = data.topPoints10.map(line => {
+              const parts = line.split(' (');
+              const name = parts[0];
+              const count = parts[1] ? parts[1].replace(')', '') : '0';
+              return [name, count];
+            });
+            // Opcional: Podrías añadir un contenedor para esto si existe en el HTML
+          }
 
         } catch (error) {
           console.error('Error cargando estadísticas desde globalStats:', error);
@@ -14552,7 +14563,7 @@ function shouldShowStatsTicker() {
             const str = String(val).trim().toLowerCase();
             if (str.includes('http://') || str.includes('https://') || str.includes('www.') || str.includes('youtu.be')) return true;
             if (str.length > 100 || str.length <= 1) return true;
-            return ['n/d', 'undefined', 'null', 'unknown', 'various'].includes(str);
+            return ['n/d', 'undefined', 'null', 'unknown', 'various', 'bizarrap', 'daddy yankee'].includes(str);
           };
 
           // NUEVO: Leer historial de canciones reproducidas (HISTORIA REAL)
@@ -14662,31 +14673,39 @@ function shouldShowStatsTicker() {
               });
             });
           }
-
-          // 3. Contar solicitudes actuales (Cola)
-          solicitudesSnapshot.forEach(doc => {
-            const d = doc.data() || {};
-            const sId = String(d.id || doc.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
-            processItem(sId, d);
+          // Calcular conteo de hoy
+          const now = new Date();
+          const todayPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+          let todayCount = 0;
+          
+          processedIds.forEach(id => {
+            if (id.includes(todayPrefix)) todayCount++;
           });
 
-          console.log(`📊 Auditoría final: ${totalRequests} peticiones únicas procesadas.`);
+          // Calcular conteos únicos totales
+          const distinctArtistsCount = Object.keys(artistCount).length;
+          const distinctUsersCount = Object.keys(userCount).length;
 
-          // Calcular Tops
-          // Para el Top Usuarios: Solo contar si el usuario tiene nombre válido
-          // Excluir "N/D" o usuarios vacíos
-
-          const topArtists = Object.keys(artistCount)
-            .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
-            .filter(a => a.k && a.k.length > 1 && a.k !== 'undefined' && a.k !== 'null')
-            .sort((a, b) => b.c - a.c)
+          // Preparar listas Top 10 para el modal
+          const topArtistsFull = Object.keys(artistCount)
+            .map(k => [artistOriginal[k] || k, artistCount[k]])
+            .sort((a, b) => b[1] - a[1])
             .slice(0, 10);
 
-          const topUsers = Object.keys(userCount)
-            .map(k => ({ k, c: userCount[k], o: userOriginal[k] || k }))
-            .filter(u => u.k && u.k !== 'undefined' && u.k !== 'null' && u.k.length > 1)
-            .sort((a, b) => b.c - a.c)
+          const topUsersFull = Object.keys(userCount)
+            .map(k => [userOriginal[k] || k, userCount[k]])
+            .sort((a, b) => b[1] - a[1])
             .slice(0, 10);
+
+          const topSongsFull = Object.entries(songCount)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 10)
+            .map(([name, count]) => [name.replace(/\b\w/g, l => l.toUpperCase()), count]);
+
+          const topGenresFull = Object.entries(genreCount)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 10)
+            .map(([name, count]) => [name.replace(/\b\w/g, l => l.toUpperCase()), count]);
 
           try {
             const userStatsSnapshot = await window.db.collection('userStats').get();
@@ -14725,7 +14744,7 @@ function shouldShowStatsTicker() {
                 globalTotalLikes += lCount;
                 if (lCount > maxL) {
                   maxL = lCount;
-                  maxLk = String(ud.displayName || doc.id || '').trim();
+                  maxLk = rawName;
                 }
               });
               if (maxLk) {
@@ -14737,78 +14756,38 @@ function shouldShowStatsTicker() {
             pointsUsers.sort((a, b) => b.points - a.points || a.user.localeCompare(b.user));
             const topPoints10 = pointsUsers.slice(0, 10).map(it => `${it.user} (${it.points})`);
 
-            let topSongName = 'N/D';
-            let topSongCountVal = 0;
-            let maxS = 0;
-            let maxSk = '';
-            for (let k in songCount) {
-              if (k && k.length > 1 && k !== 'undefined' && k !== 'null') {
-                if (songCount[k] > maxS) {
-                  maxS = songCount[k];
-                  maxSk = k;
-                }
-              }
-            }
-            if (maxSk) {
-              topSongName = maxSk.replace(/\b\w/g, l => l.toUpperCase());
-              topSongCountVal = maxS;
-            }
-
-            const topSongsFull = Object.entries(songCount)
-              .sort(([, a], [, b]) => b - a)
-              .slice(0, 10)
-              .map(([name, count]) => [name.replace(/\b\w/g, l => l.toUpperCase()), count]);
-
-            let topGenreName = 'N/D';
-            let topGenreCountVal = 0;
-            let maxG = 0;
-            let maxGk = '';
-            for (let k in genreCount) {
-              if (genreCount[k] > maxG) {
-                maxG = genreCount[k];
-                maxGk = k;
-              }
-            }
-            if (maxGk) {
-              topGenreName = maxGk.replace(/\b\w/g, l => l.toUpperCase());
-              topGenreCountVal = maxG;
-            }
-
-            const topGenresFull = Object.entries(genreCount)
-              .sort(([, a], [, b]) => b - a)
-              .slice(0, 10)
-              .map(([name, count]) => [name.replace(/\b\w/g, l => l.toUpperCase()), count]);
-
             const globalStatsData = {
               totalRequests,
-              topArtists: topArtists.map(it => `${it.o} (${it.c})`),
-              topArtistsFull: topArtists.map(it => [it.o, it.c]),
-              topUsers: topUsers.map(it => `${it.o} (${it.c})`),
-              topUsersFull: topUsers.map(it => [it.o, it.c]),
+              todaySongs: todayCount,
+              distinctUsers: distinctUsersCount,
+              distinctArtists: distinctArtistsCount,
+              topArtists: topArtistsFull.slice(0, 3).map(it => `${it[0]} (${it[1]})`),
+              topArtistsFull,
+              topUsers: topUsersFull.slice(0, 3).map(it => `${it[0]} (${it[1]})`),
+              topUsersFull,
               topPoints10,
-              topSong: topSongName,
-              topSongCount: topSongCountVal,
+              topSong: topSongsFull[0] ? topSongsFull[0][0] : 'N/D',
+              topSongCount: topSongsFull[0] ? topSongsFull[0][1] : 0,
               topSongsFull,
-              topGenre: topGenreName,
-              topGenreCount: topGenreCountVal,
+              topGenre: topGenresFull[0] ? topGenresFull[0][0] : 'N/D',
+              topGenreCount: topGenresFull[0] ? topGenresFull[0][1] : 0,
               topGenresFull,
               topLiker: topLikerName,
               topLikerCount: topLikerCountVal,
               totalLikes: globalTotalLikes,
-              distinctUsers: Object.keys(userCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null').length,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
 
-            // Usar merge: true para no borrar datos que otros procesos (como el bot) hayan escrito
             await window.db.collection('globalStats').doc('general').set(globalStatsData, { merge: true });
-            console.log("✅ Estadísticas globales guardadas en 'globalStats/general'");
+            console.log("✅ Estadísticas globales sincronizadas.");
 
           } catch (e) {
-            console.warn("⚠️ No se pudo leer userStats para estadísticas globales:", e);
+            console.warn("⚠️ Error en guardado de estadísticas:", e);
           }
         } catch (e) {
-          console.error("Error calculando estadísticas globales:", e);
+          console.error("Error crítico en motor de estadísticas:", e);
         }
+      }
       }
 
       // Análisis periódico cada 5 minutos
