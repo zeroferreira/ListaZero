@@ -58,7 +58,7 @@
         }
         function useGlobal() {
           var ref = React.useRef(null);
-          var st = React.useState({ total: 0, topArtists3: [], topUsers3: [], topSong: '', topSongCount: 0, topPoints3: [], topLiker: 'N/D', topLikerCount: 0, topGenre: 'N/D', topGenreCount: 0 });
+          var st = React.useState({ total: 0, topArtists3: [], topUsers3: [], topSong: '', topSongCount: 0, topPoints3: [], topLiker: 'N/D', topLikerCount: 0, totalLikes: 0, topGenre: 'N/D', topGenreCount: 0 });
           var g = st[0]; var setG = st[1];
 
           React.useEffect(function () {
@@ -86,6 +86,7 @@
                     topPoints3: topPoints,
                     topLiker: data.topLiker || 'N/D',
                     topLikerCount: Number(data.topLikerCount || 0) || 0,
+                    totalLikes: Number(data.totalLikes || 0) || 0,
                     topGenre: data.topGenre || 'N/D',
                     topGenreCount: Number(data.topGenreCount || 0) || 0,
                     topArtist: topArtistName || 'N/D',
@@ -136,7 +137,8 @@
           var totalDisplay = g.total ? String(g.total) : '...';
 
           var globalGenre = g.topGenre && g.topGenre !== 'N/D' ? g.topGenre + (g.topGenreCount ? ' (' + g.topGenreCount + ')' : '') : 'N/D';
-          var globalText = '<strong>HISTORIA:</strong> • <strong>🏆 Top Puntos:</strong> ' + globalPointsTop3 + ' • <strong>🎵 Más pedida:</strong> ' + fmt(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') + '  •  <strong>👥 Top Usuarios:</strong> ' + globalUsersTop3 + '  •  <strong>🎤 Top Artistas:</strong> ' + globalArtistsTop3 + '  •  <strong>🎹 Género Top:</strong> ' + fmt(globalGenre) + '  •  <strong>❤️ Top Liker:</strong> ' + fmt(g.topLiker) + (g.topLikerCount ? ' (' + g.topLikerCount + ')' : '') + '  •  <strong>📊 Total:</strong> ' + totalDisplay;
+          var globalLikesDisplay = g.totalLikes ? g.totalLikes.toLocaleString() : '0';
+          var globalText = '<strong>HISTORIA:</strong> • <strong>🏆 Top Puntos:</strong> ' + globalPointsTop3 + ' • <strong>🎵 Más pedida:</strong> ' + fmt(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') + '  •  <strong>👥 Top Usuarios:</strong> ' + globalUsersTop3 + '  •  <strong>🎤 Top Artistas:</strong> ' + globalArtistsTop3 + '  •  <strong>🎹 Género Top:</strong> ' + fmt(globalGenre) + '  •  <strong>❤️ Likes Totales:</strong> ' + globalLikesDisplay + '  •  <strong>📊 Total:</strong> ' + totalDisplay;
           var dayText = '📅 <strong>HOY</strong> • <strong>🎵 Última:</strong> ' + fmt(latestTxt) + ' • <strong>👥 Top Usuarios:</strong> ' + (usersTop3Day.length ? usersTop3Day.join(', ') : 'N/D') + ' • <strong>🎤 Top Artistas:</strong> ' + (artistsTop3Day.length ? artistsTop3Day.join(', ') : 'N/D') + ' • <strong>📝 Solicitudes:</strong> ' + String(day.items.length || 0);
           var sep = '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
           return e('span', { dangerouslySetInnerHTML: { __html: dayText + sep + globalText } });
@@ -14854,15 +14856,17 @@ function shouldShowStatsTicker() {
             });
             pointsUsers = Array.from(aggregatedPoints.values());
 
-            // Calcular Top Liker desde userStats
+            // Calcular Top Liker y Total de Likes desde userStats
             let topLikerName = 'N/D';
             let topLikerCountVal = 0;
+            let globalTotalLikes = 0;
             try {
               let maxL = 0;
               let maxLk = '';
               userStatsSnapshot.forEach(doc => {
                 const ud = doc.data() || {};
                 const lCount = Number(ud.totalLikes || 0);
+                globalTotalLikes += lCount;
                 if (lCount > maxL) {
                   maxL = lCount;
                   maxLk = String(ud.displayName || doc.id || '').trim();
