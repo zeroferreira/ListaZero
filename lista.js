@@ -14781,6 +14781,9 @@ function shouldShowStatsTicker() {
             const a = aRaw.trim().toLowerCase();
             const s = sRaw.trim().toLowerCase();
             const u = normalizeUserKey(uRaw);
+            
+            // FILTRO DE PRUEBAS: Ignorar usuarios de test
+            if (u === 'prueba' || u === 'test' || u.startsWith('prueba') || u.startsWith('test')) return;
 
             // Inferencia de género: si no tiene, buscamos si ya conocemos el género de este artista
             if (!isInvalid(gRaw)) {
@@ -14880,6 +14883,12 @@ function shouldShowStatsTicker() {
               let maxLk = '';
               userStatsSnapshot.forEach(doc => {
                 const ud = doc.data() || {};
+                const rawName = String(ud.displayName || doc.id || '').trim();
+                const normKey = normalizeUserKey(rawName);
+
+                // FILTRO DE PRUEBAS
+                if (!normKey || normKey === 'prueba' || normKey === 'test' || normKey.startsWith('prueba')) return;
+
                 const lCount = Number(ud.totalLikes || 0);
                 globalTotalLikes += lCount;
                 if (lCount > maxL) {
@@ -14949,6 +14958,7 @@ function shouldShowStatsTicker() {
               topGenreCount: topGenreCountVal,
               topLiker: topLikerName,
               topLikerCount: topLikerCountVal,
+              totalLikes: globalTotalLikes,
               distinctUsers: Object.keys(userCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null').length,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
