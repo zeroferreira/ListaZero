@@ -34,9 +34,65 @@
       if (lower === 'prueba' || lower === 'test') return true;
 
       if (lower.includes('http://') || lower.includes('https://') || lower.includes('www.') || lower.includes('youtu.be')) return true;
-      if (str.length > 100 || str.length <= 1) return true;
+      
+      // FILTRO DE LONGITUD Y REPETICIÓN: Omitir nombres absurdamente largos o repetitivos
+      if (str.length > 25 || str.length <= 1) return true;
+      
+      // Detectar repeticiones sospechosas (ej: "abcabcabc")
+      const mid = Math.floor(lower.length / 2);
+      if (lower.length > 6 && lower.substring(0, mid) === lower.substring(mid)) return true;
+
       return ['n/d', 'undefined', 'null', 'unknown', 'various', 'various artists', 'anónimo', 'anonymous'].includes(lower);
     };
+
+    // ==========================================
+    // SISTEMA DE AUTO-ACTUALIZACIÓN (GITHUB API)
+    // ==========================================
+    (function() {
+      const REPO = 'zeroferreira/ListaZero';
+      const CHECK_INTERVAL = 15 * 60 * 1000; // Revisar cada 15 minutos
+      let currentSHA = null;
+
+      async function getLatestSHA() {
+        try {
+          const res = await fetch(`https://api.github.com/repos/${REPO}/commits/main`, { cache: 'no-store' });
+          if (!res.ok) return null;
+          const data = await res.json();
+          return data.sha;
+        } catch (_) { return null; }
+      }
+
+      async function check() {
+        const newSHA = await getLatestSHA();
+        if (!newSHA) return;
+        if (!currentSHA) {
+          currentSHA = newSHA;
+          console.log('🚀 Versión de App Detectada:', currentSHA);
+          return;
+        }
+        if (newSHA !== currentSHA) {
+          console.log('✨ Nueva versión disponible en GitHub:', newSHA);
+          // Si existe la función de modal, la usamos; si no, alert básico
+          if (typeof showMessageModal === 'function') {
+            showMessageModal({
+              title: '🔄 Actualización Disponible',
+              message: 'Se han detectado nuevos cambios en el sistema. La página se reiniciará en unos segundos para aplicar las mejoras.',
+              onClose: () => window.location.reload(true)
+            });
+            setTimeout(() => window.location.reload(true), 8000);
+          } else {
+            alert('Hay una nueva versión disponible. La página se recargará.');
+            window.location.reload(true);
+          }
+        }
+      }
+
+      // Iniciar chequeos (esperar a que todo cargue)
+      document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(check, 5000); // Primer chequeo a los 5s
+        setInterval(check, CHECK_INTERVAL);
+      });
+    })();
 
 (function(){
       var target = document.getElementById('react-modern-widget');
@@ -7920,7 +7976,8 @@ function shouldShowStatsTicker() {
           music_pro_200: 200, music_elite_500: 500, music_legend_1000: 1000
         };
         if (id in songTargets) {
-          const current = safe(stats.totalSongs || 0);
+          // UNIFICACIÓN TOTAL: Usar el conteo de 'requestedCount' (121) para coincidir con la UI
+          const current = safe(stats.requestedCount || stats.totalSongs || 0);
           const target = songTargets[id];
           return { current, target, unit: 'canciones', percent: Math.min(100, Math.round((current / target) * 100)) };
         }
@@ -9303,17 +9360,10 @@ function shouldShowStatsTicker() {
               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
               arr.forEach(x => {
                 const id = sanitize(x);
-                const parts = id.split('-');
-                if (parts.length >= 2) {
-                  parts.pop();
-                  const usernameInId = parts.join('-');
-                  // COHERENCIA: Normalizar reemplazando espacios por guiones
-                  const norm = (s) => sanitize(s).replace(/\s+/g, '-');
-                  if (fused.some(f => norm(f) === usernameInId || sanitize(f) === usernameInId)) {
-                    // FILTRO DE SEGURIDAD: Omitir si el ID de la canción indica bot o test
-                    if (!window.isInvalid(usernameInId) && !window.isInvalid(id)) {
-                      ids.add(id);
-                    }
+                if (prefixes.some(p => id.startsWith(p))) {
+                  // FILTRO DE SEGURIDAD: Omitir si el ID de la canción indica bot o test
+                  if (typeof window.isInvalid !== 'function' || !window.isInvalid(id)) {
+                    ids.add(id);
                   }
                 }
               });
@@ -9401,6 +9451,10 @@ function shouldShowStatsTicker() {
       }
 
       async function computeUserBreakdown(u, options = {}) {
+        window.__sessionBreakdownCache = window.__sessionBreakdownCache || {};
+        const sessKey = String(u || '').toLowerCase();
+        if (!options.force && window.__sessionBreakdownCache[sessKey]) return window.__sessionBreakdownCache[sessKey];
+
         let tiktokId = null;
         const rawUser = String(u || '').trim();
         const usuario = rawUser.replace(/^@/, '');
@@ -9440,86 +9494,65 @@ function shouldShowStatsTicker() {
           }
         };
 
-        // --- CALCULO DE "TOP 1 DIARIO" ---
+        // --- CALCULO DE "TOP 1 DIARIO" Y RACHAS ---
         let top1Count = 0;
         try {
           const allReqs = await getAllCombinedSolicitudes();
-          // Agrupar por día
           const byDay = {};
           allReqs.forEach(s => {
             let d = String(s.day || (s.fecha || '').split('T')[0] || '').trim();
-            if (!d) return;
-            // Solo considerar desde la fecha de inicio del evento
-            if (d < TOP1_BONUS_START_DATE) return;
-
-            // No contar el día de HOY si no ha terminado (opcional, pero el usuario dijo "cuantas veces ha quedado")
-            // Asumiremos que cuenta días completados o actuales si ya va ganando.
-            // Pero para evitar volatilidad, lo ideal es días pasados. 
-            // Sin embargo, si es "hoy", el usuario quiere ver si va ganando.
-            // Vamos a contar todos los días desde START_DATE hasta hoy (inclusive).
-
+            if (!d || d < TOP1_BONUS_START_DATE) return;
             if (!byDay[d]) byDay[d] = {};
             const uKeyRaw = String(s.usuario || '').trim().replace(/^@/, '').toLowerCase();
             const uKey = normalizeKeyTextForTicker(uKeyRaw);
             byDay[d][uKey] = (byDay[d][uKey] || 0) + 1;
           });
-
-          // Determinar ganador de cada día
           Object.keys(byDay).forEach(day => {
             const counts = byDay[day];
-            let max = -1;
-            let winner = null;
-            // Encontrar el maximo
+            let max = -1, winner = null;
             Object.keys(counts).forEach(user => {
-              if (counts[user] > max) {
-                max = counts[user];
-                winner = user;
-              } else if (counts[user] === max) {
-                // Empate: ¿ambos ganan? O nadie? O el primero?
-                // Asumiremos empate = ambos ganan (o el sistema elige uno, pero mejor ambos).
-                // Para simplificar, si hay empate con el usuario actual, cuenta.
-                if (user === unameLc) winner = user;
-              }
+              if (counts[user] > max) { max = counts[user]; winner = user; }
+              else if (counts[user] === max && user === unameLc) winner = user;
             });
-
-            if (winner === unameLc && max > 0) {
-              top1Count++;
-            }
+            if (winner === unameLc && max > 0) top1Count++;
           });
+        } catch (e) { }
 
-        } catch (e) { console.error('Error calculating Top 1 Bonus:', e); }
-        // ---------------------------------
-        const daysSet = new Set();
-        const perDaySongs = new Map();
-        try {
-          const userSnap = await db.collection('solicitudes').where('usuario', 'in', fusedIds).get();
-          // Construir set de IDs validos de solicitudes para filtrar las reproducidas
-          userSnap.forEach(doc => {
-            const d = doc.data() || {};
-            const day = normalizeDay(d.day || '');
-            if (!day) return;
-            if (isOnOrAfterStart(day)) daysSet.add(day);
-            const arr = perDaySongs.get(day) || [];
-            arr.push(d);
-            perDaySongs.set(day, arr);
-          });
-        } catch (_) { }
-        try {
-          const playedDaysSnap = await db.collection('playedSongs').get();
-          playedDaysSnap.forEach(ps => {
-            const day = normalizeDay(ps.id);
-            if (day && isOnOrAfterStart(day)) daysSet.add(day);
-          });
-        } catch (_) { }
-
+        // 2. CONTAR CANCIONES REPRODUCIDAS (BASE PARA PUNTOS)
         let playedCount = 0;
         try {
-          // COHERENCIA: Pasar los IDs fusionados que ya descubrimos arriba para un conteo exacto
           playedCount = await countTotalToggledSongsForUser(usuario, fusedIds);
-        } catch (e) { console.error('Error counting played from toggles:', e); }
+        } catch (e) { console.error('Error counting played:', e); }
+
+        // 3. CONTAR CANCIONES PEDIDAS (INFORMATIVO, NO SUMA PUNTOS)
+        let totalRequestedCount = 0;
+        const daysSet = new Set();
+        const perDaySongs = new Map();
+        const playedArtistsSet = new Set();
+        try {
+          const userSnap = await db.collection('solicitudes').where('usuario', 'in', fusedIds).get();
+          totalRequestedCount = userSnap.size;
+          userSnap.forEach(doc => {
+            const d = doc.data() || {};
+            if (d.artista) {
+              const a = String(d.artista).trim().toLowerCase();
+              if (a) playedArtistsSet.add(a);
+            }
+            const rawDay = d.day || (d.fecha ? (typeof d.fecha.toDate === 'function' ? d.fecha.toDate().toISOString().split('T')[0] : String(d.fecha).split('T')[0]) : '');
+            const day = normalizeDay(rawDay);
+            if (day && isOnOrAfterStart(day)) {
+              daysSet.add(day);
+              const arr = perDaySongs.get(day) || [];
+              arr.push(d);
+              perDaySongs.set(day, arr);
+            }
+          });
+        } catch (_) { }
+
+        // Coherencia visual: Pedidas >= Reproducidas (Solo visual, NO afecta puntos)
+        totalRequestedCount = Math.max(totalRequestedCount, playedCount);
 
         let activeDaysValid = 0;
-        const playedArtistsSet = new Set();
         const detail = [];
         const days = Array.from(daysSet);
         const totalPlayedSet = new Set();
@@ -9747,7 +9780,9 @@ function shouldShowStatsTicker() {
               const bestStats = await fetchBestUserStatsDoc(currentUid);
               if (bestStats && bestStats.data) {
                 const sdata = bestStats.data || {};
-                const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : [];
+                // Revisar en ambas ubicaciones posibles (raíz y dentro de gamification)
+                const statAch = Array.isArray(sdata.achievements) ? sdata.achievements : 
+                               (sdata.gamification && Array.isArray(sdata.gamification.achievements) ? sdata.gamification.achievements : []);
                 (statAch || []).forEach(id => idSet.add(String(id)));
               }
             } catch (_) { }
@@ -9993,6 +10028,7 @@ function shouldShowStatsTicker() {
         return {
           usuario,
           playedCount,
+          vipEligibleSongs: (isVip ? (typeof vipEligibleSongs !== 'undefined' ? vipEligibleSongs : playedCount) : 0),
           activeDaysValid,
           isVip,
           base: (playedCount * 25),
@@ -10011,6 +10047,9 @@ function shouldShowStatsTicker() {
           total: Math.max(0, Number(displayTotal || 0)),
           detail,
           achievementsList,
+          requestedCount: totalRequestedCount,
+          uniqueArtists: playedArtistsSet.size,
+          uniqueArtistsPlayed: playedArtistsSet.size,
           redemptions,
           likesPoints,
           likesCount,
@@ -10031,18 +10070,8 @@ function shouldShowStatsTicker() {
         const now = Date.now();
         const cached = window.__breakdownCache[key];
         let bd;
-        // Render rápido con conteo consistente (unión de fuentes)
-        try {
-          const fused = typeof getFusedIds === 'function' ? getFusedIds(u) : [u];
-          const quickTotalPlayed = await countTotalToggledSongsForUser(u, fused);
-          const quickBase = Number(quickTotalPlayed || 0) * 25;
-          const setNum = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = String(val); };
-          setNum('breakdown-played-base', quickBase);
-          setNum('breakdown-vip-bonus', 0);
-          setNum('breakdown-daily-bonus', 0);
-          setNum('breakdown-achievements', 0);
-          setNum('breakdown-streak-residual', 0);
-        } catch (_) { }
+        // COHERENCIA: Eliminado bloque de renderizado rápido que causaba discrepancias (83 vs 452)
+        // Ahora esperamos al cálculo consolidado oficial para evitar inconsistencias entre pestañas.
         if (!force && cached && (now - cached.updatedAt) < 5000) { // Reduced from 30000 to 5000 for faster updates
           bd = cached.data;
         } else {
@@ -10066,9 +10095,9 @@ function shouldShowStatsTicker() {
           bd = await computeUserBreakdown(u);
         }
 
-        setNum('breakdown-played-base', Number(bd.base || 0));
-        setNum('breakdown-vip-bonus', Number(bd.vipBonus || 0));
-        setNum('breakdown-daily-bonus', Number(bd.dailyBonus || 0));
+        setNum('breakdown-played-base', Number(bd.playedCount || 0));
+        setNum('breakdown-vip-bonus', Number(bd.vipEligibleSongs || 0));
+        setNum('breakdown-daily-bonus', Number(bd.activeDaysValid || 0));
         const achPlus = Number(bd.achievements || 0) + Number(bd.streakBonus || 0) + Number(bd.top1Bonus || 0) + Number(bd.manualBonus || 0) + Number(bd.likesPoints || 0) + Number(bd.giftPoints || 0) + Number(bd.adjustment || 0);
         setNum('breakdown-achievements', Number(achPlus || 0));
         const red = -Math.max(0, Number(bd.redemptionsSpent || 0));
@@ -10582,9 +10611,13 @@ function shouldShowStatsTicker() {
               const skippedSet = new Set((skippedArr || []).map(x => String(x || '').toLowerCase().replace(/[^a-z0-9-]/g, '')));
               (arr || []).forEach(x => {
                 const id = String(x || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
-                if (id.startsWith(`${user}-`)) set.add(id);
+                const userPrefix = user.replace(/[^a-z0-9-]/g, '') + '-';
+                if (id.startsWith(userPrefix)) set.add(id);
               });
-              skippedSet.forEach((sid) => { if (sid && sid.startsWith(`${user}-`)) set.delete(sid); });
+              skippedSet.forEach((sid) => {
+                const userPrefix = user.replace(/[^a-z0-9-]/g, '') + '-';
+                if (sid && sid.startsWith(userPrefix)) set.delete(sid);
+              });
             });
           } catch (_) { }
           const total = set.size;
@@ -10637,6 +10670,7 @@ function shouldShowStatsTicker() {
               const skippedSet = new Set((skippedArr || []).map(x => String(x || '').toLowerCase().replace(/[^a-z0-9-]/g, '')));
               (arr || []).forEach(x => {
                 const id = String(x || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+                // Heurística: el primer segmento suele ser el usuario (pero puede fallar si el usuario tiene guiones)
                 const u = id.split('-')[0] || '';
                 if (!u) return;
                 sets[u] = sets[u] || new Set();
@@ -11021,123 +11055,114 @@ function shouldShowStatsTicker() {
 
       async function populateUserSelector() {
         const userSelect = document.getElementById('gamification-user-select');
-        if (!userSelect) {
-          return;
-        }
+        if (!userSelect) return;
 
         try {
-          const users = new Map();
-          const addUser = (name) => {
+          const activeUsers = new Map(); // key -> OriginalName
+          const now = Date.now();
+          const threshold = 45 * 24 * 60 * 60 * 1000; // 45 días
+          const normCurrent = String(getCurrentUser() || '').trim().toLowerCase().replace(/^@/, '');
+          
+          // 1. CREAR EL WHITELIST ESTRICTO DESDE USERSTATS
+          const activeWhitelist = new Set();
+          activeWhitelist.add(normCurrent);
+
+          const dbRef = window.db || db;
+          if (dbRef) {
+            try {
+              const statsSnap = await dbRef.collection('userStats').get();
+              statsSnap.forEach(doc => {
+                if (!doc.id) return;
+                const d = doc.data() || {};
+                const points = Number(d.totalPoints || 0);
+                const updated = d.updatedAt ? (typeof d.updatedAt.toDate === 'function' ? d.updatedAt.toDate() : new Date(d.updatedAt)) : null;
+                const isRecent = updated && (now - updated.getTime() < threshold);
+                const uNorm = doc.id.toLowerCase().replace(/^@/, '');
+                const isVip = (window.vipSet && window.vipSet.has(uNorm)) || (window.z0VipSet && window.z0VipSet.has(uNorm));
+
+                // FILTRO DE ACTIVIDAD ESTRICTO:
+                // 1. No debe ser un nombre inválido (bots, chino, spam)
+                // 2. Debe tener puntos > 0 O ser VIP O ser reciente O ser el usuario actual
+                const isInvalid = typeof window.isInvalid === 'function' ? window.isInvalid(doc.id) : false;
+                
+                if (!isInvalid && (points > 0 || isVip || uNorm === normCurrent)) {
+                  // Si no tiene puntos y no es VIP ni el actual, solo mostrar si es MUY reciente (<30 días)
+                  if (points === 0 && !isVip && uNorm !== normCurrent && !isRecent) {
+                    return; 
+                  }
+                  activeWhitelist.add(uNorm);
+                  activeUsers.set(uNorm, doc.id);
+                }
+              });
+            } catch (e) { console.warn('Error whitelist:', e); }
+          }
+
+          // 2. EL PORTERO: Solo permite usuarios en el whitelist
+          const addUserFiltered = (name) => {
             const u = String(name || '').trim();
             if (!u) return;
-            const key = u.toLowerCase();
-            if (!users.has(key)) users.set(key, u);
+            const key = u.toLowerCase().replace(/^@/, '');
+            if (activeWhitelist.has(key)) {
+              if (!activeUsers.has(key)) activeUsers.set(key, u);
+            }
           };
 
+          // 3. PASAR TODAS LAS FUENTES POR EL PORTERO
           try {
             const items = Array.isArray(window.__dayItems) ? window.__dayItems : [];
-            items.forEach(it => {
-              addUser(it?.usuario);
-            });
+            items.forEach(it => { if (it?.usuario) addUserFiltered(it.usuario); });
           } catch (_) { }
 
           try {
             const all = await getAllCombinedSolicitudes();
-            (all || []).forEach(s => {
-              addUser(s?.usuario);
-            });
+            (all || []).forEach(s => { if (s?.usuario) addUserFiltered(s.usuario); });
           } catch (_) { }
 
           try {
             const cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
-            cached.forEach(name => {
-              addUser(name);
-            });
+            cached.forEach(n => addUserFiltered(n));
           } catch (_) { }
 
-          try {
-            const dbRef = window.db || db;
-            if (dbRef) {
-              const statsSnap = await dbRef.collection('userStats').get();
-              statsSnap.forEach(doc => { if (doc.id) addUser(doc.id); });
-            }
-          } catch (_) { }
-
-          try {
-            const dbRef = window.db || db;
-            if (dbRef) {
-              const usersSnap = await dbRef.collection('users').get();
-              usersSnap.forEach(doc => {
-                const d = doc.data() || {};
-                if (d.name) addUser(d.name);
-              });
-            }
-          } catch (_) { }
-
-          // Complementar con usuarios de localStorage
           try {
             const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
+            solicitudes.forEach(s => addUserFiltered(s.usuario));
+            
+            let cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
+            // PURGA DE EMERGENCIA: Si la lista local es enorme (>150), limpiarla para forzar sync fresco
+            if (cached.length > 150) {
+              localStorage.removeItem('knownUsers');
+              cached = [];
+            }
+            cached.forEach(n => addUserFiltered(n));
+            
             const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
+            Object.values(byDay).flat().forEach(s => addUserFiltered(s.usuario));
+          } catch (_) { }
 
-            // Agregar usuarios de solicitudes locales
-            solicitudes.forEach(s => {
-              addUser(s.usuario);
-            });
-
-            // Agregar usuarios de byDay
-            Object.values(byDay).flat().forEach(s => {
-              addUser(s.usuario);
-            });
-          } catch (error) {
-            console.error('Error obteniendo usuarios de localStorage:', error);
-          }
-
-          // Incluir usuarios presentes en sets de insignias otorgadas
-          try {
-            const addFromSet = (s) => {
-              if (!s) return;
-              Array.from(s).forEach(name => addUser(name));
-            };
-            addFromSet(window.vipSet);
-            addFromSet(window.z0VipSet);
-            addFromSet(window.donadorSet);
-            addFromSet(window.z0FanSet);
-            addFromSet(window.z0PlatinumSet);
-          } catch (setErr) {
-            console.warn('No se pudieron agregar usuarios desde sets de insignias:', setErr);
-          }
-
-          const usersList = Array.from(users.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-          const lastProfileUser = String(localStorage.getItem('lastProfileUser') || '').trim();
-          const ordered = lastProfileUser && usersList.includes(lastProfileUser)
-            ? [lastProfileUser, ...usersList.filter(u => u !== lastProfileUser)]
-            : usersList;
-          console.log(`👥 Usuarios encontrados para selector:`, usersList);
-
-          const hasLast = !!(lastProfileUser && ordered.length && ordered[0] === lastProfileUser);
-          const sep = '<option value="" disabled>------</option>';
-          const firstOpt = hasLast ? `<option value="${ordered[0]}">${ordered[0]}</option>${sep}` : '';
-          const restOpts = ordered.slice(hasLast ? 1 : 0).map(user => `<option value="${user}">${user}</option>`).join('');
-          const options = '<option value="">Selecciona un usuario</option>' + firstOpt + restOpts;
-
-          userSelect.innerHTML = options;
-          console.log(`✅ Selector poblado con ${usersList.length} usuarios`);
+          // 4. GENERAR EL SELECTOR LIMPIO
+          const usersList = Array.from(activeUsers.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+          
+          userSelect.innerHTML = '<option value="">Selecciona un usuario</option>';
+          usersList.forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            userSelect.appendChild(option);
+          });
 
           if (usersList.length === 0) {
-            userSelect.innerHTML = '<option value="">No hay usuarios disponibles</option>';
-            console.log(`⚠️ No se encontraron usuarios para el selector`);
+            userSelect.innerHTML = '<option value="">No hay usuarios activos</option>';
           }
 
-          // Seleccionar el usuario actual si existe en la lista
+          // Seleccionar actual
           const current = getCurrentSelectedUser();
-          if (current && usersList.includes(current)) {
+          if (current && activeWhitelist.has(current.toLowerCase().replace(/^@/, ''))) {
             userSelect.value = current;
           }
-          // Refrescar selector de insignias para el usuario actual
           populateBadgeSelectForUser(getCurrentSelectedUser());
         } catch (error) {
-          console.error('Error al cargar usuarios:', error);
-          userSelect.innerHTML = '<option value="">Error al cargar usuarios</option>';
+          console.error('Error populateUserSelector:', error);
+          userSelect.innerHTML = '<option value="">Error al cargar</option>';
         }
       }
 
@@ -11148,46 +11173,42 @@ function shouldShowStatsTicker() {
 
         try {
           const users = new Map();
-          const addUser = (name) => {
+          const normCurrent = String(getCurrentUser() || '').trim().toLowerCase().replace(/^@/, '');
+
+          const addUserIfValid = (name) => {
             const u = String(name || '').trim();
             if (!u) return;
-            const key = u.toLowerCase();
+            const key = u.toLowerCase().replace(/^@/, '');
+            
+            // FILTRO ESTRICTO: No bots, no chino
+            const isInvalid = typeof window.isInvalid === 'function' ? window.isInvalid(u) : false;
+            if (isInvalid && key !== normCurrent) return;
+
             if (!users.has(key)) users.set(key, u);
           };
 
-          // Obtener usuarios de localStorage
+          // Cargar de fuentes locales
+          const cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
+          cached.forEach(n => addUserIfValid(n));
+          
           const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
-          const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-
-          // Agregar usuarios de solicitudes locales
-          solicitudes.forEach(s => {
-            addUser(s.usuario);
-          });
-
-          // Agregar usuarios de byDay
-          Object.values(byDay).flat().forEach(s => {
-            addUser(s.usuario);
-          });
+          solicitudes.forEach(s => addUserIfValid(s.usuario));
 
           const usersList = Array.from(users.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-          const lastProfileUser = String(localStorage.getItem('lastProfileUser') || '').trim();
-          const ordered = lastProfileUser && usersList.includes(lastProfileUser)
-            ? [lastProfileUser, ...usersList.filter(u => u !== lastProfileUser)]
-            : usersList;
-          const hasLast = !!(lastProfileUser && ordered.length && ordered[0] === lastProfileUser);
-          const sep = '<option value="" disabled>------</option>';
-          const firstOpt = hasLast ? `<option value="${ordered[0]}">${ordered[0]}</option>${sep}` : '';
-          const restOpts = ordered.slice(hasLast ? 1 : 0).map(user => `<option value="${user}">${user}</option>`).join('');
-          const options = '<option value="">Selecciona un usuario</option>' + firstOpt + restOpts;
-
-          userSelect.innerHTML = options;
+          
+          userSelect.innerHTML = '<option value="">Selecciona un usuario</option>';
+          usersList.forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            userSelect.appendChild(option);
+          });
 
           if (usersList.length === 0) {
-            userSelect.innerHTML = '<option value="">No hay usuarios disponibles</option>';
+            userSelect.innerHTML = '<option value="">No hay usuarios locales</option>';
           }
         } catch (error) {
-          console.error('Error en fallback localStorage:', error);
-          userSelect.innerHTML = '<option value="">Error al cargar usuarios</option>';
+          console.error('Error populateUserSelectorFromLocalStorage:', error);
         }
       }
       window.populateUserSelectorFromLocalStorage = populateUserSelectorFromLocalStorage;
@@ -12078,11 +12099,16 @@ function shouldShowStatsTicker() {
           ];
 
           songAchievements.forEach(ach => {
-            if (!data.achievements.includes(ach.id) && (s.totalPlayedSongs || s.songCount || 0) >= ach.target) {
-              console.log(`🎉 Otorgando logro de actividad ${ach.id} a ${username}`);
+            const played = Number(s.totalPlayedSongs || s.songCount || 0);
+            const requested = Number(s.requestedCount || s.totalSongs || 0);
+            const highest = Math.max(played, requested);
+
+            if (!data.achievements.includes(ach.id) && highest >= ach.target) {
+              console.log(`🎉 LOGRO DESBLOQUEADO para ${username}: ${ach.title} (${highest}/${ach.target})`);
               data.achievements.push(ach.id);
               data.points += ach.points;
               data.xp += ach.points;
+              data.lastUnlockedAchievementAt = Date.now();
               achievementsGranted.push(`${ach.title} (+${ach.points} pts)`);
             }
           });
@@ -12622,6 +12648,13 @@ function shouldShowStatsTicker() {
         const targetUser = getCurrentSelectedUser();
         console.log(`🎨 INICIO - Renderizando modal para usuario: ${targetUser}`);
 
+        // RESET INICIAL: Limpiar campos de UI para evitar "fantasmas" o previsualizaciones erróneas
+        try {
+          const idsToClear = ['user-points', 'personal-total-songs', 'personal-total-played', 'personal-unique-artists', 'personal-active-days', 'personal-rank', 'breakdown-played-base', 'breakdown-vip-bonus', 'breakdown-daily-bonus', 'breakdown-achievements', 'breakdown-streak-residual', 'breakdown-total', 'current-xp', 'next-level-xp'];
+          idsToClear.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '...'; });
+          const pf = document.getElementById('progress-fill'); if (pf) pf.style.width = '0%';
+        } catch (_) { }
+
         // PRIMER PASO: Intentar sincronizar con la nube para asegurar datos consistentes
         // Esto arregla el problema de "diferentes puntos en diferentes dispositivos"
         let data = await syncGamificationDataWithCloud(targetUser);
@@ -12639,19 +12672,26 @@ function shouldShowStatsTicker() {
           };
         }
 
+        // LIMPIAR CACHE DE SESIÓN PARA ASEGURAR DATOS FRESCOS AL ABRIR
+        window.__sessionBreakdownCache = window.__sessionBreakdownCache || {};
+        const sessKey = String(targetUser || '').toLowerCase();
+        delete window.__sessionBreakdownCache[sessKey];
+
         // RECALCULAR RACHAS Y ESTADÍSTICAS EN TIEMPO REAL (FUSIÓN DE CUENTAS)
-        console.log(`🔥 Recalculando rachas para ${targetUser}...`);
+        console.log(`🔥 Recalculando breakdown para ${targetUser}...`);
         try {
           const freshStats = await computeUserBreakdown(targetUser);
           if (freshStats) {
+            window.__sessionBreakdownCache[sessKey] = freshStats; // Guardar en cache de sesión
             data.streaks.current = freshStats.currentStreak;
             data.streaks.best = freshStats.bestStreak;
 
             // ACTUALIZAR STATS PARA EVALUACIÓN DE LOGROS
             data.stats = data.stats || {};
-            data.stats.totalSongs = freshStats.playedCount; // Para compatibilidad
+            data.stats.totalSongs = Math.max(freshStats.requestedCount || 0, freshStats.playedCount || 0); // Para compatibilidad
             data.stats.totalPlayedSongs = freshStats.playedCount;
             data.stats.songCount = freshStats.playedCount;
+            data.stats.requestedCount = Math.max(freshStats.requestedCount || 0, freshStats.playedCount || 0);
             data.stats.activeDays = freshStats.activeDaysValid;
             data.stats.uniqueArtists = freshStats.uniqueArtists || (data.stats.uniqueArtists || 0);
             data.stats.uniqueArtistsPlayed = freshStats.uniqueArtistsPlayed || (data.stats.uniqueArtistsPlayed || 0);
@@ -12683,7 +12723,8 @@ function shouldShowStatsTicker() {
         window.grantBadgeAchievement(targetUser);
         const currentLevel = getLevelInfo(data.level);
         const nextLevel = getNextLevelInfo(data.level);
-        const progressPercent = ((data.xp - currentLevel.xpRequired) / (nextLevel.xpRequired - currentLevel.xpRequired)) * 100;
+        const xpDiff = nextLevel.xpRequired - currentLevel.xpRequired;
+        const progressPercent = xpDiff > 0 ? ((data.xp - currentLevel.xpRequired) / xpDiff) * 100 : 100;
 
         // Actualizar información del usuario
         updateUserHeaderUI(targetUser, data);
@@ -12709,12 +12750,27 @@ function shouldShowStatsTicker() {
         if (currentXpEl) currentXpEl.textContent = data.xp - currentLevel.xpRequired;
         if (nextLevelXpEl) nextLevelXpEl.textContent = nextLevel.xpRequired - currentLevel.xpRequired;
 
-        // Renderizar logros
-        console.log(`🏆 Llamando renderAchievementsForUser con datos:`, data);
+        // RE-EVALUAR LOGROS CON DATOS FRESCOS ANTES DE RENDERIZAR
         try {
+          if (typeof freshStats !== 'undefined' && freshStats) {
+            data.stats = data.stats || {};
+            data.stats.totalPlayedSongs = freshStats.playedCount;
+            data.stats.songCount = freshStats.playedCount;
+            data.stats.requestedCount = freshStats.requestedCount;
+            data.stats.totalSongs = Math.max(freshStats.requestedCount || 0, freshStats.playedCount || 0);
+            data.stats.uniqueArtists = freshStats.uniqueArtists;
+            data.stats.activeDays = freshStats.activeDaysValid;
+          }
+          data = await processAchievementsForUser(targetUser, data);
+          
+          // Si hubo desbloqueos nuevos (marcado por lastUnlockedAchievementAt), guardar en nube
+          if (data && data.lastUnlockedAchievementAt && (Date.now() - data.lastUnlockedAchievementAt < 5000)) {
+            saveGamificationDataForUser(data, targetUser);
+          }
+
           renderAchievementsForUser(data);
         } catch (error) {
-          console.error('Error renderizando logros:', error);
+          console.error('Error procesando/renderizando logros:', error);
         }
 
         // Renderizar rachas
@@ -13145,7 +13201,14 @@ function shouldShowStatsTicker() {
 
 
       // NUEVA función para contar solicitudes históricas de un usuario (TOTALES)
-      async function countTotalRequestedSongsForUser(usuario) {
+      async function countTotalRequestedSongsForUser(usuario, optionalFused) {
+        try {
+          const fusedIds = optionalFused || (typeof getFusedIds === 'function' ? getFusedIds(usuario) : [usuario]);
+          const snap = await db.collection('solicitudes').where('usuario', 'in', fusedIds).get();
+          return snap.size;
+        } catch (e) { return 0; }
+      }
+      const legacy_countTotalRequestedSongsForUser = async () => {
         try {
           const norm = typeof normalizeUserKey === 'function' ? normalizeUserKey(usuario) : String(usuario || '').trim().toLowerCase().replace(/^@/, '');
           if (!norm) return 0;
@@ -13194,8 +13257,7 @@ function shouldShowStatsTicker() {
       async function renderPersonalStatsForUser(data, usuario) {
         const stats = (data && data.stats) || {};
         const targetUser = usuario || getCurrentSelectedUser();
-        const normUser = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
-
+        
         console.log(`📊 Renderizando estadísticas para ${targetUser}:`, stats);
 
         const totalSongsEl = document.getElementById('personal-total-songs');
@@ -13203,48 +13265,22 @@ function shouldShowStatsTicker() {
         const uniqueArtistsEl = document.getElementById('personal-unique-artists');
         const activeDaysEl = document.getElementById('personal-active-days');
 
-        // --- NUEVA LÓGICA: Calcular canciones reproducidas (toggleadas) de cero ---
+        // USAR VALORES PRE-CALCULADOS (Sin parpadeos ni ceros)
+        if (totalSongsEl) totalSongsEl.textContent = String(stats.requestedCount || stats.totalSongs || 0);
+        if (totalPlayedEl) totalPlayedEl.textContent = String(stats.totalPlayedSongs || stats.songCount || 0);
+        if (uniqueArtistsEl) uniqueArtistsEl.textContent = String(stats.uniqueArtists || 0);
+        if (activeDaysEl) activeDaysEl.textContent = String(stats.activeDays || 0);
+
+        // --- ACTUALIZACIÓN DE SEGURIDAD (Background) ---
         try {
-          const totalToggled = await countTotalToggledSongsForUser(targetUser);
-          if (totalPlayedEl) totalPlayedEl.textContent = String(totalToggled);
-
-          // Actualizar globalmente para consistencia
-          setPlayedStat(totalToggled);
-        } catch (e) {
-          // if (totalPlayedEl) totalPlayedEl.textContent = '0';
-        }
-
-        /* 
-           BLOQUE ANTERIOR ELIMINADO: 
-           Antes aquí había una llamada a computeLocalSolicitudesStats que causaba el parpadeo 129 -> 130.
-           Al quitarla y depender solo de countTotalRequestedSongsForUser (abajo), aseguramos consistencia.
-        */
-
-        // --- NUEVA LÓGICA: Calcular canciones pedidas (Requested) de cero ---
-        try {
-          // Primero intentar una actualización rápida si tenemos datos locales, pero SIN escribir si es 0 y sabemos que hay más
-          // Para evitar el parpadeo 129 -> 130, vamos directo a la fuente completa combinada.
-          // Pero getAllCombinedSolicitudes puede ser lenta.
-          // La inconsistencia reportada es "129 y después 130".
-          // Esto significa que primero pintó 129 (local) y luego 130 (total).
-          // Para arreglarlo, vamos a NO pintar el parcial si podemos evitarlo, o confiar solo en el total.
-
-          const totalRequested = await countTotalRequestedSongsForUser(targetUser);
-          stableSetStat('personal-total-songs', totalRequested, targetUser);
-
-          // También recalcular artistas únicos y días activos con la lista completa
-          const all = await getAllCombinedSolicitudes();
-          const userSolicitudes = all.filter(s => String(s.usuario || '').trim().replace(/^@/, '').toLowerCase() === normUser);
-
-          const uniqueArtists = new Set(userSolicitudes.map(s => s.artista).filter(Boolean)).size;
-          const activeDays = new Set(userSolicitudes.map(s => String(s.day || (s.fecha || '').split('T')[0] || '').trim()).filter(d => d)).size;
-
-          stableSetStat('personal-unique-artists', uniqueArtists, targetUser);
-          stableSetStat('personal-active-days', activeDays, targetUser);
-
-        } catch (e) { console.error('Error counting requested:', e); }
-
-        // ... Resto de la lógica para otros stats (rank) ...
+          const fused = typeof getFusedIds === 'function' ? getFusedIds(targetUser) : [targetUser];
+          
+          // Verificar si el conteo de pedidas es coherente
+          if (totalSongsEl && (!stats.requestedCount || Number(totalSongsEl.textContent) === 0)) {
+            const totalRequested = await countTotalRequestedSongsForUser(targetUser, fused);
+            totalSongsEl.textContent = String(Math.max(totalRequested, Number(totalPlayedEl.textContent || 0)));
+          }
+        } catch (e) { }
 
         try {
           const allSolicitudes = await getAllCombinedSolicitudes({ allTime: (typeof allTime !== 'undefined' ? allTime : false) });

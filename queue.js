@@ -61,6 +61,7 @@
         return !(playedSongIds.has(sid) || (did && playedSongIds.has(did)) || (rid && playedSongIds.has(rid)));
       });
       const qm = getQueueMode();
+      // Aplicar base de ordenamiento
       if (qm === 'recent' || qm === 'manual_recent') {
         pending.sort((a, b) => getReqTimeMs(b) - getReqTimeMs(a));
       } else if (qm === 'smart') {
@@ -70,7 +71,9 @@
       } else {
         pending.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
       }
-      if (qm === 'manual_recent' || qm === 'manual_fifo') {
+
+      // Aplicar orden manual encima de cualquier modo
+      if (currentManualOrder && currentManualOrder.length > 0) {
         pending = applyOrder(pending, currentManualOrder);
       }
       return pending;
@@ -1386,17 +1389,23 @@
       });
 
       const qm = getQueueMode();
+      
+      // Aplicar base de ordenamiento según el modo
       if (qm === 'recent' || qm === 'manual_recent') {
         pendingRequests.sort((a, b) => getReqTimeMs(b) - getReqTimeMs(a));
       } else if (qm === 'oldest' || qm === 'default' || qm === 'manual_fifo') {
         pendingRequests.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
-      } else if ((!currentManualOrder || currentManualOrder.length === 0)) {
-        if (qm === 'smart') pendingRequests = applySmartOrder(pendingRequests);
-        else if (qm === 'tandas15') pendingRequests = applyTandas15Order(pendingRequests);
+      } else if (qm === 'smart') {
+        pendingRequests = applySmartOrder(pendingRequests);
+      } else if (qm === 'tandas15') {
+        pendingRequests = applyTandas15Order(pendingRequests);
+      } else {
+        // Fallback por si acaso
+        pendingRequests.sort((a, b) => getReqTimeMs(a) - getReqTimeMs(b));
       }
 
-      // 1.5 Aplicar orden manual solo en modos manuales, igual que en lista.html
-      if (qm === 'manual_recent' || qm === 'manual_fifo') {
+      // Aplicar orden manual encima de cualquier modo, igual que en lista.html
+      if (currentManualOrder && currentManualOrder.length > 0) {
         pendingRequests = applyOrder(pendingRequests, currentManualOrder);
       }
 
@@ -2069,8 +2078,19 @@
       } catch (_) {}
 
       try {
-        pollQueueModeOnce();
-        setInterval(pollQueueModeOnce, 2500);
+        // Sincronización en tiempo real del modo de cola
+        db.collection('system').doc('status').onSnapshot((doc) => {
+          if (doc.exists) {
+            const data = doc.data();
+            const mode = String(data.queueMode || '').trim();
+            if (mode && mode !== window.__QUEUE_MODE__) {
+              console.log("🔄 Cambio de modo detectado:", mode);
+              window.__QUEUE_MODE__ = mode;
+              try { localStorage.setItem('queueMode', mode); } catch (_) {}
+              renderQueue();
+            }
+          }
+        });
       } catch (_) {}
 
       db.collection('playedSongs').doc(currentDay)

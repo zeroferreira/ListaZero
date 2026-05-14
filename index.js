@@ -644,14 +644,34 @@
       }
 
       const linkInput = document.getElementById('link');
+      let lastExtractedUrl = '';
+      let autoFilledData = { title: '', artist: '' };
+
       if (linkInput) {
         linkInput.addEventListener('blur', async () => {
-          const meta = await extractMetadata(linkInput.value.trim());
+          const url = linkInput.value.trim();
+          if (!url) {
+            lastExtractedUrl = '';
+            autoFilledData = { title: '', artist: '' };
+            return;
+          }
+          if (url === lastExtractedUrl) return;
+
+          const meta = await extractMetadata(url);
           if (meta) {
+            lastExtractedUrl = url;
+            autoFilledData = { title: meta.title, artist: meta.artist };
+            
             const cancionEl = document.getElementById('cancion');
             const artistaEl = document.getElementById('artista');
-            if (cancionEl && !cancionEl.value) cancionEl.value = meta.title;
-            if (artistaEl && !artistaEl.value) artistaEl.value = meta.artist;
+            
+            // Si los campos están vacíos o tienen lo que autocompletamos antes, los actualizamos
+            if (cancionEl && (!cancionEl.value || cancionEl.value === autoFilledData.title)) {
+              cancionEl.value = meta.title;
+            }
+            if (artistaEl && (!artistaEl.value || artistaEl.value === autoFilledData.artist)) {
+              artistaEl.value = meta.artist;
+            }
           }
         });
       }
@@ -688,14 +708,21 @@
           const link = (linkEl.value || '').trim();
 
           // Si no hay cancion/artista pero hay link, intentar extraer antes de validar
+          // Si hay link, intentar extraer metadatos para asegurar que finalCancion/finalArtista son correctos
           let finalCancion = cancion;
-          let finalArtista = artista;
+          let finalArtista = artista; 
 
-          if (link && (!finalCancion || !finalArtista)) {
-             const meta = await extractMetadata(link);
-             if (meta) {
-               if (!finalCancion) finalCancion = meta.title;
-               if (!finalArtista) finalArtista = meta.artist;
+          if (link) {
+             // Si el link cambió respecto al último blur o si no tenemos datos, extraemos
+             if (link !== lastExtractedUrl || !finalCancion || !finalArtista) {
+               const meta = await extractMetadata(link);
+               if (meta) {
+                 // Priorizar metadatos del link si los campos actuales están vacíos o eran del link anterior
+                 if (!finalCancion || finalCancion === autoFilledData.title) finalCancion = meta.title;
+                 if (!finalArtista || finalArtista === autoFilledData.artist) finalArtista = meta.artist;
+                 lastExtractedUrl = link;
+                 autoFilledData = { title: meta.title, artist: meta.artist };
+               }
              }
           }
 
@@ -806,10 +833,12 @@
             localStorage.setItem('currentUser', usuario);
             
             // Marca que ya se procesó
-            window.__FORM_SUBMITTED__ = true;
+            window.__FORM_SUBMITTED__ = false;
             
             // Resetear formulario y redirigir
-            form.reset();
+            if (form) form.reset();
+            lastExtractedUrl = '';
+            autoFilledData = { title: '', artist: '' };
             window.location.href = 'lista.html';
             return;
           }
@@ -821,7 +850,13 @@
           // Marca que ya se procesó para evitar que otro handler muestre el alerta
           window.__FORM_SUBMITTED__ = true;
 
-          form.reset();
+          // Limpiar flags y formulario tras éxito
+          window.__FORM_SUBMITTED__ = false;
+          if (form) form.reset();
+          lastExtractedUrl = '';
+          autoFilledData = { title: '', artist: '' };
+
+          // Redirigir
           window.location.href = 'lista.html';
         });
       }
