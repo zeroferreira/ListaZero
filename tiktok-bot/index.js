@@ -229,13 +229,22 @@ function buildTikTokConnectionOptions() {
     const opts = {
         processInitialData: false,
         enableExtendedGiftInfo: true,
-        enableWebsocketUpgrade: tiktokWebsocketUpgradeEnabled,
-        requestPollingIntervalMs: 2000,
+        enableWebsocketUpgrade: true,
+        requestPollingIntervalMs: 5000,
         clientParams: {
-            app_language: 'es-ES'
+            app_language: 'es-ES',
+            device_platform: 'web',
+            aid: 1988,
+            version_code: '180800',
+            browser_language: 'es-ES',
+            browser_platform: 'Win32',
+            browser_name: 'Mozilla',
+            browser_version: '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         }
     };
-    if (config.sessionId) opts.sessionId = String(config.sessionId).trim();
+    if (config.sessionId) {
+        opts.sessionId = String(config.sessionId).trim();
+    }
     return opts;
 }
 
@@ -1721,22 +1730,25 @@ async function connectToLive() {
         })
         .catch(err => {
             const msg = String(err && err.message ? err.message : err);
-            console.error('❌ Error al conectar:', msg);
             isConnecting = false;
-            const isWsUrlIssue = msg.includes('Invalid URL') || msg.includes('Unexpected server response: 200');
-            if (isWsUrlIssue && tiktokWebsocketUpgradeEnabled) {
-                try {
-                    console.warn('⚠️ Falló WebSocket. Cambiando a modo polling (sin upgrade) y reintentando...');
-                    tiktokWebsocketUpgradeEnabled = false;
-                    tiktokConnectionOptions = buildTikTokConnectionOptions();
-                    try { if (tiktokLiveConnection) tiktokLiveConnection.disconnect(); } catch (_) {}
-                    tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
-                    setupListeners();
-                    setTimeout(connectToLive, 1500);
-                    return;
-                } catch (_) {}
+
+            if (msg.includes('Unexpected server response: 200')) {
+                console.error('❌ TikTok rechazó la conexión (Error 200).');
+                console.warn('⚠️ Esto sucede cuando TikTok detecta actividad inusual.');
+                console.warn('💡 RECOMENDACIÓN: Si el error persiste, abre TikTok en tu navegador, copia tu "sessionid" de las cookies y ponlo en el config.json');
+            } else {
+                console.error('❌ Error al conectar:', msg);
             }
-            setTimeout(connectToLive, 10000);
+
+            // Reintentar siempre con parámetros limpios tras 10 segundos
+            console.log('🔄 Reintentando en 10 segundos...');
+            setTimeout(() => {
+                tiktokConnectionOptions = buildTikTokConnectionOptions();
+                try { if (tiktokLiveConnection) tiktokLiveConnection.disconnect(); } catch (_) {}
+                tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
+                setupListeners();
+                connectToLive();
+            }, 10000);
         });
 }
 
