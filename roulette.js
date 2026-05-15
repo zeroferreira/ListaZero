@@ -399,6 +399,25 @@ const firebaseConfig = {
       } catch (_) {}
     }
 
+    function getReqTimeMs(it) {
+      try {
+        if (!it) return 0;
+        if (it.ts && typeof it.ts.toMillis === 'function') return it.ts.toMillis();
+        if (it.ts && typeof it.ts.toDate === 'function') return it.ts.toDate().getTime();
+        if (it.ts instanceof Date) return it.ts.getTime();
+        if (it.ts) {
+          const t = new Date(it.ts).getTime();
+          if (!Number.isNaN(t)) return t;
+        }
+        if (it.time) {
+          if (typeof it.time === 'number') return it.time;
+          const t = new Date(it.time).getTime();
+          if (!Number.isNaN(t)) return t;
+        }
+      } catch (_) {}
+      return 0;
+    }
+
     function getWinnerPhotoUrl(name) {
       const accentHex = getComputedStyle(document.documentElement).getPropertyValue('--roulette-accent-color').trim().replace('#', '') || '00e5ff';
       const normalize = (s) => String(s || '').toLowerCase().trim();
