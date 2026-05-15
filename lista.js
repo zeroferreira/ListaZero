@@ -1902,7 +1902,7 @@
             (typeof toHour === 'function' ? toHour(it.ts || it.timestamp || it.time) : '') ||
             ''
           ).trim();
-          const songId = `${it.usuario}-${it.cancion}-${it.artista}-${resolvedHora}`.replace(/[^a-zA-Z0-9-]/g, '');
+          const songId = it.id || `${it.usuario}-${it.cancion}-${it.artista}-${resolvedHora}`.replace(/[^a-zA-Z0-9-]/g, '');
           li.dataset.songId = songId;
           li.dataset.username = (it.usuario || '').trim().toLowerCase();
           li.dataset.day = String(it.day || (it.fecha || '').split('T')[0] || '').trim();
@@ -1961,7 +1961,8 @@
           const daySkippedSongs = localSkippedMap[currentDay] || [];
           const skippedSet = new Set((Array.isArray(daySkippedSongs) ? daySkippedSongs : []).map(x => String(x || '')));
 
-          if (dayPlayedSongs.includes(songId)) {
+          const isSongPlayed = dayPlayedSongs.includes(songId) || (it.id && dayPlayedSongs.includes(it.id));
+          if (isSongPlayed) {
             li.classList.add('played');
             if (skippedSet.has(String(songId || ''))) li.classList.add('skipped');
           }

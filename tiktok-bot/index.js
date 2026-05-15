@@ -1414,7 +1414,13 @@ function setupListeners() {
                 const resolvedUser = await getCanonicalUserKey(userId, displayName);
                 const userKey = String(resolvedUser.userKey || userId || '').trim();
                 const displayNameBest = String(resolvedUser.displayName || displayName || '').trim();
-                const result = await handleSongRequest(userKey, cleanQuery, { userId, displayName: displayNameBest, rawQuery, source: 'tiktokChat' });
+                const result = await handleSongRequest(userKey, cleanQuery, { 
+                    userId, 
+                    displayName: displayNameBest, 
+                    rawQuery, 
+                    source: 'tiktokChat',
+                    profilePhoto: profilePic // Pasar la foto de perfil al procesador
+                });
                 pushSrEvent({ source: 'chat', user: userKey, displayName: displayNameBest, userId, query: rawQuery, isVip, accepted: !!result?.ok, queueSaved: !!result?.queueSaved, ciderSent: !!result?.ciderSent, ciderQueued: !!result?.ciderQueued, error: result?.ok ? '' : (result?.error || '') });
             }
         }
@@ -1999,7 +2005,8 @@ async function handleSongRequest(user, query, options = {}) {
             status: 'pending',
             day: currentDay,
             genre: genre,
-            liveCode: liveCode || ''
+            liveCode: liveCode || '',
+            profilePhoto: options.profilePhoto || '' // NUEVO: Guardar foto de perfil
         };
         requestData.source = 'tiktok';
         if (source && String(source).trim() && String(source).trim().toLowerCase() !== 'tiktok') {

@@ -409,8 +409,8 @@ const firebaseConfig = {
         })
         .sort((a, b) => getReqTimeMs(b) - getReqTimeMs(a));
 
-      const winnerReq = matching.find(req => String(req.profilePhoto || req.photoUrl || req.avatar || req.userPhoto || '').trim());
-      const photo = winnerReq ? String(winnerReq.profilePhoto || winnerReq.photoUrl || winnerReq.avatar || winnerReq.userPhoto || '').trim() : '';
+      const winnerReq = matching.find(req => String(req.profilePhoto || req.profilePic || req.photoUrl || req.avatar || req.userPhoto || '').trim());
+      const photo = winnerReq ? String(winnerReq.profilePhoto || winnerReq.profilePic || winnerReq.photoUrl || winnerReq.avatar || winnerReq.userPhoto || '').trim() : '';
       if (photo) {
         return photo;
       }

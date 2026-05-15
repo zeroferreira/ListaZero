@@ -793,10 +793,13 @@
 
     // Utilidad: Generar ID de canción (debe coincidir con lista.html)
     function generateSongId(req) {
-      const explicit = String(req?.songId || req?.requestId || req?.song_id || '').trim();
-      if (explicit) return sanitizeSongId(explicit);
+      if (!req) return "";
+      
+      // PRIORIDAD 1: Usar el ID real de Firestore si existe
+      const realId = String(req.docId || req.id || req.songId || req.requestId || '').trim();
+      if (realId) return sanitizeSongId(realId);
 
-      // Necesitamos recrear el formato HH:MM desde el timestamp
+      // FALLBACK: Recrear el formato HH:mm:ss desde el timestamp
       let d;
       if (req.ts && typeof req.ts.toDate === 'function') {
         d = req.ts.toDate();
@@ -808,17 +811,16 @@
       
       const hh = String(d.getHours()).padStart(2, '0');
       const mm = String(d.getMinutes()).padStart(2, '0');
-      const hora = `${hh}:${mm}`;
+      const ss = String(d.getSeconds()).padStart(2, '0');
       
-      // Usar hora del objeto si ya viene pre-formateada
-      const finalHora = req.hora || hora;
+      // Usar hora del objeto si ya viene pre-formateada completa, o construirla
+      const finalHora = req.hora && req.hora.split(':').length === 3 ? req.hora : `${hh}:${mm}:${ss}`;
       
-      const usuario = req.usuario || req.user || req.username || '';
+      const usuario = req.usuario || req.user || req.username || 'anon';
       const cancion = req.cancion || req.songName || req.song || req.name || '';
       const artista = req.artista || req.artistName || req.artist || '';
-      const composed = sanitizeSongId(`${usuario}-${cancion}-${artista}-${finalHora}`);
-      if (composed) return composed;
-      return String(req?.docId || req?.id || '').trim();
+      
+      return sanitizeSongId(`${usuario}-${cancion}-${artista}-${finalHora}`);
     }
 
     function getLocalSkippedMap() {
