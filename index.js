@@ -574,6 +574,19 @@
 
       populateRegisteredUsers();
 
+      // Utility: Fetch with Timeout
+      async function fetchWithTimeout(resource, options = {}) {
+        const { timeout = 5000 } = options;
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        const response = await fetch(resource, {
+          ...options,
+          signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+      }
+
       // Cargar el último usuario utilizado
       const lastUser = localStorage.getItem('currentUser');
       if (lastUser) {
@@ -609,12 +622,31 @@
         }
       }
 
+      // Función para limpiar el formulario y los metadatos de forma segura
+      function resetFormAndMetadata() {
+        if (form) form.reset();
+        // Limpiar campos manualmente por si el reset no basta
+        if (cancionEl) cancionEl.value = '';
+        if (artistaEl) artistaEl.value = '';
+        if (linkEl) linkEl.value = '';
+        
+        lastExtractedUrl = '';
+        autoFilledData = { title: '', artist: '' };
+        console.log('🧹 Formulario y metadatos reseteados por completo');
+      }
+
+      // Asegurar que el formulario esté limpio al cargar (especialmente al volver con el botón atrás)
+      window.addEventListener('pageshow', (event) => {
+        // event.persisted es true si viene del BFCache
+        resetFormAndMetadata();
+      });
+
       // INTELIGENCIA: Autocompletar desde Link
       async function extractMetadata(url) {
         if (!url) return null;
         try {
           console.log('🔍 Intentando extraer metadatos del link:', url);
-          const resp = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
+          const resp = await fetchWithTimeout(`https://noembed.com/embed?url=${encodeURIComponent(url)}`, { timeout: 4000 });
           const data = await resp.json();
           if (data.title) {
             let title = data.title;
@@ -650,27 +682,34 @@
       if (linkInput) {
         linkInput.addEventListener('blur', async () => {
           const url = linkInput.value.trim();
+          const cancionEl = document.getElementById('cancion');
+          const artistaEl = document.getElementById('artista');
           if (!url) {
             lastExtractedUrl = '';
             autoFilledData = { title: '', artist: '' };
             return;
           }
-          if (url === lastExtractedUrl) return;
-
-          const meta = await extractMetadata(url);
-          if (meta) {
-            lastExtractedUrl = url;
-            autoFilledData = { title: meta.title, artist: meta.artist };
+          if (url && url !== lastExtractedUrl) {
+            // Limpiar campos mientras se extrae para evitar confusión con datos anteriores
+            if (cancionEl && (!cancionEl.value || cancionEl.value === autoFilledData.title)) cancionEl.value = 'Cargando...';
+            if (artistaEl && (!artistaEl.value || artistaEl.value === autoFilledData.artist)) artistaEl.value = 'Cargando...';
             
-            const cancionEl = document.getElementById('cancion');
-            const artistaEl = document.getElementById('artista');
-            
-            // Si los campos están vacíos o tienen lo que autocompletamos antes, los actualizamos
-            if (cancionEl && (!cancionEl.value || cancionEl.value === autoFilledData.title)) {
-              cancionEl.value = meta.title;
-            }
-            if (artistaEl && (!artistaEl.value || artistaEl.value === autoFilledData.artist)) {
-              artistaEl.value = meta.artist;
+            const meta = await extractMetadata(url);
+            if (meta) {
+              lastExtractedUrl = url;
+              autoFilledData = { title: meta.title, artist: meta.artist };
+              
+              // Si los campos están vacíos o tienen lo que autocompletamos antes (o el "Cargando..."), los actualizamos
+              if (cancionEl && (cancionEl.value === 'Cargando...' || !cancionEl.value || cancionEl.value === autoFilledData.title)) {
+                cancionEl.value = meta.title;
+              }
+              if (artistaEl && (artistaEl.value === 'Cargando...' || !artistaEl.value || artistaEl.value === autoFilledData.artist)) {
+                artistaEl.value = meta.artist;
+              }
+            } else {
+              // Si falla la extracción, limpiar el "Cargando..."
+              if (cancionEl && cancionEl.value === 'Cargando...') cancionEl.value = '';
+              if (artistaEl && artistaEl.value === 'Cargando...') artistaEl.value = '';
             }
           }
         });
@@ -693,6 +732,14 @@
 
           // Si ya se procesó una vez (por duplicidad), no volver a validar ni alertar
           if (window.__FORM_SUBMITTED__) return;
+          window.__FORM_SUBMITTED__ = true;
+
+          const btn = form.querySelector('button[type="submit"]');
+          const originalBtnText = btn ? btn.textContent : 'Enviar solicitud';
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Enviando...';
+          }
 
           const usuarioEl = document.getElementById('usuario');
           const cancionEl = document.getElementById('cancion');
@@ -717,9 +764,10 @@
              if (link !== lastExtractedUrl || !finalCancion || !finalArtista) {
                const meta = await extractMetadata(link);
                if (meta) {
-                 // Priorizar metadatos del link si los campos actuales están vacíos o eran del link anterior
-                 if (!finalCancion || finalCancion === autoFilledData.title) finalCancion = meta.title;
-                 if (!finalArtista || finalArtista === autoFilledData.artist) finalArtista = meta.artist;
+                 // Si el título actual coincide con el "Cargando..." o el autoFilledData viejo, actualizar
+                 if (!finalCancion || finalCancion === autoFilledData.title || finalCancion === 'Cargando...') finalCancion = meta.title;
+                 if (!finalArtista || finalArtista === autoFilledData.artist || finalArtista === 'Cargando...') finalArtista = meta.artist;
+                 
                  lastExtractedUrl = link;
                  autoFilledData = { title: meta.title, artist: meta.artist };
                }
@@ -729,6 +777,11 @@
           // Nueva validación: Link puede sustituir cancion/artista si se provee
           if (!usuario || (!link && (!finalCancion || !finalArtista))) {
             alert('Por favor completa tu Usuario y al menos la Canción/Artista o un Link de referencia.');
+            window.__FORM_SUBMITTED__ = false;
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = originalBtnText;
+            }
             return;
           }
 
@@ -745,6 +798,11 @@
             liveCode = String(window.prompt('Ingresa el Código del Live para enviar tu solicitud:') || '').trim();
             if (!liveCode) {
               alert('Se requiere Código del Live para enviar la solicitud.');
+              window.__FORM_SUBMITTED__ = false;
+              if (btn) {
+                btn.disabled = false;
+                btn.textContent = originalBtnText;
+              }
               return;
             }
           }
@@ -752,14 +810,15 @@
           const now = new Date(ts);
           const hh = String(now.getHours()).padStart(2, '0');
           const mm = String(now.getMinutes()).padStart(2, '0');
-          const hora = `${hh}:${mm}`;
+          const ss = String(now.getSeconds()).padStart(2, '0');
+          const hora = `${hh}:${mm}:${ss}`;
           const songId = `${usuario}-${finalCancion}-${finalArtista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
 
           // --- DETECCIÓN DE GÉNERO (NUEVO) ---
           let genre = '';
           try {
-            const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(cancion + ' ' + artista)}&media=music&limit=1`;
-            const resp = await fetch(searchUrl);
+            const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(finalCancion + ' ' + finalArtista)}&media=music&limit=1`;
+            const resp = await fetchWithTimeout(searchUrl, { timeout: 2500 });
             const data = await resp.json();
             if (data.results && data.results.length > 0) {
               genre = data.results[0].primaryGenreName || '';
@@ -800,28 +859,23 @@
                 }
               }
 
-              await Promise.race([
+            await Promise.race([
                 db.collection('solicitudes').add(solicitudPayload),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('WRITE_TIMEOUT')), 8000))
               ]);
               remotePersisted = true;
             } else {
-               console.warn('Firestore no disponible. Se guardó localmente.');
+               throw new Error('DATABASE_NOT_AVAILABLE');
             }
           } catch (err) {
-            console.error('Error guardando en Firestore:', err);
-            const msg = String(err && err.message ? err.message : err);
-            const code = String(err && err.code ? err.code : '');
-            const isPerm = msg.includes('PERMISSION_DENIED') || msg.includes('permission');
+            console.error('Error procesando solicitud:', err);
             
-            // Si es error de permisos o cualquier otro, GUARDAMOS LOCALMENTE y continuamos
-            console.warn('Error en Firestore, guardando solo en localStorage');
-            
-            // Guardar en localStorage PRIMERO para no perder la solicitud
+            // GUARDAR LOCALMENTE SIEMPRE QUE FALLE FIRESTORE O NO ESTÉ DISPONIBLE
             try {
               const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
               (byDay[dayKey] ??= []).push({ usuario, cancion: finalCancion, artista: finalArtista, link: link || '', time: ts });
               localStorage.setItem('solicitudes_by_day', JSON.stringify(byDay));
+              
               const arr = JSON.parse(localStorage.getItem('solicitudes') || '[]');
               arr.push({ usuario, cancion: finalCancion, artista: finalArtista, link: link || '', time: ts });
               localStorage.setItem('solicitudes', JSON.stringify(arr));
@@ -829,16 +883,9 @@
               console.error('Error guardando en localStorage:', e);
             }
             
-            // Guardar el último usuario utilizado
             localStorage.setItem('currentUser', usuario);
-            
-            // Marca que ya se procesó
             window.__FORM_SUBMITTED__ = false;
-            
-            // Resetear formulario y redirigir
-            if (form) form.reset();
-            lastExtractedUrl = '';
-            autoFilledData = { title: '', artist: '' };
+            resetFormAndMetadata();
             window.location.href = 'lista.html';
             return;
           }
@@ -847,14 +894,9 @@
 
           // Gamificación: puntos se otorgan solo al marcar reproducción
 
-          // Marca que ya se procesó para evitar que otro handler muestre el alerta
-          window.__FORM_SUBMITTED__ = true;
-
-          // Limpiar flags y formulario tras éxito
+          // Limpiar flags y formulario tras éxito (ANTES de redirigir)
           window.__FORM_SUBMITTED__ = false;
-          if (form) form.reset();
-          lastExtractedUrl = '';
-          autoFilledData = { title: '', artist: '' };
+          resetFormAndMetadata();
 
           // Redirigir
           window.location.href = 'lista.html';

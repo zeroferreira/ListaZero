@@ -36,7 +36,8 @@
       if (lower.includes('http://') || lower.includes('https://') || lower.includes('www.') || lower.includes('youtu.be')) return true;
       
       // FILTRO DE LONGITUD Y REPETICIÓN: Omitir nombres absurdamente largos o repetitivos
-      if (str.length > 25 || str.length <= 1) return true;
+      // Nota: Se aumentó a 140 para permitir títulos de canciones y artistas largos
+      if (str.length > 140 || str.length <= 1) return true;
       
       // Detectar repeticiones sospechosas (ej: "abcabcabc")
       const mid = Math.floor(lower.length / 2);
@@ -3004,10 +3005,11 @@
       function toHour(ts) {
         if (!ts) return '';
         const d = ts.toDate ? ts.toDate() : new Date(ts);
-        // Forzar formato 24h consistente (HH:MM) independientemente del locale del usuario
+        // Forzar formato 24h consistente (HH:MM:SS) para mayor precisión y unicidad
         const hh = String(d.getHours()).padStart(2, '0');
         const mm = String(d.getMinutes()).padStart(2, '0');
-        return `${hh}:${mm}`;
+        const ss = String(d.getSeconds()).padStart(2, '0');
+        return `${hh}:${mm}:${ss}`;
       }
       function toHourKey(ts) {
         try {
