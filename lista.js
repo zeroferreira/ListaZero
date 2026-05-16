@@ -14,8 +14,11 @@
       const str = String(val).trim();
       const lower = str.toLowerCase();
       
-      // FILTRO DE BOTS/CHINO: Omitir si contiene caracteres chinos (ataque de bots)
-      if (/[\u4E00-\u9FFF]/.test(str)) return true;
+      // FILTRO DE BOTS: Bloquear solo si es EXCLUSIVAMENTE Chino/Kanji y muy largo (spam típico)
+      // Los caracteres Japoneses (Hiragana/Katakana) se permiten siempre.
+      const hasKanji = /[\u4E00-\u9FFF]/.test(str);
+      const hasJapanese = /[\u3040-\u30FF]/.test(str);
+      if (hasKanji && !hasJapanese && str.length > 20) return true;
       
       // FILTRO DE PRUEBAS: Omitir si contiene palabras clave de prueba o patrones genéricos
       const botPatterns = [

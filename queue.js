@@ -58,7 +58,19 @@
         const sid = generateSongId(req);
         const did = String(req?.docId || '').trim();
         const rid = String(req?.id || '').trim();
-        return !(playedSongIds.has(sid) || (did && playedSongIds.has(did)) || (rid && playedSongIds.has(rid)));
+        const nsid = normalizeId(sid);
+        const ndid = normalizeId(did);
+        const nrid = normalizeId(rid);
+        
+        const isPlayed = 
+          playedSongIds.has(sid) || 
+          (did && playedSongIds.has(did)) || 
+          (rid && playedSongIds.has(rid)) ||
+          normalizedPlayedSongIds.has(nsid) ||
+          (ndid && normalizedPlayedSongIds.has(ndid)) ||
+          (nrid && normalizedPlayedSongIds.has(nrid));
+
+        return !isPlayed;
       });
       const qm = getQueueMode();
       // Aplicar base de ordenamiento
@@ -771,7 +783,8 @@
     // Estado local
     let allRequests = []; // Todas las solicitudes del día
     let playedSongIds = new Set(); // IDs de canciones ya reproducidas
-    let skippedSongIds = new Set(); // IDs reproducidas pero skip (no cuentan puntos)
+    let skippedSongIds = new Set(); // IDs de canciones saltadas (SKIP)
+    let normalizedPlayedSongIds = new Set(); // IDs normalizados para matching robusto
     let playedSongsLoaded = false; // Evitar "ghost cards" antes de cargar lista negra
     let visibleQueue = []; // Las 3 canciones actualmente mostradas
     let currentManualOrder = []; // Orden manual compartido
@@ -788,7 +801,13 @@
     }
 
     function sanitizeSongId(v) {
-      try { return String(v || '').replace(/[^a-zA-Z0-9-]/g, ''); } catch (_) { return ''; }
+      try { 
+        return String(v || '').replace(/[^a-zA-Z0-9-]/g, ''); 
+      } catch (_) { return ''; }
+    }
+
+    function normalizeId(v) {
+      return sanitizeSongId(v).toLowerCase();
     }
 
     // Utilidad: Generar ID de canción (debe coincidir con lista.html)
@@ -1378,13 +1397,26 @@
       console.log("renderQueue called. Pending requests:", allRequests.length);
       const now = Date.now();
       
-      // 1. Filtrar solicitudes que NO están en playedSongIds
+      // 1. Filtrar solicitudes que NO están en los sets de reproducidas
       let pendingRequests = allRequests.filter(req => {
         const sid = generateSongId(req);
         const did = String(req?.docId || '').trim();
         const rid = String(req?.id || '').trim();
-        if (playedSongIds.has(sid) || (did && playedSongIds.has(did)) || (rid && playedSongIds.has(rid))) {
-            // console.log("Filtered played:", id); // Debug
+        
+        // Normalización para matching robusto
+        const nsid = normalizeId(sid);
+        const ndid = normalizeId(did);
+        const nrid = normalizeId(rid);
+
+        const isPlayed = 
+          playedSongIds.has(sid) || 
+          (did && playedSongIds.has(did)) || 
+          (rid && playedSongIds.has(rid)) ||
+          normalizedPlayedSongIds.has(nsid) ||
+          (ndid && normalizedPlayedSongIds.has(ndid)) ||
+          (nrid && normalizedPlayedSongIds.has(nrid));
+
+        if (isPlayed) {
             return false;
         }
         return true;
@@ -1761,7 +1793,7 @@
       // Filtrar canciones NO reproducidas
       const candidates = allRequests.filter(req => {
           const id = generateSongId(req);
-          return !playedSongIds.has(id);
+          return !playedSongIds.has(id) && !normalizedPlayedSongIds.has(normalizeId(id));
       });
 
       // Lógica de Matching (Prioridad: ID > Match Exacto > Match Parcial)
@@ -1784,7 +1816,6 @@
               const artistMatch = reqArtist.includes(targetArtist) || targetArtist.includes(reqArtist);
               const songMatch = reqSong.includes(targetSong) || targetSong.includes(reqSong);
 
-              // Match Cruzado (a veces artista y canción están invertidos)
               const swappedMatch = (reqArtist.includes(targetSong) || targetSong.includes(reqArtist)) &&
                                    (reqSong.includes(targetArtist) || targetArtist.includes(reqSong));
 
@@ -1913,8 +1944,12 @@
       const doSkip = !!(options && options.skip === true);
       try {
         playedSongIds.add(id);
-        if (doSkip) skippedSongIds.add(id);
-        else skippedSongIds.delete(id);
+        normalizedPlayedSongIds.add(normalizeId(id));
+        if (doSkip) {
+            skippedSongIds.add(id);
+        } else {
+            skippedSongIds.delete(id);
+        }
         playedSongsLoaded = true;
         renderQueue();
       } catch (_) {}
@@ -2097,18 +2132,21 @@
 
       db.collection('playedSongs').doc(currentDay)
         .onSnapshot((doc) => {
-          const prevSkippedSongIds = new Set(skippedSongIds);
           if (doc.exists) {
             const data = doc.data();
             const songs = data.songs || data.list || [];
             playedSongIds = new Set(songs);
+            normalizedPlayedSongIds = new Set(songs.map(id => normalizeId(id)));
             
             const skipped = Array.isArray(data.skipped) ? data.skipped : [];
             skippedSongIds = new Set(skipped);
             
             // Fusión crítica: Las canciones saltadas TAMBIÉN deben considerarse "reproducidas" 
             // para que desaparezcan de la cola visual
-            skipped.forEach(id => playedSongIds.add(id));
+            skipped.forEach(id => {
+              playedSongIds.add(id);
+              normalizedPlayedSongIds.add(normalizeId(id));
+            });
 
             try {
               const localSkipped = getLocalSkippedMap();
@@ -2118,6 +2156,7 @@
           } else {
             playedSongIds = new Set();
             skippedSongIds = new Set();
+            normalizedPlayedSongIds = new Set();
             try {
               const localSkipped = getLocalSkippedMap();
               localSkipped[currentDay] = [];
@@ -2271,8 +2310,12 @@
 
     function markFirstPending(skip) {
       const pendingRequests = allRequests.filter(req => {
-        const id = generateSongId(req);
-        return !playedSongIds.has(id);
+        const sid = generateSongId(req);
+        const did = String(req?.docId || '').trim();
+        const rid = String(req?.id || '').trim();
+        return !playedSongIds.has(sid) && !normalizedPlayedSongIds.has(normalizeId(sid)) &&
+               !(did && (playedSongIds.has(did) || normalizedPlayedSongIds.has(normalizeId(did)))) &&
+               !(rid && (playedSongIds.has(rid) || normalizedPlayedSongIds.has(normalizeId(rid))));
       });
 
       if (pendingRequests.length > 0) {
