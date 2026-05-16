@@ -17,8 +17,9 @@
       // FILTRO DE BOTS: Bloquear solo si es EXCLUSIVAMENTE Chino/Kanji y muy largo (spam típico)
       // Los caracteres Japoneses (Hiragana/Katakana) se permiten siempre.
       const hasKanji = /[\u4E00-\u9FFF]/.test(str);
-      const hasJapanese = /[\u3040-\u30FF]/.test(str);
-      if (hasKanji && !hasJapanese && str.length > 20) return true;
+      const hasJapanese = /[\u3040-\u30FF\u31F0-\u31FF]/.test(str); // Hiragana y Katakana (inc. extensiones)
+      // Solo bloqueamos si tiene Kanji, NO tiene Kana Japonesa, y es excesivamente largo (>50)
+      if (hasKanji && !hasJapanese && str.length > 50) return true;
       
       // FILTRO DE PRUEBAS: Omitir si contiene palabras clave de prueba o patrones genéricos
       const botPatterns = [
@@ -2158,7 +2159,12 @@
             const toId = it.id || it.docId || songId;
             if (!fromId || !toId || fromId === toId) return;
 
-            const idOf = (item) => item.id || item.docId || `${item.usuario}-${item.cancion}-${item.artista}-${item.hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+            const resolvedHora = (item) => String(
+              item.hora ||
+              (typeof toHour === 'function' ? toHour(item.ts || item.timestamp || item.time) : '') ||
+              ''
+            ).trim();
+            const idOf = (item) => item.id || item.docId || `${item.usuario}-${item.cancion}-${item.artista}-${resolvedHora(item)}`.replace(/[^a-zA-Z0-9-]/g, '');
             const fromIdx = currentDayItems.findIndex(item => idOf(item) === fromId);
             const toIdx = currentDayItems.findIndex(item => idOf(item) === toId);
 
@@ -2178,7 +2184,8 @@
             const selectedDay =
               (document.getElementById('day-select')?.value || '').trim() ||
               String(it.day || '').trim() ||
-              String((currentDayItems && currentDayItems[0] && currentDayItems[0].day) || '').trim();
+              String((currentDayItems && currentDayItems[0] && currentDayItems[0].day) || '').trim() ||
+              new Date().toISOString().split('T')[0];
             persistManualOrder(currentDayItems, selectedDay);
 
             // Render con orden actualizado

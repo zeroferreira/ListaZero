@@ -2133,73 +2133,72 @@
         });
       } catch (_) {}
 
-      db.collection('playedSongs').doc(currentDay)
-        .onSnapshot((doc) => {
-          if (doc.exists) {
-            const data = doc.data();
-            const songs = data.songs || data.list || [];
-            playedSongIds = new Set(songs);
-            normalizedPlayedSongIds = new Set(songs.map(id => normalizeId(id)));
-            
-            const skipped = Array.isArray(data.skipped) ? data.skipped : [];
-            skippedSongIds = new Set(skipped);
-            
-            // Fusión crítica: Las canciones saltadas TAMBIÉN deben considerarse "reproducidas" 
-            // para que desaparezcan de la cola visual
-            skipped.forEach(id => {
-              playedSongIds.add(id);
-              normalizedPlayedSongIds.add(normalizeId(id));
-            });
+      function getYesterdayKey() {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+      const yesterday = getYesterdayKey();
 
-            try {
-              const localSkipped = getLocalSkippedMap();
-              localSkipped[currentDay] = skipped;
-              setLocalSkippedMap(localSkipped);
-            } catch (_) {}
-          } else {
-            playedSongIds = new Set();
-            skippedSongIds = new Set();
-            normalizedPlayedSongIds = new Set();
-            try {
-              const localSkipped = getLocalSkippedMap();
-              localSkipped[currentDay] = [];
-              setLocalSkippedMap(localSkipped);
-            } catch (_) {}
-          }
-          playedSongsLoaded = true; // Marcar como cargado para habilitar renderizado
-          let addedSkip = false;
-          for (const id of skippedSongIds) {
-            if (!prevSkippedSongIds.has(id)) { addedSkip = true; break; }
-          }
-          if (addedSkip) {
-            // clearRouletteWinnerLabel removed
-          }
-          renderQueue();
-        }, (error) => {
-          console.error("Error en playedSongs:", error);
-          // En caso de error, permitir renderizar igual para no bloquear la UI
-          playedSongsLoaded = true; 
-          renderQueue();
+      const playedByDay = {};
+      const skippedByDay = {};
+      const manualOrdersByDay = {};
+
+      const syncPlayedAndManual = () => {
+        playedSongIds.clear();
+        normalizedPlayedSongIds.clear();
+        skippedSongIds.clear();
+
+        [yesterday, currentDay].forEach(day => {
+          (playedByDay[day] || []).forEach(id => {
+            playedSongIds.add(id);
+            normalizedPlayedSongIds.add(normalizeId(id));
+          });
+          (skippedByDay[day] || []).forEach(id => {
+            playedSongIds.add(id);
+            normalizedPlayedSongIds.add(normalizeId(id));
+            skippedSongIds.add(id);
+          });
         });
 
+        currentManualOrder = manualOrdersByDay[currentDay] || manualOrdersByDay[yesterday] || [];
+        playedSongsLoaded = true;
+        renderQueue();
+      };
+
+      const setupSyncListeners = (day) => {
+        db.collection('playedSongs').doc(day).onSnapshot((doc) => {
+          if (doc.exists) {
+            const data = doc.data();
+            playedByDay[day] = Array.isArray(data.songs) ? data.songs : (Array.isArray(data.list) ? data.list : []);
+            skippedByDay[day] = Array.isArray(data.skipped) ? data.skipped : [];
+          } else {
+            playedByDay[day] = [];
+            skippedByDay[day] = [];
+          }
+          syncPlayedAndManual();
+        }, (err) => console.warn(`Error playedSongs ${day}:`, err));
+
+        db.collection('manualOrders').doc(day).onSnapshot((doc) => {
+          if (doc.exists) {
+            manualOrdersByDay[day] = Array.isArray(doc.data().order) ? doc.data().order : [];
+          } else {
+            manualOrdersByDay[day] = [];
+          }
+          syncPlayedAndManual();
+        }, (err) => console.warn(`Error manualOrders ${day}:`, err));
+      };
+
+      setupSyncListeners(yesterday);
+      setupSyncListeners(currentDay);
+
+      // Timeout de seguridad para carga inicial
       setTimeout(() => {
         if (!playedSongsLoaded) {
           playedSongsLoaded = true;
           renderQueue();
         }
-      }, 2500);
-
-      db.collection('manualOrders').doc(currentDay)
-        .onSnapshot((doc) => {
-          if (doc.exists) {
-            currentManualOrder = Array.isArray(doc.data().order) ? doc.data().order : [];
-          } else {
-            currentManualOrder = [];
-          }
-          renderQueue();
-        }, (error) => {
-          console.error("Error en manualOrders:", error);
-        });
+      }, 3000);
 
       // Listener de Notificaciones
       db.collection('notifications')
