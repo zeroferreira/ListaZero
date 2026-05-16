@@ -1984,7 +1984,8 @@
             </span>
             <span class="col col-cancion">
               <span class="text">${wrapLink(it.cancion, it.link)}</span>
-              ${it.link ? linkHtml : `<button class="copy-chip copy-chip-inline" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>`}
+              <button class="copy-chip copy-chip-inline" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>
+              ${it.link ? linkHtml : ''}
             </span>
             <span class="col col-artista">
               <span class="text">${wrapLink(it.artista, it.link)}</span>
@@ -1999,7 +2000,8 @@
               </div>
               <div class="line-with-copy">
                 <div class="cancion-line">${wrapLink(it.cancion, it.link)}</div>
-                ${it.link ? linkHtml : `<button class="copy-chip" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>`}
+                <button class="copy-chip" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>
+                ${it.link ? linkHtml : ''}
               </div>
               <div class="line-with-copy">
                 <div class="artista-line">${wrapLink(it.artista, it.link)}</div>

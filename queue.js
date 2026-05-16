@@ -1184,7 +1184,10 @@
                   <span>#${index + 1}</span>
                   <span>En cola</span>
                </div>
-               <div class="item-song">${cancion}</div>
+               <div class="item-song">
+                  <span>${cancion}</span>
+                  ${req.link ? `<span class="song-link-icon" title="Ver enlace">🔗</span>` : ''}
+               </div>
                <div class="item-artist">${artista}</div>
                <div class="item-user">
                   Pedido por <span class="user-badge"><span class="user-name">${usuario}</span>${badgeHtml}</span>

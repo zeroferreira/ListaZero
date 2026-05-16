@@ -663,9 +663,26 @@
             }
             title = title.replace(/\(Official Video\)/gi, '')
                          .replace(/\[Official Video\]/gi, '')
+                         .replace(/\(Official Music Video\)/gi, '')
+                         .replace(/\[Official Music Video\]/gi, '')
                          .replace(/\(Official Audio\)/gi, '')
+                         .replace(/\[Official Audio\]/gi, '')
                          .replace(/\(Video Oficial\)/gi, '')
+                         .replace(/\[Video Oficial\]/gi, '')
                          .replace(/\(Lyric Video\)/gi, '')
+                         .replace(/\[Lyric Video\]/gi, '')
+                         .replace(/\(Lyrics\)/gi, '')
+                         .replace(/\[Lyrics\]/gi, '')
+                         .replace(/\(Audio\)/gi, '')
+                         .replace(/\[Audio\]/gi, '')
+                         .replace(/\[HQ\]/gi, '')
+                         .replace(/\(HQ\)/gi, '')
+                         .replace(/\[4K\]/gi, '')
+                         .replace(/\(4K\)/gi, '')
+                         .replace(/\[HD\]/gi, '')
+                         .replace(/\(HD\)/gi, '')
+                         .replace(/\(Live\)/gi, '')
+                         .replace(/\[Live\]/gi, '')
                          .trim();
             return { title, artist };
           }
