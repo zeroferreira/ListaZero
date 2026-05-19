@@ -197,6 +197,72 @@
       });
     })();
 
+    // ==========================================
+    // PULL TO REFRESH (MÓVILES)
+    // ==========================================
+    (function initPullToRefresh() {
+      document.addEventListener('DOMContentLoaded', () => {
+        const scrollContainer = document.querySelector('.list-scroll-container');
+        if (!scrollContainer) return;
+
+        let touchStartY = 0;
+        let preventRefresh = false;
+
+        const ptrContainer = document.createElement('div');
+        ptrContainer.style.cssText = `
+          height: 0px;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: transparent;
+          transition: height 0.2s ease;
+          width: 100%;
+        `;
+        ptrContainer.innerHTML = '<div style="font-size: 26px; animation: ptr-spin 1s linear infinite;">🔄</div>';
+        scrollContainer.parentNode.insertBefore(ptrContainer, scrollContainer);
+
+        if (!document.getElementById('ptr-anim')) {
+           const style = document.createElement('style');
+           style.id = 'ptr-anim';
+           style.innerHTML = '@keyframes ptr-spin { 100% { transform: rotate(360deg); } }';
+           document.head.appendChild(style);
+        }
+
+        scrollContainer.addEventListener('touchstart', (e) => {
+          if (scrollContainer.scrollTop === 0) {
+            touchStartY = e.touches[0].clientY;
+            preventRefresh = false;
+          } else {
+            preventRefresh = true;
+          }
+        }, { passive: true });
+
+        scrollContainer.addEventListener('touchmove', (e) => {
+          if (preventRefresh || scrollContainer.scrollTop > 0) return;
+          const currentY = e.touches[0].clientY;
+          const diff = currentY - touchStartY;
+          if (diff > 0) {
+             ptrContainer.style.height = Math.min(diff / 2.5, 70) + 'px';
+             if (diff > 50 && e.cancelable) e.preventDefault();
+          }
+        }, { passive: false });
+
+        scrollContainer.addEventListener('touchend', (e) => {
+          if (preventRefresh) return;
+          const currentY = e.changedTouches[0].clientY;
+          const diff = currentY - touchStartY;
+          
+          if (diff > 120 && scrollContainer.scrollTop === 0) {
+            ptrContainer.style.height = '60px';
+            setTimeout(() => location.reload(true), 400);
+          } else {
+            ptrContainer.style.height = '0px';
+          }
+        });
+      });
+    })();
+
 (function(){
       var target = document.getElementById('react-modern-widget');
       if (!target || typeof React === 'undefined' || typeof ReactDOM === 'undefined') return;
