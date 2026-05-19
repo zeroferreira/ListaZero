@@ -77,18 +77,116 @@
         }
         if (newSHA !== currentSHA) {
           console.log('✨ Nueva versión disponible en GitHub:', newSHA);
-          // Si existe la función de modal, la usamos; si no, alert básico
-          if (typeof showMessageModal === 'function') {
-            showMessageModal({
-              title: '🔄 Actualización Disponible',
-              message: 'Se han detectado nuevos cambios en el sistema. La página se reiniciará en unos segundos para aplicar las mejoras.',
-              onClose: () => window.location.reload(true)
-            });
-            setTimeout(() => window.location.reload(true), 8000);
-          } else {
-            alert('Hay una nueva versión disponible. La página se recargará.');
-            window.location.reload(true);
+          
+          // Crear estilos de animación si no existen
+          if (!document.getElementById('glass-animations')) {
+            const style = document.createElement('style');
+            style.id = 'glass-animations';
+            style.innerHTML = `
+              @keyframes glassPulse {
+                0% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(0,242,254,0.5)); }
+                50% { transform: scale(1.1) translateY(-5px); filter: drop-shadow(0 0 20px rgba(0,242,254,0.8)); }
+                100% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(0,242,254,0.5)); }
+              }
+            `;
+            document.head.appendChild(style);
           }
+
+          // Crear overlay Glassmorphism
+          const glassOverlay = document.createElement('div');
+          glassOverlay.style.cssText = `
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            z-index: 999999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.6s ease;
+          `;
+
+          // Crear tarjeta central
+          const glassCard = document.createElement('div');
+          glassCard.style.cssText = `
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            border-left: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            padding: 40px 30px;
+            width: 90%;
+            max-width: 380px;
+            text-align: center;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+            transform: translateY(40px) scale(0.9);
+            transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            color: #fff;
+            font-family: 'Avenir', 'Inter', system-ui, sans-serif;
+          `;
+
+          glassCard.innerHTML = `
+            <div style="font-size: 4.5rem; margin-bottom: 20px; animation: glassPulse 2s infinite ease-in-out;">🚀</div>
+            <h2 style="margin: 0 0 15px 0; font-weight: 800; font-size: 1.6rem; letter-spacing: 0.5px; background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ACTUALIZACIÓN DISPONIBLE</h2>
+            <p style="color: rgba(255,255,255,0.85); line-height: 1.6; margin-bottom: 30px; font-size: 1.05rem;">
+              Hemos mejorado el sistema para darte la mejor experiencia. Actualiza ahora para sincronizar tu consola.
+            </p>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%;">
+              <button id="glass-update-btn" style="
+                background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+                border: none;
+                padding: 14px 35px;
+                border-radius: 30px;
+                color: #000;
+                font-weight: 800;
+                font-size: 1.1rem;
+                cursor: pointer;
+                letter-spacing: 0.5px;
+                box-shadow: 0 4px 15px rgba(0, 242, 254, 0.4);
+                transition: all 0.2s ease;
+                width: 100%;
+                max-width: 280px;
+              " onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 8px 25px rgba(0, 242, 254, 0.6)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 15px rgba(0, 242, 254, 0.4)';">
+                ACTUALIZAR AHORA
+              </button>
+              <p style="margin: 0; font-size: 0.85rem; color: rgba(255,255,255,0.5);">
+                O espera <span id="glass-countdown" style="font-weight: bold; color: #00f2fe; font-size: 1rem;">15</span> segundos...
+              </p>
+            </div>
+          `;
+
+          glassOverlay.appendChild(glassCard);
+          document.body.appendChild(glassOverlay);
+
+          // Disparar animación de entrada
+          setTimeout(() => {
+            glassOverlay.style.opacity = '1';
+            glassCard.style.transform = 'translateY(0) scale(1)';
+          }, 50);
+
+          // Lógica del contador
+          let timeLeft = 15;
+          const countdownEl = document.getElementById('glass-countdown');
+          const timer = setInterval(() => {
+            timeLeft--;
+            if (countdownEl) countdownEl.textContent = timeLeft;
+            if (timeLeft <= 0) {
+              clearInterval(timer);
+              glassCard.style.transform = 'scale(0.9)';
+              glassOverlay.style.opacity = '0';
+              setTimeout(() => window.location.reload(true), 400);
+            }
+          }, 1000);
+
+          // Manejar clic de actualización manual
+          document.getElementById('glass-update-btn').addEventListener('click', () => {
+             clearInterval(timer);
+             glassCard.style.transform = 'scale(0.9)';
+             glassOverlay.style.opacity = '0';
+             setTimeout(() => window.location.reload(true), 400);
+          });
         }
       }
 
@@ -470,14 +568,19 @@
             const currentUser = typeof getCurrentUser === 'function' ? getCurrentUser() : localStorage.getItem('savedUsername');
             if (currentUser) {
               const norm = currentUser.replace(/^@/, '').toLowerCase();
-              const currentLink = map[norm];
-              const oldLink = oldMap[norm];
+              
+              // El mapa es { tiktokHandle: webUser }
+              const currentTiktokHandles = Object.keys(map).filter(k => map[k] === norm);
+              const oldTiktokHandles = Object.keys(oldMap).filter(k => oldMap[k] === norm);
 
-              // Si antes no estaba vinculado y ahora sí (o cambió el vínculo)
-              if (currentLink && currentLink !== oldLink && !firstSync) {
-                console.log('🎉 ¡Nueva vinculación detectada!', norm, '->', currentLink);
+              // Buscar si hay algún handle de TikTok nuevo que apunte a nuestro usuario
+              const newHandles = currentTiktokHandles.filter(h => !oldTiktokHandles.includes(h));
+
+              if (newHandles.length > 0 && !firstSync) {
+                const newTiktokHandle = newHandles[0];
+                console.log('🎉 ¡Nueva vinculación detectada!', norm, '<-', newTiktokHandle);
                 if (typeof showLinkingSuccessPopup === 'function') {
-                  showLinkingSuccessPopup(norm, currentLink);
+                  showLinkingSuccessPopup(norm, newTiktokHandle);
                 }
               }
             }
@@ -2678,6 +2781,10 @@
                 const curProfile = typeof getCurrentProfileUser === 'function' ? getCurrentProfileUser() : null;
                 if (panel && panel.classList.contains('active') && curProfile && String(curProfile).toLowerCase() === String(userForCounter).toLowerCase()) {
                   await renderPointsBreakdownForUser(userForCounter, true);
+                }
+
+                if (typeof calculateAndSaveGlobalStats === 'function') {
+                  calculateAndSaveGlobalStats().catch(console.error);
                 }
               }, 500);
             } catch (e) { console.warn('Error recalculando puntos:', e); }
@@ -5599,12 +5706,21 @@ function shouldShowStatsTicker() {
         if (!modal) { alert(options.message); return; }
 
         titleEl.textContent = options.title || 'Mensaje';
-        contentEl.textContent = options.message || '';
+        
+        // Soportar HTML en el mensaje para estilos frescos/personalizados
+        if (options.isHtml) {
+          contentEl.innerHTML = options.message || '';
+        } else {
+          contentEl.textContent = options.message || '';
+        }
 
         // Manejar el cierre
         const close = () => {
           modal.hidden = true;
           okBtn.removeEventListener('click', close);
+          if (typeof options.onClose === 'function') {
+            options.onClose();
+          }
         };
         okBtn.addEventListener('click', close);
 
@@ -9178,7 +9294,7 @@ function shouldShowStatsTicker() {
           const isAdminMode = localStorage.getItem('isAdminMode') === 'true' || localStorage.getItem('isAdminAuthenticated') === 'true';
           const isOwner = !isAdminMode && (normCurrent === normTarget);
 
-          if (window.db && isOwner) {
+          if (window.db && (isOwner || isAdminMode)) {
             const normUser = normalizeUserKey(targetUser);
             // SEGURIDAD: No permitir que el cálculo local baje los puntos de la nube drásticamente
             // sin una razón válida (un canje), para evitar regresiones por fallos de carga.
@@ -14788,6 +14904,15 @@ function shouldShowStatsTicker() {
       // Función para calcular y guardar estadísticas globales
       async function calculateAndSaveGlobalStats() {
         if (!window.db) return;
+        
+        // FIX: Proteger para que solo el Admin calcule las estadísticas masivas.
+        // Si miles de usuarios regulares calcularan esto, Firebase agotaría sus lecturas gratuitas en minutos.
+        const isAdminAuthenticated = localStorage.getItem('isAdminAuthenticated') === 'true';
+        const isAdminMode = localStorage.getItem('isAdminMode') === 'true';
+        if (!isAdminAuthenticated && !isAdminMode) {
+            console.log("🔒 Omitiendo recálculo masivo global (No es Admin)");
+            return;
+        }
 
         try {
           console.log("📊 Calculando estadísticas globales maestras...");

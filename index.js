@@ -1111,7 +1111,7 @@
     try {
       const db = firebase.firestore();
       db.collection('userStats').doc(u).set({
-        totalPoints: Number(data.points || 0),
+        gamification: data,
         currentStreak: Number((data.streaks && data.streaks.current) || 0),
         bestStreak: Number((data.streaks && data.streaks.best) || 0),
         lastActivity: (data.streaks && data.streaks.lastActivity) || null,
@@ -1316,7 +1316,7 @@
       const current = String(localStorage.getItem('currentUser') || '').trim().replace(/^@/, '').toLowerCase();
       if (!current) return;
       const db = firebase.firestore();
-      db.collection('userStats').doc(current).get().then((doc) => {
+      db.collection('userStats').doc(current).onSnapshot((doc) => {
         if (!doc || !doc.exists) return;
         const allStr = localStorage.getItem('gamificationData') || '{}';
         const all = JSON.parse(allStr);
@@ -1333,10 +1333,21 @@
         if (typeof data.currentStreak === 'number') d.streaks.current = data.currentStreak;
         if (typeof data.bestStreak === 'number') d.streaks.best = data.bestStreak;
         if (typeof data.lastActivity === 'string') d.streaks.lastActivity = data.lastActivity;
+        
+        // Cargar payload guardado desde lista.js si existe
+        if (data.gamification) {
+          if (data.gamification.achievements) d.achievements = data.gamification.achievements;
+          if (data.gamification.stats) d.stats = data.gamification.stats;
+          if (data.gamification.level) d.level = data.gamification.level;
+          if (data.gamification.streaks && data.gamification.streaks.calendar) d.streaks.calendar = data.gamification.streaks.calendar;
+        }
+
         all[current] = d;
         localStorage.setItem('gamificationData', JSON.stringify(all));
         try { if (typeof updatePointsIndicator === 'function') updatePointsIndicator(); } catch (_){}
-      }).catch(() => {});
+      }, (err) => {
+        console.error("Error sincronizando gamificationData en tiempo real:", err);
+      });
     } catch (_){}
   })();
   window.debugUserPoints = async function(usuario){

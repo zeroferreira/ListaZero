@@ -1281,11 +1281,12 @@ function setupListeners() {
         }
 
         // --- COMANDO DE VINCULACIÓN (!link o !vincular) ---
-        const isLinkCmd = lowerMsg.startsWith('!link ') || lowerMsg.startsWith('!vincular ');
+        const isLinkCmd = lowerMsg.startsWith('!link') || lowerMsg.startsWith('!vincular');
         if (isLinkCmd) {
-            const code = msg.split(' ')[1]; // Obtener código (ej: ZR-1234)
-            if (!code || !code.startsWith('ZR-')) {
-                console.log(`❌ Código de vinculación inválido recibido de ${displayName}: ${code}`);
+            const codeMatch = msg.toUpperCase().match(/ZR-\d{4}/);
+            const code = codeMatch ? codeMatch[0] : null;
+            if (!code) {
+                console.log(`❌ Código de vinculación inválido o ausente recibido de ${displayName}: ${msg}`);
                 return;
             }
 
@@ -1312,7 +1313,10 @@ function setupListeners() {
                         return;
                     }
 
-                    const webUser = linkData.webUser;
+                    const rawWebUser = linkData.webUser;
+                    // FIX: Normalizar webUser a minúsculas y sin arroba para evitar Ghost Documents
+                    const webUser = String(rawWebUser || '').trim().replace(/^@/, '').toLowerCase();
+                    
                     // FIX: Usar userId (uniqueId/handle) en lugar de nickname
                     const tiktokHandle = userId.replace(/^@/, '').toLowerCase(); 
 
@@ -1647,7 +1651,7 @@ setInterval(async () => {
             
             // Datos a actualizar
             const updateData = {
-                totalLikes: newTotalLikes, 
+                totalLikes: increment(totalLikesInBatch), 
                 lastLikeActivity: serverTimestamp(),
                 displayName: finalName,
                 likesPerPoint: LIKES_PER_POINT 
@@ -1655,15 +1659,8 @@ setInterval(async () => {
 
             // Solo sumar puntos y registrar puntos de likes si ganó nuevos puntos
             if (pointsToAdd > 0) {
-                // FIX: Usamos increment para totalPoints, pero para totalLikesPoints 
-                // debemos usar el valor absoluto calculado (expectedTotalPoints) 
-                // o incrementar solo la diferencia. 
-                // El problema es que si el usuario ya tenía puntos erróneos inflados,
-                // esto podría no corregirlos hacia abajo.
-            // Mejor: Recalcular totalLikesPoints basado estrictamente en totalLikes / LIKES_PER_POINT
-                
                 updateData.totalPoints = increment(pointsToAdd);
-                updateData.totalLikesPoints = expectedTotalPoints; 
+                updateData.totalLikesPoints = increment(pointsToAdd); 
                 
                 console.log(`✨ @${finalName} ganó ${pointsToAdd} puntos! (Total Likes: ${newTotalLikes})`);
                 
@@ -1676,9 +1673,6 @@ setInterval(async () => {
                     timestamp: serverTimestamp()
                 });
             } else {
-                // Asegurar consistencia incluso si no ganó puntos nuevos
-                updateData.totalLikesPoints = expectedTotalPoints;
-                
                 // Solo log si hubo muchos likes pero no alcanzaron para punto
                 if (totalLikesInBatch > 50) {
                    console.log(`❤️ @${finalName} envió ${totalLikesInBatch} likes (Acumulados: ${newTotalLikes}, Faltan ${LIKES_PER_POINT - (newTotalLikes % LIKES_PER_POINT)} para el siguiente punto)`);
