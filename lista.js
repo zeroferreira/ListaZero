@@ -55,7 +55,7 @@
     // ==========================================
     (function() {
       const REPO = 'zeroferreira/ListaZero';
-      const CHECK_INTERVAL = 10 * 1000; // FIX TEMPORAL: Revisar cada 10 segundos para la prueba (Original: 15 * 60 * 1000)
+      const CHECK_INTERVAL = 15 * 60 * 1000; // Revisar cada 15 minutos
       let currentSHA = null;
 
       async function getLatestSHA() {
