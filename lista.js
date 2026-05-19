@@ -51,169 +51,164 @@
     };
 
     // ==========================================
-    // SISTEMA DE AUTO-ACTUALIZACIÓN (GITHUB API)
+    // SISTEMA DE AUTO-ACTUALIZACIÓN (FIREBASE)
     // ==========================================
-    (function() {
-      const REPO = 'zeroferreira/ListaZero';
-      const CHECK_INTERVAL = 15 * 60 * 1000; // Revisar cada 15 minutos
-      let currentSHA = null;
+    (function initFirebaseUpdater() {
+      let currentVersion = null;
 
-      async function getLatestSHA() {
-        try {
-          const res = await fetch(`https://api.github.com/repos/${REPO}/commits/main`, { cache: 'no-store' });
-          if (!res.ok) return null;
-          const data = await res.json();
-          return data.sha;
-        } catch (_) { return null; }
-      }
-
-      async function check() {
-        const newSHA = await getLatestSHA();
-        if (!newSHA) return;
-
-        const storedSHA = localStorage.getItem('app_version_sha');
-        let triggerUpdate = false;
-
-        if (!currentSHA) {
-          // Primer chequeo al abrir la página
-          currentSHA = newSHA;
-          console.log('🚀 Versión de App Detectada:', currentSHA);
-          
-          if (storedSHA && storedSHA !== newSHA) {
-            triggerUpdate = true; // ¡Versión vieja detectada en memoria caché!
-            console.log('⚠️ Caché detectado. Forzando aviso de actualización visual.');
-          } else {
-            localStorage.setItem('app_version_sha', newSHA);
-            return;
-          }
-        } else if (newSHA !== currentSHA) {
-          // Chequeos periódicos (cada 15 min)
-          triggerUpdate = true;
+      function checkAndListen() {
+        if (!window.db) {
+          setTimeout(checkAndListen, 1000);
+          return;
         }
 
-        if (triggerUpdate) {
-          console.log('✨ Nueva versión disponible en GitHub:', newSHA);
-          
-          // Crear estilos de animación si no existen
-          if (!document.getElementById('glass-animations')) {
-            const style = document.createElement('style');
-            style.id = 'glass-animations';
-            style.innerHTML = `
-              @keyframes glassPulse {
-                0% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(0,242,254,0.5)); }
-                50% { transform: scale(1.1) translateY(-5px); filter: drop-shadow(0 0 20px rgba(0,242,254,0.8)); }
-                100% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(0,242,254,0.5)); }
-              }
-            `;
-            document.head.appendChild(style);
-          }
+        window.db.collection('systemConfig').doc('appVersion').onSnapshot((doc) => {
+          if (!doc.exists) return;
+          const data = doc.data();
+          const newVersion = String(data.timestamp || data.version || '');
+          if (!newVersion) return;
 
-          // Crear overlay Glassmorphism
-          const glassOverlay = document.createElement('div');
-          glassOverlay.style.cssText = `
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            z-index: 999999;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            opacity: 0;
-            transition: opacity 0.6s ease;
-          `;
+          const storedVersion = localStorage.getItem('app_version_fb');
+          let triggerUpdate = false;
 
-          // Crear tarjeta central
-          const glassCard = document.createElement('div');
-          glassCard.style.cssText = `
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
-            border-left: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 24px;
-            padding: 40px 30px;
-            width: 90%;
-            max-width: 380px;
-            text-align: center;
-            box-shadow: 0 30px 60px rgba(0,0,0,0.6);
-            transform: translateY(40px) scale(0.9);
-            transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            color: #fff;
-            font-family: 'Avenir', 'Inter', system-ui, sans-serif;
-          `;
-
-          glassCard.innerHTML = `
-            <div style="font-size: 4.5rem; margin-bottom: 20px; animation: glassPulse 2s infinite ease-in-out;">🚀</div>
-            <h2 style="margin: 0 0 15px 0; font-weight: 800; font-size: 1.6rem; letter-spacing: 0.5px; background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ACTUALIZACIÓN DISPONIBLE</h2>
-            <p style="color: rgba(255,255,255,0.85); line-height: 1.6; margin-bottom: 30px; font-size: 1.05rem;">
-              Hemos mejorado el sistema para darte la mejor experiencia. Actualiza ahora para sincronizar tu consola.
-            </p>
-            <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%;">
-              <button id="glass-update-btn" style="
-                background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-                border: none;
-                padding: 14px 35px;
-                border-radius: 30px;
-                color: #000;
-                font-weight: 800;
-                font-size: 1.1rem;
-                cursor: pointer;
-                letter-spacing: 0.5px;
-                box-shadow: 0 4px 15px rgba(0, 242, 254, 0.4);
-                transition: all 0.2s ease;
-                width: 100%;
-                max-width: 280px;
-              " onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 8px 25px rgba(0, 242, 254, 0.6)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 15px rgba(0, 242, 254, 0.4)';">
-                ACTUALIZAR AHORA
-              </button>
-              <p style="margin: 0; font-size: 0.85rem; color: rgba(255,255,255,0.5);">
-                O espera <span id="glass-countdown" style="font-weight: bold; color: #00f2fe; font-size: 1rem;">15</span> segundos...
-              </p>
-            </div>
-          `;
-
-          glassOverlay.appendChild(glassCard);
-          document.body.appendChild(glassOverlay);
-
-          // Disparar animación de entrada
-          setTimeout(() => {
-            glassOverlay.style.opacity = '1';
-            glassCard.style.transform = 'translateY(0) scale(1)';
-          }, 50);
-
-          // Lógica del contador
-          let timeLeft = 15;
-          const countdownEl = document.getElementById('glass-countdown');
-          const timer = setInterval(() => {
-            timeLeft--;
-            if (countdownEl) countdownEl.textContent = timeLeft;
-            if (timeLeft <= 0) {
-              clearInterval(timer);
-              localStorage.setItem('app_version_sha', newSHA);
-              glassCard.style.transform = 'scale(0.9)';
-              glassOverlay.style.opacity = '0';
-              setTimeout(() => window.location.reload(true), 400);
+          if (!currentVersion) {
+            // Primer chequeo al abrir la página
+            currentVersion = newVersion;
+            console.log('🚀 Versión de App Detectada (Firebase):', currentVersion);
+            
+            if (storedVersion && storedVersion !== newVersion) {
+              triggerUpdate = true; // ¡Versión vieja detectada en memoria caché!
+              console.log('⚠️ Caché detectado. Forzando aviso de actualización visual.');
+            } else {
+              localStorage.setItem('app_version_fb', newVersion);
+              return;
             }
-          }, 1000);
+          } else if (newVersion !== currentVersion) {
+            // Chequeo en vivo (WebSocket)
+            triggerUpdate = true;
+          }
 
-          // Manejar clic de actualización manual
-          document.getElementById('glass-update-btn').addEventListener('click', () => {
-             clearInterval(timer);
-             localStorage.setItem('app_version_sha', newSHA);
-             glassCard.style.transform = 'scale(0.9)';
-             glassOverlay.style.opacity = '0';
-             setTimeout(() => window.location.reload(true), 400);
-          });
-        }
+          if (triggerUpdate) {
+            console.log('✨ Nueva versión empujada en tiempo real:', newVersion);
+            
+            // Crear estilos de animación si no existen
+            if (!document.getElementById('glass-animations')) {
+              const style = document.createElement('style');
+              style.id = 'glass-animations';
+              style.innerHTML = `
+                @keyframes glassPulse {
+                  0% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(0,242,254,0.5)); }
+                  50% { transform: scale(1.1) translateY(-5px); filter: drop-shadow(0 0 20px rgba(0,242,254,0.8)); }
+                  100% { transform: scale(1); filter: drop-shadow(0 0 10px rgba(0,242,254,0.5)); }
+                }
+              `;
+              document.head.appendChild(style);
+            }
+
+            // Crear overlay Glassmorphism
+            const glassOverlay = document.createElement('div');
+            glassOverlay.style.cssText = `
+              position: fixed;
+              top: 0; left: 0; width: 100vw; height: 100vh;
+              background: rgba(0, 0, 0, 0.6);
+              backdrop-filter: blur(12px);
+              -webkit-backdrop-filter: blur(12px);
+              z-index: 999999;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              opacity: 0;
+              transition: opacity 0.6s ease;
+            `;
+
+            // Crear tarjeta central
+            const glassCard = document.createElement('div');
+            glassCard.style.cssText = `
+              background: rgba(255, 255, 255, 0.05);
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              border-top: 1px solid rgba(255, 255, 255, 0.2);
+              border-left: 1px solid rgba(255, 255, 255, 0.2);
+              border-radius: 24px;
+              padding: 40px 30px;
+              width: 90%;
+              max-width: 380px;
+              text-align: center;
+              box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+              transform: translateY(40px) scale(0.9);
+              transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+              color: #fff;
+              font-family: 'Avenir', 'Inter', system-ui, sans-serif;
+            `;
+
+            glassCard.innerHTML = `
+              <div style="font-size: 4.5rem; margin-bottom: 20px; animation: glassPulse 2s infinite ease-in-out;">🚀</div>
+              <h2 style="margin: 0 0 15px 0; font-weight: 800; font-size: 1.6rem; letter-spacing: 0.5px; background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ACTUALIZACIÓN DISPONIBLE</h2>
+              <p style="color: rgba(255,255,255,0.85); line-height: 1.6; margin-bottom: 30px; font-size: 1.05rem;">
+                Hemos mejorado el sistema para darte la mejor experiencia. Actualiza ahora para sincronizar tu consola.
+              </p>
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%;">
+                <button id="glass-update-btn" style="
+                  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+                  border: none;
+                  padding: 14px 35px;
+                  border-radius: 30px;
+                  color: #000;
+                  font-weight: 800;
+                  font-size: 1.1rem;
+                  cursor: pointer;
+                  letter-spacing: 0.5px;
+                  box-shadow: 0 4px 15px rgba(0, 242, 254, 0.4);
+                  transition: all 0.2s ease;
+                  width: 100%;
+                  max-width: 280px;
+                " onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 8px 25px rgba(0, 242, 254, 0.6)';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 15px rgba(0, 242, 254, 0.4)';">
+                  ACTUALIZAR AHORA
+                </button>
+                <p style="margin: 0; font-size: 0.85rem; color: rgba(255,255,255,0.5);">
+                  O espera <span id="glass-countdown" style="font-weight: bold; color: #00f2fe; font-size: 1rem;">15</span> segundos...
+                </p>
+              </div>
+            `;
+
+            glassOverlay.appendChild(glassCard);
+            document.body.appendChild(glassOverlay);
+
+            // Disparar animación de entrada
+            setTimeout(() => {
+              glassOverlay.style.opacity = '1';
+              glassCard.style.transform = 'translateY(0) scale(1)';
+            }, 50);
+
+            // Lógica del contador
+            let timeLeft = 15;
+            const countdownEl = document.getElementById('glass-countdown');
+            const timer = setInterval(() => {
+              timeLeft--;
+              if (countdownEl) countdownEl.textContent = timeLeft;
+              if (timeLeft <= 0) {
+                clearInterval(timer);
+                localStorage.setItem('app_version_fb', newVersion);
+                glassCard.style.transform = 'scale(0.9)';
+                glassOverlay.style.opacity = '0';
+                setTimeout(() => window.location.reload(true), 400);
+              }
+            }, 1000);
+
+            // Manejar clic de actualización manual
+            document.getElementById('glass-update-btn').addEventListener('click', () => {
+               clearInterval(timer);
+               localStorage.setItem('app_version_fb', newVersion);
+               glassCard.style.transform = 'scale(0.9)';
+               glassOverlay.style.opacity = '0';
+               setTimeout(() => window.location.reload(true), 400);
+            });
+          }
+        });
       }
 
-      // Iniciar chequeos (esperar a que todo cargue)
-      document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(check, 5000); // Primer chequeo a los 5s
-        setInterval(check, CHECK_INTERVAL);
-      });
+      document.addEventListener('DOMContentLoaded', checkAndListen);
     })();
+
 
     // ==========================================
     // PULL TO REFRESH (MÓVILES)
@@ -4638,6 +4633,30 @@
       const recalcReportBox = document.getElementById('recalc-report-box');
       const recalcReportText = document.getElementById('recalc-report-text');
       const diagnoseDataBtn = document.getElementById('diagnose-data-btn');
+      
+      const forceUpdateBtn = document.getElementById('force-update-btn');
+      forceUpdateBtn?.addEventListener('click', async () => {
+        if (!window.db) {
+          alert("Error: Base de datos no conectada.");
+          return;
+        }
+        if (!confirm("¿Seguro que deseas forzar el cartel de actualización a todos los usuarios conectados AHORA MISMO?")) return;
+        try {
+          const forceBtn = document.getElementById('force-update-btn');
+          forceBtn.disabled = true;
+          forceBtn.textContent = "Lanzando...";
+          await window.db.collection('systemConfig').doc('appVersion').set({
+            timestamp: Date.now(),
+            version: 'manual_push_' + Date.now()
+          }, { merge: true });
+          alert("¡Señal enviada a todos los usuarios!");
+          forceBtn.textContent = "Lanzar Actualización Global";
+          forceBtn.disabled = false;
+        } catch (err) {
+          console.error(err);
+          alert("Error al enviar la actualización: " + err.message);
+        }
+      });
 
       wipeAllBtn?.addEventListener('click', () => {
         if (!daySelect.value) return;
