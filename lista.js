@@ -6405,10 +6405,10 @@ function shouldShowStatsTicker() {
 
         // Aplicar transparencia
         // Base alpha: Light 0.96, Dark 0.88
-        // Min alpha (max transparency): 0.4
+        // Min alpha (max transparency): 0.02 (casi 100% transparente para ver las partículas perfectamente)
         const isDark = savedTheme === 'dark';
         const baseAlpha = isDark ? 0.88 : 0.96;
-        const minAlpha = 0.2; // Permitir más transparencia (antes 0.4)
+        const minAlpha = 0.02;
 
         // 0% slider = baseAlpha, 100% slider = minAlpha
         const currentAlpha = baseAlpha - (savedTransparency / 100) * (baseAlpha - minAlpha);
@@ -6416,20 +6416,20 @@ function shouldShowStatsTicker() {
 
         // --- GLASSMORPHISM LIVE UPDATE ---
         // Actualizar directamente el .card para que el slider tenga efecto real
-        // Blur: máximo cuando opaco, mínimo cuando transparente
-        const blurMax = 28;
-        const blurMin = 8;
+        // Blur: máximo cuando opaco, 0px (completamente nítido) cuando transparente
+        const blurMax = 24;
+        const blurMin = 0;
         const currentBlur = blurMax - (savedTransparency / 100) * (blurMax - blurMin);
 
         const cardEl = document.querySelector('.card');
         if (cardEl) {
-          if (isDark) {
-            cardEl.style.background = `rgba(12, 15, 24, ${currentAlpha})`;
-          } else {
-            cardEl.style.background = `rgba(255, 255, 255, ${currentAlpha})`;
-          }
-          cardEl.style.backdropFilter = `blur(${currentBlur}px) saturate(1.4)`;
-          cardEl.style.webkitBackdropFilter = `blur(${currentBlur}px) saturate(1.4)`;
+          const bgColor = isDark
+            ? `rgba(12, 15, 24, ${currentAlpha})`
+            : `rgba(255, 255, 255, ${currentAlpha})`;
+          // Usar setProperty con 'important' para superar los !important de lista.css
+          cardEl.style.setProperty('background', bgColor, 'important');
+          cardEl.style.setProperty('backdrop-filter', `blur(${currentBlur}px) saturate(1.4)`, 'important');
+          cardEl.style.setProperty('-webkit-backdrop-filter', `blur(${currentBlur}px) saturate(1.4)`, 'important');
         }
       }
 
@@ -6464,6 +6464,9 @@ function shouldShowStatsTicker() {
       function loadSavedTheme() {
         applyTheme();
         updateActiveStates();
+        // Exponer globalmente para permitir sincronización robusta en cambios de foco
+        window.applyTheme = applyTheme;
+        window.updateActiveStates = updateActiveStates;
       }
 
       // Escuchar cambios en localStorage desde otras páginas
