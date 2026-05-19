@@ -6413,6 +6413,24 @@ function shouldShowStatsTicker() {
         // 0% slider = baseAlpha, 100% slider = minAlpha
         const currentAlpha = baseAlpha - (savedTransparency / 100) * (baseAlpha - minAlpha);
         document.documentElement.style.setProperty('--card-bg-alpha', currentAlpha);
+
+        // --- GLASSMORPHISM LIVE UPDATE ---
+        // Actualizar directamente el .card para que el slider tenga efecto real
+        // Blur: máximo cuando opaco, mínimo cuando transparente
+        const blurMax = 28;
+        const blurMin = 8;
+        const currentBlur = blurMax - (savedTransparency / 100) * (blurMax - blurMin);
+
+        const cardEl = document.querySelector('.card');
+        if (cardEl) {
+          if (isDark) {
+            cardEl.style.background = `rgba(12, 15, 24, ${currentAlpha})`;
+          } else {
+            cardEl.style.background = `rgba(255, 255, 255, ${currentAlpha})`;
+          }
+          cardEl.style.backdropFilter = `blur(${currentBlur}px) saturate(1.4)`;
+          cardEl.style.webkitBackdropFilter = `blur(${currentBlur}px) saturate(1.4)`;
+        }
       }
 
       // Actualizar estados activos del modal
