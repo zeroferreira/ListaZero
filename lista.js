@@ -70,12 +70,28 @@
       async function check() {
         const newSHA = await getLatestSHA();
         if (!newSHA) return;
+
+        const storedSHA = localStorage.getItem('app_version_sha');
+        let triggerUpdate = false;
+
         if (!currentSHA) {
+          // Primer chequeo al abrir la página
           currentSHA = newSHA;
           console.log('🚀 Versión de App Detectada:', currentSHA);
-          return;
+          
+          if (storedSHA && storedSHA !== newSHA) {
+            triggerUpdate = true; // ¡Versión vieja detectada en memoria caché!
+            console.log('⚠️ Caché detectado. Forzando aviso de actualización visual.');
+          } else {
+            localStorage.setItem('app_version_sha', newSHA);
+            return;
+          }
+        } else if (newSHA !== currentSHA) {
+          // Chequeos periódicos (cada 15 min)
+          triggerUpdate = true;
         }
-        if (newSHA !== currentSHA) {
+
+        if (triggerUpdate) {
           console.log('✨ Nueva versión disponible en GitHub:', newSHA);
           
           // Crear estilos de animación si no existen
@@ -174,6 +190,7 @@
             if (countdownEl) countdownEl.textContent = timeLeft;
             if (timeLeft <= 0) {
               clearInterval(timer);
+              localStorage.setItem('app_version_sha', newSHA);
               glassCard.style.transform = 'scale(0.9)';
               glassOverlay.style.opacity = '0';
               setTimeout(() => window.location.reload(true), 400);
@@ -183,6 +200,7 @@
           // Manejar clic de actualización manual
           document.getElementById('glass-update-btn').addEventListener('click', () => {
              clearInterval(timer);
+             localStorage.setItem('app_version_sha', newSHA);
              glassCard.style.transform = 'scale(0.9)';
              glassOverlay.style.opacity = '0';
              setTimeout(() => window.location.reload(true), 400);
