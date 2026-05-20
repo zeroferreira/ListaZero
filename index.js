@@ -915,8 +915,71 @@
           window.__FORM_SUBMITTED__ = false;
           resetFormAndMetadata();
 
-          // Redirigir
-          window.location.href = 'lista.html';
+          // Mostrar Modal Glassmorphism de "Canción en cola"
+          const glassOverlay = document.createElement('div');
+          glassOverlay.style.cssText = `
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            z-index: 999999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+          `;
+          const glassCard = document.createElement('div');
+          glassCard.style.cssText = `
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            border-left: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            padding: 40px 30px;
+            width: 90%;
+            max-width: 380px;
+            text-align: center;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+            transform: translateY(40px) scale(0.9);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            color: #fff;
+            font-family: 'Avenir', 'Inter', system-ui, sans-serif;
+          `;
+          glassCard.innerHTML = `
+            <div style="font-size: 4rem; margin-bottom: 20px;">🎵</div>
+            <h2 style="margin: 0 0 15px 0; font-weight: 800; font-size: 1.5rem; letter-spacing: 0.5px; background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">¡CANCIÓN EN LA COLA!</h2>
+            <p style="color: rgba(255,255,255,0.85); line-height: 1.6; margin-bottom: 30px; font-size: 1.05rem;">
+              Tu solicitud ha sido enviada con éxito. Ganarás <strong style="color: #00f2fe;">25 puntos</strong> en cuanto el DJ la reproduzca al aire. ¡Quédate escuchando!
+            </p>
+            <button id="glass-redirect-btn" style="
+              background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+              border: none;
+              padding: 14px 35px;
+              border-radius: 30px;
+              color: #000;
+              font-weight: 800;
+              font-size: 1.0rem;
+              cursor: pointer;
+              letter-spacing: 0.5px;
+              box-shadow: 0 4px 15px rgba(0, 242, 254, 0.4);
+              transition: all 0.2s ease;
+              width: 100%;
+              max-width: 280px;
+            ">VER MI CANCIÓN EN COLA 📋</button>
+          `;
+          glassOverlay.appendChild(glassCard);
+          document.body.appendChild(glassOverlay);
+
+          requestAnimationFrame(() => {
+            glassOverlay.style.opacity = '1';
+            glassCard.style.transform = 'translateY(0) scale(1)';
+          });
+
+          document.getElementById('glass-redirect-btn').addEventListener('click', () => {
+            window.location.href = 'lista.html';
+          });
         });
       }
 

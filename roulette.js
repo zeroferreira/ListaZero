@@ -315,89 +315,7 @@ const firebaseConfig = {
       ]);
     }
 
-    async function pollSystemStatusOnce() {
-      try {
-        const doc = await db.collection('system').doc('status').get();
-        const data = doc && doc.exists ? (doc.data() || {}) : {};
-        if (typeof data.rouletteOverlayEnabled === 'boolean') {
-          if (lastHandledSystemOverlayEnabled !== data.rouletteOverlayEnabled) {
-            lastHandledSystemOverlayEnabled = data.rouletteOverlayEnabled;
-            applyOverlayEnabled(data.rouletteOverlayEnabled, { broadcast: false });
-          }
-        }
-      } catch (_) {}
-    }
-
-    async function pollRouletteLiveOnce() {
-      try {
-        const doc = await getRouletteLiveRef().get();
-        if (!doc.exists) return;
-        const data = doc.data() || {};
-        if (data.themeKey && THEMES[data.themeKey] && data.updatedBy !== rouletteLiveClientId) {
-          applyTheme(data.themeKey, { broadcast: false });
-        }
-        if (data.type === 'overlay_toggle' && data.overlayToggleToken && data.overlayToggleToken !== lastHandledOverlayToggleToken) {
-          lastHandledOverlayToggleToken = data.overlayToggleToken;
-          applyOverlayEnabled(data.overlayEnabled !== false, { broadcast: false });
-          return;
-        }
-        if (typeof data.overlayEnabled === 'boolean' && data.updatedBy !== rouletteLiveClientId) {
-          applyOverlayEnabled(data.overlayEnabled, { broadcast: false });
-        }
-        if (data.updatedBy === rouletteLiveClientId) return;
-        if (data.type === 'spin' && data.spin && data.spin.spinId && data.spin.spinId !== lastHandledLiveSpinId) {
-          lastHandledLiveSpinId = data.spin.spinId;
-          spinWheel({
-            payload: data.spin,
-            broadcast: false,
-            sideEffects: false,
-            autoFollowSpinAgain: false,
-            applyWinnerRemoval: false
-          });
-          return;
-        }
-        if (data.type === 'winner' && data.winner && data.winner.token && data.winner.token !== lastHandledLiveWinnerToken) {
-          if (isSpinning && lastHandledLiveSpinId && data.winner.token === `winner_${lastHandledLiveSpinId}`) return;
-          lastHandledLiveWinnerToken = data.winner.token;
-          if (Array.isArray(data.winner.entries) && data.winner.entries.length) {
-            liveSpinEntriesOverride = data.winner.entries.slice();
-          }
-          if (Number.isFinite(data.winner.finalRotation)) {
-            currentRotation = data.winner.finalRotation;
-            drawWheel(data.winner.entries || undefined);
-          }
-          showWinner(data.winner.name, {
-            sideEffects: false,
-            broadcast: false,
-            photoUrl: data.winner.photoUrl || '',
-            quietIfSame: true
-          });
-          return;
-        }
-        if (data.type === 'layout' && data.updatedBy !== rouletteLiveClientId) {
-          if (data.wheelState) {
-            if (Number.isFinite(data.wheelState.x)) wheelState.x = data.wheelState.x;
-            if (Number.isFinite(data.wheelState.y)) wheelState.y = data.wheelState.y;
-            if (Number.isFinite(data.wheelState.size)) wheelState.size = data.wheelState.size;
-            applyWheelState();
-          }
-          if (Array.isArray(data.manualParticipants)) {
-            manualParticipants = [...data.manualParticipants];
-          }
-          if (Array.isArray(data.excludedParticipants)) {
-            excludedParticipants = new Set(data.excludedParticipants);
-          }
-          if (data.activeSourceTab && data.activeSourceTab !== activeSourceTab) {
-            setSourceTab(data.activeSourceTab, { broadcast: false });
-          }
-          recomputeParticipants();
-        }
-        if (data.type === 'idle' && data.closeToken && data.closeToken !== lastHandledLiveCloseToken) {
-          lastHandledLiveCloseToken = data.closeToken;
-          resetWinner({ broadcast: false });
-        }
-      } catch (_) {}
-    }
+    // Removido: pollRouletteLiveOnce y pollSystemStatusOnce (ahora usan onSnapshot)
 
     function getReqTimeMs(it) {
       try {
@@ -703,15 +621,17 @@ const firebaseConfig = {
     }
 
     function loadNewRoulette() {
-      // Al presionar "Ruleta nueva", cargamos los que tienen canciones pendientes actualmente
-      // firebaseParticipants ya contiene la lista filtrada de usuarios con canciones no reproducidas
+      // Al presionar "Ruleta nueva", cargamos los que tienen canciones pendientes actualmente.
+      // Hallazgo 4: También limpiamos duplicados extra y excluidos para arrancar limpio.
       manualParticipants = [...firebaseParticipants];
       excludedParticipants.clear();
+      extraDuplicateCounts.clear();
       setSourceTab('manual');
       recomputeParticipants();
       saveWheelState(); // Sincronizar estado al reiniciar
       console.log('🎰 Ruleta nueva cargada con participantes pendientes:', manualParticipants);
     }
+
 
     function applyOverlayEnabled(enabled, options = {}) {
       overlayEnabled = enabled;
@@ -769,10 +689,17 @@ const firebaseConfig = {
       db.collection('playedSongs').doc(currentDay)
         .onSnapshot(doc => {
           if (doc.exists) {
-            playedSongIds = new Set(doc.data().songs || []);
+            const d = doc.data() || {};
+            // Hallazgo 2: También excluir canciones skipped de la ruleta
+            const allDone = new Set([
+              ...(d.songs || []),
+              ...(d.skipped || [])
+            ]);
+            playedSongIds = allDone;
             updateParticipants();
           }
         });
+
 
       db.collection('rewardRequests')
         .where('status', '==', 'approved')
@@ -812,10 +739,84 @@ const firebaseConfig = {
           });
         });
 
-      pollSystemStatusOnce();
-      pollRouletteLiveOnce();
-      setInterval(pollSystemStatusOnce, 1800);
-      setInterval(pollRouletteLiveOnce, 1200);
+      // Conexión Remota Realtime: Reemplazo de polling por onSnapshot (Hallazgo 1)
+      db.collection('system').doc('status').onSnapshot(doc => {
+        const data = doc && doc.exists ? (doc.data() || {}) : {};
+        if (typeof data.rouletteOverlayEnabled === 'boolean') {
+          if (lastHandledSystemOverlayEnabled !== data.rouletteOverlayEnabled) {
+            lastHandledSystemOverlayEnabled = data.rouletteOverlayEnabled;
+            applyOverlayEnabled(data.rouletteOverlayEnabled, { broadcast: false });
+          }
+        }
+      });
+
+      getRouletteLiveRef().onSnapshot(doc => {
+        if (!doc.exists) return;
+        const data = doc.data() || {};
+        if (data.themeKey && THEMES[data.themeKey] && data.updatedBy !== rouletteLiveClientId) {
+          applyTheme(data.themeKey, { broadcast: false });
+        }
+        if (data.type === 'overlay_toggle' && data.overlayToggleToken && data.overlayToggleToken !== lastHandledOverlayToggleToken) {
+          lastHandledOverlayToggleToken = data.overlayToggleToken;
+          applyOverlayEnabled(data.overlayEnabled !== false, { broadcast: false });
+          return;
+        }
+        if (typeof data.overlayEnabled === 'boolean' && data.updatedBy !== rouletteLiveClientId) {
+          applyOverlayEnabled(data.overlayEnabled, { broadcast: false });
+        }
+        if (data.updatedBy === rouletteLiveClientId) return;
+        if (data.type === 'spin' && data.spin && data.spin.spinId && data.spin.spinId !== lastHandledLiveSpinId) {
+          lastHandledLiveSpinId = data.spin.spinId;
+          spinWheel({
+            payload: data.spin,
+            broadcast: false,
+            sideEffects: false,
+            autoFollowSpinAgain: false,
+            applyWinnerRemoval: false
+          });
+          return;
+        }
+        if (data.type === 'winner' && data.winner && data.winner.token && data.winner.token !== lastHandledLiveWinnerToken) {
+          if (isSpinning && lastHandledLiveSpinId && data.winner.token === `winner_${lastHandledLiveSpinId}`) return;
+          lastHandledLiveWinnerToken = data.winner.token;
+          if (Array.isArray(data.winner.entries) && data.winner.entries.length) {
+            liveSpinEntriesOverride = data.winner.entries.slice();
+          }
+          if (Number.isFinite(data.winner.finalRotation)) {
+            currentRotation = data.winner.finalRotation;
+            drawWheel(data.winner.entries || undefined);
+          }
+          showWinner(data.winner.name, {
+            sideEffects: false,
+            broadcast: false,
+            photoUrl: data.winner.photoUrl || '',
+            quietIfSame: true
+          });
+          return;
+        }
+        if (data.type === 'layout' && data.updatedBy !== rouletteLiveClientId) {
+          if (data.wheelState) {
+            if (Number.isFinite(data.wheelState.x)) wheelState.x = data.wheelState.x;
+            if (Number.isFinite(data.wheelState.y)) wheelState.y = data.wheelState.y;
+            if (Number.isFinite(data.wheelState.size)) wheelState.size = data.wheelState.size;
+            applyWheelState();
+          }
+          if (Array.isArray(data.manualParticipants)) {
+            manualParticipants = [...data.manualParticipants];
+          }
+          if (Array.isArray(data.excludedParticipants)) {
+            excludedParticipants = new Set(data.excludedParticipants);
+          }
+          if (data.activeSourceTab && data.activeSourceTab !== activeSourceTab) {
+            setSourceTab(data.activeSourceTab, { broadcast: false });
+          }
+          recomputeParticipants();
+        }
+        if (data.type === 'idle' && data.closeToken && data.closeToken !== lastHandledLiveCloseToken) {
+          lastHandledLiveCloseToken = data.closeToken;
+          resetWinner({ broadcast: false });
+        }
+      });
     }
 
     function updateParticipants() {
@@ -853,40 +854,43 @@ const firebaseConfig = {
     }
 
     function recomputeParticipants() {
+      // Hallazgo 3: La ruleta solo gira con los participantes de la pestaña activa.
+      // Si estás en "Canjes" → solo canjes. En "Lista" → solo lista de espera.
+      // En "Ruleta nueva" (manual) → solo los que copiaste manualmente.
+      // Esto evita que usuarios borrados de una pestaña "reaparezcan" desde otra.
       const merged = [];
       const seen = new Set();
 
-      manualParticipants.forEach(name => {
+      function addName(name, baseCopies) {
         const normalized = normalizeParticipantName(name);
         if (!normalized || excludedParticipants.has(normalized)) return;
         if (!config.allowDuplicates && seen.has(normalized)) return;
         seen.add(normalized);
-        merged.push(...expandNameCopies(name, 1));
-      });
+        merged.push(...expandNameCopies(name, baseCopies));
+      }
 
-      firebaseParticipants.forEach(name => {
-        const normalized = normalizeParticipantName(name);
-        if (!normalized || excludedParticipants.has(normalized)) return;
-        if (!config.allowDuplicates && seen.has(normalized)) return;
-        seen.add(normalized);
-        merged.push(...expandNameCopies(name, 1));
-      });
-
-      rouletteRewardRequests.forEach(request => {
-        const name = String(request.userId || request.displayName || '').trim();
-        const normalized = normalizeParticipantName(name);
-        const baseTickets = config.allowDuplicates ? getRewardRequestRemainingSpins(request) : (getRewardRequestRemainingSpins(request) > 0 ? 1 : 0);
-        if (!normalized || excludedParticipants.has(normalized) || baseTickets <= 0) return;
-        if (!config.allowDuplicates && seen.has(normalized)) return;
-        seen.add(normalized);
-        merged.push(...expandNameCopies(name, baseTickets));
-      });
+      if (activeSourceTab === 'manual') {
+        manualParticipants.forEach(name => addName(name, 1));
+      } else if (activeSourceTab === 'rewards') {
+        rouletteRewardRequests.forEach(request => {
+          const name = String(request.userId || request.displayName || '').trim();
+          const baseTickets = config.allowDuplicates
+            ? getRewardRequestRemainingSpins(request)
+            : (getRewardRequestRemainingSpins(request) > 0 ? 1 : 0);
+          if (!name || baseTickets <= 0) return;
+          addName(name, baseTickets);
+        });
+      } else {
+        // 'list' tab: solo participantes de Firebase (canciones en espera)
+        firebaseParticipants.forEach(name => addName(name, 1));
+      }
 
       rouletteParticipants = merged;
       liveSpinEntriesOverride = null; // Important: Clear override when participants change
       renderParticipantsList();
       drawWheel();
     }
+
 
     function getRewardParticipantNames() {
       const rewardEntries = [];
@@ -1203,10 +1207,25 @@ const firebaseConfig = {
       return (usePound ? "#" : "") + s;
     }
 
+    // Hallazgo 5: Token para cancelar el restore de showSpinAgainFeedback si llega un ganador
+    let spinAgainRestoreTimer = null;
+
     function spinWheel(options = {}) {
       const remotePayload = options.payload || null;
       if (!overlayEnabled) return;
-      if (isSpinning) return;
+
+      // Hallazgo 5: Si viene un payload remoto y estamos girando, cancelamos forzosamente la
+      // animación anterior para que el overlay de OBS se sincronice inmediatamente.
+      if (isSpinning) {
+        if (remotePayload) {
+          isSpinning = false;
+          wrapper.classList.remove('spinning');
+          wrapper.style.transform = '';
+          if (spinAgainRestoreTimer) { clearTimeout(spinAgainRestoreTimer); spinAgainRestoreTimer = null; }
+        } else {
+          return; // giro local: respetar el bloqueo
+        }
+      }
 
       const spinPayload = remotePayload || buildSpinPayload();
       if (!spinPayload || !Array.isArray(spinPayload.entries) || spinPayload.entries.length === 0) return;
@@ -1238,6 +1257,7 @@ const firebaseConfig = {
       let lastTickSoundAt = 0;
 
       function animate(time) {
+        if (!isSpinning) return; // Hallazgo 5: Si se canceló, detener la animación
         const elapsed = time - startTime;
         const progress = Math.min(elapsed / duration, 1);
         const ease = 1 - Math.pow(1 - progress, 4); // easeOutQuart for smoother stop
@@ -1401,6 +1421,13 @@ const firebaseConfig = {
     }
 
     function showWinner(name, options = {}) {
+      // Hallazgo 5: Cancelar timers pendientes de "Vuelve a tirar" para no corromper el DOM
+      if (spinAgainRestoreTimer) { clearTimeout(spinAgainRestoreTimer); spinAgainRestoreTimer = null; }
+      const title = document.getElementById('winner-title');
+      const photo = document.getElementById('winner-photo');
+      if (title) { title.innerText = title.dataset.defaultTitle || '\uD83C\uDFC6 \u00A1GANADOR!'; title.style.color = ''; }
+      if (photo) photo.style.display = '';
+
       const alreadySameWinner = winnerOverlay.classList.contains('show') && winnerName.innerText === name;
       if (options.winnerToken) {
         lastHandledLiveWinnerToken = options.winnerToken;
@@ -1535,25 +1562,33 @@ const firebaseConfig = {
     `;
     document.head.appendChild(style);
     function showSpinAgainFeedback() {
+      // Hallazgo 5: Cancelar cualquier restore pendiente del intento anterior
+      if (spinAgainRestoreTimer) { clearTimeout(spinAgainRestoreTimer); spinAgainRestoreTimer = null; }
+
       playSound('tick');
       const title = document.getElementById('winner-title');
       const photo = document.getElementById('winner-photo');
       const nameEl = document.getElementById('winner-name');
       
-      const oldTitle = title.innerText;
-      title.innerText = '🎡 ¡GIRA DE NUEVO!';
+      const oldTitle = title.dataset.defaultTitle || title.innerText;
+      title.dataset.defaultTitle = oldTitle; // guardar el valor original una sola vez
+      title.innerText = '\uD83C\uDFA1 \u00A1GIRA DE NUEVO!';
       title.style.color = 'var(--roulette-accent-color)';
       nameEl.innerText = 'Vuelve a tirar...';
       photo.style.display = 'none';
       
       winnerOverlay.classList.add('show');
       
-      setTimeout(() => {
+      spinAgainRestoreTimer = setTimeout(() => {
+        spinAgainRestoreTimer = null;
         winnerOverlay.classList.remove('show');
         setTimeout(() => {
-          title.innerText = oldTitle;
-          title.style.color = '';
-          photo.style.display = '';
+          // Solo restaurar si el ganador no sobrescribió el overlay
+          if (!winnerOverlay.classList.contains('show')) {
+            title.innerText = title.dataset.defaultTitle || oldTitle;
+            title.style.color = '';
+            photo.style.display = '';
+          }
         }, 600);
       }, 1000);
     }

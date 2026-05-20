@@ -823,7 +823,17 @@
           payload[`totals.${u}`] = firebase.firestore.FieldValue.increment(delta);
           payload[`counts.${d}.${u}`] = firebase.firestore.FieldValue.increment(delta);
           await ref.set(payload, { merge: true });
-        } catch (_) { }
+
+          // Sincronización global de puntos en tiempo real (Hallazgo 3)
+          const pointsDelta = delta * (typeof POINTS_CONFIG !== 'undefined' && POINTS_CONFIG.SONG_REQUEST ? POINTS_CONFIG.SONG_REQUEST : 25);
+          const statsRef = db.collection('userStats').doc(u);
+          await statsRef.set({
+            totalPoints: firebase.firestore.FieldValue.increment(pointsDelta),
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        } catch (e) {
+          console.error("Error updating user played counter and points:", e);
+        }
       }
       async function getQuickPlayedTotalFromHistory(usuario) {
         try {
@@ -7357,14 +7367,20 @@ function shouldShowStatsTicker() {
                 btn.classList.add('processing');
 
                 try {
+                  // Validación de servidor temporal (Hallazgo 6)
+                  let now = new Date();
+                  try {
+                    const resp = await fetch(window.location.href.split('?')[0], { method: 'HEAD', cache: 'no-store' });
+                    const dateHeader = resp.headers.get('Date');
+                    if (dateHeader) now = new Date(dateHeader);
+                  } catch(e) { console.warn("Fallback to local time"); }
+
                   // 1. Re-verificar Cooldown de Usuario (Evitar exploit de pestaña abierta)
                   const latestUserDoc = await db.collection('userStats').doc(normUser).get();
                   if (latestUserDoc.exists) {
                     const data = latestUserDoc.data();
                     if (data.lastCheckIn) {
                       const lastDate = data.lastCheckIn.toDate();
-                      const now = new Date();
-
                       if (lastDate.toDateString() === now.toDateString()) {
                         throw new Error(`Ya has reclamado tu regalo de hoy. Vuelve en ${getTimeUntilMidnight()}.`);
                       }
@@ -7374,8 +7390,7 @@ function shouldShowStatsTicker() {
                   // 2. Verificar dispositivo primero (Anti-farming)
                   if (typeof generateDeviceFingerprint === 'function') {
                     const fingerprint = generateDeviceFingerprint();
-                    const now = new Date();
-                    // Usar fecha local para el ID del dispositivo (reset diario local)
+                    // Usar fecha del servidor para el ID del dispositivo (reset diario seguro)
                     const dateStr = now.getFullYear() + '-' + (now.getMonth() + 1).toString().padStart(2, '0') + '-' + now.getDate().toString().padStart(2, '0');
                     const fingerHash = fingerprint.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
                     const deviceDocId = `${dateStr}_${Math.abs(fingerHash)}`;
@@ -7408,7 +7423,6 @@ function shouldShowStatsTicker() {
                   // B. Registrar Dispositivo
                   if (typeof generateDeviceFingerprint === 'function') {
                     const fingerprint = generateDeviceFingerprint();
-                    const now = new Date();
                     const dateStr = now.getFullYear() + '-' + (now.getMonth() + 1).toString().padStart(2, '0') + '-' + now.getDate().toString().padStart(2, '0');
                     const fingerHash = fingerprint.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
                     const deviceDocId = `${dateStr}_${Math.abs(fingerHash)}`;
@@ -7859,7 +7873,7 @@ function shouldShowStatsTicker() {
       window.getCurrentUser = function () {
         // Intentar obtener el usuario actual de diferentes fuentes
         const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get('user') || localStorage.getItem('currentUser') || 'Usuario';
+        return urlParams.get('user') || localStorage.getItem('currentUser') || localStorage.getItem('savedUsername') || 'Usuario';
       }
 
       function addPoints(points, reason = '') {
@@ -8316,43 +8330,13 @@ function shouldShowStatsTicker() {
       async function renderStreaks(data) {
         try {
           const currentUser = getCurrentUser();
-          console.log(`🔥 Generando rachas individuales para ${currentUser}`);
+          console.log(`🔥 Renderizando rachas oficiales para ${currentUser}`);
 
-          // Generar actividad del usuario para calcular rachas
-          const userActivity = generateUserActivity(currentUser, 60); // 60 días para mejor cálculo de rachas
+          // Las rachas ya vienen calculadas correctamente y autorizadas desde data.streaks
+          const currentStreak = data.streaks?.current || 0;
+          const bestStreak = data.streaks?.best || 0;
 
-          // Calcular racha actual y mejor racha
-          const dates = Object.keys(userActivity).sort();
-          let currentStreak = 0;
-          let bestStreak = 0;
-          let tempStreak = 0;
-
-          // Calcular desde el día más reciente hacia atrás para la racha actual
-          const today = new Date().toISOString().split('T')[0];
-          let checkDate = new Date();
-
-          // Racha actual (días consecutivos desde hoy hacia atrás)
-          for (let i = 0; i < 30; i++) {
-            const dateStr = checkDate.toISOString().split('T')[0];
-            if (userActivity[dateStr] && userActivity[dateStr] > 0) {
-              currentStreak++;
-            } else {
-              break;
-            }
-            checkDate.setDate(checkDate.getDate() - 1);
-          }
-
-          // Mejor racha (máxima secuencia de días consecutivos)
-          for (const date of dates) {
-            if (userActivity[date] > 0) {
-              tempStreak++;
-              bestStreak = Math.max(bestStreak, tempStreak);
-            } else {
-              tempStreak = 0;
-            }
-          }
-
-          console.log(`📊 Rachas calculadas para ${currentUser}: actual=${currentStreak}, mejor=${bestStreak}`);
+          console.log(`📊 Rachas leídas para ${currentUser}: actual=${currentStreak}, mejor=${bestStreak}`);
 
           const currentStreakEl = document.getElementById('current-streak');
           const bestStreakEl = document.getElementById('best-streak');
@@ -8365,7 +8349,7 @@ function shouldShowStatsTicker() {
             bestStreakEl.textContent = `${bestStreak} días`;
           }
 
-          // Renderizar calendario de actividad (ya actualizado para usar datos individuales)
+          // Renderizar calendario de actividad
           await renderStreakCalendar();
 
         } catch (error) {
@@ -8853,7 +8837,10 @@ function shouldShowStatsTicker() {
       // Función para generar código de vinculación
       async function generateLinkCode() {
         const user = getCurrentUser();
-        if (!user) return;
+        if (!user || user.toLowerCase() === 'usuario') {
+            alert('Debes iniciar sesión con un nombre de usuario válido antes de vincular.');
+            return;
+        }
 
         try {
           // Generar código simple: ZR-XXXX
@@ -9278,8 +9265,8 @@ function shouldShowStatsTicker() {
           // Siempre recalcular para asegurar datos actualizados
           console.log(`🔄 Recalculando datos para ${targetUser}...`);
 
-          // Calcular estadísticas del usuario
-          const stats = await calculateUserStatsForUser(targetUser, { allTime: (typeof allTime !== 'undefined' ? allTime : false) });
+          // Calcular estadísticas del usuario (SIEMPRE allTime: true para evaluación de Logros - Hallazgo 4)
+          const stats = await calculateUserStatsForUser(targetUser, { allTime: true });
           console.log(`📈 Estadísticas de ${targetUser}:`, stats);
 
           // Si las estadísticas parecen incorrectas, ejecutar diagnóstico
@@ -9394,6 +9381,17 @@ function shouldShowStatsTicker() {
             if (breakdown && typeof breakdown.total === 'number') {
               console.log(`✅ Total autorizado obtenido: ${breakdown.total} (vs local: ${data.points})`);
               data.points = breakdown.total;
+              
+              // Sincronizar las rachas calculadas con datos reales
+              if (typeof breakdown.currentStreak === 'number' && typeof breakdown.bestStreak === 'number') {
+                data.streaks = data.streaks || { calendar: {} };
+                data.streaks.current = breakdown.currentStreak;
+                data.streaks.best = breakdown.bestStreak;
+                if (!data.stats) data.stats = {};
+                data.stats.bestStreak = breakdown.bestStreak;
+                data.stats.currentStreak = breakdown.currentStreak;
+              }
+
               data.lastAuthoritativeSource = 'breakdown';
               data.lastAuthoritativeCalculatedAt = new Date().toISOString();
 
@@ -9613,7 +9611,9 @@ function shouldShowStatsTicker() {
               if (typeof isOnOrAfterStart === 'function' && !isOnOrAfterStart(day)) return;
               const d = doc.data() || {};
               const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
+              const skippedArr = Array.isArray(d.skipped) ? d.skipped : [];
               arr.forEach(x => {
+                if (skippedArr.includes(x)) return; // IGNORAR canciones saltadas (skip)
                 const id = sanitize(x);
                 if (prefixes.some(p => id.startsWith(p))) {
                   // FILTRO DE SEGURIDAD: Omitir si el ID de la canción indica bot o test
@@ -9648,10 +9648,13 @@ function shouldShowStatsTicker() {
           if (isOwner) {
             try {
               const localPlayed = JSON.parse(localStorage.getItem('playedSongs') || '{}');
+              const localSkipped = JSON.parse(localStorage.getItem('skippedSongs') || '{}');
               Object.keys(localPlayed).forEach(day => {
                 if (typeof isOnOrAfterStart === 'function' && !isOnOrAfterStart(day)) return;
                 const arr = Array.isArray(localPlayed[day]) ? localPlayed[day] : [];
+                const skipArr = Array.isArray(localSkipped[day]) ? localSkipped[day] : [];
                 arr.forEach(x => {
+                  if (skipArr.includes(x)) return; // IGNORAR canciones saltadas localmente
                   const id = sanitize(x);
                   if (prefixes.some(p => id.startsWith(p))) ids.add(id);
                 });
@@ -9813,15 +9816,36 @@ function shouldShowStatsTicker() {
         const totalPlayedSet = new Set();
         // (El resto de la lógica de totalPlayedSet es redundante ahora, pero la mantengo limpia para evitar romper rachas)
 
-        // Iterar días SOLO para calcular días activos y rachas, NO para recontar canciones
+        // OPTIMIZACIÓN O(1): Obtener datos necesarios ANTES del bucle (Hallazgo 2)
+        let allReqsForDays = [];
+        try { allReqsForDays = await getAllCombinedSolicitudes(); } catch(e) {}
+        const distinctUsersPerDay = {};
+        allReqsForDays.forEach(s => {
+          let d = String(s.day || (s.fecha || '').split('T')[0] || '').trim();
+          if (d) {
+            if (!distinctUsersPerDay[d]) distinctUsersPerDay[d] = new Set();
+            if (s.usuario) distinctUsersPerDay[d].add(normalizeKeyTextForTicker(s.usuario));
+          }
+        });
+        
+        let playedDocsMap = {};
+        try {
+          const allPlayedSnap = await db.collection('playedSongs').get();
+          allPlayedSnap.forEach(doc => { playedDocsMap[doc.id] = doc.data() || {}; });
+        } catch(e) {}
+
+        // Iterar días SOLO para calcular días activos y rachas, NO para recontar canciones (Rápido en memoria)
         for (let i = 0; i < days.length; i++) {
           const day = days[i];
           if (!isOnOrAfterStart(day)) continue;
 
-          // Obtener canciones reproducidas del día para validar actividad
-          const playedDoc = await db.collection('playedSongs').doc(day).get();
-          const pdata = playedDoc.exists ? (playedDoc.data() || {}) : {};
-          const playedArr = Array.isArray(pdata.songs) ? pdata.songs : (Array.isArray(pdata.list) ? pdata.list : (Array.isArray(pdata.songIds) ? pdata.songIds : []));
+          // Obtener canciones reproducidas del día desde el mapa en memoria
+          const pdata = playedDocsMap[day] || {};
+          const playedArrRaw = Array.isArray(pdata.songs) ? pdata.songs : (Array.isArray(pdata.list) ? pdata.list : (Array.isArray(pdata.songIds) ? pdata.songIds : []));
+          const skippedArr = Array.isArray(pdata.skipped) ? pdata.skipped : [];
+          
+          // IGNORAR canciones saltadas (skip)
+          const playedArr = playedArrRaw.filter(x => !skippedArr.includes(x));
 
           // Contar canciones del usuario en este día específico para validar "Día Activo"
           const cleanLc = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
@@ -9831,24 +9855,22 @@ function shouldShowStatsTicker() {
           for (let k = 0; k < playedArr.length; k++) {
             const x = playedArr[k] || '';
             const xl = cleanLc(x);
+            // FILTRO DE SEGURIDAD
+            if (typeof window.isInvalid === 'function' && window.isInvalid(xl)) continue;
+            
             if (userPrefixes.some(pref => xl.startsWith(pref))) {
               userPlayedThatDay++;
             }
           }
 
-          const daySnap = await db.collection('solicitudes').where('day', '==', day).get();
-          const distinctUsersDay = new Set();
-          daySnap.forEach(dd => {
-            const d2 = dd.data() || {};
-            if (d2.usuario) {
-              // Normalizar para no duplicar vinculados
-              distinctUsersDay.add(normalizeKeyTextForTicker(d2.usuario));
-            }
-          });
-          const validDay = distinctUsersDay.size >= 2 && userPlayedThatDay > 0;
+          // Consultar usuarios distintos en ese día desde el mapa en memoria
+          const distUsersSet = distinctUsersPerDay[day] || new Set();
+          const distUsersCount = distUsersSet.size;
+
+          const validDay = distUsersCount >= 2 && userPlayedThatDay > 0;
           if (validDay) activeDaysValid++;
           if (userPlayedThatDay > 0) {
-            detail.push({ day, played: userPlayedThatDay, distinctUsers: distinctUsersDay.size });
+            detail.push({ day, played: userPlayedThatDay, distinctUsers: distUsersCount });
           }
         }
         // Calcular rachas a partir de detail (secuencias consecutivas de días con actividad)
@@ -10351,7 +10373,8 @@ function shouldShowStatsTicker() {
         }
 
         setNum('breakdown-played-base', Number(bd.playedCount || 0));
-        setNum('breakdown-vip-bonus', Number(bd.vipEligibleSongs || 0));
+        const vipSongs = bd.vipEligibleSongs !== undefined ? Number(bd.vipEligibleSongs) : (bd.isVip ? Number(bd.playedCount || 0) : 0);
+        setNum('breakdown-vip-bonus', vipSongs);
         setNum('breakdown-daily-bonus', Number(bd.activeDaysValid || 0));
         const achPlus = Number(bd.achievements || 0) + Number(bd.streakBonus || 0) + Number(bd.top1Bonus || 0) + Number(bd.manualBonus || 0) + Number(bd.likesPoints || 0) + Number(bd.giftPoints || 0) + Number(bd.adjustment || 0);
         setNum('breakdown-achievements', Number(achPlus || 0));
@@ -10375,9 +10398,11 @@ function shouldShowStatsTicker() {
           if (bd.fusedIds && bd.fusedIds.length > 1) {
             const norm = (s) => String(s || '').trim().replace(/^@/, '').toLowerCase();
             const currentId = norm(bd.usuario);
-            const otherId = bd.fusedIds.find(id => norm(id) !== currentId);
-
-            if (otherId) {
+            
+            // Recorrer TODAS las cuentas fusionadas, no solo la primera
+            const otherIds = bd.fusedIds.filter(id => norm(id) !== currentId);
+            
+            for (const otherId of otherIds) {
               const details = (bd.fusedDetails && bd.fusedDetails[otherId]) ? bd.fusedDetails[otherId] : null;
               const label = otherId.includes('@') || bd.tiktokId === otherId ? `Puntos TikTok (@${otherId.replace(/^@/, '')})` : `Puntos Cuenta Web (${otherId})`;
               const detailId = `fused-detail-${otherId.replace(/[^a-z0-9]/g, '')}`;
@@ -13356,47 +13381,22 @@ function shouldShowStatsTicker() {
       async function computeActivityForMonth(username, month, year) {
         const activity = {};
         try {
-          const normUser = String(username || '').trim().replace(/^@/, '').toLowerCase();
-          const all = await getAllCombinedSolicitudes();
-
-          // También considerar las reproducidas para pintar días activos
-          // A veces un usuario no pide, pero si le reproducen canciones antiguas, ¿cuenta?
-          // Generalmente "actividad" es pedir canciones. Pero si la regla es "canciones reproducidas cuentan", deberíamos incluirlas.
-          // Por ahora, nos basamos en SOLICITUDES que es lo que define "actividad" principal en este contexto (pedir).
-          // Si el usuario quiere que "reproducidas" también pinten el calendario, habría que cruzar datos.
-          // Asumiremos que actividad = solicitudes hechas ese día.
-
-          all.forEach(s => {
-            const u = String(s.usuario || '').trim().replace(/^@/, '').toLowerCase();
-            if (u !== normUser) return;
-
-            let d = null;
-            if (s.ts) {
-              d = new Date(s.ts);
-            } else if (s.day) {
-              // Ajuste de zona horaria para strings de fecha (YYYY-MM-DD)
-              // Al hacer new Date("YYYY-MM-DD") es UTC. Queremos evitar desfases de día.
-              const parts = String(s.day).split('-');
+          // El calendario ahora se alinea perfectamente con los "Días Activos" y las Rachas.
+          // Usamos el desglose oficial del usuario que ya filtra skips y cruza fusiones de cuenta.
+          const breakdown = await computeUserBreakdown(username);
+          if (breakdown && breakdown.detail) {
+            breakdown.detail.forEach(d => {
+              const parts = String(d.day).split('-');
               if (parts.length === 3) {
-                // Crear fecha local a las 12:00 para evitar bordes
-                d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 12, 0, 0);
-              } else {
-                d = new Date(s.day);
+                const y = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10) - 1;
+                if (y === year && m === month) {
+                  activity[d.day] = d.played;
+                }
               }
-            }
-
-            if (!d || isNaN(d.getTime())) return;
-
-            if (d.getMonth() === month && d.getFullYear() === year) {
-              // Construir key local YYYY-MM-DD
-              const y = d.getFullYear();
-              const m = String(d.getMonth() + 1).padStart(2, '0');
-              const da = String(d.getDate()).padStart(2, '0');
-              const key = `${y}-${m}-${da}`;
-              activity[key] = (activity[key] || 0) + 1;
-            }
-          });
-        } catch (e) { console.error(e); }
+            });
+          }
+        } catch (e) { console.error('Error computing activity for month:', e); }
         return activity;
       }
 

@@ -1316,6 +1316,11 @@ function setupListeners() {
                     const rawWebUser = linkData.webUser;
                     // FIX: Normalizar webUser a minúsculas y sin arroba para evitar Ghost Documents
                     const webUser = String(rawWebUser || '').trim().replace(/^@/, '').toLowerCase();
+
+                    if (!webUser || webUser === 'usuario') {
+                        console.log(`❌ Intento de vincular con cuenta inválida ("${webUser}"). Abortando.`);
+                        return;
+                    }
                     
                     // FIX: Usar userId (uniqueId/handle) en lugar de nickname
                     const tiktokHandle = userId.replace(/^@/, '').toLowerCase(); 
