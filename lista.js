@@ -14,12 +14,18 @@
       const str = String(val).trim();
       const lower = str.toLowerCase();
       
-      // FILTRO DE BOTS: Bloquear solo si es EXCLUSIVAMENTE Chino/Kanji y muy largo (spam típico)
+      // FILTRO DE BOTS (ENLACES): Bloquear enlaces sospechosos, pero permitir plataformas de música (Youtube, Spotify, Apple)
+      const hasLink = lower.includes('http://') || lower.includes('https://') || lower.includes('www.') || lower.includes('youtu.be');
+      const isMusicLink = lower.includes('youtube.com') || lower.includes('youtu.be') || lower.includes('spotify.com') || lower.includes('music.apple.com');
+      
+      if (hasLink && !isMusicLink) return true; // Bloquea enlaces que no son de música
+
+      // FILTRO DE BOTS (ASIÁTICO): Bloquear spam Chino/Kanji largo.
       // Los caracteres Japoneses (Hiragana/Katakana) se permiten siempre.
       const hasKanji = /[\u4E00-\u9FFF]/.test(str);
-      const hasJapanese = /[\u3040-\u30FF\u31F0-\u31FF]/.test(str); // Hiragana y Katakana (inc. extensiones)
-      // Solo bloqueamos si tiene Kanji, NO tiene Kana Japonesa, y es excesivamente largo (>50)
-      if (hasKanji && !hasJapanese && str.length > 50) return true;
+      const hasJapanese = /[\u3040-\u30FF\u31F0-\u31FF]/.test(str); // Hiragana y Katakana
+      // Bloqueamos si tiene Kanji sin Kana, es excesivamente largo, y NO es un enlace musical reconocido
+      if (hasKanji && !hasJapanese && str.length > 50 && !isMusicLink) return true;
       
       // FILTRO DE PRUEBAS: Omitir si contiene palabras clave de prueba o patrones genéricos
       const botPatterns = [
@@ -36,8 +42,6 @@
 
       if (botPatterns.some(regex => regex.test(lower))) return true;
       if (lower === 'prueba' || lower === 'test') return true;
-
-      if (lower.includes('http://') || lower.includes('https://') || lower.includes('www.') || lower.includes('youtu.be')) return true;
       
       // FILTRO DE LONGITUD Y REPETICIÓN: Omitir nombres absurdamente largos o repetitivos
       // Nota: Se aumentó a 140 para permitir títulos de canciones y artistas largos
