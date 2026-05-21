@@ -589,6 +589,19 @@
           if (liveCodeInput && !liveCodeInput.value.trim()) {
             liveCodeInput.value = liveCode;
           }
+
+          // 4. Banner de Mantenimiento (maintenanceMessage en system/status)
+          const maintenanceMsg = String(data.maintenanceMessage || '').trim();
+          const banner = document.getElementById('maintenance-banner');
+          const bannerText = document.getElementById('maintenance-banner-text');
+          if (banner) {
+            if (maintenanceMsg) {
+              if (bannerText) bannerText.textContent = maintenanceMsg;
+              banner.hidden = false;
+            } else {
+              banner.hidden = true;
+            }
+          }
         }, (error) => {
           console.error("❌ Error en Listener Centralizado:", error);
         });
@@ -8962,6 +8975,60 @@ function shouldShowStatsTicker() {
           });
         }
 
+        // --- Handlers: Banner de Mantenimiento ---
+        const setMaintenanceMsgBtn = document.getElementById('set-maintenance-message');
+        const clearMaintenanceMsgBtn = document.getElementById('clear-maintenance-message');
+        const maintenanceMsgInput = document.getElementById('maintenance-message-input');
+        const maintenanceBannerStatus = document.getElementById('maintenance-banner-status');
+
+        async function setMaintenanceMessage(msg) {
+          await db.collection('system').doc('status').set({
+            maintenanceMessage: msg,
+            lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: 'admin'
+          }, { merge: true });
+        }
+
+        // Sincronizar el campo de texto y el indicador de estado con Firestore
+        if (db) {
+          db.collection('system').doc('status').onSnapshot((doc) => {
+            const data = doc.exists ? (doc.data() || {}) : {};
+            const msg = String(data.maintenanceMessage || '').trim();
+            if (maintenanceMsgInput && !maintenanceMsgInput.matches(':focus')) {
+              maintenanceMsgInput.value = msg;
+            }
+            if (maintenanceBannerStatus) {
+              maintenanceBannerStatus.innerHTML = `Estado: <strong style="color:${msg ? '#ff6b35' : '#22c55e'}">${msg ? '🟠 ACTIVO' : '✅ Desactivado'}</strong>`;
+            }
+          }, () => {});
+        }
+
+        if (setMaintenanceMsgBtn) {
+          setMaintenanceMsgBtn.addEventListener('click', async () => {
+            const msg = (maintenanceMsgInput ? maintenanceMsgInput.value : '').trim();
+            if (!msg) {
+              alert('Escribe un mensaje antes de activar el banner.');
+              return;
+            }
+            try {
+              await setMaintenanceMessage(msg);
+            } catch (e) {
+              alert('Error guardando mensaje: ' + (e && e.message ? e.message : String(e)));
+            }
+          });
+        }
+
+        if (clearMaintenanceMsgBtn) {
+          clearMaintenanceMsgBtn.addEventListener('click', async () => {
+            try {
+              if (maintenanceMsgInput) maintenanceMsgInput.value = '';
+              await setMaintenanceMessage('');
+            } catch (e) {
+              alert('Error quitando banner: ' + (e && e.message ? e.message : String(e)));
+            }
+          });
+        }
+
         // Listener legacy eliminado: el botón de recálculo se maneja en una sola ruta
 
         if (daySelectEl) {
@@ -9977,7 +10044,8 @@ function shouldShowStatsTicker() {
               }
             }
             // Recalcular partidas con valores locales
-            vipBonus = isVip ? playedCount * 40 : 0;
+            // NOTA: NO sobreescribir vipBonus aquí — ya fue calculado correctamente
+            // con la fecha de activación VIP en el bloque anterior.
             dailyBonus = activeDaysValid * 5;
             // Ruta rápida deshabilitada para asegurar consistencia con nube
             if (false) {

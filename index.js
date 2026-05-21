@@ -395,6 +395,26 @@
         console.error('Error initializing Firebase:', e);
       }
 
+      // Listener para el banner de mantenimiento (maintenanceMessage en system/status)
+      if (db) {
+        db.collection('system').doc('status').onSnapshot((doc) => {
+          const data = doc.exists ? (doc.data() || {}) : {};
+          const maintenanceMsg = String(data.maintenanceMessage || '').trim();
+          const banner = document.getElementById('maintenance-banner');
+          const bannerText = document.getElementById('maintenance-banner-text');
+          if (banner) {
+            if (maintenanceMsg) {
+              if (bannerText) bannerText.textContent = maintenanceMsg;
+              banner.hidden = false;
+            } else {
+              banner.hidden = true;
+            }
+          }
+        }, (err) => {
+          console.warn('Error en listener de mantenimiento:', err);
+        });
+      }
+
       const form = document.getElementById('formulario');
       const usuarioInput = document.getElementById('usuario');
       const usuarioSelect = document.getElementById('usuario-registrado');
