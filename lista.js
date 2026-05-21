@@ -5490,6 +5490,8 @@ function shouldShowStatsTicker() {
     function openMenu() {
       if (!menuDropdown || !menuBtn) return;
       menuDropdown.hidden = false;
+      const backdrop = document.getElementById('menu-backdrop');
+      if (backdrop) backdrop.classList.add('show');
       requestAnimationFrame(() => {
         menuDropdown.classList.add('open');
         menuBtn.setAttribute('aria-expanded', 'true');
@@ -5503,6 +5505,8 @@ function shouldShowStatsTicker() {
       if (!menuDropdown) return;
       menuDropdown.classList.remove('open');
       menuBtn?.setAttribute('aria-expanded', 'false');
+      const backdrop = document.getElementById('menu-backdrop');
+      if (backdrop) backdrop.classList.remove('show');
       const onEnd = (e) => {
         if (e.target !== menuDropdown) return;
         menuDropdown.hidden = true;
@@ -9860,7 +9864,7 @@ function shouldShowStatsTicker() {
         const playedArtistsSet = new Set();
         try {
           const userSnap = await db.collection('solicitudes').where('usuario', 'in', fusedIds).get();
-          totalRequestedCount = userSnap.size;
+          totalRequestedCount = userSnap.size + playedCount;
           userSnap.forEach(doc => {
             const d = doc.data() || {};
             if (d.artista) {
@@ -13135,14 +13139,23 @@ function shouldShowStatsTicker() {
         // Actualizar selector de usuario
         populateUserSelector().then(() => {
           const userSelect = document.getElementById('gamification-user-select');
+          const backBtn = document.getElementById('back-to-my-profile');
           console.log(`🎯 Configurando selector: targetUser=${targetUser}, getCurrentUser()=${getCurrentUser()}`);
 
           if (userSelect) {
             if (targetUser !== getCurrentUser()) {
               userSelect.value = targetUser;
+              userSelect.style.display = 'none';
+              if (backBtn) {
+                backBtn.style.display = 'inline-block';
+              }
               console.log(`✅ Selector configurado a: ${targetUser}`);
             } else {
               userSelect.value = '';
+              userSelect.style.display = 'block';
+              if (backBtn) {
+                backBtn.style.display = 'none';
+              }
               console.log(`🏠 Usuario actual, selector limpio`);
             }
           }
@@ -13532,7 +13545,13 @@ function shouldShowStatsTicker() {
         try {
           const fusedIds = optionalFused || (typeof getFusedIds === 'function' ? getFusedIds(usuario) : [usuario]);
           const snap = await db.collection('solicitudes').where('usuario', 'in', fusedIds).get();
-          return snap.size;
+          const pending = snap.size;
+          
+          let played = 0;
+          if (typeof countTotalToggledSongsForUser === 'function') {
+            played = await countTotalToggledSongsForUser(usuario, fusedIds);
+          }
+          return pending + played;
         } catch (e) { return 0; }
       }
       const legacy_countTotalRequestedSongsForUser = async () => {
@@ -15114,16 +15133,57 @@ function shouldShowStatsTicker() {
           console.log("📊 Calculando estadísticas globales maestras...");
 
           // NUEVO: Leer historial de canciones reproducidas (HISTORIA REAL)
-          // Y las solicitudes para enriquecer con metadata (género, etc.)
-          const [playedSnapshot, solicitudesSnapshot, systemEventsSnapshot] = await Promise.all([
+          // Y las solicitudes para enriquecer con metadata (género, etc.) y userStats en paralelo
+          const [playedSnapshot, solicitudesSnapshot, systemEventsSnapshot, userStatsSnapshot] = await Promise.all([
             window.db.collection('playedSongs').get().catch(() => null),
             window.db.collection('solicitudes').get(),
-            window.db.collection('systemEvents').where('type', '==', 'togglePlayed').get()
+            window.db.collection('systemEvents').where('type', '==', 'togglePlayed').get(),
+            window.db.collection('userStats').get().catch(() => null)
           ]);
 
-          console.log(`📚 Leídos ${systemEventsSnapshot.size} eventos y ${solicitudesSnapshot.size} solicitudes.`);
+          console.log(`📚 Leídos ${systemEventsSnapshot ? systemEventsSnapshot.size : 0} eventos, ${solicitudesSnapshot ? solicitudesSnapshot.size : 0} solicitudes y ${userStatsSnapshot ? userStatsSnapshot.size : 0} userStats.`);
 
-          // 1. Construir Mapa de Metadatos Maestro (Fusión de fuentes)
+          // 1. Construir un buscador dinámico de prefijos de usuarios conocidos
+          const knownUsers = new Set();
+          if (userStatsSnapshot) {
+            userStatsSnapshot.forEach(doc => {
+              const d = doc.data() || {};
+              const name = String(d.displayName || doc.id || '').trim();
+              if (name) knownUsers.add(name);
+            });
+          }
+          if (solicitudesSnapshot) {
+            solicitudesSnapshot.forEach(doc => {
+              const d = doc.data() || {};
+              const name = String(d.usuario || d.displayName || '').trim();
+              if (name) knownUsers.add(name);
+            });
+          }
+          if (systemEventsSnapshot) {
+            systemEventsSnapshot.forEach(doc => {
+              const d = doc.data() || {};
+              const name = String(d.usuario || d.displayName || '').trim();
+              if (name) knownUsers.add(name);
+            });
+          }
+
+          const cleanForId = (str) => String(str || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+          const userMapping = Array.from(knownUsers)
+            .map(u => ({ original: u, clean: cleanForId(u) }))
+            .filter(item => item.clean.length > 0)
+            .sort((a, b) => b.clean.length - a.clean.length);
+
+          const findUserForId = (sId) => {
+            const cleanId = String(sId || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+            for (const item of userMapping) {
+              if (cleanId.startsWith(item.clean)) {
+                return item.original;
+              }
+            }
+            return null;
+          };
+
+          // 2. Construir Mapa de Metadatos Maestro (Fusión de fuentes)
           const masterMetaMap = {};
           const artistToGenre = {}; // Mapa para inferir géneros
           
@@ -15178,11 +15238,18 @@ function shouldShowStatsTicker() {
 
             const aRaw = meta.artista || '';
             const sRaw = meta.cancion || '';
-            const uRaw = meta.usuario || '';
+            let uRaw = meta.usuario || '';
             let gRaw = meta.genre || '';
 
-            // FILTRO ADICIONAL: Omitir si el artista, la canción o el usuario son inválidos/bots
-            if (window.isInvalid(aRaw) || window.isInvalid(sRaw) || window.isInvalid(uRaw)) return;
+            // Intentar reconstruir el usuario a partir del songId si no viene en los metadatos
+            if (!uRaw) {
+              uRaw = findUserForId(sId) || '';
+            }
+
+            // FILTRO ADICIONAL: Omitir si el usuario reconstruido es inválido
+            if (window.isInvalid(uRaw)) return;
+            if (aRaw && window.isInvalid(aRaw)) return;
+            if (sRaw && window.isInvalid(sRaw)) return;
 
             const a = normalizeKeyTextForTicker(aRaw);
             const s = normalizeKeyTextForTicker(sRaw);
@@ -15257,24 +15324,25 @@ function shouldShowStatsTicker() {
             .slice(0, 10);
 
           try {
-            const userStatsSnapshot = await window.db.collection('userStats').get();
             const aggregatedPoints = new Map();
-            userStatsSnapshot.forEach(doc => {
-              const d = doc.data() || {};
-              const rawName = String(d.displayName || doc.id || '').trim();
-              const normKey = normalizeUserKey(rawName);
-              if (!normKey || normKey === 'prueba' || normKey === 'test' || normKey.startsWith('prueba')) return;
+            if (userStatsSnapshot) {
+              userStatsSnapshot.forEach(doc => {
+                const d = doc.data() || {};
+                const rawName = String(d.displayName || doc.id || '').trim();
+                const normKey = normalizeUserKey(rawName);
+                if (!normKey || normKey === 'prueba' || normKey === 'test' || normKey.startsWith('prueba')) return;
 
-              const pts = Number(d.totalPoints || 0);
-              if (!Number.isFinite(pts) || pts <= 0) return;
+                const pts = Number(d.totalPoints || 0);
+                if (!Number.isFinite(pts) || pts <= 0) return;
 
-              if (aggregatedPoints.has(normKey)) {
-                const existing = aggregatedPoints.get(normKey);
-                existing.points = Math.max(existing.points, pts);
-              } else {
-                aggregatedPoints.set(normKey, { user: rawName, points: pts });
-              }
-            });
+                if (aggregatedPoints.has(normKey)) {
+                  const existing = aggregatedPoints.get(normKey);
+                  existing.points = Math.max(existing.points, pts);
+                } else {
+                  aggregatedPoints.set(normKey, { user: rawName, points: pts });
+                }
+              });
+            }
             pointsUsers = Array.from(aggregatedPoints.values());
 
             let topLikerName = 'N/D';
@@ -17261,10 +17329,12 @@ function shouldShowStatsTicker() {
     document.addEventListener('DOMContentLoaded', function () {
       const btn = document.getElementById('menu-btn');
       const dd = document.getElementById('menu-dropdown');
+      const backdrop = document.getElementById('menu-backdrop');
       if (!btn || !dd) return;
       function open() {
         dd.hidden = false;
         btn.setAttribute('aria-expanded', 'true');
+        if (backdrop) backdrop.classList.add('show');
         requestAnimationFrame(() => {
           dd.classList.add('open');
           pos(btn, dd);
@@ -17273,6 +17343,7 @@ function shouldShowStatsTicker() {
       function close() {
         dd.classList.remove('open');
         btn.setAttribute('aria-expanded', 'false');
+        if (backdrop) backdrop.classList.remove('show');
         const onEnd = (e) => {
           if (e.target !== dd) return;
           dd.hidden = true;
@@ -17285,6 +17356,13 @@ function shouldShowStatsTicker() {
         e.stopPropagation();
         if (dd.hidden) open(); else close();
       });
+      if (backdrop) {
+        backdrop.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          close();
+        });
+      }
       document.addEventListener('click', function (e) {
         if (dd.hidden) return;
         const t = e.target;
