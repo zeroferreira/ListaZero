@@ -695,6 +695,32 @@
           }
         }, err => console.error('Error syncing user aliases:', err));
       }
+
+      // Helper unificado para buscar membresías con alias vinculados
+      window.hasMembership = function (set, username) {
+        if (!set || !(set instanceof Set) || set.size === 0) return false;
+        if (!username) return false;
+        const unameLc = String(username).trim().replace(/^@/, '').toLowerCase();
+        
+        // 1. Verificar nombre de usuario directo
+        if (set.has(unameLc)) return true;
+        
+        const map = window.userAliasesMap || {};
+        
+        // 2. Si el usuario es un handle de TikTok, verificar su usuario Web/YouTube vinculado
+        const linkedWebUser = map[unameLc];
+        if (linkedWebUser && set.has(linkedWebUser)) return true;
+        
+        // 3. Si el usuario es un usuario Web, verificar si algún handle de TikTok vinculado a él tiene membresía
+        for (const [tiktokHandle, webUser] of Object.entries(map)) {
+          if (webUser === unameLc) {
+            if (set.has(tiktokHandle)) return true;
+          }
+        }
+        
+        return false;
+      };
+
       window.START_POINTS_DAY = window.START_POINTS_DAY || '';
       function normalizeDay(str) {
         const raw = String(str || '').trim();
@@ -2100,13 +2126,13 @@
         items.forEach((it, index) => {
           const unameLc = String(it.usuario || '').trim().toLowerCase();
           const displayUser = String(it.displayName || it.usuario || '').trim();
-          const isSuperfan = window.superfanSet && window.superfanSet.has(unameLc);
-          const isVip = vipSet.has(unameLc);
-          const isZ0Vip = z0VipSet.has(unameLc);
-          const isDonador = donadorSet.has(unameLc);
-          const isZ0Platino = window.z0PlatinumSet && window.z0PlatinumSet.has(unameLc);
-          const isZ0Fan = window.z0FanSet && window.z0FanSet.has(unameLc);
-          const hasPendingReward = window.pendingRewardUsers && window.pendingRewardUsers.has(unameLc);
+          const isSuperfan = typeof window.hasMembership === 'function' ? window.hasMembership(window.superfanSet, unameLc) : (window.superfanSet && window.superfanSet.has(unameLc));
+          const isVip = typeof window.hasMembership === 'function' ? window.hasMembership(vipSet, unameLc) : vipSet.has(unameLc);
+          const isZ0Vip = typeof window.hasMembership === 'function' ? window.hasMembership(z0VipSet, unameLc) : z0VipSet.has(unameLc);
+          const isDonador = typeof window.hasMembership === 'function' ? window.hasMembership(donadorSet, unameLc) : donadorSet.has(unameLc);
+          const isZ0Platino = typeof window.hasMembership === 'function' ? window.hasMembership(window.z0PlatinumSet, unameLc) : (window.z0PlatinumSet && window.z0PlatinumSet.has(unameLc));
+          const isZ0Fan = typeof window.hasMembership === 'function' ? window.hasMembership(window.z0FanSet, unameLc) : (window.z0FanSet && window.z0FanSet.has(unameLc));
+          const hasPendingReward = typeof window.hasMembership === 'function' ? window.hasMembership(window.pendingRewardUsers, unameLc) : (window.pendingRewardUsers && window.pendingRewardUsers.has(unameLc));
           const li = document.createElement('li');
 
           // Crear ID único para la canción con hora resuelta, para coincidir con queue/Cider
@@ -13812,12 +13838,13 @@ function shouldShowStatsTicker() {
       function getEarnedBadgesForUser(username) {
         const key = String(username || '').trim().replace(/^@/, '').toLowerCase();
         const res = [];
-        if (window.superfanSet && window.superfanSet.has(key)) res.push('superfan');
-        if (window.z0PlatinumSet && window.z0PlatinumSet.has(key)) res.push('z0-platino');
-        if (window.z0VipSet && window.z0VipSet.has(key)) res.push('z0-vip');
-        if (window.vipSet && window.vipSet.has(key)) res.push('vip');
-        if (window.donadorSet && window.donadorSet.has(key)) res.push('donador');
-        if (window.z0FanSet && window.z0FanSet.has(key)) res.push('z0-fan');
+        const hasMember = typeof window.hasMembership === 'function' ? window.hasMembership : (s, u) => s && s.has(u);
+        if (hasMember(window.superfanSet, key)) res.push('superfan');
+        if (hasMember(window.z0PlatinumSet, key)) res.push('z0-platino');
+        if (hasMember(window.z0VipSet, key)) res.push('z0-vip');
+        if (hasMember(window.vipSet, key)) res.push('vip');
+        if (hasMember(window.donadorSet, key)) res.push('donador');
+        if (hasMember(window.z0FanSet, key)) res.push('z0-fan');
         return res;
       }
 
@@ -13841,12 +13868,13 @@ function shouldShowStatsTicker() {
 
       function getCurrentMembership(username) {
         const key = String(username || '').trim().replace(/^@/, '').toLowerCase();
-        if (window.superfanSet && window.superfanSet.has(key)) return 'superfan';
-        if (window.z0PlatinumSet && window.z0PlatinumSet.has(key)) return 'z0-platino';
-        if (window.z0VipSet && window.z0VipSet.has(key)) return 'z0-vip';
-        if (window.vipSet && window.vipSet.has(key)) return 'vip';
-        if (window.donadorSet && window.donadorSet.has(key)) return 'donador';
-        if (window.z0FanSet && window.z0FanSet.has(key)) return 'z0-fan';
+        const hasMember = typeof window.hasMembership === 'function' ? window.hasMembership : (s, u) => s && s.has(u);
+        if (hasMember(window.superfanSet, key)) return 'superfan';
+        if (hasMember(window.z0PlatinumSet, key)) return 'z0-platino';
+        if (hasMember(window.z0VipSet, key)) return 'z0-vip';
+        if (hasMember(window.vipSet, key)) return 'vip';
+        if (hasMember(window.donadorSet, key)) return 'donador';
+        if (hasMember(window.z0FanSet, key)) return 'z0-fan';
         return '';
       }
 
@@ -13882,7 +13910,22 @@ function shouldShowStatsTicker() {
       window.getSelectedBadgeFor = function (username) {
         const map = window.selectedBadgeMap || {};
         const key = String(username || '').trim().toLowerCase();
-        return map[key] || '';
+        if (map[key]) return map[key];
+        
+        // Buscar en cuentas vinculadas
+        const aliases = window.userAliasesMap || {};
+        
+        // 1. TikTok handle -> Web/YouTube
+        const linkedWebUser = aliases[key];
+        if (linkedWebUser && map[linkedWebUser]) return map[linkedWebUser];
+        
+        // 2. Web/YouTube -> TikTok handle
+        for (const [tiktokHandle, webUser] of Object.entries(aliases)) {
+          if (webUser === key && map[tiktokHandle]) {
+            return map[tiktokHandle];
+          }
+        }
+        return '';
       }
 
       async function setUserSelectedBadgeInFirestore(username, badge) {

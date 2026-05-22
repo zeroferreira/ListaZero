@@ -1128,6 +1128,44 @@
       } catch (_) { return ''; }
     }
     let superfanUsersSet = new Set();
+    let userAliasesMap = {};
+
+    async function pollUserAliasesOnce() {
+      try {
+        const snap = await db.collection('userAliases').get();
+        const map = {};
+        snap.forEach((doc) => {
+          const data = doc.data();
+          if (data && data.aliasedTo) {
+            map[normalizeUserForOverride(doc.id)] = normalizeUserForOverride(data.aliasedTo);
+          }
+        });
+        userAliasesMap = map;
+        renderQueue();
+      } catch (_) {}
+    }
+
+    function hasSuperfanMembership(username) {
+      if (!superfanUsersSet || superfanUsersSet.size === 0) return false;
+      if (!username) return false;
+      const uKey = normalizeUserForOverride(username);
+      
+      // 1. Direct check
+      if (superfanUsersSet.has(uKey)) return true;
+      
+      // 2. TikTok alias -> Web user check
+      const linkedWebUser = userAliasesMap[uKey];
+      if (linkedWebUser && superfanUsersSet.has(linkedWebUser)) return true;
+      
+      // 3. Web user -> TikTok alias check
+      for (const [tiktokHandle, webUser] of Object.entries(userAliasesMap)) {
+        if (webUser === uKey) {
+          if (superfanUsersSet.has(tiktokHandle)) return true;
+        }
+      }
+      return false;
+    }
+
     async function pollSuperfanUsersOnce() {
       try {
         const snap = await db.collection('superfanUsers').get();
@@ -1175,7 +1213,7 @@
       const usuario = req.displayName || req.usuario || req.user || req.username || '';
       const rawBadge = String((req && req.badge) || '').trim();
       const uKey = normalizeUserForOverride(usuario);
-      const badgeCandidate = (rawBadge === 'superfan' && uKey && !superfanUsersSet.has(uKey)) ? '' : rawBadge;
+      const badgeCandidate = (rawBadge === 'superfan' && uKey && !hasSuperfanMembership(usuario)) ? '' : rawBadge;
       const badge = badgeCandidate || getForcedBadgeForUser(usuario);
       const badgeHtml = badge ? `<span class="user-insignia ${badge}">${badgeLabel(badge)}</span>` : '';
       const div = document.createElement('div');
@@ -2129,6 +2167,11 @@
       try {
         pollSuperfanUsersOnce();
         setInterval(pollSuperfanUsersOnce, 60000);
+      } catch (_) {}
+
+      try {
+        pollUserAliasesOnce();
+        setInterval(pollUserAliasesOnce, 60000);
       } catch (_) {}
 
       try {

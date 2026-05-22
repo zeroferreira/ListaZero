@@ -543,6 +543,30 @@
     let selectedBadgeMap = {};
     let currentCardData = null;
 
+    window.userAliasesMap = {};
+    function hasMembership(set, username) {
+      if (!set || !(set instanceof Set) || set.size === 0) return false;
+      if (!username) return false;
+      const unameLc = normalizeUserKey(username);
+      
+      // 1. Verificar nombre de usuario directo
+      if (set.has(unameLc)) return true;
+      
+      const map = window.userAliasesMap || {};
+      
+      // 2. Si el usuario es un handle de TikTok, verificar su usuario Web/YouTube vinculado
+      const linkedWebUser = map[unameLc];
+      if (linkedWebUser && set.has(linkedWebUser)) return true;
+      
+      // 3. Si el usuario es un usuario Web, verificar si algún handle de TikTok vinculado a él tiene membresía
+      for (const [tiktokHandle, webUser] of Object.entries(map)) {
+        if (webUser === unameLc) {
+          if (set.has(tiktokHandle)) return true;
+        }
+      }
+      return false;
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const forcedBadgeParam = String(urlParams.get('badge') || '').trim();
     const forcedUserParam = String(urlParams.get('user') || '').trim();
@@ -574,19 +598,35 @@
       if (uid && uid !== u) candidates.push(uid);
       if (d && d !== u && d !== uid) candidates.push(d);
       if (!candidates.length) return '';
+      
+      const aliases = window.userAliasesMap || {};
+      
+      // 1. Primero comprobar insignias seleccionadas manualmente (incluyendo alias)
       for (let i = 0; i < candidates.length; i++) {
         const key = candidates[i];
-        const selected = selectedBadgeMap && selectedBadgeMap[key] ? String(selectedBadgeMap[key]) : '';
-        if (selected) return selected;
+        if (selectedBadgeMap && selectedBadgeMap[key]) return selectedBadgeMap[key];
+        
+        // TikTok handle -> Web/YouTube
+        const linkedWebUser = aliases[key];
+        if (linkedWebUser && selectedBadgeMap && selectedBadgeMap[linkedWebUser]) return selectedBadgeMap[linkedWebUser];
+        
+        // Web/YouTube -> TikTok handle
+        for (const [tiktokHandle, webUser] of Object.entries(aliases)) {
+          if (webUser === key && selectedBadgeMap && selectedBadgeMap[tiktokHandle]) {
+            return selectedBadgeMap[tiktokHandle];
+          }
+        }
       }
+      
+      // 2. Comprobar membresías activas (incluyendo alias)
       for (let i = 0; i < candidates.length; i++) {
         const key = candidates[i];
-        if (superfanSet.has(key)) return 'superfan';
-        if (z0PlatinumSet.has(key)) return 'z0-platino';
-        if (z0VipSet.has(key)) return 'z0-vip';
-        if (vipSet.has(key)) return 'vip';
-        if (donadorSet.has(key)) return 'donador';
-        if (z0FanSet.has(key)) return 'z0-fan';
+        if (hasMembership(superfanSet, key)) return 'superfan';
+        if (hasMembership(z0PlatinumSet, key)) return 'z0-platino';
+        if (hasMembership(z0VipSet, key)) return 'z0-vip';
+        if (hasMembership(vipSet, key)) return 'vip';
+        if (hasMembership(donadorSet, key)) return 'donador';
+        if (hasMembership(z0FanSet, key)) return 'z0-fan';
       }
       return '';
     }
@@ -755,6 +795,19 @@
         selectedBadgeMap = m;
         if (currentCardData) applyBadgeToCard(currentCardData);
       }, (err) => console.warn('Overlay: error leyendo selectedBadges:', err));
+
+      db.collection('userAliases').onSnapshot((snap) => {
+        const map = {};
+        snap.forEach((doc) => {
+          const data = doc.data();
+          if (data && data.aliasedTo) {
+            map[normalizeUserKey(doc.id)] = normalizeUserKey(data.aliasedTo);
+          }
+        });
+        window.userAliasesMap = map;
+        console.log('[Overlay] User aliases updated:', Object.keys(map).length);
+        if (currentCardData) applyBadgeToCard(currentCardData);
+      }, (err) => console.warn('Overlay: error leyendo userAliases:', err));
 
       db.collection('solicitudes')
         .where('day', '==', currentDay)
