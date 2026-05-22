@@ -4,6 +4,16 @@
  */
 
 (function() {
+    function escapeHTML(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     // Utilidades internas para el ticker
     function normalizeKeyTextForTicker(v) {
       try {
@@ -124,13 +134,13 @@
         .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
         .sort((a, b) => b.c - a.c)
         .slice(0, 3)
-        .map(it => `${it.o} (${it.c})`);
+        .map(it => `${escapeHTML(it.o)} (${it.c})`);
 
       const usersTop3 = Object.keys(userCount)
         .map(k => ({ k, c: userCount[k], o: userOriginal[k] || k }))
         .sort((a, b) => b.c - a.c)
         .slice(0, 3)
-        .map(it => `${it.o} (${it.c})`);
+        .map(it => `${escapeHTML(it.o)} (${it.c})`);
 
       return {
         topSong: songOriginal[top(songCount)] || top(songCount),
@@ -166,14 +176,14 @@
         const latestTxt = latest ? (String(latest.cancion || '').trim() + (latest.artista ? ' — ' + String(latest.artista).trim() : '')) : 'N/D';
         
         dayText = '📅 <strong>' + dayLabel + '</strong>' +
-          ' • <strong>🎵 Última canción solicitada:</strong> ' + fmt(latestTxt) +
-          ' • <strong>🎵 Canción más pedida:</strong> ' + fmt(ds.topSong) + ' (' + (ds.topSongCount || 0) + ')' +
-          ' • <strong>🎤 Artista más pedido:</strong> ' + fmt(ds.topArtist) + ' (' + (ds.topArtistCount || 0) + ')' +
-          ' • <strong>🎹 Género Top:</strong> ' + fmt(ds.topGenre || 'N/D') +
+          ' • <strong>🎵 Última canción solicitada:</strong> ' + fmt(escapeHTML(latestTxt)) +
+          ' • <strong>🎵 Canción más pedida:</strong> ' + fmt(escapeHTML(ds.topSong)) + ' (' + (ds.topSongCount || 0) + ')' +
+          ' • <strong>🎤 Artista más pedido:</strong> ' + fmt(escapeHTML(ds.topArtist)) + ' (' + (ds.topArtistCount || 0) + ')' +
+          ' • <strong>🎹 Género Top:</strong> ' + fmt(escapeHTML(ds.topGenre || 'N/D')) +
           ' • <strong>▶️ Reproducidas:</strong> ' + (ds.played || 0) +
           ' • <strong>👥 Top 3 usuarios:</strong> ' + (ds.topUsers3.join(', ') || 'N/D') +
           ' • <strong>🎤 Top 3 artistas:</strong> ' + (ds.topArtists3.join(', ') || 'N/D') +
-          ' • <strong>❤️ Top Liker:</strong> ' + fmt(g.topLiker) + (g.topLikerCount ? ' (' + g.topLikerCount + ')' : '') +
+          ' • <strong>❤️ Top Liker:</strong> ' + fmt(escapeHTML(g.topLiker)) + (g.topLikerCount ? ' (' + g.topLikerCount + ')' : '') +
           ' • <strong>📝 Solicitudes:</strong> ' + (ds.total || 0);
       } catch (_) {}
       
@@ -183,13 +193,13 @@
       }
       
       const globalText = '<strong>HISTORIA:</strong>' +
-        ' • <strong>🎵 Canción más pedida:</strong> ' + fmt(g.topSong) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') +
-        ' • <strong>🎤 Artista más pedido:</strong> ' + fmt(g.topArtist) + (typeof g.topArtistCount === 'number' ? ' (' + g.topArtistCount + ')' : '') +
-        ' • <strong>👥 Top 3 usuarios:</strong> ' + (g.topUsers3.join(', ') || 'N/D') +
-        ' • <strong>🏆 Top Puntos:</strong> ' + (Array.isArray(g.topPoints3) && g.topPoints3.length ? g.topPoints3.join(', ') : 'N/D') +
-        ' • <strong>🎤 Top 3 artistas:</strong> ' + (g.topArtists3.join(', ') || 'N/D') +
-        ' • <strong>🎹 Género Top:</strong> ' + fmt(g.topGenre || 'N/D') +
-        ' • <strong>❤️ Top Liker:</strong> ' + fmt(g.topLiker) + (g.topLikerCount ? ' (' + g.topLikerCount + ')' : '') +
+        ' • <strong>🎵 Canción más pedida:</strong> ' + fmt(escapeHTML(g.topSong)) + (typeof g.topSongCount === 'number' ? ' (' + g.topSongCount + ')' : '') +
+        ' • <strong>🎤 Artista más pedido:</strong> ' + fmt(escapeHTML(g.topArtist)) + (typeof g.topArtistCount === 'number' ? ' (' + g.topArtistCount + ')' : '') +
+        ' • <strong>👥 Top 3 usuarios:</strong> ' + (g.topUsers3.map(escapeHTML).join(', ') || 'N/D') +
+        ' • <strong>🏆 Top Puntos:</strong> ' + (Array.isArray(g.topPoints3) && g.topPoints3.length ? g.topPoints3.map(escapeHTML).join(', ') : 'N/D') +
+        ' • <strong>🎤 Top 3 artistas:</strong> ' + (g.topArtists3.map(escapeHTML).join(', ') || 'N/D') +
+        ' • <strong>🎹 Género Top:</strong> ' + fmt(escapeHTML(g.topGenre || 'N/D')) +
+        ' • <strong>❤️ Top Liker:</strong> ' + fmt(escapeHTML(g.topLiker)) + (g.topLikerCount ? ' (' + g.topLikerCount + ')' : '') +
         ' • <strong>📊 Total solicitudes:</strong> ' + (g.total || 0) +
         ' • <strong>📈 Promedio por usuario:</strong> ' + avgTxt;
         

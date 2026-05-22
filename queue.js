@@ -2,6 +2,16 @@
     let ciderSocket = null;
     let lastAutoMarkedSong = ""; 
 
+    function escapeHTML(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     function toggleDebugBorders() {
       const container = document.getElementById('queue-container');
       if (container.style.border) {
@@ -1174,6 +1184,10 @@
       div.dataset.songId = generateSongId(req);
       if (req.docId) div.dataset.docId = req.docId;
       
+      const cleanCancion = escapeHTML(cancion);
+      const cleanArtista = escapeHTML(artista);
+      const cleanUsuario = escapeHTML(usuario);
+
       // Structure for optional Album Art and Wait Time
       div.innerHTML = `
         <div class="queue-item-inner" style="flex-direction: row; align-items: center; gap: 15px;">
@@ -1185,12 +1199,12 @@
                   <span>En cola</span>
                </div>
                <div class="item-song">
-                  <span>${cancion}</span>
+                  <span>${cleanCancion}</span>
                   ${req.link ? `<span class="song-link-icon" title="Ver enlace">🔗</span>` : ''}
                </div>
-               <div class="item-artist">${artista}</div>
+               <div class="item-artist">${cleanArtista}</div>
                <div class="item-user">
-                  Pedido por <span class="user-badge"><span class="user-name">${usuario}</span>${badgeHtml}</span>
+                  Pedido por <span class="user-badge"><span class="user-name">${cleanUsuario}</span>${badgeHtml}</span>
                </div>
                <div class="item-wait" style="font-size: 11px; color: var(--queue-accent-color); margin-top: 4px; font-weight: bold; display:none;"></div>
            </div>
@@ -2243,7 +2257,7 @@
             <div class="notification-icon">${icon}</div>
             <div class="notification-content">
                 <div class="notification-title">${title}</div>
-                <div class="notification-msg">${data.message}</div>
+                <div class="notification-msg">${escapeHTML(data.message)}</div>
             </div>
         `;
         

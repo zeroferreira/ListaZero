@@ -589,7 +589,7 @@
         if (!usuarioSelect) return;
         const users = await collectRegisteredUsers();
         usuarioSelect.innerHTML = '<option value="">Selecciona un usuario</option>' +
-          users.map(u => `<option value="${u}">@${u}</option>`).join('');
+          users.map(u => `<option value="${escapeHTML(u)}">@${escapeHTML(u)}</option>`).join('');
       }
 
       populateRegisteredUsers();

@@ -2183,39 +2183,44 @@
           // Modo edición: draggable
           li.draggable = !!isEditing;
 
-          const linkHtml = it.link ? `<a href="${it.link}" target="_blank" class="song-link-icon" title="Ver enlace" style="text-decoration:none; margin-left:5px; font-size:0.8em; vertical-align:middle;">🔗</a>` : '';
+          const cleanCancion = escapeHTML(it.cancion);
+          const cleanArtista = escapeHTML(it.artista);
+          const cleanUser = escapeHTML(displayUser);
+          const cleanLink = safeUrl(it.link);
+
+          const linkHtml = cleanLink ? `<a href="${cleanLink}" target="_blank" class="song-link-icon" title="Ver enlace" style="text-decoration:none; margin-left:5px; font-size:0.8em; vertical-align:middle;">🔗</a>` : '';
           const wrapLink = (text, url) => url ? `<a href="${url}" target="_blank" style="color:inherit; text-decoration:underline; text-decoration-style:dotted;">${text}</a>` : text;
 
           li.innerHTML = `
             <span class="col col-time">${it.hora || ''}</span>
             <span class="col col-usuario usuario">
-               <span class="uname-text">${displayUser}</span>
+               <span class="uname-text">${cleanUser}</span>
                ${rewardIconHtml}
             </span>
             <span class="col col-cancion">
-              <span class="text">${wrapLink(it.cancion, it.link)}</span>
-              <button class="copy-chip copy-chip-inline" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>
-              ${it.link ? linkHtml : ''}
+              <span class="text">${wrapLink(cleanCancion, cleanLink)}</span>
+              <button class="copy-chip copy-chip-inline" type="button" title="Copiar canción" data-copy="${cleanCancion}">⧉</button>
+              ${cleanLink ? linkHtml : ''}
             </span>
             <span class="col col-artista">
-              <span class="text">${wrapLink(it.artista, it.link)}</span>
-              <button class="copy-chip copy-chip-inline" type="button" title="Copiar artista" data-copy="${it.artista}">⧉</button>
+              <span class="text">${wrapLink(cleanArtista, cleanLink)}</span>
+              <button class="copy-chip copy-chip-inline" type="button" title="Copiar artista" data-copy="${cleanArtista}">⧉</button>
             </span>
             <span class="col col-cancion-artista">
               <div class="line-with-copy mobile-user-row">
                  <div class="usuario-line usuario">
-                   ${displayUser}
+                   ${cleanUser}
                    ${rewardIconHtml}
                  </div>
               </div>
               <div class="line-with-copy">
-                <div class="cancion-line">${wrapLink(it.cancion, it.link)}</div>
-                <button class="copy-chip" type="button" title="Copiar canción" data-copy="${it.cancion}">⧉</button>
-                ${it.link ? linkHtml : ''}
+                <div class="cancion-line">${wrapLink(cleanCancion, cleanLink)}</div>
+                <button class="copy-chip" type="button" title="Copiar canción" data-copy="${cleanCancion}">⧉</button>
+                ${cleanLink ? linkHtml : ''}
               </div>
               <div class="line-with-copy">
-                <div class="artista-line">${wrapLink(it.artista, it.link)}</div>
-                <button class="copy-chip" type="button" title="Copiar artista" data-copy="${it.artista}">⧉</button>
+                <div class="artista-line">${wrapLink(cleanArtista, cleanLink)}</div>
+                <button class="copy-chip" type="button" title="Copiar artista" data-copy="${cleanArtista}">⧉</button>
               </div>
             </span>
             <button class="skip-btn" title="Saltar canción (sin puntos)">
@@ -3228,6 +3233,26 @@
         });
       }
 
+      function escapeHTML(str) {
+        if (!str) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function safeUrl(url) {
+        if (!url) return '';
+        const trimmed = String(url).trim();
+        if (/^https?:\/\//i.test(trimmed)) return trimmed;
+        return '';
+      }
+
+      window.escapeHTML = escapeHTML;
+      window.safeUrl = safeUrl;
+
       function toHour(ts) {
         if (!ts) return '';
         const d = ts.toDate ? ts.toDate() : new Date(ts);
@@ -3695,11 +3720,15 @@
           } catch (e) { return dateStr; }
         };
 
+        const cleanSong = escapeHTML(it.cancion);
+        const cleanArtist = escapeHTML(it.artista);
+        const cleanUser = escapeHTML(it.usuario);
+
         return `
             <div class="search-result" data-day="${it.day || ''}" tabindex="0" title="Click para ir a la fecha">
-              <span class="sr-song">${it.cancion || ''}</span>
-              <span class="sr-artist">${it.artista || ''}</span>
-              <span class="sr-user">${it.usuario || ''}</span>
+              <span class="sr-song">${cleanSong}</span>
+              <span class="sr-artist">${cleanArtist}</span>
+              <span class="sr-user">${cleanUser}</span>
               <span class="sr-date">${formatDate(it.day)}</span>
               <span class="sr-arrow">→</span>
             </div>
@@ -3735,7 +3764,8 @@
             window.__badgeUserLists.superfan.push(name);
             if (listEl) {
               const li = document.createElement('li');
-              li.innerHTML = `<span>${name}</span><button type="button" class="remove-btn" data-user="${name}" data-type="superfan" aria-label="Quitar Superfan">×</button>`;
+              const cleanName = escapeHTML(name);
+              li.innerHTML = `<span>${cleanName}</span><button type="button" class="remove-btn" data-user="${cleanName}" data-type="superfan" aria-label="Quitar Superfan">×</button>`;
               listEl.appendChild(li);
             }
           });
@@ -3783,9 +3813,10 @@
               window.vipMap.set(normalizedName, { activatedAt: activationDate });
 
               const li = document.createElement('li');
+              const cleanName = escapeHTML(name);
               li.innerHTML = `
-                <span>${name}</span>
-                <button type="button" class="remove-btn" data-user="${name}" aria-label="Quitar VIP">×</button>
+                <span>${cleanName}</span>
+                <button type="button" class="remove-btn" data-user="${cleanName}" aria-label="Quitar VIP">×</button>
               `;
               vipListEl.appendChild(li);
             }
@@ -3827,9 +3858,10 @@
               window.__badgeUserLists['z0-vip'].push(String(name).trim());
               if (z0VipListEl) {
                 const li = document.createElement('li');
+                const cleanName = escapeHTML(name);
                 li.innerHTML = `
-                  <span>${name}</span>
-                  <button type="button" class="remove-btn" data-user="${name}" data-type="z0" aria-label="Quitar Z0-VIP">×</button>
+                  <span>${cleanName}</span>
+                  <button type="button" class="remove-btn" data-user="${cleanName}" data-type="z0" aria-label="Quitar Z0-VIP">×</button>
                 `;
                 z0VipListEl.appendChild(li);
               }
@@ -3884,9 +3916,11 @@
               window.__badgeUserLists.donador.push(`${String(name).trim()} (hasta ${expireDate})`);
               if (donadorListEl) {
                 const li = document.createElement('li');
+                const cleanName = escapeHTML(name);
+                const cleanExpireDate = escapeHTML(expireDate);
                 li.innerHTML = `
-                  <span>${name} (hasta ${expireDate})</span>
-                  <button type="button" class="remove-btn" data-user="${name}" data-type="donador" aria-label="Quitar Donador">×</button>
+                  <span>${cleanName} (hasta ${cleanExpireDate})</span>
+                  <button type="button" class="remove-btn" data-user="${cleanName}" data-type="donador" aria-label="Quitar Donador">×</button>
                 `;
                 donadorListEl.appendChild(li);
               }
@@ -3924,7 +3958,8 @@
               window.__badgeUserLists['z0-fan'].push(String(name).trim());
               if (listEl) {
                 const li = document.createElement('li');
-                li.innerHTML = `<span>${name}</span><button type="button" class="remove-btn" data-user="${name}" data-type="z0-fan" aria-label="Quitar z0-Fan">×</button>`;
+                const cleanName = escapeHTML(name);
+                li.innerHTML = `<span>${cleanName}</span><button type="button" class="remove-btn" data-user="${cleanName}" data-type="z0-fan" aria-label="Quitar z0-Fan">×</button>`;
                 listEl.appendChild(li);
               }
             }
@@ -3961,7 +3996,8 @@
               window.__badgeUserLists['z0-platino'].push(String(name).trim());
               if (listEl) {
                 const li = document.createElement('li');
-                li.innerHTML = `<span>${name}</span><button type="button" class="remove-btn" data-user="${name}" data-type="z0-platino" aria-label="Quitar z0-Platino">×</button>`;
+                const cleanName = escapeHTML(name);
+                li.innerHTML = `<span>${cleanName}</span><button type="button" class="remove-btn" data-user="${cleanName}" data-type="z0-platino" aria-label="Quitar z0-Platino">×</button>`;
                 listEl.appendChild(li);
               }
             }
@@ -5492,6 +5528,7 @@ function shouldShowStatsTicker() {
       menuDropdown.hidden = false;
       const backdrop = document.getElementById('menu-backdrop');
       if (backdrop) backdrop.classList.add('show');
+      document.body.classList.add('menu-active');
       requestAnimationFrame(() => {
         menuDropdown.classList.add('open');
         menuBtn.setAttribute('aria-expanded', 'true');
@@ -5507,6 +5544,7 @@ function shouldShowStatsTicker() {
       menuBtn?.setAttribute('aria-expanded', 'false');
       const backdrop = document.getElementById('menu-backdrop');
       if (backdrop) backdrop.classList.remove('show');
+      document.body.classList.remove('menu-active');
       const onEnd = (e) => {
         if (e.target !== menuDropdown) return;
         menuDropdown.hidden = true;
@@ -6010,10 +6048,12 @@ function shouldShowStatsTicker() {
           ? createSearchResultItemHTML
           : (it) => {
             // Fallback por si no se cargó el helper
+            const cleanSong = escapeHTML(it.cancion);
+            const cleanArtist = escapeHTML(it.artista);
             return `
             <div class="search-result" data-day="${it.day || ''}" tabindex="0">
-              <span class="sr-song">${it.cancion}</span>
-              <span class="sr-artist">${it.artista}</span>
+              <span class="sr-song">${cleanSong}</span>
+              <span class="sr-artist">${cleanArtist}</span>
             </div>`;
           };
 
@@ -9815,7 +9855,27 @@ function shouldShowStatsTicker() {
         const fusedIds = Array.from(fusedSet);
         const norm = (s) => String(s || '').trim().replace(/^@/, '').toLowerCase();
         const rawLc = String(rawUser || '').trim().toLowerCase();
-        let isVip = (window.vipSet && (window.vipSet.has(unameLc) || window.vipSet.has(rawLc))) || (window.z0VipSet && (window.z0VipSet.has(unameLc) || window.z0VipSet.has(rawLc)));
+
+        // --- BÚSQUEDA SIMÉTRICA DE DATOS LOCALES (Caché local) ---
+        let localData = {};
+        for (const fid of fusedIds) {
+          const ld = getLocalGamificationData(fid);
+          if (ld && Object.keys(ld).length > 0) {
+            localData = ld;
+            break;
+          }
+        }
+
+        // --- COMPROBACIÓN SIMÉTRICA DE RANGO VIP ---
+        let isVip = false;
+        if (window.vipSet || window.z0VipSet) {
+          isVip = fusedIds.some(fid => {
+            const fidLc = String(fid || '').trim().toLowerCase();
+            const fidRawLc = String(fid || '').trim().toLowerCase().replace(/^@/, '');
+            return (window.vipSet && (window.vipSet.has(fidLc) || window.vipSet.has(fidRawLc))) ||
+                   (window.z0VipSet && (window.z0VipSet.has(fidLc) || window.z0VipSet.has(fidRawLc)));
+          });
+        }
         const getHourKey = (x) => {
           try {
             if (typeof window.toHourKey === 'function') return window.toHourKey(x);
@@ -10004,13 +10064,28 @@ function shouldShowStatsTicker() {
         const base = playedCount * 25;
         let vipBonus = 0;
 
-        // Calcular Bonus VIP respetando fecha de activación
+        // Calcular Bonus VIP respetando fecha de activación de forma simétrica
         if (isVip) {
           let vipActivationDate = null;
-          if (window.vipMap && window.vipMap.has(unameLc)) {
-            vipActivationDate = window.vipMap.get(unameLc).activatedAt;
-          } else if (window.vipMap && window.vipMap.has(rawLc)) {
-            vipActivationDate = window.vipMap.get(rawLc).activatedAt;
+          if (window.vipMap) {
+            for (const fid of fusedIds) {
+              const fidLc = String(fid || '').trim().toLowerCase();
+              const fidRawLc = String(fid || '').trim().toLowerCase().replace(/^@/, '');
+              if (window.vipMap.has(fidLc)) {
+                const act = window.vipMap.get(fidLc).activatedAt;
+                if (act) {
+                  vipActivationDate = act;
+                  break;
+                }
+              }
+              if (window.vipMap.has(fidRawLc)) {
+                const act = window.vipMap.get(fidRawLc).activatedAt;
+                if (act) {
+                  vipActivationDate = act;
+                  break;
+                }
+              }
+            }
           }
 
           if (vipActivationDate) {
@@ -10033,13 +10108,13 @@ function shouldShowStatsTicker() {
         const uniqueArtistsPlayed = Array.from(playedArtistsSet).filter(Boolean).length;
         let achievements = 0;
         let streakBonus = 0;
+        const finalAchievementIds = new Set();
         try {
           const uid = norm(usuario);
-          const idSet = new Set();
-          // Preferir datos locales para consistencia con la cabecera
+          const idSet = finalAchievementIds;
+          // Preferir datos locales para consistencia con la cabecera (usando localData simétrico)
           try {
-            const localData = getLocalGamificationData(usuario) || {};
-            const st = localData.stats || {};
+            const st = (localData && localData.stats) || {};
             if (typeof st.activeDays === 'number') activeDaysValid = st.activeDays;
             if (typeof st.isVip === 'boolean') {
               // Recalcular VIP con el flag local
@@ -10130,7 +10205,7 @@ function shouldShowStatsTicker() {
               }
             } catch (_) { }
             try {
-              const bestStats = await fetchBestUserStatsDoc(currentUid);
+              const bestStats = await fetchIndividualUserStatsDoc(currentUid);
               if (bestStats && bestStats.data) {
                 const sdata = bestStats.data || {};
                 // Revisar en ambas ubicaciones posibles (raíz y dentro de gamification)
@@ -10142,8 +10217,7 @@ function shouldShowStatsTicker() {
           }
           
           try {
-            const localData = getLocalGamificationData(usuario) || {};
-            const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
+            const localAch = (localData && Array.isArray(localData.achievements)) ? localData.achievements : [];
             (localAch || []).forEach(id => idSet.add(String(id)));
           } catch (_) { }
 
@@ -10160,10 +10234,10 @@ function shouldShowStatsTicker() {
         let statsDoc = {};
 
         try {
-          // AGREGACIÓN DE RACHAS Y AJUSTES: Iterar por todos los IDs vinculados
+          // AGREGACIÓN DE RACHAS Y AJUSTES: Iterar por todos los IDs vinculados usando fetchIndividualUserStatsDoc
           for (const fid of fusedIds) {
             try {
-              const bestStats = await fetchBestUserStatsDoc(fid);
+              const bestStats = await fetchIndividualUserStatsDoc(fid);
               const sDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
               
               // Quedarnos con el total acumulado mayor de la nube por si acaso
@@ -10174,7 +10248,7 @@ function shouldShowStatsTicker() {
                 bestStreakVal = Math.max(bestStreakVal, sDoc.bestStreak);
               }
 
-              // Sumar TODOS los ajustes manuales históricos de todas las cuentas
+              // Sumar TODOS los ajustes manuales históricos de todas las cuentas sin duplicar
               if (typeof sDoc.totalManualAdjustment === 'number') {
                 manualBonus += sDoc.totalManualAdjustment;
               } else if (sDoc.lastManualAdjustment && typeof sDoc.lastManualAdjustment.amount === 'number') {
@@ -10186,11 +10260,10 @@ function shouldShowStatsTicker() {
           }
         } catch (_) { }
 
-        // Fallback a localData para bestStreak si no se encontró en nube
+        // Fallback a localData para bestStreak si no se encontró en nube (usando localData simétrico)
         try {
           if (!bestStreakVal) {
-            const localData = getLocalGamificationData(usuario) || {};
-            const streaks = localData.streaks || {};
+            const streaks = (localData && localData.streaks) || {};
             if (typeof streaks.best === 'number') bestStreakVal = streaks.best;
           }
         } catch (_) { }
@@ -10261,11 +10334,10 @@ function shouldShowStatsTicker() {
 
         try {
           for (const fid of fusedIds) {
-            const bestStats = await fetchBestUserStatsDoc(fid);
+            const bestStats = await fetchIndividualUserStatsDoc(fid);
             const statsDoc = bestStats && bestStats.data ? (bestStats.data || {}) : {};
 
-            // AGREGACIÓN ADITIVA: Sumar los puntos de todas las cuentas vinculadas
-            // Esto permite que el usuario gane por distintos medios en distintas cuentas y se consolide.
+            // AGREGACIÓN ADITIVA EXCLUSIVA POR CUENTA: Sumar los puntos de cada cuenta vinculada por separado sin duplicar
             checkInPoints += Number(statsDoc.totalCheckInPoints || 0);
 
             const lCount = Number(statsDoc.totalLikes || 0);
@@ -10349,31 +10421,7 @@ function shouldShowStatsTicker() {
         let achievementsList = [];
         try {
           const achCatalog = Array.isArray(ACHIEVEMENTS) ? ACHIEVEMENTS : [];
-          // Usar los IDs encontrados arriba
-          const uid = norm(usuario);
-          const idSet = new Set();
-          try {
-            const achDoc = await db.collection('userAchievements').doc(uid).get();
-            if (achDoc.exists) {
-              const a = achDoc.data() || {};
-              const ids = Array.isArray(a.ids) ? a.ids : (Array.isArray(a.achievements) ? a.achievements : (Array.isArray(a.list) ? a.list : []));
-              (ids || []).forEach(id => idSet.add(String(id)));
-            }
-          } catch (_) { }
-          try {
-            const statsDoc2 = await db.collection('userStats').doc(uid).get();
-            if (statsDoc2.exists) {
-              const sdata2 = statsDoc2.data() || {};
-              const statAch = Array.isArray(sdata2.achievements) ? sdata2.achievements : [];
-              (statAch || []).forEach(id => idSet.add(String(id)));
-            }
-          } catch (_) { }
-          try {
-            const localData = getLocalGamificationData(usuario) || {};
-            const localAch = Array.isArray(localData.achievements) ? localData.achievements : [];
-            (localAch || []).forEach(id => idSet.add(String(id)));
-          } catch (_) { }
-          achievementsList = Array.from(idSet).map(id => {
+          achievementsList = Array.from(finalAchievementIds).map(id => {
             const found = achCatalog.find(x => x && x.id === id);
             return { id, title: (found && found.title) || id, points: (found && typeof found.points === 'number') ? found.points : 0 };
           });
@@ -11829,6 +11877,40 @@ function shouldShowStatsTicker() {
         } catch (_) { return 0; }
       }
 
+      async function fetchIndividualUserStatsDoc(fid) {
+        try {
+          const dbRef = window.db || db;
+          if (!dbRef) return null;
+          const keys = [];
+          const a = normalizeUserKey(fid);
+          const b = normalizeUserKeyLoose(fid);
+          if (a) keys.push(a);
+          if (b && b !== a) keys.push(b);
+          
+          const docs = await Promise.all(keys.map(async (k) => {
+            try {
+              const ref = dbRef.collection('userStats').doc(k);
+              const snap = await ref.get();
+              return { key: k, snap, data: snap.exists ? (snap.data() || {}) : null };
+            } catch (_) {
+              return null;
+            }
+          }));
+          const existing = docs.filter(d => d && d.data);
+          if (!existing.length) return null;
+          
+          existing.sort((x, y) => {
+            const tx = Math.max(getMillisFromTs(x.data.updatedAt), getMillisFromTs(x.data.lastUpdated));
+            const ty = Math.max(getMillisFromTs(y.data.updatedAt), getMillisFromTs(y.data.lastUpdated));
+            if (Math.abs(tx - ty) > 5000) return ty - tx;
+            return Number(y.data.totalPoints || 0) - Number(x.data.totalPoints || 0);
+          });
+          return existing[0];
+        } catch (_) {
+          return null;
+        }
+      }
+
       async function fetchBestUserStatsDoc(username) {
         try {
           const dbRef = window.db || db;
@@ -11868,7 +11950,8 @@ function shouldShowStatsTicker() {
             });
 
             const bestForThisAccount = accountDocs[0];
-            totalPoints += Number(bestForThisAccount.data.totalPoints || 0);
+            // FIX: Usar Math.max para evitar duplicar puntos ya consolidados de cuentas vinculadas
+            totalPoints = Math.max(totalPoints, Number(bestForThisAccount.data.totalPoints || 0));
 
             if (!bestDoc || Number(bestForThisAccount.data.totalPoints || 0) > Number(bestDoc.data.totalPoints || 0)) {
               bestDoc = bestForThisAccount;
@@ -11934,10 +12017,11 @@ function shouldShowStatsTicker() {
                   if (Math.abs(tx - ty) > 5000) return ty - tx;
                   return Number(y.totalPoints || 0) - Number(x.totalPoints || 0);
                 });
-                cloudTotalSum += Number(accountDocs[0].totalPoints || 0);
+                // FIX: Usar Math.max en lugar de suma (+) para evitar duplicar/inflar puntos consolidados de cuentas vinculadas
+                cloudTotalSum = Math.max(cloudTotalSum, Number(accountDocs[0].totalPoints || 0));
               });
 
-              // 3. Actualizar memoria y UI con la SUMA total
+              // 3. Actualizar memoria y UI con el total consolidado
               const local = getGamificationDataForUser(u) || {};
               local.points = cloudTotalSum;
               local._cloudSyncedPoints = cloudTotalSum;
@@ -17335,6 +17419,7 @@ function shouldShowStatsTicker() {
         dd.hidden = false;
         btn.setAttribute('aria-expanded', 'true');
         if (backdrop) backdrop.classList.add('show');
+        document.body.classList.add('menu-active');
         requestAnimationFrame(() => {
           dd.classList.add('open');
           pos(btn, dd);
@@ -17344,6 +17429,7 @@ function shouldShowStatsTicker() {
         dd.classList.remove('open');
         btn.setAttribute('aria-expanded', 'false');
         if (backdrop) backdrop.classList.remove('show');
+        document.body.classList.remove('menu-active');
         const onEnd = (e) => {
           if (e.target !== dd) return;
           dd.hidden = true;
