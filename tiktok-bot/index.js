@@ -2306,31 +2306,42 @@ async function handleSongRequest(user, query, options = {}) {
         // --- DETECTAR Y PROCESAR ENLACE DE YOUTUBE ---
         const ytUrl = detectYoutubeUrl(query || rawQuery);
         if (ytUrl) {
-            // Verificar si la meta de 999 likes se ha alcanzado en la sesión
-            let totalSessionLikes = 0;
-            try {
-                for (const count of sessionLikes.values()) {
-                    totalSessionLikes += count;
-                }
-            } catch (_) {}
-
-            if (totalSessionLikes < 999) {
-                console.log(`🔒 Petición con enlace de YouTube bloqueada: Faltan ${999 - totalSessionLikes} likes (llevamos ${totalSessionLikes}/999)`);
-                
-                if (db && typeof addDoc === 'function' && typeof collection === 'function') {
-                    try {
-                        await addDoc(collection(db, 'notifications'), {
-                            type: 'like',
-                            user: displayName || user || 'Zero FM',
-                            message: `🔒 Enlaces bloqueados: Faltan ${999 - totalSessionLikes} likes en el Live (llevamos ${totalSessionLikes}/999) ❤️`,
-                            timestamp: serverTimestamp()
-                        });
-                    } catch (e) {
-                        console.error('Error guardando notificación de likes bloqueados:', e);
+            // Verificar si el candado de YouTube por likes está habilitado
+            const isLockEnabled = overlayAlertsConfig.enableLikesYoutubeLock !== false;
+            if (isLockEnabled) {
+                const targetLikes = Number(overlayAlertsConfig.likesTargetForYoutubeLink) || 999;
+                let totalSessionLikes = 0;
+                try {
+                    for (const count of sessionLikes.values()) {
+                        totalSessionLikes += count;
                     }
+                } catch (_) {}
+
+                if (totalSessionLikes < targetLikes) {
+                    const missingLikes = targetLikes - totalSessionLikes;
+                    console.log(`🔒 Petición con enlace de YouTube bloqueada: Faltan ${missingLikes} likes (llevamos ${totalSessionLikes}/${targetLikes})`);
+                    
+                    if (db && typeof addDoc === 'function' && typeof collection === 'function') {
+                        try {
+                            const rawMsg = overlayAlertsConfig.likesLockAlertMsg || "🔒 Enlaces bloqueados: Faltan {faltan} likes en el Live (llevamos {llevamos}/{meta}) ❤️";
+                            const formattedMsg = rawMsg
+                                .replace(/{faltan}/g, missingLikes)
+                                .replace(/{llevamos}/g, totalSessionLikes)
+                                .replace(/{meta}/g, targetLikes);
+
+                            await addDoc(collection(db, 'notifications'), {
+                                type: 'like',
+                                user: displayName || user || 'Zero FM',
+                                message: formattedMsg,
+                                timestamp: serverTimestamp()
+                            });
+                        } catch (e) {
+                            console.error('Error guardando notificación de likes bloqueados:', e);
+                        }
+                    }
+                    
+                    return { ok: false, error: `Meta de enlaces bloqueada: faltan ${missingLikes} likes` };
                 }
-                
-                return { ok: false, error: `Meta de enlaces bloqueada: faltan ${999 - totalSessionLikes} likes` };
             }
 
             options.link = ytUrl;
