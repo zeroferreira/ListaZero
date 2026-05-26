@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alertas Premium — Zero FM</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" crossorigin="anonymous"></script>
+    <!-- Lottie Player for high-quality alerts -->
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@2.0.4/dist/lottie-player.js"></script>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+    <style>
+        /* =============================================
+           RESET & BASE
+        ============================================= */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: transparent;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* =============================================
+           ALERT CONTAINER
+        ============================================= */
+        .alert-wrapper {
+            position: relative;
+            width: 480px;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            z-index: 100;
+        }
+
+        /* =============================================
+           MEDIA OVERLAYS & LOTTIE CONTAINER
+        ============================================= */
+        .media-container {
+            position: relative;
+            width: 260px;
+            height: 260px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: -40px; /* Overlap with content for premium look */
+            z-index: 2;
+        }
+
+        .media-container lottie-player {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .user-avatar {
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            border: 4px solid #fff;
+            object-fit: cover;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+            z-index: 3;
+            animation: avatarPulse 2s infinite ease-in-out;
+        }
+
+        @keyframes avatarPulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 8px 30px rgba(255,255,255,0.2); }
+            50%       { transform: scale(1.05); box-shadow: 0 8px 45px rgba(255,255,255,0.45); }
+        }
+
+        /* =============================================
+           GLASSMOPHISM BOX (ALERT BODY)
+        ============================================= */
+        .alert-box {
+            width: 100%;
+            padding: 55px 30px 30px 30px;
+            border-radius: 28px;
+            background: rgba(15, 15, 25, 0.76);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 
+                0 24px 70px rgba(0, 0, 0, 0.6),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Glow effect in background of alert box */
+        .alert-glow {
+            position: absolute;
+            top: -50px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 250px;
+            height: 150px;
+            background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Alert type theme glows */
+        .type-follow .alert-glow    { background: radial-gradient(circle, rgba(236, 72, 153, 0.28) 0%, rgba(236, 72, 153, 0) 70%); }
+        .type-gift .alert-glow      { background: radial-gradient(circle, rgba(234, 179, 8, 0.28) 0%, rgba(234, 179, 8, 0) 70%); }
+        .type-subscribe .alert-glow { background: radial-gradient(circle, rgba(6, 182, 212, 0.28) 0%, rgba(6, 182, 212, 0) 70%); }
+        .type-like .alert-glow      { background: radial-gradient(circle, rgba(239, 68, 68, 0.28) 0%, rgba(239, 68, 68, 0) 70%); }
+
+        /* =============================================
+           TYPOGRAPHY & TEXT EFFECTS
+        ============================================= */
+        .alert-title {
+            font-size: 0.85em;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            color: rgba(255, 255, 255, 0.45);
+        }
+
+        .type-follow .alert-title    { color: #f472b6; }
+        .type-gift .alert-title      { color: #fbbf24; }
+        .type-subscribe .alert-title { color: #22d3ee; }
+        .type-like .alert-title      { color: #f87171; }
+
+        /* Username styling with Bounce & Rainbow capability */
+        .username-container {
+            font-size: 2.2em;
+            font-weight: 900;
+            line-height: 1.1;
+            letter-spacing: -0.5px;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: nowrap;
+            margin: 4px 0;
+            perspective: 800px;
+        }
+
+        /* 3D bounce animation for letters */
+        .bounce-char {
+            display: inline-block;
+            transform-origin: bottom center;
+            animation: bounceLetter 0.6s ease infinite alternate;
+            animation-delay: var(--delay);
+            text-shadow: 
+                0 1px 0 #1e1b4b,
+                0 2px 0 #1e1b4b,
+                0 3px 0 #1e1b4b,
+                0 6px 15px rgba(0,0,0,0.5);
+        }
+
+        @keyframes bounceLetter {
+            0% { transform: translateY(0) scaleY(1); }
+            100% { transform: translateY(-12px) scaleY(0.92); }
+        }
+
+        /* Rainbow / Aurora color effect */
+        .rainbow-text .bounce-char {
+            background: linear-gradient(90deg, #ff007f, #7f00ff, #00f0ff, #ff007f);
+            background-size: 300% 100%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: bounceLetter 0.6s ease infinite alternate, rainbowFlow 3s linear infinite;
+            animation-delay: var(--delay), calc(var(--delay) * 0.5);
+            text-shadow: none;
+        }
+
+        @keyframes rainbowFlow {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 100% 50%; }
+        }
+
+        .alert-message {
+            font-size: 1.15em;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
+            letter-spacing: 0.2px;
+        }
+
+        /* =============================================
+           PARTICLES / CONFETTI EFFECT
+        ============================================= */
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 50%;
+            z-index: 5;
+            animation: particleFly 1.8s cubic-bezier(0.1, 0.8, 0.25, 1) forwards;
+        }
+
+        @keyframes particleFly {
+            0% {
+                transform: translate(0, 0) scale(1) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(var(--tx), var(--ty)) scale(0) rotate(var(--rot));
+                opacity: 0;
+            }
+        }
+
+        /* =============================================
+           ENTRY / EXIT TRANSITIONS
+        ============================================= */
+        .anim-enter {
+            animation: alertEnter 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        .anim-exit {
+            animation: alertExit 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards;
+        }
+
+        @keyframes alertEnter {
+            0% {
+                opacity: 0;
+                transform: translateY(60px) scale(0.8);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes alertExit {
+            0% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-40px) scale(0.9);
+            }
+        }
+
+    </style>
+</head>
+
+<body>
+
+    <div class="alert-wrapper" id="alertWrapper">
+        <div class="media-container" id="mediaContainer">
+            <!-- Dynamic Lottie Player or avatar goes here -->
+            <img class="user-avatar" id="userAvatar" src="" style="display: none;" />
+        </div>
+        <div class="alert-box">
+            <div class="alert-glow"></div>
+            <div class="alert-title" id="alertTitle">Alerta</div>
+            <div class="username-container" id="usernameContainer">Usuario</div>
+            <div class="alert-message" id="alertMessage">¡Gracias por apoyarnos!</div>
+        </div>
+    </div>
+
+    <!-- Hidden audio element for alerts -->
+    <audio id="alertAudio" src="" preload="auto"></audio>
+
+    <script>
+        // =============================================
+        //  CONFIGURACIÓN & PRESET ALERTS
+        // =============================================
+        var CID = new URLSearchParams(document.location.search).get("cid") || "";
+
+        // Recursos multimedia premium (Lottie y Sonidos libres)
+        const ALERT_THEMES = {
+            follow: {
+                title: "Nuevo Seguidor",
+                lottie: "https://assets9.lottiefiles.com/packages/lf20_q45qp1.json", // Estrellas brillantes
+                audio: "https://codesandbox.io/p/sandbox/github/zeroferreira/ZeroFM/resources/follow.mp3", // Fallback a sound general
+                defaultAudio: "https://www.myinstants.com/media/sounds/notification_alert.mp3",
+                color: "#ec4899"
+            },
+            gift: {
+                title: "¡Regalo Recibido!",
+                lottie: "https://assets6.lottiefiles.com/packages/lf20_LevelUp.json", // Explosión premium coins
+                audio: "https://www.myinstants.com/media/sounds/gold-coins.mp3", // Sonido de monedas
+                color: "#eab308"
+            },
+            subscribe: {
+                title: "¡Nuevo Suscriptor!",
+                lottie: "https://assets5.lottiefiles.com/packages/lf20_Trophy.json", // Trofeo brillante
+                audio: "https://www.myinstants.com/media/sounds/level-up-epic.mp3", // Sonido premium nivel
+                color: "#06b6d4"
+            },
+            like: {
+                title: "¡Tormenta de Likes!",
+                lottie: "https://assets10.lottiefiles.com/packages/lf20_like.json", // Corazón gigante explotando
+                audio: "https://www.myinstants.com/media/sounds/pop-sound.mp3", // Sonido pop burbuja
+                color: "#ef4444"
+            }
+        };
+
+        // Configuración de Firebase (Sincronizado)
+        const firebaseConfig = {
+            apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+            authDomain: "zero-strom-web.firebaseapp.com",
+            projectId: "zero-strom-web",
+            storageBucket: "zero-strom-web.firebasestorage.app",
+            messagingSenderId: "758369466349",
+            appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+        };
+
+        // =============================================
+        //  ESTADOS DE COLA
+        // =============================================
+        let db = null;
+        let alertQueue = [];
+        let isAlertPlaying = false;
+        const overlayStartedAt = new Date(); // Para jugar solo alertas nuevas
+
+        // =============================================
+        //  INICIALIZAR FIREBASE
+        // =============================================
+        try {
+            if (typeof firebase !== 'undefined') {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                console.log("[Firebase] Alertas conectadas con éxito ✓");
+
+                // Escuchar la colección de notificaciones del Bot
+                db.collection('notifications')
+                    .where('timestamp', '>', overlayStartedAt)
+                    .onSnapshot(snap => {
+                        snap.docChanges().forEach(change => {
+                            if (change.type === 'added') {
+                                const data = change.doc.data();
+                                // Validar que sea un tipo de alerta soportado
+                                if (['follow', 'subscribe', 'gift', 'like'].includes(data.type)) {
+                                    console.log(`🔔 Alerta recibida desde bot [${data.type}]:`, data.user);
+                                    addAlert(data);
+                                }
+                            }
+                        });
+                    }, err => {
+                        console.error("[Firebase] Error en listener de alertas:", err);
+                    });
+            }
+        } catch (e) {
+            console.error("[Firebase] No se pudo conectar:", e);
+        }
+
+        // =============================================
+        //  AÑADIR A LA COLA
+        // =============================================
+        function addAlert(data) {
+            alertQueue.push(data);
+            processQueue();
+        }
+
+        // =============================================
+        //  PROCESAR COLA
+        // =============================================
+        function processQueue() {
+            if (isAlertPlaying || alertQueue.length === 0) return;
+            isAlertPlaying = true;
+
+            const currentAlert = alertQueue.shift();
+            playAlert(currentAlert);
+        }
+
+        // =============================================
+        //  PLAY ALERT
+        // =============================================
+        function playAlert(data) {
+            const theme = ALERT_THEMES[data.type] || ALERT_THEMES.follow;
+            const $wrapper = $("#alertWrapper");
+
+            // Limpiar clases previas de tipo
+            $wrapper.removeClass("type-follow type-gift type-subscribe type-like anim-enter anim-exit");
+            $wrapper.addClass(`type-${data.type}`);
+
+            // Rellenar títulos e información
+            $("#alertTitle").text(theme.title);
+            $("#alertMessage").text(data.message || "¡Gracias por el apoyo!");
+
+            // Construir texto del username con efecto de rebote letra por letra
+            const $usernameContainer = $("#usernameContainer");
+            $usernameContainer.removeClass("rainbow-text");
+            $usernameContainer.empty();
+
+            const name = data.user || "Anónimo";
+            // Activar arcoíris para subs, regalos grandes o de forma aleatoria
+            if (data.type === 'subscribe' || (data.type === 'gift' && data.coins >= 50)) {
+                $usernameContainer.addClass("rainbow-text");
+            }
+
+            name.split("").forEach((char, index) => {
+                const $span = $("<span>").text(char === " " ? "\u00A0" : char);
+                $span.addClass("bounce-char");
+                $span.css("--delay", `${index * 0.05}s`);
+                $usernameContainer.append($span);
+            });
+
+            // Configurar Lottie / Avatar
+            const $mediaContainer = $("#mediaContainer");
+            $mediaContainer.find("lottie-player").remove();
+            const $userAvatar = $("#userAvatar");
+            $userAvatar.hide();
+
+            // Cargar lottie
+            if (theme.lottie) {
+                const player = document.createElement("lottie-player");
+                player.setAttribute("src", theme.lottie);
+                player.setAttribute("background", "transparent");
+                player.setAttribute("speed", "1");
+                player.setAttribute("autoplay", "");
+                $mediaContainer.append(player);
+            }
+
+            // Cargar avatar si existe en la notificación
+            if (data.profilePic) {
+                $userAvatar.attr("src", data.profilePic).show();
+            } else {
+                $userAvatar.hide();
+            }
+
+            // Reproducir Audio
+            const $audio = $("#alertAudio");
+            const audioUrl = theme.audio || theme.defaultAudio;
+            $audio.attr("src", audioUrl);
+            const audioEl = $audio[0];
+            audioEl.volume = 0.5;
+            
+            // Forzar play con manejo de políticas del navegador
+            audioEl.play().catch(e => console.warn("[Audio] Interacción bloqueada por el navegador:", e));
+
+            // Disparar explosión de partículas de colores (Confeti)
+            spawnParticles(theme.color);
+
+            // TTS (Text to Speech) - Leer mensaje en voz alta
+            triggerTTS(data);
+
+            // Mostrar el overlay con animación
+            $wrapper.css("display", "flex").addClass("anim-enter");
+
+            // Duración de la alerta (5 segundos)
+            setTimeout(() => {
+                $wrapper.addClass("anim-exit");
+                setTimeout(() => {
+                    $wrapper.hide();
+                    isAlertPlaying = false;
+                    processQueue(); // Siguiente alerta
+                }, 400);
+            }, 5500);
+        }
+
+        // =============================================
+        //  SPAWN PARTICLES (Confeti Premium)
+        // =============================================
+        function spawnParticles(color) {
+            const numParticles = 40;
+            const container = document.body;
+
+            for (let i = 0; i < numParticles; i++) {
+                const particle = document.createElement("div");
+                particle.className = "particle";
+                
+                // Color aleatorio derivado o el del tema
+                particle.style.background = color || "#fff";
+                if (Math.random() > 0.5) particle.style.background = "#ffffff";
+
+                // Tamaño aleatorio
+                const size = Math.random() * 12 + 6;
+                particle.style.width = `${size}px`;
+                particle.style.height = `${size}px`;
+
+                // Configurar origen en el centro del alerta
+                particle.style.left = "50vw";
+                particle.style.top = "45vh";
+
+                // Configurar destino aleatorio (explosión circular)
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * 260 + 100;
+                const tx = Math.cos(angle) * distance;
+                const ty = Math.sin(angle) * distance;
+                const rot = Math.random() * 720 - 360;
+
+                particle.style.setProperty("--tx", `${tx}px`);
+                particle.style.setProperty("--ty", `${ty}px`);
+                particle.style.setProperty("--rot", `${rot}deg`);
+
+                container.appendChild(particle);
+
+                // Remover elemento después de terminar animación
+                particle.addEventListener("animationend", () => {
+                    particle.remove();
+                });
+            }
+        }
+
+        // =============================================
+        //  TEXT-TO-SPEECH (TTS)
+        // =============================================
+        function triggerTTS(data) {
+            if (!('speechSynthesis' in window)) return;
+            
+            // Solo activar TTS para subs o regalos significativos
+            if (data.type === 'subscribe' || (data.type === 'gift' && data.coins >= 5)) {
+                setTimeout(() => {
+                    const text = `${data.user} ${data.message.replace(/🎁|👤|⭐|❤️/g, "")}`;
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    
+                    // Configurar voz en español
+                    utterance.lang = 'es-MX';
+                    const voices = window.speechSynthesis.getVoices();
+                    const esVoice = voices.find(v => v.lang.includes('es') || v.lang.includes('ES'));
+                    if (esVoice) utterance.voice = esVoice;
+                    
+                    utterance.rate = 1.0;
+                    utterance.volume = 0.85;
+                    
+                    window.speechSynthesis.speak(utterance);
+                }, 1000); // Retraso de 1s para que suene el audio primero
+            }
+        }
+
+        // Pre-cargar voces al iniciar
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.getVoices();
+        }
+
+        // =============================================
+        //  PREVIEW / DEMO
+        // =============================================
+        window.preview = function(type) {
+            const types = ['follow', 'gift', 'subscribe', 'like'];
+            const chosenType = type || types[Math.floor(Math.random() * types.length)];
+            
+            let mockData = {};
+            if (chosenType === 'follow') {
+                mockData = {
+                    type: 'follow',
+                    user: "ZeroFM_Lover",
+                    message: "¡Gracias por seguir el canal! 👤",
+                    profilePic: "https://i.pravatar.cc/100?img=21"
+                };
+            } else if (chosenType === 'gift') {
+                mockData = {
+                    type: 'gift',
+                    user: "GifterPro",
+                    giftName: "TikTok Rose",
+                    coins: 10,
+                    message: "¡Gracias por 10x TikTok Rose! 🎁",
+                    profilePic: "https://i.pravatar.cc/100?img=12"
+                };
+            } else if (chosenType === 'subscribe') {
+                mockData = {
+                    type: 'subscribe',
+                    user: "MusicFanatic",
+                    message: "¡Gracias por suscribirte al canal! ⭐",
+                    profilePic: "https://i.pravatar.cc/100?img=33"
+                };
+            } else if (chosenType === 'like') {
+                mockData = {
+                    type: 'like',
+                    user: "SuperLiker",
+                    likes: 1200,
+                    message: "¡Envió 1,200 likes! ❤️",
+                    profilePic: "https://i.pravatar.cc/100?img=47"
+                };
+            }
+            
+            addAlert(mockData);
+        };
+
+        // Demo inicial tras carga
+        $(window).on("load", () => {
+            if (!db) {
+                console.log("[Alertas] Corriendo simulación de demostración...");
+                setTimeout(() => {
+                    window.preview('follow');
+                    setTimeout(() => window.preview('gift'), 7000);
+                }, 1500);
+            }
+        });
+    </script>
+
+</body>
+</html>

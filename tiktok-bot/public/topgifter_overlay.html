@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Top Gifters — Zero FM</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.min.js" crossorigin="anonymous"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+    <style>
+        /* =============================================
+           RESET & BASE
+        ============================================= */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', 'Segoe UI', sans-serif;
+            background: transparent;
+            overflow: hidden;
+            width: 340px;
+        }
+
+        /* =============================================
+           CONTAINER
+        ============================================= */
+        #rankingContainer {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 4px 2px;
+            width: 340px;
+            max-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* =============================================
+           RANK USER CARD
+        ============================================= */
+        .rankUser {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 12px 7px 10px;
+            border-radius: 16px;
+            background: rgba(15, 15, 25, 0.72);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            box-shadow:
+                0 4px 20px rgba(0, 0, 0, 0.35),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+            position: relative;
+            overflow: visible;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            animation: slideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+
+        .rankUser:hover {
+            transform: translateX(3px);
+        }
+
+        /* First place special card */
+        .rankUser.first-place {
+            background: rgba(20, 15, 5, 0.80);
+            border-color: rgba(255, 195, 0, 0.35);
+            box-shadow:
+                0 4px 24px rgba(255, 185, 0, 0.18),
+                0 0 0 1px rgba(255, 185, 0, 0.12),
+                inset 0 1px 0 rgba(255, 220, 80, 0.10);
+        }
+
+        .rankUser.second-place {
+            border-color: rgba(192, 192, 192, 0.25);
+        }
+
+        .rankUser.third-place {
+            border-color: rgba(205, 127, 50, 0.25);
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-18px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* =============================================
+           RANK NUMBER
+        ============================================= */
+        .rankId {
+            font-size: 0.85em;
+            font-weight: 800;
+            color: rgba(255, 255, 255, 0.35);
+            width: 22px;
+            min-width: 22px;
+            text-align: center;
+            flex-shrink: 0;
+            letter-spacing: -0.5px;
+        }
+
+        .rankId img {
+            height: 1.3em;
+            width: auto;
+            border-radius: 0;
+            margin: 0;
+        }
+
+        /* =============================================
+           AVATAR
+        ============================================= */
+        .avatar-wrap {
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .profilePicture {
+            height: 42px;
+            width: 42px;
+            border-radius: 50%;
+            object-fit: cover;
+            display: block;
+            border: 2.5px solid rgba(255,255,255,0.12);
+            transition: border-color 0.3s;
+        }
+
+        .first-place .profilePicture {
+            border-color: rgb(246, 183, 56);
+            box-shadow: 0 0 10px rgba(246,183,56,0.5);
+        }
+
+        .second-place .profilePicture {
+            border-color: rgb(192,192,192);
+            box-shadow: 0 0 8px rgba(192,192,192,0.35);
+        }
+
+        .third-place .profilePicture {
+            border-color: rgb(205,127,50);
+            box-shadow: 0 0 8px rgba(205,127,50,0.35);
+        }
+
+        /* Crown badge */
+        .crown1 {
+            display: none;
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            height: 22px;
+            width: auto;
+            filter: drop-shadow(0 2px 6px rgba(255, 200, 0, 0.7));
+            animation: crownFloat 2.5s ease-in-out infinite;
+        }
+
+        @keyframes crownFloat {
+            0%, 100% { transform: translateX(-50%) translateY(0px); }
+            50%       { transform: translateX(-50%) translateY(-3px); }
+        }
+
+        /* =============================================
+           USER INFO
+        ============================================= */
+        .user-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .username {
+            font-weight: 700;
+            font-size: 0.92em;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+            letter-spacing: 0.01em;
+        }
+
+        .first-place .username {
+            color: #ffe080;
+        }
+
+        /* =============================================
+           POINTS / COINS
+        ============================================= */
+        .points {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.78em;
+            font-weight: 600;
+            color: rgba(255,255,255,0.55);
+            line-height: 1;
+        }
+
+        .first-place .points {
+            color: rgba(255, 210, 80, 0.85);
+        }
+
+        .coin-icon {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .coin-amount {
+            letter-spacing: 0.02em;
+        }
+
+        /* =============================================
+           RANK GLOW ACCENT (left bar)
+        ============================================= */
+        .rank-accent {
+            position: absolute;
+            left: 0;
+            top: 20%;
+            height: 60%;
+            width: 3px;
+            border-radius: 0 3px 3px 0;
+            background: rgba(255,255,255,0.08);
+            transition: background 0.3s;
+        }
+
+        .first-place .rank-accent  { background: linear-gradient(180deg, #ffd700, #ff9800); box-shadow: 0 0 8px rgba(255,180,0,0.6); }
+        .second-place .rank-accent { background: linear-gradient(180deg, #e0e0e0, #9e9e9e); }
+        .third-place .rank-accent  { background: linear-gradient(180deg, #cd7f32, #8d4e0b); }
+
+        /* =============================================
+           SPARKLE PARTICLE for 1st place
+        ============================================= */
+        .sparkle {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.9em;
+            animation: sparkleAnim 1.8s ease-in-out infinite;
+            opacity: 0.6;
+        }
+
+        @keyframes sparkleAnim {
+            0%, 100% { opacity: 0.5; transform: translateY(-50%) scale(1); }
+            50%       { opacity: 1;   transform: translateY(-54%) scale(1.15); }
+        }
+
+        /* =============================================
+           EMPTY STATE
+        ============================================= */
+        #emptyState {
+            text-align: center;
+            color: rgba(255,255,255,0.3);
+            font-size: 0.82em;
+            padding: 20px 10px;
+            font-weight: 500;
+            display: none;
+        }
+
+    </style>
+</head>
+
+<body>
+
+    <div id="rankingContainer">
+        <!-- Template card (hidden, cloned via JS) -->
+        <div class="rankUser" id="rankTemplate" style="display:none !important;">
+            <div class="rank-accent"></div>
+            <div class="rankId">1.</div>
+            <div class="avatar-wrap">
+                <img class="crown1" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 16'%3E%3Cpolygon points='12,0 20,10 24,4 24,16 0,16 0,4 4,10' fill='%23FFD700' stroke='%23FF9800' stroke-width='0.8'/%3E%3Ccircle cx='12' cy='1.5' r='2' fill='%23FF6F00'/%3E%3Ccircle cx='0' cy='5' r='1.8' fill='%23FF6F00'/%3E%3Ccircle cx='24' cy='5' r='1.8' fill='%23FF6F00'/%3E%3C/svg%3E" alt="👑" />
+                <img class="profilePicture" src="" onerror="this.src='https://via.placeholder.com/42'" />
+            </div>
+            <div class="user-info">
+                <div class="username">Usuario</div>
+                <div class="points">
+                    <span class="coin-icon">
+                        <svg width="12" height="12" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="24" cy="24" r="22" fill="#FFEC9B"/>
+                            <circle cx="24" cy="24" r="17" fill="#FACE15"/>
+                            <path fill-rule="evenodd" clip-rule="evenodd" d="M40.9347 25.5C40.9779 25.0058 41 24.5055 41 24C41 14.6112 33.3888 7 24 7C14.6112 7 7 14.6112 7 24C7 24.5055 7.02206 25.0058 7.06527 25.5C7.82466 16.8137 15.1166 10 24 10C32.8834 10 40.1753 16.8137 40.9347 25.5Z" fill="#FABC15"/>
+                            <path d="M33 19C30.2041 19 27.9375 16.7614 27.9375 14H24.5625V27.6111C24.5625 29.2986 23.1774 30.6667 21.4688 30.6667C19.7601 30.6667 18.375 29.2986 18.375 27.6111C18.375 25.9236 19.7601 24.5556 21.4688 24.5556C21.722 24.5556 21.9659 24.5853 22.1981 24.6406V21.2763C22.0358 21.2406 21.7541 21.2222 21.4688 21.2222C17.8962 21.2222 15 24.0826 15 27.6111C15 31.1396 17.8962 34 21.4688 34C25.0413 34 27.9375 31.1396 27.9375 27.6111V20.6673C29.3477 21.7134 31.1005 22.3333 33 22.3333V19Z" fill="#FEF5CD"/>
+                        </svg>
+                    </span>
+                    <span class="coin-amount">0</span>
+                    <span class="currency-label"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =============================================
+        //  CONFIG — edita aquí si no usas TikFinity
+        // =============================================
+        var NOTHUMB = "https://via.placeholder.com/42/1a1a2e/ffffff?text=?";
+
+        // Parámetros de URL
+        var params    = new URLSearchParams(document.location.search);
+        var CID       = params.get("cid") || "";
+        var currency  = params.get("currency") || "";
+        var maxItems  = parseInt(params.get("max") || "10");
+
+        // =============================================
+        //  STATE
+        // =============================================
+        var rankingContainer = $("#rankingContainer");
+        var template         = null;
+        var lastRankingJson  = null;
+        var lastUserList     = [];
+        var settings         = {
+            topgifter_showCrown:      true,
+            topgifter_showTrophy:     false,
+            topgifter_showRank:       true,
+            topgifter_showCoins:      true,
+            topgifter_showCoinSymbol: true,
+            topgifter_showBoxShadow:  false,
+            topgifter_rankColor:      null,
+            topgifter_pointsColor:    null,
+            topgifter_usernameColor:  "#ffffff",
+            showUserNicknames:        true,
+            currencyName:             currency
+        };
+
+        // =============================================
+        //  FIREBASE FIRESTORE (Conexión al Bot)
+        // =============================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+            authDomain: "zero-strom-web.firebaseapp.com",
+            projectId: "zero-strom-web",
+            storageBucket: "zero-strom-web.firebasestorage.app",
+            messagingSenderId: "758369466349",
+            appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+        };
+
+        let db = null;
+        let hasFirebaseData = false;
+
+        try {
+            if (typeof firebase !== 'undefined') {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                console.log("[Firebase] Conectado exitosamente en TopGifter ✓");
+                
+                // Escuchar cambios en tiempo real del ranking del bot
+                db.collection('globalStats').doc('topGifters').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        if (data && Array.isArray(data.list)) {
+                            console.log("[Firebase] Ranking Top Gifters actualizado ✓");
+                            hasFirebaseData = true;
+                            updateRanking(data.list);
+                        }
+                    }
+                }, err => {
+                    console.warn("[Firebase] Error en onSnapshot de topGifters:", err);
+                });
+
+                // Escuchar configuraciones de estilo de overlays desde el panel de control
+                db.collection('systemConfig').doc('overlayAlertsConfig').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        console.log("[Firebase] Configuración de estilo de Top Gifter actualizada ✓");
+                        settings = Object.assign(settings, data);
+                        if (data.topgifter_max !== undefined) {
+                            maxItems = Number(data.topgifter_max);
+                        }
+                        updateSettings(true);
+                    }
+                }, err => {
+                    console.warn("[Firebase] Error en onSnapshot de overlayAlertsConfig:", err);
+                });
+            }
+        } catch(e) {
+            console.error("[Firebase] Error al iniciar Firebase:", e);
+        }
+
+        // =============================================
+        //  SOCKET.IO  (Fallback de TikFinity)
+        // =============================================
+        var io = null;
+        try {
+            // Intenta conectar al servidor local de TikFinity (puerto 21213)
+            io = window.io ? window.io("http://localhost:21213") : null;
+            if (io) {
+                io.on("connect", function() {
+                    console.log("[TopGifter] Socket conectado ✓");
+                    io.emit("joinWidget", { cid: CID, widget: "topgifter" });
+                });
+                io.on("updateTopGifter", function(userList) {
+                    if (!hasFirebaseData) { // Priorizar datos de Firebase
+                        updateRanking(userList);
+                    }
+                });
+                io.on("settingsUpdate", function(newSettings) {
+                    settings = Object.assign(settings, newSettings);
+                    updateSettings(true);
+                });
+                io.on("disconnect", function() {
+                    console.warn("[TopGifter] Socket desconectado");
+                });
+            }
+        } catch(e) {
+            console.warn("[TopGifter] Socket.IO no disponible:", e);
+        }
+
+        // =============================================
+        //  RENDER RANKING
+        // =============================================
+        function updateRanking(userList) {
+            if (!userList) userList = lastUserList;
+            lastUserList = userList;
+
+            var json = JSON.stringify(userList);
+            if (json === lastRankingJson) return;
+            lastRankingJson = json;
+
+            // Limita items
+            var list = userList.slice(0, maxItems);
+
+            // Elimina cards actuales con fade
+            $(".rankUser:not(#rankTemplate)").fadeOut(150, function() { $(this).remove(); });
+
+            setTimeout(function() {
+                list.forEach(function(user, idx) {
+                    var rank = idx + 1;
+                    var card = template.clone();
+                    card.removeAttr("id");
+
+                    // Clases de posición
+                    card.removeClass("first-place second-place third-place");
+                    if (rank === 1) card.addClass("first-place");
+                    if (rank === 2) card.addClass("second-place");
+                    if (rank === 3) card.addClass("third-place");
+
+                    // Rank number / trophy
+                    var $rankId = card.find(".rankId");
+                    if (settings.topgifter_showTrophy && rank <= 3) {
+                        var trophyEmoji = rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉";
+                        $rankId.html('<span style="font-size:1.1em">' + trophyEmoji + '</span>');
+                    } else {
+                        $rankId.text(rank + ".");
+                    }
+                    $rankId.toggle(settings.topgifter_showRank !== false);
+
+                    // Avatar
+                    var picUrl = user.profilePictureUrl || NOTHUMB;
+                    card.find(".profilePicture").attr("src", picUrl).on("error", function() {
+                        $(this).attr("src", NOTHUMB);
+                    });
+
+                    // Crown (only rank 1)
+                    if (rank === 1 && settings.topgifter_showCrown !== false) {
+                        card.find(".crown1").css("display", "block");
+                    }
+
+                    // Sparkle for 1st
+                    if (rank === 1) {
+                        card.append('<span class="sparkle">✨</span>');
+                    }
+
+                    // Username
+                    var displayName = settings.showUserNicknames === false
+                        ? ("@" + user.username)
+                        : (user.nickname || ("@" + user.username));
+                    card.find(".username").text(displayName);
+
+                    // Points / Coins
+                    var amount = parseFloat(user.totalAmount) || 0;
+                    card.find(".coin-amount").text(amount.toLocaleString("es-MX"));
+
+                    var $coinIcon = card.find(".coin-icon");
+                    if (settings.topgifter_showCoinSymbol === false) {
+                        $coinIcon.hide();
+                        card.find(".coin-amount").text(amount.toLocaleString("es-MX") + " Coins");
+                    }
+
+                    var $currLabel = card.find(".currency-label");
+                    if (currency) $currLabel.text(" " + currency);
+
+                    card.find(".points").toggle(settings.topgifter_showCoins !== false);
+
+                    // Animate in with stagger
+                    card.css("display", "none");
+                    rankingContainer.append(card);
+                    setTimeout(function() {
+                        card.fadeIn(180);
+                    }, idx * 80);
+                });
+            }, 180);
+        }
+
+        // =============================================
+        //  SETTINGS APPLY
+        // =============================================
+        function updateSettings(hasChanges) {
+            if (settings.topgifter_rankColor)   $(".rankId").css("color", settings.topgifter_rankColor);
+            if (settings.topgifter_pointsColor) $(".points").css("color", settings.topgifter_pointsColor);
+            if (settings.topgifter_usernameColor) $(".username").css("color", settings.topgifter_usernameColor);
+            if (settings.currencyName)          $(".currency-label").text(" " + settings.currencyName);
+
+            if (hasChanges) {
+                lastRankingJson = null;
+                updateRanking();
+            }
+        }
+
+        // =============================================
+        //  INIT
+        // =============================================
+        $(window).on("load", function() {
+            // Clone template BEFORE removing it
+            template = $("#rankTemplate").clone();
+            template.removeAttr("id");
+            $("#rankTemplate").remove();
+
+            updateSettings(false);
+
+            // Si no hay conexión local ni datos del bot en Firebase, iniciar preview
+            setTimeout(function() {
+                if (!io && !hasFirebaseData) {
+                    window.preview && window.preview();
+                }
+            }, 1200);
+        });
+
+        // =============================================
+        //  PREVIEW (datos de ejemplo)
+        // =============================================
+        window.preview = function() {
+            updateRanking([
+                { totalAmount: 15005, username: "exampleuser1", nickname: "Zero FM Fan #1",
+                  profilePictureUrl: "https://i.pravatar.cc/100?img=1" },
+                { totalAmount: 10536, username: "exampleuser2", nickname: "Gifter Pro",
+                  profilePictureUrl: "https://i.pravatar.cc/100?img=2" },
+                { totalAmount: 7056,  username: "exampleuser3", nickname: "MúsicaVida",
+                  profilePictureUrl: "https://i.pravatar.cc/100?img=3" },
+                { totalAmount: 1533,  username: "exampleuser4", nickname: "TikFan4",
+                  profilePictureUrl: "https://i.pravatar.cc/100?img=4" },
+                { totalAmount: 830,   username: "exampleuser5", nickname: "CoinsRain5",
+                  profilePictureUrl: "https://i.pravatar.cc/100?img=5" },
+                { totalAmount: 414,   username: "exampleuser6", nickname: "ZeroFM_Love",
+                  profilePictureUrl: "https://i.pravatar.cc/100?img=6" },
+                { totalAmount: 200,   username: "exampleuser7", nickname: "Supporter7",
+                  profilePictureUrl: "https://i.pravatar.cc/100?img=7" },
+                { totalAmount: 90,    username: "exampleuser8", nickname: "NightOwl8",
+                  profilePictureUrl: "https://i.pravatar.cc/100?img=8" },
+                { totalAmount: 40,    username: "exampleuser9", nickname: "Rookie9",
+                  profilePictureUrl: "https://i.pravatar.cc/100?img=9" },
+                { totalAmount: 7,     username: "exampleuser10", nickname: "JustStarting",
+                  profilePictureUrl: "https://i.pravatar.cc/100?img=10" }
+            ]);
+        };
+    </script>
+
+</body>
+</html>

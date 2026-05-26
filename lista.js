@@ -13769,6 +13769,41 @@ function shouldShowStatsTicker() {
           }
         } catch (e) { console.error('Error counting redemptions:', e); }
 
+        // --- NUEVA LÓGICA: Contar likes y barra de progreso ---
+        try {
+          const dbRef = window.db || db;
+          const tUser = String(targetUser || '').trim();
+          if (tUser) {
+            let likesCount = 0;
+            let likesPerPoint = 300;
+            const fused = typeof getFusedIds === 'function' ? getFusedIds(tUser) : [tUser];
+            for (const fid of fused) {
+              const doc = await dbRef.collection('userStats').doc(String(fid).toLowerCase()).get();
+              if (doc.exists) {
+                const d = doc.data() || {};
+                likesCount += Number(d.totalLikes || 0);
+                if (d.likesPerPoint) likesPerPoint = Number(d.likesPerPoint);
+              }
+            }
+
+            const personalLikesEl = document.getElementById('personal-total-likes');
+            const likesProgressFill = document.getElementById('likes-progress-fill');
+            const likesProgressText = document.getElementById('likes-progress-text');
+
+            if (personalLikesEl) {
+              personalLikesEl.textContent = likesCount.toLocaleString();
+            }
+            if (likesProgressFill && likesProgressText) {
+              const currentProgress = likesCount % likesPerPoint;
+              const percent = (currentProgress / likesPerPoint) * 100;
+              likesProgressFill.style.width = `${percent}%`;
+              likesProgressText.textContent = `${currentProgress.toLocaleString()} / ${likesPerPoint} likes`;
+            }
+          }
+        } catch (e) {
+          console.warn('Error rendering likes stats:', e);
+        }
+
         // Renderizar géneros favoritos (simulado)
         renderFavoriteGenresForUser();
       }
@@ -17553,17 +17588,101 @@ function shouldShowStatsTicker() {
       toast.classList.remove('show');
       toast.addEventListener('transitionend', () => toast.remove());
     }, 3000);
+          likes: likesCount,
+          message: likesMsg.replace(/{user}/g, 'SuperLiker').replace(/{likes}/g, likesCount.toLocaleString()),
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        };
+      } else if (type === 'gift_rose') {
+        mockData = {
+          type: 'gift',
+          user: 'GifterRookie',
+          uniqueId: 'gifterrookie',
+          profilePic: avatarUrl,
+          giftName: 'TikTok Rose',
+          coins: 1,
+          repeatCount: 1,
+          message: giftsMsg.replace(/{user}/g, 'GifterRookie').replace(/{giftName}/g, 'TikTok Rose').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '1'),
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        };
+      } else if (type === 'gift_lion') {
+        mockData = {
+          type: 'gift',
+          user: 'VIP_Sponsor',
+          uniqueId: 'vip_sponsor',
+          profilePic: avatarUrl,
+          giftName: 'TikTok León',
+          coins: 2999,
+          repeatCount: 1,
+          message: giftsMsg.replace(/{user}/g, 'VIP_Sponsor').replace(/{giftName}/g, 'TikTok León').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '2999'),
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        };
+      } else if (type === 'subscribe') {
+        mockData = {
+          type: 'subscribe',
+          user: 'MusicCollector',
+          uniqueId: 'musiccollector',
+          profilePic: avatarUrl,
+          message: subsMsg.replace(/{user}/g, 'MusicCollector'),
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        };
+      }
+
+      await window.db.collection('notifications').add(mockData);
+      window.showNotification && window.showNotification(`🎮 Simulación [${type}] enviada a OBS ✓`, 'success');
+    } catch(e) {
+      console.error('Error al enviar alerta de simulación:', e);
+      alert('❌ Error al simular: ' + e.message);
+    }
   };
 
-  // Utility for Admin Overlay Links
-  window.copyOverlayLink = function (filename) {
-    // Resolve URL relative to current location
-    const fullUrl = new URL(filename, window.location.href).href;
+  window.triggerTestTopGifters = async function() {
+    if (!window.db) {
+      alert('❌ Error: No hay conexión a base de datos.');
+      return;
+    }
+    
+    try {
+      const mockList = [
+        {
+          username: "zero_fan_number1",
+          nickname: "Zero FM Fan #1 👑",
+          profilePictureUrl: "https://i.pravatar.cc/100?img=33",
+          totalAmount: 18500
+        },
+        {
+          username: "donador_estrella",
+          nickname: "Donador Estrella ⭐",
+          profilePictureUrl: "https://i.pravatar.cc/100?img=12",
+          totalAmount: 12400
+        },
+        {
+          username: "musica_lover",
+          nickname: "Melómano Pro",
+          profilePictureUrl: "https://i.pravatar.cc/100?img=47",
+          totalAmount: 9550
+        },
+        {
+          username: "night_listener",
+          nickname: "Búho Nocturno",
+          profilePictureUrl: "https://i.pravatar.cc/100?img=8",
+          totalAmount: 4800
+        },
+        {
+          username: "rookie_gifter",
+          nickname: "Donador Activo",
+          profilePictureUrl: "https://i.pravatar.cc/100?img=22",
+          totalAmount: 1250
+        }
+      ];
 
-    navigator.clipboard.writeText(fullUrl).then(() => {
-      alert('Enlace copiado al portapapeles:\n' + fullUrl);
-    }).catch(err => {
-      console.error('Error al copiar: ', err);
-      prompt('No se pudo copiar automáticamente. Copia este enlace:', fullUrl);
-    });
+      await window.db.collection('globalStats').doc('topGifters').set({
+        list: mockList,
+        lastUpdate: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      window.showNotification && window.showNotification('🏆 Simulación de Top Gifters enviada ✓', 'success');
+    } catch(e) {
+      console.error('Error al simular Top Gifters:', e);
+      alert('❌ Error al simular Top Gifters: ' + e.message);
+    }
   };

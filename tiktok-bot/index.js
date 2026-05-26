@@ -2306,6 +2306,33 @@ async function handleSongRequest(user, query, options = {}) {
         // --- DETECTAR Y PROCESAR ENLACE DE YOUTUBE ---
         const ytUrl = detectYoutubeUrl(query || rawQuery);
         if (ytUrl) {
+            // Verificar si la meta de 999 likes se ha alcanzado en la sesión
+            let totalSessionLikes = 0;
+            try {
+                for (const count of sessionLikes.values()) {
+                    totalSessionLikes += count;
+                }
+            } catch (_) {}
+
+            if (totalSessionLikes < 999) {
+                console.log(`🔒 Petición con enlace de YouTube bloqueada: Faltan ${999 - totalSessionLikes} likes (llevamos ${totalSessionLikes}/999)`);
+                
+                if (db && typeof addDoc === 'function' && typeof collection === 'function') {
+                    try {
+                        await addDoc(collection(db, 'notifications'), {
+                            type: 'like',
+                            user: displayName || user || 'Zero FM',
+                            message: `🔒 Enlaces bloqueados: Faltan ${999 - totalSessionLikes} likes en el Live (llevamos ${totalSessionLikes}/999) ❤️`,
+                            timestamp: serverTimestamp()
+                        });
+                    } catch (e) {
+                        console.error('Error guardando notificación de likes bloqueados:', e);
+                    }
+                }
+                
+                return { ok: false, error: `Meta de enlaces bloqueada: faltan ${999 - totalSessionLikes} likes` };
+            }
+
             options.link = ytUrl;
             const ytMetadata = await extractYoutubeMetadata(ytUrl);
             if (ytMetadata) {
