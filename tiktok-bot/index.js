@@ -1300,6 +1300,36 @@ function startBot() {
         }
     });
 
+    // Obtener configuración de estilos del feed de últimos eventos
+    app.get('/api/lastevents/config', async (req, res) => {
+        try {
+            const snap = await getDocFn(docFn(db, 'systemConfig', 'lastEventsConfig'));
+            res.json(snap.exists() ? snap.data() : {
+                cardOpacity: 0.55,
+                borderRadius: 14,
+                fontSize: 13,
+                showFollows: true,
+                showLikes: true,
+                showGifts: true,
+                showShares: true,
+                showSubscribes: true
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Guardar configuración de estilos del feed de últimos eventos
+    app.post('/api/lastevents/config', async (req, res) => {
+        try {
+            const cfg = req.body || {};
+            await setDoc(docFn(db, 'systemConfig', 'lastEventsConfig'), cfg, { merge: true });
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     // ═══════════════════════════════════════════════════════════════════════════
     //  LAST EVENTS API (feed de últimos N eventos del stream)
     // ═══════════════════════════════════════════════════════════════════════════

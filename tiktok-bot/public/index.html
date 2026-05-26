@@ -995,10 +995,57 @@
                                  </div>
                              </div>
 
-                             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">
-                                 <button class="btn" onclick="reloadLastEventsWidget()">🔄 Recargar Widget</button>
-                                 <button class="btn" style="background:linear-gradient(135deg,#059669,#10b981);" onclick="testShareEvent()">🧪 Simular Share</button>
-                             </div>
+                              <div style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 20px; padding-top: 20px;">
+                                  <h4 style="margin-bottom:15px; color:#fff; font-size:14px; text-transform:uppercase; letter-spacing:0.05em;">🎨 Personalización Visual</h4>
+                                  
+                                  <div class="grid-2">
+                                      <div class="form-group">
+                                          <label>Opacidad de Tarjeta (Transparencia): <span id="val-cardOpacity">55%</span></label>
+                                          <input type="range" id="lastEventsOpacity" min="0.1" max="1.0" step="0.05" value="0.55" oninput="document.getElementById('val-cardOpacity').textContent = Math.round(this.value * 100) + '%';">
+                                      </div>
+                                      <div class="form-group">
+                                          <label>Tamaño de Letra: <span id="val-fontSize">13px</span></label>
+                                          <input type="range" id="lastEventsFontSize" min="10" max="20" step="1" value="13" oninput="document.getElementById('val-fontSize').textContent = this.value + 'px';">
+                                      </div>
+                                  </div>
+
+                                  <div class="grid-2" style="margin-top: 15px;">
+                                      <div class="form-group">
+                                          <label>Redondeado de Bordes: <span id="val-borderRadius">14px</span></label>
+                                          <input type="range" id="lastEventsRadius" min="0" max="30" step="2" value="14" oninput="document.getElementById('val-borderRadius').textContent = this.value + 'px';">
+                                      </div>
+                                      <div class="form-group" style="display:flex; flex-direction:column; gap:5px;">
+                                          <label style="margin-bottom:8px;">Filtros de Eventos Activos</label>
+                                          <div style="display:flex; flex-wrap:wrap; gap:10px 15px; font-size:12px; color:rgba(255,255,255,0.7);">
+                                              <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                                                  <input type="checkbox" id="leShowFollows" checked style="width:auto;"> Seguidores
+                                              </label>
+                                              <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                                                  <input type="checkbox" id="leShowGifts" checked style="width:auto;"> Regalos
+                                              </label>
+                                              <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                                                  <input type="checkbox" id="leShowLikes" checked style="width:auto;"> Likes
+                                              </label>
+                                              <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                                                  <input type="checkbox" id="leShowShares" checked style="width:auto;"> Shares
+                                              </label>
+                                              <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                                                  <input type="checkbox" id="leShowSubscribes" checked style="width:auto;"> Suscriptores
+                                              </label>
+                                          </div>
+                                      </div>
+                                  </div>
+
+                                  <div style="margin-top:20px;">
+                                      <button class="btn" style="background: linear-gradient(135deg, #7c3aed, #a855f7); width:auto; padding:10px 20px;" onclick="saveLastEventsConfig()">💾 Guardar Diseño & Filtros</button>
+                                      <span id="leConfigStatus" style="margin-left: 10px; font-size:13px; color:#22c55e; opacity:0; transition:opacity 0.3s;"></span>
+                                  </div>
+                              </div>
+
+                              <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:20px; border-top: 1px solid rgba(255,255,255,0.08); padding-top:20px;">
+                                  <button class="btn" onclick="reloadLastEventsWidget()">🔄 Recargar Vista Previa</button>
+                                  <button class="btn" style="background:linear-gradient(135deg,#059669,#10b981);" onclick="testShareEvent()">🧪 Simular Share</button>
+                              </div>
 
                              <div class="form-group" style="margin-top: 20px;">
                                  <label>Enlace OBS (Browser Source — 400 × 620 px)</label>
@@ -1348,6 +1395,67 @@
                 .then(() => { alert('📤 Share simulado. Aparecerá en el widget en segundos.'); })
                 .catch(e => alert('Error: ' + e.message));
         }
+
+        function saveLastEventsConfig() {
+            const cfg = {
+                cardOpacity:    parseFloat(document.getElementById('lastEventsOpacity').value),
+                borderRadius:   parseInt(document.getElementById('lastEventsRadius').value),
+                fontSize:       parseInt(document.getElementById('lastEventsFontSize').value),
+                showFollows:    document.getElementById('leShowFollows').checked,
+                showGifts:      document.getElementById('leShowGifts').checked,
+                showLikes:      document.getElementById('leShowLikes').checked,
+                showShares:     document.getElementById('leShowShares').checked,
+                showSubscribes: document.getElementById('leShowSubscribes').checked
+            };
+
+            fetch('/api/lastevents/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cfg)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const status = document.getElementById('leConfigStatus');
+                    status.textContent = '💾 Diseño guardado correctamente';
+                    status.style.opacity = '1';
+                    setTimeout(() => status.style.opacity = '0', 2500);
+                    reloadLastEventsWidget();
+                } else {
+                    alert('Error guardando diseño: ' + data.error);
+                }
+            })
+            .catch(e => alert('Error: ' + e.message));
+        }
+
+        // Cargar config al abrir el subpanel o iniciar
+        function loadLastEventsConfig() {
+            fetch('/api/lastevents/config')
+            .then(r => r.json())
+            .then(data => {
+                if (data.cardOpacity !== undefined) {
+                    document.getElementById('lastEventsOpacity').value = data.cardOpacity;
+                    document.getElementById('val-cardOpacity').textContent = Math.round(data.cardOpacity * 100) + '%';
+                }
+                if (data.fontSize !== undefined) {
+                    document.getElementById('lastEventsFontSize').value = data.fontSize;
+                    document.getElementById('val-fontSize').textContent = data.fontSize + 'px';
+                }
+                if (data.borderRadius !== undefined) {
+                    document.getElementById('lastEventsRadius').value = data.borderRadius;
+                    document.getElementById('val-borderRadius').textContent = data.borderRadius + 'px';
+                }
+                if (data.showFollows !== undefined)    document.getElementById('leShowFollows').checked = data.showFollows;
+                if (data.showGifts !== undefined)      document.getElementById('leShowGifts').checked = data.showGifts;
+                if (data.showLikes !== undefined)      document.getElementById('leShowLikes').checked = data.showLikes;
+                if (data.showShares !== undefined)     document.getElementById('leShowShares').checked = data.showShares;
+                if (data.showSubscribes !== undefined) document.getElementById('leShowSubscribes').checked = data.showSubscribes;
+            })
+            .catch(() => {});
+        }
+
+        document.querySelector('[onclick="switchOverlaySubpanel(\'lastevents\')"]').addEventListener('click', loadLastEventsConfig);
+        window.addEventListener('load', loadLastEventsConfig);
 
         // Cargar configuración al iniciar
         fetch('/api/config')
