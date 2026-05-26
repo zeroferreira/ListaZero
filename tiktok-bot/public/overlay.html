@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Overlay Pedidos - Zero FM</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="overlay.js" defer></script>
+  <link rel="stylesheet" href="overlay.css">
+</head>
+<body>
+
+  <div id="notification-container">
+    <div id="card" class="card">
+      <img id="album-art" src="" alt="Album Art" style="display:none;">
+      <div class="card-content">
+        <div class="header">Nueva Solicitud</div>
+        <div class="song-title" id="song">Canción</div>
+        <div class="artist" id="artist">Artista</div>
+        <div class="requested-by">
+          Pedida por: <span class="user-badge"><span class="user-name" id="user">Usuario</span><span class="user-insignia" id="user-insignia" hidden></span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controles (Presets + Configuración) -->
+  <button id="preset-btn" class="control-btn" title="Cambiar Diseño (Preset)">🎨</button>
+  <button id="settings-btn" class="control-btn" title="Configurar Overlay">⚙️</button>
+
+  <!-- Panel de Configuración -->
+  <div id="settings-panel">
+    <h3 style="margin-top:0; border-bottom: 1px solid #333; padding-bottom: 10px;">Configuración</h3>
+    
+    <div class="settings-group" style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 5px;">
+      <label style="color: #fff; font-weight: bold;">Estilo (Preset)</label>
+      <select id="inp-preset" onchange="applyPresetFromInput()">
+        <option value="default">Clásico (Icono)</option>
+        <option value="glass">Moderno (Album Art)</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Ancho de Tarjeta (px)</label>
+      <input type="number" id="inp-width" value="400" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Alto Mínimo (px)</label>
+      <input type="number" id="inp-minHeight" value="100" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Radio de Borde (px)</label>
+      <input type="number" id="inp-borderRadius" value="8" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Animación de Entrada</label>
+      <select id="inp-animType" onchange="previewSettings()">
+        <option value="anim-flip">Flip In (Default)</option>
+        <option value="anim-slide-up">Slide Up</option>
+        <option value="anim-zoom">Zoom In</option>
+        <option value="anim-bounce">Bounce In</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Animación de Texto</label>
+      <select id="inp-textAnim" onchange="previewSettings()">
+        <option value="text-anim-none">Ninguna</option>
+        <option value="text-anim-fade">Fade In</option>
+        <option value="text-anim-slide">Slide In</option>
+        <option value="text-anim-scale">Scale Up</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Fuente</label>
+      <select id="inp-font" onchange="previewSettings()">
+        <option value="'Montserrat', sans-serif">Montserrat</option>
+        <option value="'Roboto', sans-serif">Roboto</option>
+        <option value="'Open Sans', sans-serif">Open Sans</option>
+        <option value="'Lato', sans-serif">Lato</option>
+        <option value="sans-serif">System Default</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Título (px)</label>
+      <input type="number" id="inp-fontSizeSong" value="42" oninput="previewSettings()">
+    </div>
+    
+    <div class="settings-group">
+      <label>Tamaño Artista (px)</label>
+      <input type="number" id="inp-fontSizeArtist" value="28" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Usuario / Pedido por (px)</label>
+      <input type="number" id="inp-fontSizeUser" value="21" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Cabecera (px)</label>
+      <input type="number" id="inp-fontSizeHeader" value="24" oninput="previewSettings()">
+    </div>
+
+    <!-- Deprecated Base Font Size hidden or removed -->
+    <!-- <div class="settings-group">
+      <label>Tamaño de Fuente Base (px)</label>
+      <input type="number" id="inp-fontSize" value="16">
+    </div> -->
+
+    <div class="settings-group">
+      <label>Color de Acento</label>
+      <input type="color" id="inp-accent" value="#ff0055" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Icono</label>
+      <select id="inp-icon" onchange="previewSettings()">
+        <option value="🎵">🎵 Nota Musical</option>
+        <option value="🎧">🎧 Auriculares</option>
+        <option value="💿">💿 CD</option>
+        <option value="📻">📻 Radio</option>
+        <option value="🎸">🎸 Guitarra</option>
+        <option value="🎹">🎹 Piano</option>
+        <option value="🎤">🎤 Micrófono</option>
+        <option value="🔊">🔊 Altavoz</option>
+        <option value="🎼">🎼 Partitura</option>
+        <option value="🎶">🎶 Notas</option>
+        <option value="🥁">🥁 Tambor</option>
+
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Círculo (px)</label>
+      <input type="number" id="inp-iconCircleSize" value="50" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Tamaño Icono (Fuente px)</label>
+      <input type="number" id="inp-iconFontSize" value="25" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Color Círculo Icono</label>
+      <input type="color" id="inp-iconBg" value="#ffffff" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Opacidad Círculo (0-100%)</label>
+      <input type="range" id="inp-iconOpacity" min="0" max="100" value="20" oninput="document.getElementById('icon-opacity-val').innerText = this.value + '%'; previewSettings()">
+      <span id="icon-opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">20%</span>
+    </div>
+
+    <div class="settings-group">
+      <label>Color de Fondo</label>
+      <input type="color" id="inp-bg" value="#000000" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Opacidad Fondo (0-100%)</label>
+      <input type="range" id="inp-opacity" min="0" max="100" value="85" oninput="document.getElementById('bg-opacity-val').innerText = this.value + '%'; previewSettings()">
+      <span id="bg-opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">85%</span>
+    </div>
+
+    <div class="settings-group">
+      <label>Color de Texto</label>
+      <input type="color" id="inp-text" value="#ffffff" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Duración en Pantalla (segundos)</label>
+      <input type="number" id="inp-duration" value="10" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Separador: Color</label>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
+        <input type="checkbox" id="inp-sepUseAccent" onchange="previewSettings()" style="width:auto; margin:0;">
+        <span style="font-size:12px; color:#aaa;">Usar Color de Acento</span>
+      </div>
+      <input type="color" id="inp-sepColor" value="#ffffff" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Separador: Opacidad (%)</label>
+      <input type="range" id="inp-sepOpacity" min="0" max="100" value="10" oninput="document.getElementById('sep-opacity-val').innerText = this.value + '%'; previewSettings()">
+      <span id="sep-opacity-val" style="float: right; margin-top: -30px; margin-right: 10px; font-size: 12px; color: #aaa;">10%</span>
+    </div>
+
+    <div class="settings-group">
+      <label>Separador: Grosor (px)</label>
+      <input type="number" id="inp-sepWidth" value="1" oninput="previewSettings()">
+    </div>
+
+    <div class="settings-group">
+      <label>Separador: Estilo</label>
+      <select id="inp-sepStyle" onchange="previewSettings()">
+        <option value="solid">Sólido</option>
+        <option value="dashed">Discontinuo (Dashed)</option>
+        <option value="dotted">Puntos (Dotted)</option>
+        <option value="double">Doble</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+       <label>Simulación</label>
+       <button class="btn" style="background: #333;" onclick="simulateRequest()">🔔 Simular Pedido</button>
+    </div>
+
+    <div class="settings-actions">
+      <button class="btn btn-reset" onclick="resetSettings()">Reset</button>
+      <button class="btn btn-save" onclick="saveSettings()">Guardar</button>
+    </div>
+  </div>
+
+  <!-- Controles de Depuración -->
+  <div id="debug-controls">
+    <button onclick="simulateRequest()">🔔 Simular Pedido</button>
+  </div>
+
+</body>
+</html>

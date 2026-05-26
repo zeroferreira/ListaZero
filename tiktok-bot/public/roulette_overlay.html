@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Ruleta Zero FM</title>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="roulette.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <link rel="stylesheet" href="roulette.css">
+</head>
+<body>
+
+  <div id="roulette-container">
+    <div id="roulette-stage">
+      <div id="roulette-wrapper">
+        <canvas id="roulette-canvas" width="800" height="800"></canvas>
+        <div id="roulette-arrow"></div>
+        <span class="resize-handle nw" data-resize="nw"></span>
+        <span class="resize-handle ne" data-resize="ne"></span>
+        <span class="resize-handle sw" data-resize="sw"></span>
+        <span class="resize-handle se" data-resize="se"></span>
+      </div>
+      <div class="roulette-spin-wrap">
+        <button id="roulette-spin-btn" type="button" onclick="spinWheel()">Gira</button>
+      </div>
+    </div>
+
+    <div id="winner-overlay">
+      <button id="winner-close-btn" type="button" onclick="resetWinner()" aria-label="Cerrar ganador">×</button>
+      <div id="winner-title">¡GANADOR!</div>
+      <img id="winner-photo" src="" alt="">
+      <div id="winner-name"></div>
+    </div>
+  </div>
+  <div id="overlay-disabled-banner">RULETA DESACTIVADA</div>
+
+  <button id="settings-btn" onclick="togglePanel()">⚙️</button>
+
+  <!-- Panel Lateral -->
+  <div id="settings-panel">
+    <div class="panel-header">
+      <div class="panel-title-wrap">
+        <h2>RULETA</h2>
+        <button class="panel-gear-btn" type="button" onclick="togglePanel()" title="Cerrar panel"><span class="panel-gear-icon">⚙️</span></button>
+      </div>
+    </div>
+
+    <div class="settings-group participants-group">
+      <div class="source-tabs" role="tablist" aria-label="Fuentes de participantes">
+        <button class="source-tab active" id="source-tab-list" type="button" onclick="setSourceTab('list')" role="tab" aria-selected="true">De la lista</button>
+        <button class="source-tab" id="source-tab-rewards" type="button" onclick="setSourceTab('rewards')" role="tab" aria-selected="false">Canjes</button>
+        <button class="source-tab" id="source-tab-manual" type="button" onclick="loadNewRoulette()" role="tab" aria-selected="false">Ruleta nueva</button>
+      </div>
+      <div class="participants-header-row">
+        <label>Participantes</label>
+        <span id="participants-count" class="participants-count-badge">0</span>
+      </div>
+      <div id="participants-list" class="participants-list">
+        <!-- Inyectado por JS -->
+      </div>
+      <div class="add-row" id="manual-add-row">
+        <input type="text" id="inp-add-name" maxlength="24" placeholder="Agregar nombre fuera de la lista...">
+        <button id="btn-add-name" class="add-btn" type="button">+</button>
+      </div>
+      <div class="options-checklist">
+        <label class="check-option">
+          <input type="checkbox" id="inp-removeWinner" checked onchange="updateConfig()">
+          <span>Quitar al ganador</span>
+        </label>
+        <label class="check-option">
+          <input type="checkbox" id="inp-allowDuplicates" onchange="updateConfig()">
+          <span>Permitir duplicados</span>
+        </label>
+        <label class="check-option">
+          <input type="checkbox" id="inp-spinAgain" checked onchange="updateConfig()">
+          <span>Activar gira de nuevo</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="advanced-settings-anchor" id="advanced-settings-anchor">
+      <button class="advanced-settings-trigger" id="advanced-settings-trigger" type="button" aria-expanded="false" onclick="toggleAdvancedSettings(event)">Ajustes avanzados</button>
+      <div class="advanced-settings-popup" id="advanced-settings-popup">
+        <div class="settings-group" style="margin-bottom:0;">
+          <label>Tema</label>
+          <select id="inp-theme" onchange="applyThemeFromUI()">
+            <option value="minimal">Minimal</option>
+            <option value="dark">Dark</option>
+            <option value="neon">Neon</option>
+            <option value="candy">Candy</option>
+            <option value="retro">Retro</option>
+            <option value="gold">Gold</option>
+          </select>
+          <button class="compact-config-btn" type="button" onclick="openConfigModal()">⚙️ Ajustar giro</button>
+        </div>
+
+        <div class="settings-group" style="margin-bottom:0;">
+          <label>Control Remoto Overlay</label>
+          <div id="overlay-status" class="remote-status">Estado: ACTIVO</div>
+          <div class="remote-btns">
+            <button class="btn-secondary" type="button" onclick="setOverlayEnabledRemote(true)">Activar</button>
+            <button class="btn-secondary" type="button" onclick="setOverlayEnabledRemote(false)">Desactivar</button>
+          </div>
+          <label style="margin-top:14px;">Link OBS</label>
+          <div class="add-row" style="margin-bottom:0;">
+            <input type="text" id="obs-link-input" readonly>
+            <button class="add-btn" type="button" onclick="copyObsLink()">📋</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Modal Configuración -->
+  <div id="config-modal" onclick="if(event.target === this) closeConfigModal()">
+    <div class="config-modal-content">
+      <div class="config-modal-header">
+        <h3>Configuración de Giro</h3>
+        <button class="config-close-btn" onclick="closeConfigModal()">×</button>
+      </div>
+      
+      <div class="range-label-row">
+        <label>Duración (ms)</label>
+        <span class="range-value" id="val-duration">5000</span>
+      </div>
+      <div class="range-row">
+        <input type="range" id="inp-duration" min="2000" max="12000" step="250" value="5000" oninput="updateConfig()">
+      </div>
+
+      <div class="range-label-row" style="margin-top: 20px;">
+        <label>Intensidad</label>
+        <span class="range-value" id="val-intensity">6</span>
+      </div>
+      <div class="range-row">
+        <input type="range" id="inp-intensity" min="1" max="20" step="1" value="6" oninput="updateConfig()">
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>

@@ -1225,6 +1225,24 @@ function startBot() {
                     message: subsMsg.replace(/{user}/g, 'MusicCollector'),
                     timestamp: serverTimestampFn()
                 };
+            } else if (type === 'like_lock_blocked') {
+                const targetLikes = Number(overlayConfig.likesTargetForYoutubeLink) || 999;
+                const totalSessionLikes = Math.floor(Math.random() * (targetLikes - 50)) + 10;
+                const missingLikes = targetLikes - totalSessionLikes;
+                const rawMsg = overlayConfig.likesLockAlertMsg || "🔒 Enlaces bloqueados: Faltan {faltan} likes en el Live (llevamos {llevamos}/{meta}) ❤️";
+                const formattedMsg = rawMsg
+                    .replace(/{faltan}/g, missingLikes)
+                    .replace(/{llevamos}/g, totalSessionLikes)
+                    .replace(/{meta}/g, targetLikes);
+
+                mockData = {
+                    type: 'like',
+                    user: 'Zero FM Bot',
+                    uniqueId: 'zerofm_bot',
+                    profilePic: '',
+                    message: formattedMsg,
+                    timestamp: serverTimestampFn()
+                };
             } else {
                 res.status(400).json({ error: 'Tipo de alerta desconocido' });
                 return;
