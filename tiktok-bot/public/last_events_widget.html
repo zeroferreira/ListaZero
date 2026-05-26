@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Last Events Widget – Zero FM</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Firebase Compat SDK v9.22.2 -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --font: 'Outfit', sans-serif;
+
+      /* Event type palette */
+      --color-follow:    #ff4d8d;
+      --color-gift:      #ffd234;
+      --color-like:      #ff3b3b;
+      --color-subscribe: #00e5ff;
+      --color-share:     #00e676;
+
+      --color-follow-bg:    rgba(255, 77, 141, 0.12);
+      --color-gift-bg:      rgba(255, 210, 52, 0.12);
+      --color-like-bg:      rgba(255, 59, 59, 0.12);
+      --color-subscribe-bg: rgba(0, 229, 255, 0.12);
+      --color-share-bg:     rgba(0, 230, 118, 0.12);
+
+      /* Glass layer */
+      --glass-bg:     rgba(10, 10, 20, 0.55);
+      --glass-border: rgba(255, 255, 255, 0.08);
+
+      --widget-w: 380px;
+      --max-events: 6;
+      --expire-ms: 30000;
+    }
+
+    html, body {
+      width: var(--widget-w);
+      max-width: var(--widget-w);
+      background: transparent !important;
+      font-family: var(--font);
+      overflow: hidden;
+    }
+
+    /* ─── Feed container ────────────────────────────────────────── */
+    #feed {
+      width: var(--widget-w);
+      max-height: 600px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 4px 2px;
+      overflow: hidden;
+    }
+
+    /* ─── Event card ────────────────────────────────────────────── */
+    .event-card {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px 10px 10px;
+      border-radius: 14px;
+      border: 1px solid var(--card-color, rgba(255,255,255,0.08));
+      background: var(--card-bg, var(--glass-bg));
+      backdrop-filter: blur(18px) saturate(180%);
+      -webkit-backdrop-filter: blur(18px) saturate(180%);
+      box-shadow:
+        0 4px 24px rgba(0,0,0,0.35),
+        inset 0 1px 0 rgba(255,255,255,0.06);
+      overflow: hidden;
+      transition: opacity 0.6s ease, transform 0.6s ease;
+
+      /* Slide-in from right on entry */
+      animation: slideIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(110%); opacity: 0; }
+      to   { transform: translateX(0);   opacity: 1; }
+    }
+
+    .event-card.fade-out {
+      animation: fadeOut 0.45s ease forwards;
+    }
+
+    @keyframes fadeOut {
+      to { opacity: 0; transform: translateX(30px) scale(0.96); }
+    }
+
+    /* Older events get softer opacity */
+    .event-card[data-age="1"] { opacity: 0.92; }
+    .event-card[data-age="2"] { opacity: 0.80; }
+    .event-card[data-age="3"] { opacity: 0.66; }
+    .event-card[data-age="4"] { opacity: 0.52; }
+    .event-card[data-age="5"] { opacity: 0.38; }
+
+    /* Shimmer glow strip at top */
+    .event-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, var(--card-color) 50%, transparent 100%);
+      opacity: 0.6;
+    }
+
+    /* ─── Type icon circle ──────────────────────────────────────── */
+    .type-icon {
+      flex-shrink: 0;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: var(--card-color-bg);
+      border: 1.5px solid var(--card-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      box-shadow: 0 0 10px var(--card-color-glow);
+      position: relative;
+      z-index: 1;
+    }
+
+    /* compact mode */
+    body.compact .type-icon { width: 30px; height: 30px; font-size: 13px; }
+
+    /* ─── Avatar ────────────────────────────────────────────────── */
+    .avatar {
+      flex-shrink: 0;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      overflow: hidden;
+      border: 1.5px solid var(--card-color);
+      background: rgba(255,255,255,0.07);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      text-transform: uppercase;
+      box-shadow: 0 0 8px var(--card-color-glow);
+    }
+
+    .avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    body.no-avatar .avatar { display: none; }
+    body.compact .avatar { width: 28px; height: 28px; font-size: 11px; }
+
+    /* ─── Text block ────────────────────────────────────────────── */
+    .text-block {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .user-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+    }
+
+    .event-msg {
+      font-size: 11.5px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.62);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.3;
+    }
+
+    body.compact .user-name { font-size: 12px; }
+    body.compact .event-msg { font-size: 10.5px; }
+
+    /* ─── Time-bar (vertical left strip) ───────────────────────── */
+    .time-bar-wrap {
+      position: absolute;
+      left: 0; top: 10px; bottom: 10px;
+      width: 3px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+
+    .time-bar-fill {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: var(--card-color);
+      height: 100%;
+      transform-origin: bottom center;
+      transition: height linear;
+      box-shadow: 0 0 6px var(--card-color-glow);
+    }
+
+    /* ─── Type-specific CSS vars ────────────────────────────────── */
+    .type-follow    {
+      --card-color:     var(--color-follow);
+      --card-bg:        var(--color-follow-bg);
+      --card-color-bg:  rgba(255, 77, 141, 0.18);
+      --card-color-glow: rgba(255, 77, 141, 0.4);
+    }
+    .type-gift {
+      --card-color:     var(--color-gift);
+      --card-bg:        var(--color-gift-bg);
+      --card-color-bg:  rgba(255, 210, 52, 0.18);
+      --card-color-glow: rgba(255, 210, 52, 0.45);
+    }
+    .type-like {
+      --card-color:     var(--color-like);
+      --card-bg:        var(--color-like-bg);
+      --card-color-bg:  rgba(255, 59, 59, 0.18);
+      --card-color-glow: rgba(255, 59, 59, 0.4);
+    }
+    .type-subscribe {
+      --card-color:     var(--color-subscribe);
+      --card-bg:        var(--color-subscribe-bg);
+      --card-color-bg:  rgba(0, 229, 255, 0.14);
+      --card-color-glow: rgba(0, 229, 255, 0.45);
+    }
+    .type-share {
+      --card-color:     var(--color-share);
+      --card-bg:        var(--color-share-bg);
+      --card-color-bg:  rgba(0, 230, 118, 0.14);
+      --card-color-glow: rgba(0, 230, 118, 0.4);
+    }
+
+    /* ─── Scrollbar hidden ──────────────────────────────────────── */
+    ::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body>
+
+<div id="feed"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   CONFIG & URL PARAMS
+═══════════════════════════════════════════════════════════════ */
+const params      = new URLSearchParams(location.search);
+const MAX_EVENTS  = Math.min(parseInt(params.get('maxEvents') || '6', 10), 8);
+const SHOW_AVATAR = params.get('showAvatar') !== 'false';
+const COMPACT     = params.get('compact') === 'true';
+const EXPIRE_MS   = 30_000; // 30 seconds
+
+if (!SHOW_AVATAR) document.body.classList.add('no-avatar');
+if (COMPACT)      document.body.classList.add('compact');
+
+/* ═══════════════════════════════════════════════════════════════
+   EVENT META  (icon, label, message)
+═══════════════════════════════════════════════════════════════ */
+const TYPE_META = {
+  follow:    { icon: '👤', label: 'Nuevo seguidor' },
+  gift:      { icon: '🎁', label: 'Regalo' },
+  like:      { icon: '❤️', label: 'Like' },
+  subscribe: { icon: '⭐', label: 'Suscripción' },
+  share:     { icon: '🔗', label: 'Compartió' },
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════════════ */
+const feed = document.getElementById('feed');
+let cardRefs = []; // [{el, timerId, barFill, expiresAt}]
+
+/* ═══════════════════════════════════════════════════════════════
+   BUILD A CARD
+═══════════════════════════════════════════════════════════════ */
+function buildCard(data) {
+  const type    = (data.type || 'follow').toLowerCase();
+  const meta    = TYPE_META[type] || TYPE_META.follow;
+  const user    = data.user || 'Anónimo';
+  const message = data.message || meta.label;
+  const pic     = data.profilePic || null;
+
+  // wrapper
+  const card = document.createElement('div');
+  card.className = `event-card type-${type}`;
+  card.dataset.type = type;
+
+  // ── time bar
+  const tbWrap = document.createElement('div');
+  tbWrap.className = 'time-bar-wrap';
+  const tbFill = document.createElement('div');
+  tbFill.className = 'time-bar-fill';
+  tbWrap.appendChild(tbFill);
+  card.appendChild(tbWrap);
+
+  // ── type icon
+  const iconEl = document.createElement('div');
+  iconEl.className = 'type-icon';
+  iconEl.textContent = meta.icon;
+  card.appendChild(iconEl);
+
+  // ── avatar
+  if (SHOW_AVATAR) {
+    const av = document.createElement('div');
+    av.className = 'avatar';
+    if (pic) {
+      const img = document.createElement('img');
+      img.src = pic;
+      img.alt = user;
+      img.onerror = () => { av.textContent = user.charAt(0); };
+      av.appendChild(img);
+    } else {
+      av.textContent = user.charAt(0);
+    }
+    card.appendChild(av);
+  }
+
+  // ── text block
+  const txt = document.createElement('div');
+  txt.className = 'text-block';
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'user-name';
+  nameEl.textContent = user;
+
+  const msgEl = document.createElement('div');
+  msgEl.className = 'event-msg';
+  msgEl.textContent = message;
+
+  txt.appendChild(nameEl);
+  txt.appendChild(msgEl);
+  card.appendChild(txt);
+
+  return { card, tbFill };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ADD EVENT TO FEED
+═══════════════════════════════════════════════════════════════ */
+function addEvent(data) {
+  const { card, tbFill } = buildCard(data);
+  const expiresAt = Date.now() + EXPIRE_MS;
+
+  // Prepend (newest on top)
+  feed.insertBefore(card, feed.firstChild);
+
+  // Animate time-bar: start at 100% → 0% over EXPIRE_MS
+  tbFill.style.height = '100%';
+  tbFill.style.transition = `height ${EXPIRE_MS}ms linear`;
+  // Trigger reflow so the transition fires
+  void tbFill.offsetHeight;
+  requestAnimationFrame(() => { tbFill.style.height = '0%'; });
+
+  // Remove card after EXPIRE_MS
+  const timerId = setTimeout(() => removeCard(entry), EXPIRE_MS);
+
+  const entry = { el: card, timerId, tbFill, expiresAt };
+  cardRefs.unshift(entry);
+
+  // Trim to MAX_EVENTS
+  while (cardRefs.length > MAX_EVENTS) {
+    const old = cardRefs.pop();
+    removeCard(old);
+  }
+
+  // Update age attributes for opacity cascade
+  updateAges();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   REMOVE A CARD  (fade-out animation, then DOM removal)
+═══════════════════════════════════════════════════════════════ */
+function removeCard(entry) {
+  clearTimeout(entry.timerId);
+  if (!entry.el.isConnected) return;
+
+  entry.el.classList.add('fade-out');
+  entry.el.addEventListener('animationend', () => {
+    entry.el.remove();
+    cardRefs = cardRefs.filter(r => r !== entry);
+    updateAges();
+  }, { once: true });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   UPDATE data-age ON EACH CARD (for opacity fade)
+═══════════════════════════════════════════════════════════════ */
+function updateAges() {
+  cardRefs.forEach((r, i) => {
+    if (r.el.isConnected) r.el.dataset.age = i;
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PREVIEW DATA (shown if Firebase fails / no connection)
+═══════════════════════════════════════════════════════════════ */
+const PREVIEW_EVENTS = [
+  {
+    type: 'subscribe', user: 'luna_estrella99',
+    message: '¡Se suscribió al canal! ⭐',
+    profilePic: null,
+    timestamp: { toMillis: () => Date.now() - 2000 }
+  },
+  {
+    type: 'gift', user: 'djpablo_mx',
+    message: 'Envió × 5 Rosa 🎁',
+    profilePic: null,
+    timestamp: { toMillis: () => Date.now() - 8000 }
+  },
+  {
+    type: 'like', user: 'carlos_dancer',
+    message: 'Envió × 350 Likes ❤️',
+    profilePic: null,
+    timestamp: { toMillis: () => Date.now() - 11000 }
+  },
+  {
+    type: 'follow', user: 'marisolbailarina',
+    message: 'Empezó a seguirte 👤',
+    profilePic: null,
+    timestamp: { toMillis: () => Date.now() - 14000 }
+  },
+];
+
+/* ═══════════════════════════════════════════════════════════════
+   FIREBASE INIT & FIRESTORE LISTENER
+═══════════════════════════════════════════════════════════════ */
+const firebaseConfig = {
+  apiKey:            'AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU',
+  authDomain:        'zero-strom-web.firebaseapp.com',
+  projectId:         'zero-strom-web',
+  storageBucket:     'zero-strom-web.appspot.com',
+  messagingSenderId: '758369466349',
+  appId:             '1:758369466349:web:f2ced362a5a049c70b59e4',
+};
+
+let firestoreConnected = false;
+
+try {
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  // Enable offline persistence (keeps widget alive during brief disconnects)
+  db.enablePersistence({ synchronizeTabs: false }).catch(() => {/* ignore */});
+
+  let initialized = false;
+  let seenIds = new Set();
+
+  db.collection('notifications')
+    .orderBy('timestamp', 'desc')
+    .limit(MAX_EVENTS)
+    .onSnapshot(snapshot => {
+      firestoreConnected = true;
+
+      if (!initialized) {
+        // On first load: add existing docs oldest-first so newest ends on top
+        const docs = snapshot.docs.slice().reverse();
+        docs.forEach(doc => {
+          seenIds.add(doc.id);
+          addEvent(doc.data());
+        });
+        initialized = true;
+        return;
+      }
+
+      // Subsequent updates: only handle newly added docs
+      snapshot.docChanges().forEach(change => {
+        if (change.type === 'added' && !seenIds.has(change.doc.id)) {
+          seenIds.add(change.doc.id);
+          addEvent(change.doc.data());
+        }
+      });
+    }, err => {
+      console.warn('[ZeroFM] Firestore error:', err.message);
+      if (!firestoreConnected) showPreview();
+    });
+
+  // Fallback: if no snapshot within 4s, show preview
+  setTimeout(() => { if (!firestoreConnected) showPreview(); }, 4000);
+
+} catch (e) {
+  console.warn('[ZeroFM] Firebase init error:', e.message);
+  showPreview();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SHOW PREVIEW (no Firebase)
+═══════════════════════════════════════════════════════════════ */
+function showPreview() {
+  if (cardRefs.length > 0) return; // already has real data
+  // Show preview oldest-first so newest appears on top
+  [...PREVIEW_EVENTS].reverse().forEach(ev => addEvent(ev));
+}
+</script>
+</body>
+</html>
