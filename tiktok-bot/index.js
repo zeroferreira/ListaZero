@@ -192,6 +192,17 @@ let config = {
     ignoreExampleQuery: "artista cancion"
 };
 
+let overlayAlertsConfig = {
+    minLikesAlert: 100,
+    likesAlertMsg: "¡Envió {likes} likes! ❤️",
+    minCoinsAlert: 1,
+    giftsAlertMsg: "¡Gracias por {repeatCount}x {giftName}! 🎁",
+    enableFollowAlert: true,
+    followsAlertMsg: "¡gracias por seguir el canal! 👤",
+    enableSubscribeAlert: true,
+    subsAlertMsg: "¡gracias por suscribirte al canal! ⭐"
+};
+
 try {
     if (fs.existsSync(CONFIG_FILE)) {
         const raw = fs.readFileSync(CONFIG_FILE);
@@ -271,6 +282,62 @@ function parseSrCommand(message, aliases) {
         const nextChar = msg.charAt(a.length);
         if (nextChar && !/\s/.test(nextChar)) continue;
         return { alias: a, query: msg.substring(a.length).trim() };
+    }
+    return null;
+}
+
+function detectYoutubeUrl(text) {
+    const match = String(text || '').match(/(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/[^\s]+/i);
+    return match ? match[0] : null;
+}
+
+async function extractYoutubeMetadata(url) {
+    try {
+        console.log(`🔍 Intentando extraer metadatos de YouTube para bot: ${url}`);
+        const resp = await axios.get(`https://noembed.com/embed?url=${encodeURIComponent(url)}`, { timeout: 4000 });
+        const data = resp.data;
+        if (data && data.title) {
+            let title = data.title;
+            let artist = data.author_name || '';
+            
+            // Replicar fielmente la lógica que tiene la web (index.js)
+            if (title.includes(' - ')) {
+                const parts = title.split(' - ');
+                if (artist && parts[0].toLowerCase().includes(artist.toLowerCase().split(' ')[0])) {
+                    artist = parts[0].trim();
+                    title = parts[1].trim();
+                } else {
+                    artist = parts[0].trim();
+                    title = parts[1].trim();
+                }
+            }
+            title = title.replace(/\(Official Video\)/gi, '')
+                         .replace(/\[Official Video\]/gi, '')
+                         .replace(/\(Official Music Video\)/gi, '')
+                         .replace(/\[Official Music Video\]/gi, '')
+                         .replace(/\(Official Audio\)/gi, '')
+                         .replace(/\[Official Audio\]/gi, '')
+                         .replace(/\(Video Oficial\)/gi, '')
+                         .replace(/\[Video Oficial\]/gi, '')
+                         .replace(/\(Lyric Video\)/gi, '')
+                         .replace(/\[Lyric Video\]/gi, '')
+                         .replace(/\(Lyrics\)/gi, '')
+                         .replace(/\[Lyrics\]/gi, '')
+                         .replace(/\(Audio\)/gi, '')
+                         .replace(/\[Audio\]/gi, '')
+                         .replace(/\[HQ\]/gi, '')
+                         .replace(/\(HQ\)/gi, '')
+                         .replace(/\[4K\]/gi, '')
+                         .replace(/\(4K\)/gi, '')
+                         .replace(/\[HD\]/gi, '')
+                         .replace(/\(HD\)/gi, '')
+                         .replace(/\(Live\)/gi, '')
+                         .replace(/\[Live\]/gi, '')
+                         .trim();
+            return { title, artist };
+        }
+    } catch (e) {
+        console.warn('⚠️ No se pudieron obtener metadatos del link de YouTube:', e.message || String(e));
     }
     return null;
 }
@@ -1019,6 +1086,157 @@ function startBot() {
         }
     });
 
+    // Endpoint para obtener configuración de overlays desde Firestore
+    app.get('/api/overlays/config', async (req, res) => {
+        try {
+            const docSnap = await getDocFn(docFn(db, 'systemConfig', 'overlayAlertsConfig'));
+            if (docSnap.exists()) {
+                res.json(docSnap.data());
+            } else {
+                res.json({});
+            }
+        } catch (e) {
+            console.error("Error obteniendo overlay config:", e);
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Endpoint para guardar configuración de overlays en Firestore
+    app.post('/api/overlays/config', async (req, res) => {
+        try {
+            const newConfig = req.body || {};
+            await setDoc(docFn(db, 'systemConfig', 'overlayAlertsConfig'), newConfig, { merge: true });
+            res.json({ success: true });
+        } catch (e) {
+            console.error("Error guardando overlay config:", e);
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Endpoint para simular alertas de prueba
+    app.post('/api/overlays/test', async (req, res) => {
+        try {
+            const { type } = req.body || {};
+            const randomId = Math.floor(Math.random() * 70) + 1;
+            const avatarUrl = `https://i.pravatar.cc/100?img=${randomId}`;
+
+            // Obtener configuración actual de overlays
+            const docSnap = await getDocFn(docFn(db, 'systemConfig', 'overlayAlertsConfig'));
+            const overlayConfig = docSnap.exists() ? docSnap.data() : {};
+
+            const likesMsg = overlayConfig.likesAlertMsg || "¡Envió {likes} likes! ❤️";
+            const giftsMsg = overlayConfig.giftsAlertMsg || "¡Gracias por {repeatCount}x {giftName}! 🎁";
+            const followsMsg = overlayConfig.followsAlertMsg || "¡gracias por seguir el canal! 👤";
+            const subsMsg = overlayConfig.subsAlertMsg || "¡gracias por suscribirte al canal! ⭐";
+
+            if (type === 'topgifters') {
+                const mockList = [
+                    {
+                        username: "zero_fan_number1",
+                        nickname: "Zero FM Fan #1 👑",
+                        profilePictureUrl: "https://i.pravatar.cc/100?img=33",
+                        totalAmount: 18500
+                    },
+                    {
+                        username: "donador_estrella",
+                        nickname: "Donador Estrella ⭐",
+                        profilePictureUrl: "https://i.pravatar.cc/100?img=12",
+                        totalAmount: 12400
+                    },
+                    {
+                        username: "musica_lover",
+                        nickname: "Melómano Pro",
+                        profilePictureUrl: "https://i.pravatar.cc/100?img=47",
+                        totalAmount: 9550
+                    },
+                    {
+                        username: "night_listener",
+                        nickname: "Búho Nocturno",
+                        profilePictureUrl: "https://i.pravatar.cc/100?img=8",
+                        totalAmount: 4800
+                    },
+                    {
+                        username: "rookie_gifter",
+                        nickname: "Donador Activo",
+                        profilePictureUrl: "https://i.pravatar.cc/100?img=22",
+                        totalAmount: 1250
+                    }
+                ];
+                await setDoc(docFn(db, 'globalStats', 'topGifters'), {
+                    list: mockList,
+                    lastUpdate: serverTimestampFn()
+                }, { merge: true });
+                res.json({ success: true, message: 'Top Gifters simulated!' });
+                return;
+            }
+
+            let mockData = {};
+            if (type === 'follow') {
+                mockData = {
+                    type: 'follow',
+                    user: 'ZeroFM_Lover',
+                    uniqueId: 'zerofm_lover',
+                    profilePic: avatarUrl,
+                    message: followsMsg.replace(/{user}/g, 'ZeroFM_Lover'),
+                    timestamp: serverTimestampFn()
+                };
+            } else if (type === 'like') {
+                const likesCount = Math.floor(Math.random() * 1200) + 150;
+                mockData = {
+                    type: 'like',
+                    user: 'SuperLiker',
+                    uniqueId: 'superliker',
+                    profilePic: avatarUrl,
+                    likes: likesCount,
+                    message: likesMsg.replace(/{user}/g, 'SuperLiker').replace(/{likes}/g, likesCount.toLocaleString()),
+                    timestamp: serverTimestampFn()
+                };
+            } else if (type === 'gift_rose') {
+                mockData = {
+                    type: 'gift',
+                    user: 'GifterRookie',
+                    uniqueId: 'gifterrookie',
+                    profilePic: avatarUrl,
+                    giftName: 'TikTok Rose',
+                    coins: 1,
+                    repeatCount: 1,
+                    message: giftsMsg.replace(/{user}/g, 'GifterRookie').replace(/{giftName}/g, 'TikTok Rose').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '1'),
+                    timestamp: serverTimestampFn()
+                };
+            } else if (type === 'gift_lion') {
+                mockData = {
+                    type: 'gift',
+                    user: 'VIP_Sponsor',
+                    uniqueId: 'vip_sponsor',
+                    profilePic: avatarUrl,
+                    giftName: 'TikTok León',
+                    coins: 2999,
+                    repeatCount: 1,
+                    message: giftsMsg.replace(/{user}/g, 'VIP_Sponsor').replace(/{giftName}/g, 'TikTok León').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '2999'),
+                    timestamp: serverTimestampFn()
+                };
+            } else if (type === 'subscribe') {
+                mockData = {
+                    type: 'subscribe',
+                    user: 'MusicCollector',
+                    uniqueId: 'musiccollector',
+                    profilePic: avatarUrl,
+                    message: subsMsg.replace(/{user}/g, 'MusicCollector'),
+                    timestamp: serverTimestampFn()
+                };
+            } else {
+                res.status(400).json({ error: 'Tipo de alerta desconocido' });
+                return;
+            }
+
+            await addDocFn(collectionFn(db, 'notifications'), mockData);
+            res.json({ success: true, message: `Alerta ${type} enviada!` });
+        } catch (e) {
+            console.error("Error enviando alerta de prueba:", e);
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     function persistConfigSafe(next = {}) {
         try {
             config = { ...config, ...(next || {}) };
@@ -1101,6 +1319,21 @@ function setupNotificationListener() {
     
     console.log("👂 Iniciando listener de notificaciones de Firebase...");
 
+    // Escuchar la configuración dinámica de los overlays
+    try {
+        const { doc } = require('firebase/firestore');
+        onSnapshot(doc(db, 'systemConfig', 'overlayAlertsConfig'), (docSnap) => {
+            if (docSnap.exists()) {
+                console.log("📺 Configuración dinámica de overlays actualizada desde Firebase.");
+                overlayAlertsConfig = { ...overlayAlertsConfig, ...docSnap.data() };
+            }
+        }, (err) => {
+            console.warn("⚠️ No se pudo cargar la configuración de overlays desde Firebase:", err.message);
+        });
+    } catch(e) {
+        console.warn("⚠️ Error configurando listener de overlays:", e.message);
+    }
+
     const recentThreshold = new Date(Date.now() - 5 * 60 * 1000);
     const recentNotificationsQuery = query(
         collection(db, 'notifications'),
@@ -1175,6 +1408,7 @@ function setupListeners() {
         if (activeLiveRoomId && activeLiveRoomId !== state.roomId) {
             console.log(`🔄 Nuevo room detectado (${activeLiveRoomId} -> ${state.roomId}). Reiniciando tracking de likes de sesión.`);
             resetLikeTracking({ resetSession: true, resetTopLiker: true });
+            resetDonationTracking();
         } else {
             resetLikeTracking({ resetSession: false, resetTopLiker: false });
         }
@@ -1197,11 +1431,12 @@ function setupListeners() {
     // tiktokLiveConnection.on('error', (err) => {
     //     console.error('⚠️ Error de conexión TikTok:', err);
     // });
-
+ 
     tiktokLiveConnection.on('streamEnd', () => {
         console.log('🏁 El stream ha terminado.');
         activeLiveRoomId = null;
         resetLikeTracking({ resetSession: true, resetTopLiker: true });
+        resetDonationTracking();
         updateGlobalTopLiker('N/D', 0).catch(() => {});
         stopLiveHeartbeat();
         updateLiveStatus(false); // Asegurar OFFLINE al terminar stream
@@ -1451,6 +1686,11 @@ function setupListeners() {
 
         const currentAmount = sessionDonations.get(uid) || 0;
         sessionDonations.set(uid, currentAmount + coins);
+        sessionGifterDetails.set(uid, {
+            username: uid,
+            nickname: displayName,
+            profilePictureUrl: profilePic || ''
+        });
         
         console.log(`🎁 ${displayName} donó ${coins} (Total: ${sessionDonations.get(uid)})`);
         try {
@@ -1469,6 +1709,39 @@ function setupListeners() {
                 await grantZ0FanFromTikTok(uid, displayName);
             } catch (e) {
                 console.error('Error otorgando z0-Fan por regalo:', e);
+            }
+        }
+
+        if (isGiftFinal && db) {
+            const actualCount = data.repeatCount || 1;
+            const totalCoins = coins * actualCount;
+            const minCoins = Number(overlayAlertsConfig.minCoinsAlert) || 1;
+            
+            if (totalCoins >= minCoins) {
+                try {
+                    let msgTemplate = String(overlayAlertsConfig.giftsAlertMsg || "¡Gracias por {repeatCount}x {giftName}! 🎁");
+                    let customMsg = msgTemplate
+                        .replace(/{user}/g, displayName)
+                        .replace(/{giftname}/g, giftName)
+                        .replace(/{giftName}/g, giftName)
+                        .replace(/{repeatCount}/g, actualCount)
+                        .replace(/{repeatcount}/g, actualCount)
+                        .replace(/{coins}/g, totalCoins);
+
+                    await addDoc(collection(db, 'notifications'), {
+                        type: 'gift',
+                        user: displayName,
+                        uniqueId: uid,
+                        profilePic: profilePic || '',
+                        giftName: giftName,
+                        coins: totalCoins,
+                        repeatCount: actualCount,
+                        message: customMsg,
+                        timestamp: serverTimestamp()
+                    });
+                } catch (e) {
+                    console.error('Error guardando notificación de regalo en Firestore:', e);
+                }
             }
         }
 
@@ -1563,6 +1836,62 @@ function setupListeners() {
         if (sessionTotal > currentTopLiker.count) {
             currentTopLiker = { name: nickname, count: sessionTotal };
             updateGlobalTopLiker(nickname, sessionTotal);
+        }
+    });
+
+    // SEGUIDORES (FOLLOW)
+    tiktokLiveConnection.on('follow', async (data) => {
+        if (overlayAlertsConfig.enableFollowAlert === false) return;
+
+        const displayName = data.nickname;
+        const uid = data.uniqueId;
+        const profilePic = data.profilePictureUrl;
+        
+        console.log(`👤 @${uid} comenzó a seguirte!`);
+        if (db) {
+            try {
+                let msgTemplate = String(overlayAlertsConfig.followsAlertMsg || "¡gracias por seguir el canal! 👤");
+                let customMsg = msgTemplate.replace(/{user}/g, displayName);
+
+                await addDoc(collection(db, 'notifications'), {
+                    type: 'follow',
+                    user: displayName,
+                    uniqueId: uid,
+                    profilePic: profilePic || '',
+                    message: customMsg,
+                    timestamp: serverTimestamp()
+                });
+            } catch (e) {
+                console.error('Error guardando notificación de follow en Firestore:', e);
+            }
+        }
+    });
+
+    // SUSCRIPTORES (SUBSCRIBE)
+    tiktokLiveConnection.on('subscribe', async (data) => {
+        if (overlayAlertsConfig.enableSubscribeAlert === false) return;
+
+        const displayName = data.nickname;
+        const uid = data.uniqueId;
+        const profilePic = data.profilePictureUrl;
+        
+        console.log(`⭐ @${uid} se suscribió!`);
+        if (db) {
+            try {
+                let msgTemplate = String(overlayAlertsConfig.subsAlertMsg || "¡gracias por suscribirte al canal! ⭐");
+                let customMsg = msgTemplate.replace(/{user}/g, displayName);
+
+                await addDoc(collection(db, 'notifications'), {
+                    type: 'subscribe',
+                    user: displayName,
+                    uniqueId: uid,
+                    profilePic: profilePic || '',
+                    message: customMsg,
+                    timestamp: serverTimestamp()
+                });
+            } catch (e) {
+                console.error('Error guardando notificación de sub en Firestore:', e);
+            }
         }
     });
 }
@@ -1686,6 +2015,27 @@ setInterval(async () => {
 
             await setDoc(userRef, updateData, { merge: true });
 
+            const minLikes = Number(overlayAlertsConfig.minLikesAlert) || 100;
+            if (totalLikesInBatch >= minLikes && db) {
+                try {
+                    let msgTemplate = String(overlayAlertsConfig.likesAlertMsg || "¡Envió {likes} likes! ❤️");
+                    let customMsg = msgTemplate
+                        .replace(/{user}/g, finalName)
+                        .replace(/{likes}/g, totalLikesInBatch.toLocaleString());
+
+                    await addDoc(collection(db, 'notifications'), {
+                        type: 'like',
+                        user: finalName,
+                        uniqueId: uid,
+                        likes: totalLikesInBatch,
+                        message: customMsg,
+                        timestamp: serverTimestamp()
+                    });
+                } catch (e) {
+                    console.error('Error guardando notificación de likes en Firestore:', e);
+                }
+            }
+
         } catch (e) {
             console.error(`Error procesando likes para ${data.displayName}:`, e);
         }
@@ -1694,6 +2044,7 @@ setInterval(async () => {
 
 // Mapa de donaciones de la sesión
 const sessionDonations = new Map();
+const sessionGifterDetails = new Map();
 
 // Rangos de donadores (Top 3)
 let donorRanks = {
@@ -1702,7 +2053,22 @@ let donorRanks = {
     bronze: null
 };
 
-function recalculateDonorRanks() {
+function resetDonationTracking() {
+    try {
+        sessionDonations.clear();
+        sessionGifterDetails.clear();
+        if (db) {
+            const { doc, setDoc } = require('firebase/firestore');
+            setDoc(doc(db, 'globalStats', 'topGifters'), {
+                list: [],
+                lastUpdate: new Date()
+            }, { merge: true }).catch(() => {});
+        }
+        console.log('🔄 Tracking de donadores reiniciado.');
+    } catch (_) {}
+}
+
+async function recalculateDonorRanks() {
     // Convertir a array y ordenar por monto descendente
     const sorted = Array.from(sessionDonations.entries())
         .sort((a, b) => b[1] - a[1]);
@@ -1714,6 +2080,30 @@ function recalculateDonorRanks() {
     };
 
     console.log('🏆 Ranking Donadores:', donorRanks);
+
+    // Guardar ranking completo de la sesión en Firestore
+    if (db) {
+        try {
+            const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
+            const list = sorted.map(([uid, amount]) => {
+                const details = sessionGifterDetails.get(uid) || { username: uid, nickname: uid, profilePictureUrl: '' };
+                return {
+                    username: uid,
+                    nickname: details.nickname || uid,
+                    profilePictureUrl: details.profilePictureUrl || '',
+                    totalAmount: amount
+                };
+            });
+
+            await setDoc(doc(db, 'globalStats', 'topGifters'), {
+                list: list.slice(0, 20), // Guardar el top 20 de la sesión
+                lastUpdate: serverTimestamp()
+            }, { merge: true });
+            console.log('💾 Top Gifters actualizados en Firestore.');
+        } catch (e) {
+            console.error('❌ Error al guardar Top Gifters en Firestore:', e);
+        }
+    }
 }
 
 // Conectar al Live
@@ -1901,6 +2291,7 @@ async function resolveTrackFromSeparatedRaw(rawQuery) {
 }
 
 async function handleSongRequest(user, query, options = {}) {
+    console.log(`🔍 [DEBUG_SR] handleSongRequest invocado: user="${user}", query="${query}", keys=${Object.keys(options || {})}`);
     try {
         const sendToQueue = options.sendToQueue !== false;
         const sendToCider = options.sendToCider !== false;
@@ -1911,6 +2302,35 @@ async function handleSongRequest(user, query, options = {}) {
         const rawQuery = options.rawQuery ? String(options.rawQuery).trim() : '';
         try { await ensureBadgeSetsFresh(); } catch (_) {}
         try { await firebaseAuthPromise; } catch (_) {}
+
+        // --- DETECTAR Y PROCESAR ENLACE DE YOUTUBE ---
+        const ytUrl = detectYoutubeUrl(query || rawQuery);
+        console.log(`🔍 [DEBUG_SR] ytUrl detectado: "${ytUrl}" para query="${query}" y rawQuery="${rawQuery}"`);
+        if (ytUrl) {
+            options.link = ytUrl;
+            const ytMetadata = await extractYoutubeMetadata(ytUrl);
+            if (ytMetadata) {
+                options.songName = ytMetadata.title;
+                options.artistName = ytMetadata.artist;
+                console.log(`✅ Metadatos extraídos de YouTube para bot: "${ytMetadata.title}" por "${ytMetadata.artist}"`);
+            } else {
+                const cleanTextQuery = String(query || '').replace(ytUrl, '').trim().replace(/\s+-\s+/g, ' ').trim();
+                if (cleanTextQuery.length > 0) {
+                    const parsedFallback = parseRawQueryToTrack(cleanTextQuery);
+                    if (parsedFallback && parsedFallback.songName) {
+                        options.songName = parsedFallback.songName;
+                        options.artistName = parsedFallback.artistName || "Desconocido";
+                    } else {
+                        options.songName = cleanTextQuery;
+                        options.artistName = "Desconocido";
+                    }
+                } else {
+                    options.songName = "Video de YouTube";
+                    options.artistName = "Ver Enlace";
+                }
+                console.warn(`⚠️ No se pudieron extraer metadatos de YouTube. Usando fallback: "${options.songName}" - "${options.artistName}"`);
+            }
+        }
 
         let resolved = null;
         const overrideSong = String(options.songName || '').trim();
@@ -1973,8 +2393,19 @@ async function handleSongRequest(user, query, options = {}) {
             }
         }
 
-        const songName = resolved.songName;
-        const artistName = resolved.artistName;
+        let songName = String(resolved.songName || '').trim();
+        let artistName = String(resolved.artistName || '').trim();
+
+        if (!songName) songName = 'Sin título';
+        if (!artistName) artistName = 'Desconocido';
+
+        if (songName.length > 140) {
+            songName = songName.substring(0, 137) + '...';
+        }
+        if (artistName.length > 140) {
+            artistName = artistName.substring(0, 137) + '...';
+        }
+
         const artworkUrl = resolved.artworkUrl;
         const appleMusicId = resolved.appleMusicId;
         const trackViewUrl = resolved.trackViewUrl;
@@ -2005,7 +2436,8 @@ async function handleSongRequest(user, query, options = {}) {
             day: currentDay,
             genre: genre,
             liveCode: liveCode || '',
-            profilePhoto: options.profilePhoto || '' // NUEVO: Guardar foto de perfil
+            profilePhoto: options.profilePhoto || '', // NUEVO: Guardar foto de perfil
+            link: options.link || ''
         };
         requestData.source = 'tiktok';
         if (source && String(source).trim() && String(source).trim().toLowerCase() !== 'tiktok') {
