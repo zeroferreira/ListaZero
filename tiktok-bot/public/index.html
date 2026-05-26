@@ -477,6 +477,18 @@
                         <span>📈 Stats Scrolling</span>
                         <span style="font-size: 11px;">🟢 Activo</span>
                     </button>
+                    <button type="button" class="overlays-menu-item" onclick="switchOverlaySubpanel('goals')">
+                        <span>🎯 Metas (Goals)</span>
+                        <span style="font-size: 11px;">🆕 Nuevo</span>
+                    </button>
+                    <button type="button" class="overlays-menu-item" onclick="switchOverlaySubpanel('timer')">
+                        <span>⏱️ Timer Countdown</span>
+                        <span style="font-size: 11px;">🆕 Nuevo</span>
+                    </button>
+                    <button type="button" class="overlays-menu-item" onclick="switchOverlaySubpanel('lastevents')">
+                        <span>📋 Últimos Eventos</span>
+                        <span style="font-size: 11px;">🆕 Nuevo</span>
+                    </button>
                 </div>
 
                 <!-- Contenido Derecho: Configuraciones & Previsualización por separado -->
@@ -815,9 +827,192 @@
                         </div>
                     </div>
 
-                </div>
-            </div>
-        </div>
+                    </div>
+
+                     <!-- SUBPANEL 8: METAS (GOALS) -->
+                     <div id="subpanel-goals" class="overlay-subpanel">
+                         <div class="card" style="margin-bottom: 0;">
+                             <h3>🎯 Metas de Stream (Goal Overlays)</h3>
+                             <p style="color: var(--text-secondary); font-size: 13px; margin-top: -5px; margin-bottom: 20px;">
+                                 Muestra una barra de progreso visual hacia una meta: follows, likes, compartidos o coins. ¡Los viewers ven el avance en tiempo real!
+                             </p>
+
+                             <div class="preview-frame-container">
+                                 <div class="preview-frame-header">
+                                     <span>📺 Vista Previa</span>
+                                     <span style="display:flex; align-items:center; gap:5px;"><span class="live-dot-preview"></span>Live Goal</span>
+                                 </div>
+                                 <iframe id="goalsPreviewIframe" class="preview-iframe" style="height: 160px;"></iframe>
+                             </div>
+
+                             <div class="grid-2" style="margin-top: 20px;">
+                                 <div class="form-group">
+                                     <label>Tipo de Meta</label>
+                                     <select id="goalType" style="width:100%; padding:10px; background:#1a1a2e; color:#fff; border:1px solid #333; border-radius:8px;">
+                                         <option value="follows">👤 Seguidores (Follows)</option>
+                                         <option value="likes">❤️ Likes</option>
+                                         <option value="shares">📤 Compartidos (Shares)</option>
+                                         <option value="coins">💎 Coins (Regalos)</option>
+                                     </select>
+                                 </div>
+                                 <div class="form-group">
+                                     <label>Meta Objetivo</label>
+                                     <input type="number" id="goalTarget" value="500" min="1" placeholder="Ej: 500">
+                                 </div>
+                             </div>
+                             <div class="grid-2">
+                                 <div class="form-group">
+                                     <label>Texto de la Meta</label>
+                                     <input type="text" id="goalLabel" value="¡Meta de seguidores!" placeholder="Ej: ¡500 follows para canción especial!">
+                                 </div>
+                                 <div class="form-group">
+                                     <label>Recompensa (Texto al completar)</label>
+                                     <input type="text" id="goalRewardText" value="¡Meta alcanzada! 🎉" placeholder="Ej: ¡Desbloquean canción especial!">
+                                 </div>
+                             </div>
+                             <div class="grid-2">
+                                 <div class="form-group">
+                                     <label>Color Principal</label>
+                                     <input type="color" id="goalColor" value="#7c3aed" style="width:100%; height:40px; cursor:pointer; border-radius:8px;">
+                                 </div>
+                                 <div class="form-group">
+                                     <label>Estado</label>
+                                     <select id="goalEnabled" style="width:100%; padding:10px; background:#1a1a2e; color:#fff; border:1px solid #333; border-radius:8px;">
+                                         <option value="true">🟢 Visible en OBS</option>
+                                         <option value="false">🔴 Oculto</option>
+                                     </select>
+                                 </div>
+                             </div>
+
+                             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: 8px;">
+                                 <button class="btn" onclick="saveGoalConfig()">💾 Guardar Meta</button>
+                                 <button class="btn" style="background: linear-gradient(135deg,#059669,#10b981);" onclick="testGoal()">🧪 Simular Progreso</button>
+                                 <button class="btn" style="background: linear-gradient(135deg,#dc2626,#ef4444);" onclick="resetGoals()">🔄 Resetear Contadores</button>
+                             </div>
+
+                             <div class="form-group" style="margin-top: 20px;">
+                                 <label>Enlace OBS (Browser Source — 500 × 180 px)</label>
+                                 <div style="display:flex; gap: 8px;">
+                                     <input type="text" id="obsGoalUrl" readonly style="background:#111; cursor:pointer;" onclick="this.select()">
+                                     <button type="button" class="btn" style="width:auto; padding: 10px 15px; font-size:13px;" onclick="copyText(document.getElementById('obsGoalUrl').value)">Copiar URL</button>
+                                 </div>
+                             </div>
+
+                             <div id="goalStatusMsg" style="margin-top:10px; font-size:13px; color:#22c55e; opacity:0; transition:opacity 0.3s;"></div>
+                         </div>
+                     </div>
+
+                     <!-- SUBPANEL 9: TIMER COUNTDOWN -->
+                     <div id="subpanel-timer" class="overlay-subpanel">
+                         <div class="card" style="margin-bottom: 0;">
+                             <h3>⏱️ Timer Countdown Interactivo</h3>
+                             <p style="color: var(--text-secondary); font-size: 13px; margin-top: -5px; margin-bottom: 20px;">
+                                 Cuenta regresiva que se muestra en OBS. Los viewers pueden extender el tiempo enviando regalos automáticamente. ¡Perfecto para streams de duración controlada!
+                             </p>
+
+                             <div class="preview-frame-container">
+                                 <div class="preview-frame-header">
+                                     <span>📺 Vista Previa</span>
+                                     <span style="display:flex; align-items:center; gap:5px;"><span class="live-dot-preview"></span>Live Timer</span>
+                                 </div>
+                                 <iframe id="timerPreviewIframe" class="preview-iframe" style="height: 140px;"></iframe>
+                             </div>
+
+                             <!-- Controles de tiempo -->
+                             <div class="grid-2" style="margin-top:20px;">
+                                 <div class="form-group">
+                                     <label>Duración Inicial (minutos)</label>
+                                     <input type="number" id="timerDuration" value="30" min="1" max="360" placeholder="Ej: 30">
+                                 </div>
+                                 <div class="form-group">
+                                     <label>Segundos que añade cada regalo</label>
+                                     <input type="number" id="timerSecondsPerGift" value="30" min="1" max="600" placeholder="Ej: 30">
+                                 </div>
+                             </div>
+                             <div class="grid-2">
+                                 <div class="form-group">
+                                     <label>Texto del Timer</label>
+                                     <input type="text" id="timerLabel" value="⏳ Tiempo de stream" placeholder="Ej: ⏳ Stream activo">
+                                 </div>
+                                 <div class="form-group">
+                                     <label>Color Principal</label>
+                                     <input type="color" id="timerColor" value="#7c3aed" style="width:100%; height:40px; cursor:pointer; border-radius:8px;">
+                                 </div>
+                             </div>
+
+                             <!-- Botones de control -->
+                             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">
+                                 <button class="btn" style="background:linear-gradient(135deg,#059669,#10b981);" onclick="startTimer()">▶️ Iniciar / Reiniciar</button>
+                                 <button class="btn" style="background:linear-gradient(135deg,#d97706,#f59e0b); color:#000;" onclick="pauseTimer()">⏸️ Pausar</button>
+                                 <button class="btn" style="background:linear-gradient(135deg,#2563eb,#3b82f6);" onclick="resumeTimer()">▶️ Reanudar</button>
+                                 <button class="btn" style="background:linear-gradient(135deg,#dc2626,#ef4444);" onclick="stopTimer()">⏹️ Detener</button>
+                             </div>
+                             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+                                 <button class="btn" style="background:linear-gradient(135deg,#7c3aed,#a855f7); width:auto; padding:10px 16px; font-size:13px;" onclick="extendTimer(5)">+5 min</button>
+                                 <button class="btn" style="background:linear-gradient(135deg,#7c3aed,#a855f7); width:auto; padding:10px 16px; font-size:13px;" onclick="extendTimer(10)">+10 min</button>
+                                 <button class="btn" style="background:linear-gradient(135deg,#7c3aed,#a855f7); width:auto; padding:10px 16px; font-size:13px;" onclick="extendTimer(30)">+30 min</button>
+                             </div>
+
+                             <div id="timerStatusDisplay" style="margin-top:14px; padding:10px 14px; background:#111; border-radius:8px; font-size:14px; color:#a0a0c0; min-height:36px;">Estado: desconocido</div>
+
+                             <div class="form-group" style="margin-top: 20px;">
+                                 <label>Enlace OBS (Browser Source — 320 × 150 px)</label>
+                                 <div style="display:flex; gap: 8px;">
+                                     <input type="text" id="obsTimerUrl" readonly style="background:#111; cursor:pointer;" onclick="this.select()">
+                                     <button type="button" class="btn" style="width:auto; padding: 10px 15px; font-size:13px;" onclick="copyText(document.getElementById('obsTimerUrl').value)">Copiar URL</button>
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+
+                     <!-- SUBPANEL 10: ÚLTIMOS EVENTOS -->
+                     <div id="subpanel-lastevents" class="overlay-subpanel">
+                         <div class="card" style="margin-bottom: 0;">
+                             <h3>📋 Últimos Eventos del Stream</h3>
+                             <p style="color: var(--text-secondary); font-size: 13px; margin-top: -5px; margin-bottom: 20px;">
+                                 Feed en tiempo real de los últimos follows, regalos, likes y compartidos. Ideal para mostrar en OBS como un ticker de actividad lateral.
+                             </p>
+
+                             <div class="preview-frame-container">
+                                 <div class="preview-frame-header">
+                                     <span>📺 Vista Previa</span>
+                                     <span style="display:flex; align-items:center; gap:5px;"><span class="live-dot-preview"></span>Live Feed</span>
+                                 </div>
+                                 <iframe id="lasteventsPreviewIframe" class="preview-iframe" style="height: 400px;"></iframe>
+                             </div>
+
+                             <div class="grid-2" style="margin-top: 20px;">
+                                 <div class="form-group">
+                                     <label>Máximo de Eventos Visibles</label>
+                                     <input type="number" id="lastEventsMax" value="6" min="1" max="20">
+                                 </div>
+                                 <div class="form-group">
+                                     <label>Mostrar Avatares</label>
+                                     <select id="lastEventsAvatar" style="width:100%; padding:10px; background:#1a1a2e; color:#fff; border:1px solid #333; border-radius:8px;">
+                                         <option value="true">✅ Sí</option>
+                                         <option value="false">❌ No</option>
+                                     </select>
+                                 </div>
+                             </div>
+
+                             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">
+                                 <button class="btn" onclick="reloadLastEventsWidget()">🔄 Recargar Widget</button>
+                                 <button class="btn" style="background:linear-gradient(135deg,#059669,#10b981);" onclick="testShareEvent()">🧪 Simular Share</button>
+                             </div>
+
+                             <div class="form-group" style="margin-top: 20px;">
+                                 <label>Enlace OBS (Browser Source — 400 × 620 px)</label>
+                                 <div style="display:flex; gap: 8px;">
+                                     <input type="text" id="obsLastEventsUrl" readonly style="background:#111; cursor:pointer;" onclick="this.select()">
+                                     <button type="button" class="btn" style="width:auto; padding: 10px 15px; font-size:13px;" onclick="copyText(document.getElementById('obsLastEventsUrl').value)">Copiar URL</button>
+                                 </div>
+                             </div>
+                         </div>
+                     </div>
+
+                 </div>
+             </div>
+         </div>
 
         <div class="tab-panel" data-panel="prueba" role="tabpanel">
             <div class="card">
@@ -944,6 +1139,17 @@
     </div>
 
     <script>
+        // Auto-configure base URL for fetch if opened as local file (e.g. double-click index.html)
+        if (window.location.protocol === 'file:') {
+            const originalFetch = window.fetch;
+            window.fetch = function(input, init) {
+                if (typeof input === 'string' && input.startsWith('/api/')) {
+                    input = 'http://localhost:3000' + input;
+                }
+                return originalFetch(input, init);
+            };
+        }
+
         function switchOverlaySubpanel(subpanelName) {
             // Activar botón del menú
             const menuButtons = Array.from(document.querySelectorAll('.overlays-menu-item'));
@@ -960,14 +1166,17 @@
             });
 
             // Recargar vista previa si es necesario
-            const currentOrigin = window.location.origin;
+            const currentOrigin = window.location.protocol === 'file:' ? 'http://localhost:3000' : window.location.origin;
             const previewConfig = {
-                'player': { iframeId: 'playerPreviewIframe', path: '/overlay.html' },
-                'queue': { iframeId: 'queuePreviewIframe', path: '/queue_overlay.html' },
-                'roulette': { iframeId: 'roulettePreviewIframe', path: '/roulette_overlay.html' },
-                'alerts': { iframeId: 'alertsPreviewIframe', path: '/alerts_overlay.html' },
+                'player':     { iframeId: 'playerPreviewIframe',     path: '/overlay.html' },
+                'queue':      { iframeId: 'queuePreviewIframe',      path: '/queue_overlay.html' },
+                'roulette':   { iframeId: 'roulettePreviewIframe',   path: '/roulette_overlay.html' },
+                'alerts':     { iframeId: 'alertsPreviewIframe',     path: '/alerts_overlay.html' },
                 'topgifters': { iframeId: 'topgiftersPreviewIframe', path: '/topgifter_overlay.html' },
-                'ticker': { iframeId: 'tickerPreviewIframe', path: '/stats_ticker_widget.html' }
+                'ticker':     { iframeId: 'tickerPreviewIframe',     path: '/stats_ticker_widget.html' },
+                'goals':      { iframeId: 'goalsPreviewIframe',      path: '/goal_overlay.html' },
+                'timer':      { iframeId: 'timerPreviewIframe',      path: '/timer_overlay.html' },
+                'lastevents': { iframeId: 'lasteventsPreviewIframe', path: '/last_events_widget.html' }
             };
 
             const cfg = previewConfig[subpanelName];
@@ -1016,13 +1225,129 @@
         })();
 
         // Configurar URLs de OBS dinámicamente basadas en el localhost actual
-        const currentOrigin = window.location.origin;
-        document.getElementById('obsPlayerUrl').value = currentOrigin + '/overlay.html';
-        document.getElementById('obsQueueUrl').value = currentOrigin + '/queue_overlay.html';
-        document.getElementById('obsRouletteUrl').value = currentOrigin + '/roulette_overlay.html';
-        document.getElementById('obsAlertsUrl').value = currentOrigin + '/alerts_overlay.html';
-        document.getElementById('obsTopGifterUrl').value = currentOrigin + '/topgifter_overlay.html';
-        document.getElementById('obsTickerUrl').value = currentOrigin + '/stats_ticker_widget.html';
+        const currentOrigin = window.location.protocol === 'file:' ? 'http://localhost:3000' : window.location.origin;
+        document.getElementById('obsPlayerUrl').value     = currentOrigin + '/overlay.html';
+        document.getElementById('obsQueueUrl').value      = currentOrigin + '/queue_overlay.html';
+        document.getElementById('obsRouletteUrl').value   = currentOrigin + '/roulette_overlay.html';
+        document.getElementById('obsAlertsUrl').value     = currentOrigin + '/alerts_overlay.html';
+        document.getElementById('obsTopGifterUrl').value  = currentOrigin + '/topgifter_overlay.html';
+        document.getElementById('obsTickerUrl').value     = currentOrigin + '/stats_ticker_widget.html';
+        document.getElementById('obsGoalUrl').value       = currentOrigin + '/goal_overlay.html';
+        document.getElementById('obsTimerUrl').value      = currentOrigin + '/timer_overlay.html';
+        document.getElementById('obsLastEventsUrl').value = currentOrigin + '/last_events_widget.html';
+
+        // ══════════════════════════════════════════════════════════
+        //  GOAL OVERLAY FUNCTIONS
+        // ══════════════════════════════════════════════════════════
+        function saveGoalConfig() {
+            const cfg = {
+                goalType:       document.getElementById('goalType').value,
+                goalTarget:     Number(document.getElementById('goalTarget').value) || 500,
+                goalLabel:      document.getElementById('goalLabel').value.trim(),
+                goalRewardText: document.getElementById('goalRewardText').value.trim(),
+                primaryColor:   document.getElementById('goalColor').value,
+                enabled:        document.getElementById('goalEnabled').value === 'true'
+            };
+            fetch('/api/goals/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg) })
+                .then(r => r.json())
+                .then(() => {
+                    const msg = document.getElementById('goalStatusMsg');
+                    msg.textContent = '✅ Meta guardada correctamente';
+                    msg.style.opacity = '1';
+                    setTimeout(() => { msg.style.opacity = '0'; }, 3000);
+                })
+                .catch(e => alert('Error guardando meta: ' + e.message));
+        }
+        function testGoal() {
+            const type = document.getElementById('goalType').value;
+            const apiType = type === 'follows' ? 'follow' : type === 'coins' ? 'coin' : type === 'likes' ? 'like' : 'share';
+            fetch('/api/goals/test', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type: apiType }) })
+                .then(() => { const msg = document.getElementById('goalStatusMsg'); msg.textContent = '🧪 Progreso simulado'; msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0'; }, 2000); })
+                .catch(e => alert('Error: ' + e.message));
+        }
+        function resetGoals() {
+            if (!confirm('¿Resetear todos los contadores de meta? (no afecta stats generales)')) return;
+            fetch('/api/goals/reset', { method:'POST' })
+                .then(() => { const msg = document.getElementById('goalStatusMsg'); msg.textContent = '🔄 Contadores reseteados'; msg.style.opacity = '1'; setTimeout(() => { msg.style.opacity = '0'; }, 2000); })
+                .catch(e => alert('Error: ' + e.message));
+        }
+
+        // Cargar config de goals al abrir el subpanel
+        document.querySelector('[onclick="switchOverlaySubpanel(\'goals\')"]').addEventListener('click', () => {
+            fetch('/api/goals/config').then(r => r.json()).then(data => {
+                if (data.goalType)   document.getElementById('goalType').value   = data.goalType;
+                if (data.goalTarget) document.getElementById('goalTarget').value = data.goalTarget;
+                if (data.goalLabel)  document.getElementById('goalLabel').value  = data.goalLabel;
+                if (data.goalRewardText) document.getElementById('goalRewardText').value = data.goalRewardText;
+                if (data.primaryColor)   document.getElementById('goalColor').value    = data.primaryColor;
+                if (data.enabled !== undefined) document.getElementById('goalEnabled').value = String(data.enabled);
+            }).catch(() => {});
+        });
+
+        // ══════════════════════════════════════════════════════════
+        //  TIMER FUNCTIONS
+        // ══════════════════════════════════════════════════════════
+        function updateTimerDisplay() {
+            fetch('/api/timer/state').then(r => r.json()).then(data => {
+                const el = document.getElementById('timerStatusDisplay');
+                if (!el) return;
+                const ms = Number(data.remainingMs || 0);
+                const totalSec = Math.floor(ms / 1000);
+                const h = Math.floor(totalSec / 3600);
+                const m = Math.floor((totalSec % 3600) / 60);
+                const s = totalSec % 60;
+                const timeStr = h > 0
+                    ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+                    : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+                const stateEmoji = { running: '▶️', paused: '⏸️', stopped: '⏹️' }[data.state] || '❓';
+                el.textContent = `Estado: ${stateEmoji} ${data.state} | Tiempo restante: ${timeStr}`;
+            }).catch(() => {});
+        }
+        function startTimer() {
+            const dur = Number(document.getElementById('timerDuration').value) || 30;
+            const label = document.getElementById('timerLabel').value.trim();
+            const color = document.getElementById('timerColor').value;
+            const spg = Number(document.getElementById('timerSecondsPerGift').value) || 30;
+            // Primero guardar config, luego iniciar
+            fetch('/api/timer/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label, primaryColor: color, secondsPerGift: spg }) })
+                .then(() => fetch('/api/timer/start', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ durationSeconds: dur * 60 }) }))
+                .then(() => updateTimerDisplay())
+                .catch(e => alert('Error: ' + e.message));
+        }
+        function pauseTimer()  { fetch('/api/timer/pause',  { method:'POST' }).then(() => updateTimerDisplay()).catch(e => alert('Error: ' + e.message)); }
+        function resumeTimer() { fetch('/api/timer/resume', { method:'POST' }).then(() => updateTimerDisplay()).catch(e => alert('Error: ' + e.message)); }
+        function stopTimer()   { fetch('/api/timer/stop',   { method:'POST' }).then(() => updateTimerDisplay()).catch(e => alert('Error: ' + e.message)); }
+        function extendTimer(minutes) {
+            fetch('/api/timer/extend', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ seconds: minutes * 60 }) })
+                .then(() => updateTimerDisplay())
+                .catch(e => alert('Error: ' + e.message));
+        }
+
+        // Actualizar estado del timer cada 5s cuando el subpanel está visible
+        let timerDisplayInterval = null;
+        document.querySelector('[onclick="switchOverlaySubpanel(\'timer\')"]').addEventListener('click', () => {
+            updateTimerDisplay();
+            if (timerDisplayInterval) clearInterval(timerDisplayInterval);
+            timerDisplayInterval = setInterval(updateTimerDisplay, 5000);
+        });
+
+        // ══════════════════════════════════════════════════════════
+        //  LAST EVENTS WIDGET FUNCTIONS
+        // ══════════════════════════════════════════════════════════
+        function reloadLastEventsWidget() {
+            const iframe = document.getElementById('lasteventsPreviewIframe');
+            if (iframe) {
+                const maxEv = document.getElementById('lastEventsMax').value || '6';
+                const showAv = document.getElementById('lastEventsAvatar').value;
+                iframe.src = currentOrigin + '/last_events_widget.html?maxEvents=' + maxEv + '&showAvatar=' + showAv;
+                document.getElementById('obsLastEventsUrl').value = currentOrigin + '/last_events_widget.html?maxEvents=' + maxEv + '&showAvatar=' + showAv;
+            }
+        }
+        function testShareEvent() {
+            fetch('/api/overlays/test/share', { method:'POST' })
+                .then(() => { alert('📤 Share simulado. Aparecerá en el widget en segundos.'); })
+                .catch(e => alert('Error: ' + e.message));
+        }
 
         // Cargar configuración al iniciar
         fetch('/api/config')

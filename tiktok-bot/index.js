@@ -940,6 +940,17 @@ function startBot() {
     const app = express();
     const PORT = Number(process.env.PORT || config.dashboardPort || 3000) || 3000;
 
+    // CORS Middleware - Permite solicitudes desde file:// locales
+    app.use((req, res, next) => {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+        if (req.method === 'OPTIONS') {
+            return res.sendStatus(200);
+        }
+        next();
+    });
+
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
 
@@ -1110,6 +1121,212 @@ function startBot() {
             res.json({ success: true });
         } catch (e) {
             console.error("Error guardando overlay config:", e);
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  GOAL OVERLAYS API
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Obtener configuración de metas
+    app.get('/api/goals/config', async (req, res) => {
+        try {
+            const snap = await getDocFn(docFn(db, 'systemConfig', 'goalOverlayConfig'));
+            res.json(snap.exists() ? snap.data() : {});
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Guardar configuración de metas
+    app.post('/api/goals/config', async (req, res) => {
+        try {
+            const cfg = req.body || {};
+            await setDoc(docFn(db, 'systemConfig', 'goalOverlayConfig'), cfg, { merge: true });
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Estado actual de metas (contadores de sesión)
+    app.get('/api/goals/state', (req, res) => {
+        const totalFollows = Array.from(sessionFollows.values()).reduce((a, b) => a + b, 0);
+        const totalShares  = Array.from(sessionShares.values()).reduce((a, b) => a + b, 0);
+        const totalLikes   = Array.from(sessionLikes.values()).reduce((a, b) => a + b, 0);
+        res.json({
+            sessionFollows: totalFollows,
+            sessionShares:  totalShares,
+            sessionLikes:   totalLikes,
+            sessionCoins:   sessionTotalCoins
+        });
+    });
+
+    // Simular meta para test
+    app.post('/api/goals/test', async (req, res) => {
+        const { type } = req.body || {};
+        const validTypes = ['follow', 'share', 'like', 'coin'];
+        if (!validTypes.includes(type)) {
+            return res.status(400).json({ error: 'Tipo inválido. Usa: follow, share, like, coin' });
+        }
+        if (type === 'follow') sessionFollows.set('test_follow_' + Date.now(), 1);
+        if (type === 'share')  sessionShares.set('test_share_' + Date.now(), 1);
+        if (type === 'like') {
+            sessionLikes.set('test_like_' + Date.now(), 100);
+        }
+        if (type === 'coin') sessionTotalCoins += 100;
+        syncSessionCountersToFirestore();
+        res.json({ success: true, type });
+    });
+
+    // Resetear contadores de metas
+    app.post('/api/goals/reset', async (req, res) => {
+        sessionFollows.clear();
+        sessionShares.clear();
+        sessionTotalCoins = 0;
+        syncSessionCountersToFirestore();
+        res.json({ success: true });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  TIMER API
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Obtener estado del timer
+    app.get('/api/timer/state', (req, res) => {
+        const remainingMs = timerState.state === 'running' && timerState.endsAt
+            ? Math.max(0, timerState.endsAt - Date.now())
+            : timerState.state === 'paused'
+                ? timerState.remainingOnPause
+                : 0;
+        res.json({ ...timerState, remainingMs });
+    });
+
+    // Configurar timer (label, color, secondsPerGift)
+    app.post('/api/timer/config', async (req, res) => {
+        try {
+            const { label, primaryColor, secondsPerGift } = req.body || {};
+            if (label)          timerState.label          = String(label).trim();
+            if (primaryColor)   timerState.primaryColor   = String(primaryColor).trim();
+            if (secondsPerGift) timerState.secondsPerGift = Number(secondsPerGift) || 30;
+            await saveTimerToFirestore();
+            res.json({ success: true, timerState });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Iniciar / reiniciar timer con duración en segundos
+    app.post('/api/timer/start', async (req, res) => {
+        try {
+            const { durationSeconds } = req.body || {};
+            const dur = Number(durationSeconds) || 1800; // Default: 30 minutos
+            timerState.state   = 'running';
+            timerState.endsAt  = Date.now() + dur * 1000;
+            timerState.pausedAt         = null;
+            timerState.remainingOnPause = 0;
+            await saveTimerToFirestore();
+            res.json({ success: true, timerState, endsAt: timerState.endsAt });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Pausar timer
+    app.post('/api/timer/pause', async (req, res) => {
+        try {
+            if (timerState.state !== 'running') {
+                return res.status(400).json({ error: 'El timer no está corriendo' });
+            }
+            timerState.remainingOnPause = Math.max(0, timerState.endsAt - Date.now());
+            timerState.state   = 'paused';
+            timerState.pausedAt = Date.now();
+            timerState.endsAt  = null;
+            await saveTimerToFirestore();
+            res.json({ success: true, timerState });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Reanudar timer pausado
+    app.post('/api/timer/resume', async (req, res) => {
+        try {
+            if (timerState.state !== 'paused') {
+                return res.status(400).json({ error: 'El timer no está pausado' });
+            }
+            timerState.state  = 'running';
+            timerState.endsAt = Date.now() + (timerState.remainingOnPause || 0);
+            timerState.pausedAt         = null;
+            timerState.remainingOnPause = 0;
+            await saveTimerToFirestore();
+            res.json({ success: true, timerState });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Detener timer
+    app.post('/api/timer/stop', async (req, res) => {
+        try {
+            timerState.state            = 'stopped';
+            timerState.endsAt           = null;
+            timerState.pausedAt         = null;
+            timerState.remainingOnPause = 0;
+            await saveTimerToFirestore();
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Extender timer manualmente (segundos adicionales)
+    app.post('/api/timer/extend', async (req, res) => {
+        try {
+            const { seconds } = req.body || {};
+            const secs = Number(seconds) || 60;
+            if (timerState.state === 'running' && timerState.endsAt) {
+                timerState.endsAt += secs * 1000;
+            } else if (timerState.state === 'paused') {
+                timerState.remainingOnPause += secs * 1000;
+            } else {
+                return res.status(400).json({ error: 'El timer no está activo' });
+            }
+            await saveTimerToFirestore();
+            res.json({ success: true, timerState });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  LAST EVENTS API (feed de últimos N eventos del stream)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Los últimos eventos se almacenan como Firestore notifications, así que el
+    // widget los lee directo desde ahí. Esta API devuelve el estado en memoria
+    // del bot para el panel.
+    app.get('/api/lastevents', (req, res) => {
+        const n = Math.max(1, Math.min(50, Number(req.query.limit || 20) || 20));
+        // Combinar eventos SR + cualquier evento reciente del buffer
+        const out = recentSrEvents.slice(-n).reverse();
+        res.json({ ok: true, events: out, count: out.length });
+    });
+
+    // Simular evento de share/follow/gift para tests
+    app.post('/api/overlays/test/share', async (req, res) => {
+        try {
+            const randomId = Math.floor(Math.random() * 70) + 1;
+            await addDoc(collectionFn(db, 'notifications'), {
+                type: 'share',
+                user: 'TestUser_Share',
+                uniqueId: 'testuser_share',
+                profilePic: `https://i.pravatar.cc/100?img=${randomId}`,
+                message: '¡TestUser_Share compartió el live! 📤',
+                timestamp: serverTimestampFn()
+            });
+            res.json({ success: true });
+        } catch (e) {
             res.status(500).json({ error: e.message });
         }
     });
@@ -1801,7 +2018,25 @@ function setupListeners() {
 
         // Recalcular rangos (VIP, etc.)
         recalculateDonorRanks();
+
+        // ─── GOAL OVERLAYS: acumular coins de sesi\u00f3n ────────────────────────────
+        if (isGiftFinal) {
+            const actualCount = data.repeatCount || 1;
+            const totalCoinsThisGift = coins * actualCount;
+            sessionTotalCoins += totalCoinsThisGift;
+            syncSessionCountersToFirestore();
+
+            // ─── TIMER EXTENSION: extender el countdown por regalos ──────────────
+            if (timerState.state === 'running' && timerState.endsAt) {
+                const secondsToAdd = Number(timerState.secondsPerGift || 30);
+                const msToAdd = secondsToAdd * 1000;
+                timerState.endsAt += msToAdd;
+                console.log(`\u23f1\ufe0f Timer extendido +${secondsToAdd}s por regalo de ${displayName} (termina en: ${Math.round((timerState.endsAt - Date.now()) / 1000)}s)`);
+                saveTimerToFirestore().catch(() => {});
+            }
+        }
     });
+
 
     // --- MANEJO DE LIKES (NUEVO) ---
     tiktokLiveConnection.on('like', (data) => {
@@ -1865,6 +2100,10 @@ function setupListeners() {
         const displayName = data.nickname;
         const uid = data.uniqueId;
         const profilePic = data.profilePictureUrl;
+
+        // Acumular en contador de sesión para metas
+        sessionFollows.set(uid, (sessionFollows.get(uid) || 0) + 1);
+        syncSessionCountersToFirestore();
         
         console.log(`👤 @${uid} comenzó a seguirte!`);
         if (db) {
@@ -1913,6 +2152,38 @@ function setupListeners() {
             }
         }
     });
+
+    // ─── COMPARTIDOS (SHARE) ───────────────────────────────────────────────────
+    tiktokLiveConnection.on('share', async (data) => {
+        const displayName = data.nickname || data.uniqueId || 'Usuario';
+        const uid = data.uniqueId || '';
+        const profilePic = data.profilePictureUrl || '';
+
+        // Acumular en contador de sesión para metas
+        sessionShares.set(uid, (sessionShares.get(uid) || 0) + 1);
+        const totalShares = Array.from(sessionShares.values()).reduce((a, b) => a + b, 0);
+
+        console.log(`📤 @${uid} compartió el live! (Total sesión: ${totalShares})`);
+
+        // Guardar notificación
+        if (db) {
+            try {
+                await addDoc(collection(db, 'notifications'), {
+                    type: 'share',
+                    user: displayName,
+                    uniqueId: uid,
+                    profilePic,
+                    message: `¡${displayName} compartió el live! 📤`,
+                    timestamp: serverTimestamp()
+                });
+            } catch (e) {
+                console.error('Error guardando notificación de share:', e);
+            }
+        }
+
+        // Actualizar contadores en Firestore para goals
+        syncSessionCountersToFirestore();
+    });
 }
 
 // --- BUFFER DE LIKES ---
@@ -1923,6 +2194,61 @@ const sessionLikes = new Map();
 const lastLikeCountMap = new Map();
 let currentTopLiker = { name: 'N/D', count: 0 };
 let activeLiveRoomId = null;
+
+// ─── CONTADORES DE SESIÓN (para Goal Overlays) ────────────────────────────────
+const sessionFollows = new Map(); // uid -> count
+const sessionShares  = new Map(); // uid -> count
+let sessionTotalCoins = 0;       // coins acumuladas
+
+// Sincronizar contadores de sesión a Firestore (globalStats/general) para que los overlays los lean
+let _syncCountersTimeout = null;
+function syncSessionCountersToFirestore() {
+    if (_syncCountersTimeout) clearTimeout(_syncCountersTimeout);
+    _syncCountersTimeout = setTimeout(async () => {
+        if (!db) return;
+        try {
+            const totalFollows = Array.from(sessionFollows.values()).reduce((a, b) => a + b, 0);
+            const totalShares  = Array.from(sessionShares.values()).reduce((a, b) => a + b, 0);
+            const totalLikes   = Array.from(sessionLikes.values()).reduce((a, b) => a + b, 0);
+            await setDoc(doc(db, 'globalStats', 'general'), {
+                sessionFollows: totalFollows,
+                sessionShares:  totalShares,
+                sessionLikes:   totalLikes,
+                sessionCoins:   sessionTotalCoins,
+                lastUpdate:     serverTimestamp()
+            }, { merge: true });
+        } catch (e) {
+            console.error('Error sincronizando contadores de sesión:', e);
+        }
+    }, 2000); // Debounce 2s
+}
+
+// ─── TIMER EN MEMORIA ─────────────────────────────────────────────────────────
+let timerState = {
+    state: 'stopped', // 'running' | 'paused' | 'stopped'
+    endsAt: null,     // timestamp (ms) cuando termina el timer
+    pausedAt: null,   // timestamp (ms) de cuándo se pausó
+    remainingOnPause: 0, // ms restantes al momento de pausar
+    label: '⏳ Tiempo de stream',
+    primaryColor: '#7c3aed',
+    secondsPerGift: 30
+};
+
+async function saveTimerToFirestore() {
+    if (!db) return;
+    try {
+        await setDoc(doc(db, 'systemConfig', 'timerConfig'), {
+            state:          timerState.state,
+            endsAt:         timerState.endsAt,
+            label:          timerState.label,
+            primaryColor:   timerState.primaryColor,
+            secondsPerGift: timerState.secondsPerGift,
+            updatedAt:      serverTimestamp()
+        }, { merge: true });
+    } catch (e) {
+        console.error('Error guardando timer en Firestore:', e);
+    }
+}
 
 function resetLikeTracking(options = {}) {
     const resetSession = options.resetSession === true;
