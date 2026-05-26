@@ -299,6 +299,7 @@ async function extractYoutubeMetadata(url) {
         if (data && data.title) {
             let title = data.title;
             let artist = data.author_name || '';
+            let artworkUrl = data.thumbnail_url || '';
             
             // Replicar fielmente la lógica que tiene la web (index.js)
             if (title.includes(' - ')) {
@@ -334,7 +335,7 @@ async function extractYoutubeMetadata(url) {
                          .replace(/\(Live\)/gi, '')
                          .replace(/\[Live\]/gi, '')
                          .trim();
-            return { title, artist };
+            return { title, artist, artworkUrl };
         }
     } catch (e) {
         console.warn('⚠️ No se pudieron obtener metadatos del link de YouTube:', e.message || String(e));
@@ -2291,7 +2292,6 @@ async function resolveTrackFromSeparatedRaw(rawQuery) {
 }
 
 async function handleSongRequest(user, query, options = {}) {
-    console.log(`🔍 [DEBUG_SR] handleSongRequest invocado: user="${user}", query="${query}", keys=${Object.keys(options || {})}`);
     try {
         const sendToQueue = options.sendToQueue !== false;
         const sendToCider = options.sendToCider !== false;
@@ -2305,14 +2305,14 @@ async function handleSongRequest(user, query, options = {}) {
 
         // --- DETECTAR Y PROCESAR ENLACE DE YOUTUBE ---
         const ytUrl = detectYoutubeUrl(query || rawQuery);
-        console.log(`🔍 [DEBUG_SR] ytUrl detectado: "${ytUrl}" para query="${query}" y rawQuery="${rawQuery}"`);
         if (ytUrl) {
             options.link = ytUrl;
             const ytMetadata = await extractYoutubeMetadata(ytUrl);
             if (ytMetadata) {
                 options.songName = ytMetadata.title;
                 options.artistName = ytMetadata.artist;
-                console.log(`✅ Metadatos extraídos de YouTube para bot: "${ytMetadata.title}" por "${ytMetadata.artist}"`);
+                options.artworkUrl = ytMetadata.artworkUrl;
+                console.log(`✅ Metadatos extraídos de YouTube para bot: "${ytMetadata.title}" por "${ytMetadata.artist}", portada: "${ytMetadata.artworkUrl}"`);
             } else {
                 const cleanTextQuery = String(query || '').replace(ytUrl, '').trim().replace(/\s+-\s+/g, ' ').trim();
                 if (cleanTextQuery.length > 0) {

@@ -397,6 +397,9 @@
 
     async function normalizeRequestForDisplay(data) {
       const settings = window.appliedOverlaySettings || defaultSettings;
+      if (data && !data.artworkUrl && data.cover) {
+        data.artworkUrl = data.cover;
+      }
       if (!settings || settings.autocorrect !== true) return data;
       if (!data || !data.cancion || !data.artista) return data;
       const info = await fetchSongData(data.artista, data.cancion);
@@ -437,7 +440,7 @@
       const uname = data.displayName || data.usuario || 'Anónimo';
       userEl.textContent = uname;
       if (artEl) {
-        const artUrl = String(data.artworkUrl || '').trim();
+        const artUrl = String(data.artworkUrl || data.cover || '').trim();
         if (artUrl) {
           artEl.src = artUrl;
           artEl.style.display = 'block';
