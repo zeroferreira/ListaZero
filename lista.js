@@ -17588,6 +17588,56 @@ function shouldShowStatsTicker() {
       toast.classList.remove('show');
       toast.addEventListener('transitionend', () => toast.remove());
     }, 3000);
+  };
+
+  // Utility for Admin Overlay Links
+  window.copyOverlayLink = function (filename) {
+    // Resolve URL relative to current location
+    const fullUrl = new URL(filename, window.location.href).href;
+
+    navigator.clipboard.writeText(fullUrl).then(() => {
+      alert('Enlace copiado al portapapeles:\n' + fullUrl);
+    }).catch(err => {
+      console.error('Error al copiar: ', err);
+      prompt('No se pudo copiar automáticamente. Copia este enlace:', fullUrl);
+    });
+  };
+
+  window.triggerTestAlert = async function(type) {
+    if (!window.db) {
+      alert('❌ Error: No hay conexión a base de datos.');
+      return;
+    }
+
+    try {
+      // Obtener configuraciones de alertas en vivo para simular el mensaje exacto
+      const docConfig = await window.db.collection('systemConfig').doc('overlayAlertsConfig').get();
+      const config = docConfig.exists ? docConfig.data() : {};
+      
+      const likesMsg = config.likesAlertMsg || "¡Envió {likes} likes! ❤️";
+      const giftsMsg = config.giftsAlertMsg || "¡Gracias por {repeatCount}x {giftName}! 🎁";
+      const followsMsg = config.followsAlertMsg || "¡gracias por seguir el canal! 👤";
+      const subsMsg = config.subsAlertMsg || "¡gracias por suscribirte al canal! ⭐";
+      
+      const avatarUrl = "https://i.pravatar.cc/100?img=" + Math.floor(Math.random() * 70);
+      
+      let mockData = {};
+      if (type === 'follow') {
+        mockData = {
+          type: 'follow',
+          user: 'PruebaSeguidor',
+          uniqueId: 'pruebaseguidor',
+          profilePic: avatarUrl,
+          message: followsMsg.replace(/{user}/g, 'PruebaSeguidor'),
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        };
+      } else if (type === 'like') {
+        const likesCount = 100 + Math.floor(Math.random() * 900);
+        mockData = {
+          type: 'like',
+          user: 'SuperLiker',
+          uniqueId: 'superliker',
+          profilePic: avatarUrl,
           likes: likesCount,
           message: likesMsg.replace(/{user}/g, 'SuperLiker').replace(/{likes}/g, likesCount.toLocaleString()),
           timestamp: firebase.firestore.FieldValue.serverTimestamp()

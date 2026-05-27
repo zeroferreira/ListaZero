@@ -30,6 +30,7 @@
 
         body {
             font-family: 'Outfit', sans-serif;
+            font-size: var(--font-size-base, 16px);
             background: transparent;
             overflow: hidden;
             width: 100vw;
@@ -96,8 +97,8 @@
         .alert-box {
             width: 100%;
             padding: 55px 30px 30px 30px;
-            border-radius: 28px;
-            background: rgba(15, 15, 25, 0.76);
+            border-radius: var(--card-border-radius, 28px);
+            background: rgba(15, 15, 25, var(--card-bg-opacity, 0.76));
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.08);
@@ -259,6 +260,102 @@
             }
         }
 
+        /* Responsive scaling for narrow viewports (e.g., dashboard previews) */
+        @media (max-width: 520px) {
+            .alert-wrapper {
+                width: 90%;
+                max-width: 440px;
+            }
+            .media-container {
+                width: 180px;
+                height: 180px;
+                margin-bottom: -30px;
+            }
+            .user-avatar {
+                width: 80px;
+                height: 80px;
+            }
+            .alert-box {
+                padding: 40px 20px 20px 20px;
+            }
+            .username-container {
+                font-size: 1.8em;
+            .alert-message {
+                font-size: 1rem;
+            }
+        }
+
+        /* =============================================
+           CUSTOM CONFIGURATION OVERRIDES & SHADOWS
+        ============================================= */
+        .alert-box.no-card-bg {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+        
+        .alert-box.no-card-bg .alert-glow {
+            display: none !important;
+        }
+
+        /* Text Shadow Styles */
+        .shadow-style-none .bounce-char,
+        .shadow-style-none .username-container,
+        .shadow-style-none .alert-title,
+        .shadow-style-none .alert-message {
+            text-shadow: none !important;
+            -webkit-text-stroke: unset !important;
+        }
+
+        .shadow-style-subtle .bounce-char,
+        .shadow-style-subtle .username-container,
+        .shadow-style-subtle .alert-title,
+        .shadow-style-subtle .alert-message {
+            text-shadow: 0 4px 8px rgba(0, 0, 0, 0.4) !important;
+            -webkit-text-stroke: unset !important;
+        }
+
+        .shadow-style-3d-retro .bounce-char {
+            text-shadow: 
+                0 1px 0 #1e1b4b,
+                0 2px 0 #1e1b4b,
+                0 3px 0 #1e1b4b,
+                0 6px 15px rgba(0,0,0,0.5) !important;
+            -webkit-text-stroke: unset !important;
+        }
+        .shadow-style-3d-retro .username-container,
+        .shadow-style-3d-retro .alert-title,
+        .shadow-style-3d-retro .alert-message {
+            text-shadow: 0 2px 4px rgba(0,0,0,0.6) !important;
+            -webkit-text-stroke: unset !important;
+        }
+
+        .shadow-style-neon-glow .bounce-char,
+        .shadow-style-neon-glow .username-container,
+        .shadow-style-neon-glow .alert-title,
+        .shadow-style-neon-glow .alert-message {
+            text-shadow: 
+                0 0 8px var(--theme-color-glow, #fff),
+                0 0 20px var(--theme-color-glow, #fff),
+                0 0 30px rgba(0, 0, 0, 0.8) !important;
+            -webkit-text-stroke: unset !important;
+        }
+
+        .shadow-style-thick-stroke .bounce-char,
+        .shadow-style-thick-stroke .username-container,
+        .shadow-style-thick-stroke .alert-title,
+        .shadow-style-thick-stroke .alert-message {
+            text-shadow: 
+                -2px -2px 0 #000,  
+                 2px -2px 0 #000,
+                -2px  2px 0 #000,
+                 2px  2px 0 #000,
+                 0px  4px 8px rgba(0, 0, 0, 0.8) !important;
+            -webkit-text-stroke: 1.5px #000 !important;
+        }
+
     </style>
 </head>
 
@@ -285,6 +382,7 @@
         //  CONFIGURACIÓN & PRESET ALERTS
         // =============================================
         var CID = new URLSearchParams(document.location.search).get("cid") || "";
+        var urlType = new URLSearchParams(document.location.search).get("type") || "all";
 
         // Recursos multimedia premium (Lottie y Sonidos libres)
         const ALERT_THEMES = {
@@ -340,7 +438,24 @@
             if (typeof firebase !== 'undefined') {
                 firebase.initializeApp(firebaseConfig);
                 db = firebase.firestore();
-                console.log("[Firebase] Alertas conectadas con éxito ✓");
+                console.log("[Firebase] Alertas conectadas con éxito ✓ [Tipo URL: " + urlType + "]");
+
+                // Escuchar personalización visual de alertas premium
+                db.collection('systemConfig').doc('overlayAlertsConfig')
+                    .onSnapshot(doc => {
+                        if (doc.exists) {
+                            const data = doc.data();
+                            window.overlayAlertsConfig = data; // Guardamos todo en global
+                            
+                            if (data.likeslockOpacity !== undefined) window.likeslockOpacityOverride = data.likeslockOpacity;
+                            if (data.likeslockRadius !== undefined) window.likeslockRadiusOverride = data.likeslockRadius;
+                            
+                            // Aplicar estilos estáticos de carga inicial
+                            applyInitialStyles();
+                        }
+                    }, err => {
+                        console.warn("[Firebase] Error al cargar overlayAlertsConfig para alertas:", err);
+                    });
 
                 // Escuchar la colección de notificaciones del Bot
                 db.collection('notifications')
@@ -351,8 +466,11 @@
                                 const data = change.doc.data();
                                 // Validar que sea un tipo de alerta soportado
                                 if (['follow', 'subscribe', 'gift', 'like'].includes(data.type)) {
-                                    console.log(`🔔 Alerta recibida desde bot [${data.type}]:`, data.user);
-                                    addAlert(data);
+                                    // Filtrar por tipo si está fijado en la URL
+                                    if (urlType === 'all' || data.type === urlType) {
+                                        console.log(`🔔 Alerta recibida desde bot [${data.type}]:`, data.user);
+                                        addAlert(data);
+                                    }
                                 }
                             }
                         });
@@ -362,6 +480,115 @@
             }
         } catch (e) {
             console.error("[Firebase] No se pudo conectar:", e);
+        }
+
+        // Cargador dinámico de Google Fonts
+        function loadFontDynamically(fontName) {
+            if (!fontName) return;
+            const linkId = `google-font-${fontName.toLowerCase().replace(/\s+/g, '-')}`;
+            if (!document.getElementById(linkId)) {
+                const link = document.createElement('link');
+                link.id = linkId;
+                link.rel = 'stylesheet';
+                link.href = `https://fonts.googleapis.com/css2?family=${fontName.replace(/\s+/g, '+')}:wght@400;600;700;800;900&display=swap`;
+                document.head.appendChild(link);
+            }
+            document.body.style.fontFamily = `'${fontName}', sans-serif`;
+        }
+
+        // Aplicador dinámico de sombras y bordes de texto
+        function applyTextShadow(shadowStyle, themeColor) {
+            const wrapper = document.getElementById('alertWrapper');
+            if (!wrapper) return;
+            
+            // Remover clases de sombra anteriores
+            Array.from(wrapper.classList).forEach(className => {
+                if (className.startsWith('shadow-style-')) {
+                    wrapper.classList.remove(className);
+                }
+            });
+            
+            // Agregar la nueva clase de sombra
+            const styleClass = shadowStyle || '3d-retro';
+            wrapper.classList.add(`shadow-style-${styleClass}`);
+            
+            // Definir color acento para el brillo de neón
+            document.documentElement.style.setProperty('--theme-color-glow', themeColor || '#fff');
+        }
+
+        // Aplicar estilos de diseño según el tipo fijado en la URL
+        function applyInitialStyles() {
+            const data = window.overlayAlertsConfig || {};
+            const root = document.documentElement;
+            
+            // Si la URL es específica, aplicamos sus valores de inmediato
+            if (urlType !== 'all') {
+                let opacity = 0.76;
+                let radius = 28;
+                let fontSize = 16;
+                let showCard = true;
+                let fontFamily = 'Outfit';
+                let textShadow = '3d-retro';
+                
+                if (urlType === 'follow') {
+                    opacity = data.followOpacity !== undefined ? data.followOpacity : 0.76;
+                    radius = data.followRadius !== undefined ? data.followRadius : 28;
+                    fontSize = data.followFontSize !== undefined ? data.followFontSize : 16;
+                    showCard = data.followShowCard !== undefined ? data.followShowCard : true;
+                    fontFamily = data.followFontFamily !== undefined ? data.followFontFamily : 'Outfit';
+                    textShadow = data.followTextShadow !== undefined ? data.followTextShadow : '3d-retro';
+                } else if (urlType === 'like') {
+                    opacity = data.likeOpacity !== undefined ? data.likeOpacity : 0.76;
+                    radius = data.likeRadius !== undefined ? data.likeRadius : 28;
+                    fontSize = data.likeFontSize !== undefined ? data.likeFontSize : 16;
+                    showCard = data.likeShowCard !== undefined ? data.likeShowCard : true;
+                    fontFamily = data.likeFontFamily !== undefined ? data.likeFontFamily : 'Outfit';
+                    textShadow = data.likeTextShadow !== undefined ? data.likeTextShadow : '3d-retro';
+                } else if (urlType === 'gift') {
+                    opacity = data.giftOpacity !== undefined ? data.giftOpacity : 0.76;
+                    radius = data.giftRadius !== undefined ? data.giftRadius : 28;
+                    fontSize = data.giftFontSize !== undefined ? data.giftFontSize : 16;
+                    showCard = data.giftShowCard !== undefined ? data.giftShowCard : true;
+                    fontFamily = data.giftFontFamily !== undefined ? data.giftFontFamily : 'Outfit';
+                    textShadow = data.giftTextShadow !== undefined ? data.giftTextShadow : '3d-retro';
+                } else if (urlType === 'subscribe') {
+                    opacity = data.subscribeOpacity !== undefined ? data.subscribeOpacity : 0.76;
+                    radius = data.subscribeRadius !== undefined ? data.subscribeRadius : 28;
+                    fontSize = data.subscribeFontSize !== undefined ? data.subscribeFontSize : 16;
+                    showCard = data.subscribeShowCard !== undefined ? data.subscribeShowCard : true;
+                    fontFamily = data.subscribeFontFamily !== undefined ? data.subscribeFontFamily : 'Outfit';
+                    textShadow = data.subscribeTextShadow !== undefined ? data.subscribeTextShadow : '3d-retro';
+                }
+                
+                root.style.setProperty('--card-bg-opacity', opacity);
+                root.style.setProperty('--card-border-radius', radius + 'px');
+                root.style.setProperty('--font-size-base', fontSize + 'px');
+
+                // Cargar fuente
+                loadFontDynamically(fontFamily);
+
+                // Alternar tarjeta
+                const alertBox = document.querySelector('.alert-box');
+                if (alertBox) {
+                    if (!showCard) {
+                        alertBox.classList.add('no-card-bg');
+                    } else {
+                        alertBox.classList.remove('no-card-bg');
+                    }
+                }
+
+                // Cargar estilo de sombra
+                const themeColors = { follow: '#ec4899', gift: '#eab308', subscribe: '#06b6d4', like: '#ef4444' };
+                applyTextShadow(textShadow, themeColors[urlType] || '#fff');
+            } else {
+                // Si es general, cargamos la configuración clásica
+                const opacity = data.alertsOpacity !== undefined ? data.alertsOpacity : 0.76;
+                const radius = data.alertsRadius !== undefined ? data.alertsRadius : 28;
+                const fontSize = data.alertsFontSize !== undefined ? data.alertsFontSize : 16;
+                root.style.setProperty('--card-bg-opacity', opacity);
+                root.style.setProperty('--card-border-radius', radius + 'px');
+                root.style.setProperty('--font-size-base', fontSize + 'px');
+            }
         }
 
         // =============================================
@@ -387,16 +614,129 @@
         //  PLAY ALERT
         // =============================================
         function playAlert(data) {
-            const theme = ALERT_THEMES[data.type] || ALERT_THEMES.follow;
+            const config = window.overlayAlertsConfig || {};
+            const type = data.type; // 'follow', 'like', 'gift', 'subscribe'
+            
+            // Determinar si esta alerta específica está habilitada y cuáles son sus efectos
+            let enableAlert = true;
+            let playAudio = true;
+            let showLottie = true;
+            let ttsEnabled = true;
+            let rainbowText = false;
+            let bounceText = true;
+            let showCard = true;
+            let fontFamily = 'Outfit';
+            let textShadow = '3d-retro';
+            
+            if (type === 'follow') {
+                enableAlert = config.enableFollowAlert !== undefined ? config.enableFollowAlert : true;
+                playAudio = config.followPlayAudio !== undefined ? config.followPlayAudio : true;
+                showLottie = config.followShowLottie !== undefined ? config.followShowLottie : true;
+                ttsEnabled = config.followTtsEnabled !== undefined ? config.followTtsEnabled : false;
+                rainbowText = config.followRainbowText !== undefined ? config.followRainbowText : false;
+                bounceText = config.followBounceText !== undefined ? config.followBounceText : true;
+                showCard = config.followShowCard !== undefined ? config.followShowCard : true;
+                fontFamily = config.followFontFamily !== undefined ? config.followFontFamily : 'Outfit';
+                textShadow = config.followTextShadow !== undefined ? config.followTextShadow : '3d-retro';
+            } else if (type === 'like') {
+                enableAlert = config.enableLikeAlert !== undefined ? config.enableLikeAlert : true;
+                playAudio = config.likePlayAudio !== undefined ? config.likePlayAudio : true;
+                showLottie = config.likeShowLottie !== undefined ? config.likeShowLottie : true;
+                ttsEnabled = config.likeTtsEnabled !== undefined ? config.likeTtsEnabled : false;
+                rainbowText = config.likeRainbowText !== undefined ? config.likeRainbowText : false;
+                bounceText = config.likeBounceText !== undefined ? config.likeBounceText : true;
+                showCard = config.likeShowCard !== undefined ? config.likeShowCard : true;
+                fontFamily = config.likeFontFamily !== undefined ? config.likeFontFamily : 'Outfit';
+                textShadow = config.likeTextShadow !== undefined ? config.likeTextShadow : '3d-retro';
+            } else if (type === 'gift') {
+                enableAlert = config.enableGiftAlert !== undefined ? config.enableGiftAlert : true;
+                playAudio = config.giftPlayAudio !== undefined ? config.giftPlayAudio : true;
+                showLottie = config.giftShowLottie !== undefined ? config.giftShowLottie : true;
+                ttsEnabled = config.giftTtsEnabled !== undefined ? config.giftTtsEnabled : true;
+                rainbowText = config.giftRainbowText !== undefined ? config.giftRainbowText : true;
+                bounceText = config.giftBounceText !== undefined ? config.giftBounceText : true;
+                showCard = config.giftShowCard !== undefined ? config.giftShowCard : true;
+                fontFamily = config.giftFontFamily !== undefined ? config.giftFontFamily : 'Outfit';
+                textShadow = config.giftTextShadow !== undefined ? config.giftTextShadow : '3d-retro';
+            } else if (type === 'subscribe') {
+                enableAlert = config.enableSubscribeAlert !== undefined ? config.enableSubscribeAlert : true;
+                playAudio = config.subscribePlayAudio !== undefined ? config.subscribePlayAudio : true;
+                showLottie = config.subscribeShowLottie !== undefined ? config.subscribeShowLottie : true;
+                ttsEnabled = config.subscribeTtsEnabled !== undefined ? config.subscribeTtsEnabled : true;
+                rainbowText = config.subscribeRainbowText !== undefined ? config.subscribeRainbowText : true;
+                bounceText = config.subscribeBounceText !== undefined ? config.subscribeBounceText : true;
+                showCard = config.subscribeShowCard !== undefined ? config.subscribeShowCard : true;
+                fontFamily = config.subscribeFontFamily !== undefined ? config.subscribeFontFamily : 'Outfit';
+                textShadow = config.subscribeTextShadow !== undefined ? config.subscribeTextShadow : '3d-retro';
+            }
+
+            // Si la alerta está desactivada en la configuración, no la reproducimos
+            if (!enableAlert) {
+                isAlertPlaying = false;
+                processQueue();
+                return;
+            }
+
+            const theme = ALERT_THEMES[type] || ALERT_THEMES.follow;
             const $wrapper = $("#alertWrapper");
 
             // Limpiar clases previas de tipo
             $wrapper.removeClass("type-follow type-gift type-subscribe type-like anim-enter anim-exit");
-            $wrapper.addClass(`type-${data.type}`);
+            $wrapper.addClass(`type-${type}`);
 
             // Rellenar títulos e información
             $("#alertTitle").text(theme.title);
             $("#alertMessage").text(data.message || "¡Gracias por el apoyo!");
+
+            // Aplicar personalización visual independiente para Likes Lock vs Alertas normales
+            const isLikesLock = data.message && (data.message.includes('🔒') || data.message.includes('Enlaces bloqueados'));
+            const alertBox = document.querySelector('.alert-box');
+            if (alertBox) {
+                if (isLikesLock) {
+                    const finalOpacity = window.likeslockOpacityOverride !== undefined ? window.likeslockOpacityOverride : 0.85;
+                    const finalRadius = window.likeslockRadiusOverride !== undefined ? window.likeslockRadiusOverride : 22;
+                    alertBox.style.setProperty('--card-bg-opacity', finalOpacity);
+                    alertBox.style.setProperty('--card-border-radius', finalRadius + 'px');
+                    alertBox.classList.remove('no-card-bg'); // Keep lock background for readability
+                } else {
+                    // Cargar valores visuales independientes según la alerta activa actual
+                    let opacity = 0.76;
+                    let radius = 28;
+                    let fontSize = 16;
+                    
+                    if (type === 'follow') {
+                        opacity = config.followOpacity !== undefined ? config.followOpacity : 0.76;
+                        radius = config.followRadius !== undefined ? config.followRadius : 28;
+                        fontSize = config.followFontSize !== undefined ? config.followFontSize : 16;
+                    } else if (type === 'like') {
+                        opacity = config.likeOpacity !== undefined ? config.likeOpacity : 0.76;
+                        radius = config.likeRadius !== undefined ? config.likeRadius : 28;
+                        fontSize = config.likeFontSize !== undefined ? config.likeFontSize : 16;
+                    } else if (type === 'gift') {
+                        opacity = config.giftOpacity !== undefined ? config.giftOpacity : 0.76;
+                        radius = config.giftRadius !== undefined ? config.giftRadius : 28;
+                        fontSize = config.giftFontSize !== undefined ? config.giftFontSize : 16;
+                    } else if (type === 'subscribe') {
+                        opacity = config.subscribeOpacity !== undefined ? config.subscribeOpacity : 0.76;
+                        radius = config.subscribeRadius !== undefined ? config.subscribeRadius : 28;
+                        fontSize = config.subscribeFontSize !== undefined ? config.subscribeFontSize : 16;
+                    }
+                    
+                    alertBox.style.setProperty('--card-bg-opacity', opacity);
+                    alertBox.style.setProperty('--card-border-radius', radius + 'px');
+                    document.documentElement.style.setProperty('--font-size-base', fontSize + 'px');
+                    
+                    if (!showCard) {
+                        alertBox.classList.add('no-card-bg');
+                    } else {
+                        alertBox.classList.remove('no-card-bg');
+                    }
+                }
+            }
+
+            // Aplicar fuentes y sombras dinámicas en base a la alerta activa actual
+            loadFontDynamically(fontFamily);
+            applyTextShadow(textShadow, theme.color);
 
             // Construir texto del username con efecto de rebote letra por letra
             const $usernameContainer = $("#usernameContainer");
@@ -404,15 +744,17 @@
             $usernameContainer.empty();
 
             const name = data.user || "Anónimo";
-            // Activar arcoíris para subs, regalos grandes o de forma aleatoria
-            if (data.type === 'subscribe' || (data.type === 'gift' && data.coins >= 50)) {
+            // Activar arcoíris si está habilitado
+            if (rainbowText) {
                 $usernameContainer.addClass("rainbow-text");
             }
 
             name.split("").forEach((char, index) => {
                 const $span = $("<span>").text(char === " " ? "\u00A0" : char);
-                $span.addClass("bounce-char");
-                $span.css("--delay", `${index * 0.05}s`);
+                if (bounceText) {
+                    $span.addClass("bounce-char");
+                    $span.css("--delay", `${index * 0.05}s`);
+                }
                 $usernameContainer.append($span);
             });
 
@@ -422,8 +764,8 @@
             const $userAvatar = $("#userAvatar");
             $userAvatar.hide();
 
-            // Cargar lottie
-            if (theme.lottie) {
+            // Cargar lottie si está activo
+            if (showLottie && theme.lottie) {
                 const player = document.createElement("lottie-player");
                 player.setAttribute("src", theme.lottie);
                 player.setAttribute("background", "transparent");
@@ -440,25 +782,27 @@
             }
 
             // Reproducir Audio
-            const $audio = $("#alertAudio");
-            const audioUrl = theme.audio || theme.defaultAudio;
-            $audio.attr("src", audioUrl);
-            const audioEl = $audio[0];
-            audioEl.volume = 0.5;
-            
-            // Forzar play con manejo de políticas del navegador
-            audioEl.play().catch(e => console.warn("[Audio] Interacción bloqueada por el navegador:", e));
+            if (playAudio) {
+                const $audio = $("#alertAudio");
+                const audioUrl = theme.audio || theme.defaultAudio;
+                $audio.attr("src", audioUrl);
+                const audioEl = $audio[0];
+                audioEl.volume = 0.5;
+                
+                // Forzar play con manejo de políticas del navegador
+                audioEl.play().catch(e => console.warn("[Audio] Interacción bloqueada por el navegador:", e));
+            }
 
             // Disparar explosión de partículas de colores (Confeti)
             spawnParticles(theme.color);
 
             // TTS (Text to Speech) - Leer mensaje en voz alta
-            triggerTTS(data);
+            triggerTTS(data, ttsEnabled);
 
             // Mostrar el overlay con animación
             $wrapper.css("display", "flex").addClass("anim-enter");
 
-            // Duración de la alerta (5 segundos)
+            // Duración de la alerta (5.5 segundos)
             setTimeout(() => {
                 $wrapper.addClass("anim-exit");
                 setTimeout(() => {
@@ -516,27 +860,24 @@
         // =============================================
         //  TEXT-TO-SPEECH (TTS)
         // =============================================
-        function triggerTTS(data) {
-            if (!('speechSynthesis' in window)) return;
+        function triggerTTS(data, ttsEnabled) {
+            if (!('speechSynthesis' in window) || !ttsEnabled) return;
             
-            // Solo activar TTS para subs o regalos significativos
-            if (data.type === 'subscribe' || (data.type === 'gift' && data.coins >= 5)) {
-                setTimeout(() => {
-                    const text = `${data.user} ${data.message.replace(/🎁|👤|⭐|❤️/g, "")}`;
-                    const utterance = new SpeechSynthesisUtterance(text);
-                    
-                    // Configurar voz en español
-                    utterance.lang = 'es-MX';
-                    const voices = window.speechSynthesis.getVoices();
-                    const esVoice = voices.find(v => v.lang.includes('es') || v.lang.includes('ES'));
-                    if (esVoice) utterance.voice = esVoice;
-                    
-                    utterance.rate = 1.0;
-                    utterance.volume = 0.85;
-                    
-                    window.speechSynthesis.speak(utterance);
-                }, 1000); // Retraso de 1s para que suene el audio primero
-            }
+            setTimeout(() => {
+                const text = `${data.user} ${data.message.replace(/🎁|👤|⭐|❤️/g, "")}`;
+                const utterance = new SpeechSynthesisUtterance(text);
+                
+                // Configurar voz en español
+                utterance.lang = 'es-MX';
+                const voices = window.speechSynthesis.getVoices();
+                const esVoice = voices.find(v => v.lang.includes('es') || v.lang.includes('ES'));
+                if (esVoice) utterance.voice = esVoice;
+                
+                utterance.rate = 1.0;
+                utterance.volume = 0.85;
+                
+                window.speechSynthesis.speak(utterance);
+            }, 1000); // Retraso de 1s para que suene el audio primero
         }
 
         // Pre-cargar voces al iniciar
@@ -588,14 +929,15 @@
             addAlert(mockData);
         };
 
-        // Demo inicial tras carga
-        $(window).on("load", () => {
-            if (!db) {
-                console.log("[Alertas] Corriendo simulación de demostración...");
-                setTimeout(() => {
-                    window.preview('follow');
-                    setTimeout(() => window.preview('gift'), 7000);
-                }, 1500);
+        // Receptor de eventos de mensajería (postMessage) para simulación local offline
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.action === 'triggerTestAlert') {
+                console.log("[alerts_overlay] Alerta de prueba local recibida:", event.data.payload);
+                const payload = event.data.payload;
+                // Filtrar simulación por tipo si la URL está restringida
+                if (urlType === 'all' || payload.type === urlType) {
+                    addAlert(payload);
+                }
             }
         });
     </script>

@@ -142,7 +142,9 @@
       const root = document.documentElement;
       root.style.setProperty('--card-width', s.width + 'px');
       root.style.setProperty('--card-min-height', s.minHeight + 'px');
-      root.style.setProperty('--card-border-radius', s.borderRadius + 'px');
+      
+      const finalRadius = window.playerRadiusOverride !== undefined ? window.playerRadiusOverride : s.borderRadius;
+      root.style.setProperty('--card-border-radius', finalRadius + 'px');
       
       // Apply Animation Class to Container or Card Wrapper
       const container = document.getElementById('notification-container');
@@ -154,12 +156,14 @@
       root.style.setProperty('--font-family', s.font);
       
       // Apply specific font sizes
-      root.style.setProperty('--font-size-song', s.fontSizeSong + 'px');
-      root.style.setProperty('--font-size-artist', s.fontSizeArtist + 'px');
-      root.style.setProperty('--font-size-user', s.fontSizeUser + 'px');
-      root.style.setProperty('--font-size-header', s.fontSizeHeader + 'px');
+      const finalFontSize = window.playerFontSizeOverride !== undefined ? window.playerFontSizeOverride : s.fontSizeHeader;
+      root.style.setProperty('--font-size-header', finalFontSize + 'px');
+      root.style.setProperty('--font-size-song', Math.round(finalFontSize * 1.7) + 'px');
+      root.style.setProperty('--font-size-artist', Math.round(finalFontSize * 1.1) + 'px');
+      root.style.setProperty('--font-size-user', Math.round(finalFontSize * 0.8) + 'px');
 
-      root.style.setProperty('--accent-color', s.accent);
+      const finalAccent = window.playerColorOverride !== undefined ? window.playerColorOverride : s.accent;
+      root.style.setProperty('--accent-color', finalAccent);
       root.style.setProperty('--text-color', s.text);
       
       // Icon Content & Size
@@ -186,6 +190,9 @@
       
       // Asegurarse que opacity sea un número entre 0 y 1
       let rawOpacity = s.opacity;
+      if (window.playerOpacityOverride !== undefined) {
+          rawOpacity = window.playerOpacityOverride * 100;
+      }
       if (rawOpacity === undefined || rawOpacity === null || rawOpacity === "") {
         rawOpacity = 85;
       }
@@ -194,16 +201,16 @@
       root.style.setProperty('--card-bg-color', `rgba(${r},${g},${b},${opacity})`);
 
       // Calculate accent color rgba variants
-      const ar = parseInt(s.accent.substr(1,2), 16);
-      const ag = parseInt(s.accent.substr(3,2), 16);
-      const ab = parseInt(s.accent.substr(5,2), 16);
+      const ar = parseInt(finalAccent.substr(1,2), 16);
+      const ag = parseInt(finalAccent.substr(3,2), 16);
+      const ab = parseInt(finalAccent.substr(5,2), 16);
       root.style.setProperty('--accent-color-bg', `rgba(${ar},${ag},${ab},0.2)`);
       root.style.setProperty('--accent-color-glow', `rgba(${ar},${ag},${ab},0.4)`);
       
       // Separator
       let finalSepColor = s.sepColor || '#ffffff';
       if (s.sepUseAccent) {
-         finalSepColor = s.accent;
+         finalSepColor = finalAccent;
       }
 
       const sr = parseInt(finalSepColor.substr(1,2), 16);
@@ -725,6 +732,27 @@
           }
         }, (error) => {
            console.warn("No se pudo sincronizar configuración remota (posiblemente offline o sin permisos):", error);
+        });
+
+      // Escuchar personalización visual del reproductor principal
+      db.collection('systemConfig').doc('overlayAlertsConfig')
+        .onSnapshot((doc) => {
+          if (doc.exists) {
+            const data = doc.data();
+            if (data.playerOpacity !== undefined) window.playerOpacityOverride = data.playerOpacity;
+            if (data.playerRadius !== undefined) window.playerRadiusOverride = data.playerRadius;
+            if (data.playerFontSize !== undefined) window.playerFontSizeOverride = data.playerFontSize;
+            if (data.playerColor !== undefined) window.playerColorOverride = data.playerColor;
+            
+            // Re-aplicar configuración
+            if (window.appliedOverlaySettings) {
+              applySettings(window.appliedOverlaySettings);
+            } else {
+              applySettings(defaultSettings);
+            }
+          }
+        }, (error) => {
+           console.warn("No se pudo sincronizar overlayAlertsConfig para player:", error);
         });
 
       db.collection('vipUsers').onSnapshot((snap) => {

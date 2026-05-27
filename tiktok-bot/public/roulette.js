@@ -9,6 +9,24 @@ const firebaseConfig = {
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+
+    // Escuchar personalización visual de ruleta
+    db.collection('systemConfig').doc('overlayAlertsConfig')
+      .onSnapshot((doc) => {
+        if (doc.exists) {
+          const data = doc.data();
+          const root = document.documentElement;
+          if (data.rouletteOpacity !== undefined) {
+            root.style.setProperty('--roulette-bg-opacity', data.rouletteOpacity);
+          }
+          if (data.rouletteRadius !== undefined) {
+            root.style.setProperty('--roulette-border-radius', data.rouletteRadius + 'px');
+          }
+        }
+      }, (error) => {
+         console.warn("No se pudo sincronizar overlayAlertsConfig para roulette:", error);
+      });
+
     if (firebase.auth) {
       firebase.auth().onAuthStateChanged((user) => {
         if (!user) {

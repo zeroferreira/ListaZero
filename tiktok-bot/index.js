@@ -1203,13 +1203,16 @@ function startBot() {
         res.json({ ...timerState, remainingMs });
     });
 
-    // Configurar timer (label, color, secondsPerGift)
+    // Configurar timer (label, color, secondsPerGift, opacity, radius, fontSize)
     app.post('/api/timer/config', async (req, res) => {
         try {
-            const { label, primaryColor, secondsPerGift } = req.body || {};
+            const { label, primaryColor, secondsPerGift, timerOpacity, timerRadius, timerFontSize } = req.body || {};
             if (label)          timerState.label          = String(label).trim();
             if (primaryColor)   timerState.primaryColor   = String(primaryColor).trim();
             if (secondsPerGift) timerState.secondsPerGift = Number(secondsPerGift) || 30;
+            if (timerOpacity !== undefined)  timerState.timerOpacity  = parseFloat(timerOpacity);
+            if (timerRadius !== undefined)   timerState.timerRadius   = parseInt(timerRadius);
+            if (timerFontSize !== undefined) timerState.timerFontSize = parseInt(timerFontSize);
             await saveTimerToFirestore();
             res.json({ success: true, timerState });
         } catch (e) {
@@ -2261,7 +2264,10 @@ let timerState = {
     remainingOnPause: 0, // ms restantes al momento de pausar
     label: '⏳ Tiempo de stream',
     primaryColor: '#7c3aed',
-    secondsPerGift: 30
+    secondsPerGift: 30,
+    timerOpacity: 0.85,
+    timerRadius: 22,
+    timerFontSize: 14
 };
 
 async function saveTimerToFirestore() {
@@ -2273,6 +2279,9 @@ async function saveTimerToFirestore() {
             label:          timerState.label,
             primaryColor:   timerState.primaryColor,
             secondsPerGift: timerState.secondsPerGift,
+            timerOpacity:   timerState.timerOpacity !== undefined ? timerState.timerOpacity : 0.85,
+            timerRadius:    timerState.timerRadius !== undefined ? timerState.timerRadius : 22,
+            timerFontSize:  timerState.timerFontSize !== undefined ? timerState.timerFontSize : 14,
             updatedAt:      serverTimestamp()
         }, { merge: true });
     } catch (e) {

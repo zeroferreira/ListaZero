@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Timer Overlay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 300px;
+      background: transparent;
+      font-family: 'Outfit', sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ─── CSS Custom Properties ────────────────────────────── */
+    :root {
+      --primary: #a855f7;
+      --primary-glow: rgba(168, 85, 247, 0.55);
+      --danger: #ef4444;
+      --danger-glow: rgba(239, 68, 68, 0.6);
+      --success: #22c55e;
+      --success-glow: rgba(34, 197, 94, 0.55);
+      --glass-bg: rgba(10, 10, 20, var(--timer-bg-opacity, 0.72));
+      --glass-border: rgba(255, 255, 255, 0.09);
+      --text-primary: #f0e6ff;
+      --text-muted: rgba(240, 230, 255, 0.5);
+      --grad-angle: 135deg;
+    }
+
+    /* ─── Keyframes ────────────────────────────────────────── */
+    @keyframes borderSpin {
+      0%   { --grad-angle: 0deg; }
+      100% { --grad-angle: 360deg; }
+    }
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 18px 4px var(--primary-glow), inset 0 0 12px rgba(168,85,247,0.08); }
+      50%       { box-shadow: 0 0 34px 10px var(--primary-glow), inset 0 0 20px rgba(168,85,247,0.14); }
+    }
+    @keyframes danger-pulse {
+      0%, 100% { box-shadow: 0 0 18px 4px var(--danger-glow), inset 0 0 12px rgba(239,68,68,0.08); opacity: 1; }
+      50%       { box-shadow: 0 0 42px 14px var(--danger-glow), inset 0 0 24px rgba(239,68,68,0.18); opacity: 0.88; }
+    }
+    @keyframes digits-blink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0.3; }
+    }
+    @keyframes label-fade-in {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes end-drama {
+      0%   { transform: scale(1);    opacity: 1; }
+      20%  { transform: scale(1.08); opacity: 1; }
+      40%  { transform: scale(0.97); opacity: 0.85; }
+      60%  { transform: scale(1.05); opacity: 1; }
+      80%  { transform: scale(0.99); opacity: 0.9; }
+      100% { transform: scale(1);    opacity: 1; }
+    }
+    @keyframes flash-in {
+      0%   { opacity: 0; transform: translateY(-20px) scale(0.6); }
+      40%  { opacity: 1; transform: translateY(4px)  scale(1.15); }
+      70%  { opacity: 1; transform: translateY(-2px) scale(0.98); }
+      100% { opacity: 0; transform: translateY(-16px) scale(0.8); }
+    }
+    @keyframes paused-bob {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-3px); }
+    }
+    @keyframes spin-icon {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+    @keyframes border-rotate {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* ─── Wrapper ──────────────────────────────────────────── */
+    #timer-widget {
+      width: 300px;
+      position: relative;
+      padding: 3px; /* space for animated border */
+      border-radius: var(--timer-border-radius, 20px);
+      background: linear-gradient(
+        var(--grad-angle, 135deg),
+        rgba(168,85,247,0.9),
+        rgba(99,102,241,0.9),
+        rgba(236,72,153,0.9),
+        rgba(168,85,247,0.9)
+      );
+      background-size: 300% 300%;
+      animation: border-rotate 3s linear infinite, pulse-glow 2.6s ease-in-out infinite;
+      transition: all 0.5s ease;
+    }
+
+    #timer-widget.danger {
+      background: linear-gradient(
+        var(--grad-angle, 135deg),
+        rgba(239,68,68,0.95),
+        rgba(220,38,38,0.95),
+        rgba(239,68,68,0.95)
+      );
+      animation: border-rotate 1.2s linear infinite, danger-pulse 0.9s ease-in-out infinite;
+    }
+
+    #timer-widget.ended {
+      background: linear-gradient(
+        var(--grad-angle, 135deg),
+        rgba(239,68,68,0.95),
+        rgba(127,29,29,0.8),
+        rgba(239,68,68,0.95)
+      );
+      animation: border-rotate 0.7s linear infinite, danger-pulse 0.5s ease-in-out infinite;
+    }
+
+    #timer-widget.paused {
+      background: linear-gradient(
+        var(--grad-angle, 135deg),
+        rgba(100,116,139,0.7),
+        rgba(71,85,105,0.7),
+        rgba(100,116,139,0.7)
+      );
+      animation: border-rotate 5s linear infinite;
+      box-shadow: 0 0 14px 3px rgba(100,116,139,0.35);
+    }
+
+    /* ─── Inner Glass Card ─────────────────────────────────── */
+    #timer-inner {
+      background: var(--glass-bg);
+      backdrop-filter: blur(18px) saturate(180%);
+      -webkit-backdrop-filter: blur(18px) saturate(180%);
+      border-radius: calc(var(--timer-border-radius, 20px) - 2px);
+      padding: 18px 20px 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* subtle inner shine */
+    #timer-inner::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: calc(var(--timer-border-radius, 20px) - 2px);
+      background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 55%);
+      pointer-events: none;
+    }
+
+    /* ─── Label Row ────────────────────────────────────────── */
+    #timer-label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      animation: label-fade-in 0.5s ease both;
+    }
+
+    #timer-label .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 6px 2px var(--primary-glow);
+      flex-shrink: 0;
+    }
+
+    /* ─── Digits Display ───────────────────────────────────── */
+    #timer-display {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 2px;
+      padding: 8px 0 4px;
+    }
+
+    #timer-digits {
+      font-size: var(--timer-font-size, 68px);
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      line-height: 1;
+      color: var(--text-primary);
+      text-shadow:
+        0 0 20px var(--primary-glow),
+        0 0 40px rgba(168,85,247,0.3),
+        0 2px 4px rgba(0,0,0,0.6);
+      font-variant-numeric: tabular-nums;
+      transition: color 0.4s ease, text-shadow 0.4s ease;
+      /* LCD scanline effect */
+      background: linear-gradient(
+        180deg,
+        rgba(255,255,255,0.03) 50%,
+        transparent 50%
+      );
+      background-size: 100% 4px;
+    }
+
+    /* Danger state */
+    #timer-widget.danger #timer-digits {
+      color: #fca5a5;
+      text-shadow:
+        0 0 20px var(--danger-glow),
+        0 0 50px rgba(239,68,68,0.4),
+        0 2px 4px rgba(0,0,0,0.6);
+      animation: digits-blink 0.8s step-end infinite;
+    }
+
+    /* Ended state */
+    #timer-widget.ended #timer-digits {
+      display: none;
+    }
+
+    /* ─── Ended Message ────────────────────────────────────── */
+    #ended-message {
+      display: none;
+      text-align: center;
+      padding: 8px 0 4px;
+    }
+
+    #timer-widget.ended #ended-message {
+      display: block;
+      animation: end-drama 1.2s ease-in-out infinite;
+    }
+
+    #ended-message .ended-text {
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      color: #fca5a5;
+      text-shadow: 0 0 20px var(--danger-glow), 0 0 40px rgba(239,68,68,0.5);
+      line-height: 1.2;
+    }
+
+    #ended-message .ended-emoji {
+      font-size: 28px;
+      display: block;
+      margin-bottom: 4px;
+      animation: end-drama 0.9s ease-in-out infinite reverse;
+    }
+
+    /* ─── Paused Overlay ───────────────────────────────────── */
+    #paused-badge {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 4px 0 8px;
+    }
+
+    #timer-widget.paused #timer-display { opacity: 0.45; }
+
+    #timer-widget.paused #paused-badge {
+      display: flex;
+      animation: paused-bob 2.5s ease-in-out infinite;
+    }
+
+    #paused-badge .pause-icon {
+      font-size: 15px;
+    }
+
+    #paused-badge .pause-text {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(148,163,184,0.85);
+    }
+
+    /* ─── Progress Bar ─────────────────────────────────────── */
+    #progress-track {
+      height: 3px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 99px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+
+    #progress-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--primary), #ec4899);
+      box-shadow: 0 0 8px 2px var(--primary-glow);
+      transition: width 1s linear, background 0.5s ease;
+      width: 100%;
+    }
+
+    #timer-widget.danger #progress-fill {
+      background: linear-gradient(90deg, #ef4444, #dc2626);
+      box-shadow: 0 0 8px 2px var(--danger-glow);
+    }
+
+    /* ─── +Time Flash Banner ───────────────────────────────── */
+    #time-flash {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      font-size: 18px;
+      font-weight: 900;
+      color: var(--success);
+      text-shadow: 0 0 14px var(--success-glow), 0 0 30px rgba(34,197,94,0.4);
+      letter-spacing: 0.03em;
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    #time-flash.show {
+      animation: flash-in 1.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    /* ─── Bottom meta row ──────────────────────────────────── */
+    #timer-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    #gift-hint {
+      font-size: 9px;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      opacity: 0.6;
+    }
+
+    #live-dot {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--success);
+    }
+
+    #live-dot .ld {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 5px 2px var(--success-glow);
+      animation: digits-blink 1.2s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     TIMER WIDGET
+═══════════════════════════════════════════════════════════ -->
+<div id="timer-widget">
+  <div id="timer-inner">
+
+    <!-- Label row -->
+    <div id="timer-label">
+      <span class="dot"></span>
+      <span id="label-text">⏳ Tiempo de stream</span>
+    </div>
+
+    <!-- Main digit display -->
+    <div id="timer-display">
+      <span id="timer-digits">14:32</span>
+    </div>
+
+    <!-- Ended message (shown when timer hits 0) -->
+    <div id="ended-message">
+      <span class="ended-emoji">🔴</span>
+      <span class="ended-text">¡STREAM<br>TERMINANDO!</span>
+    </div>
+
+    <!-- Paused badge -->
+    <div id="paused-badge">
+      <span class="pause-icon">⏸</span>
+      <span class="pause-text">Pausado</span>
+    </div>
+
+    <!-- Progress bar -->
+    <div id="progress-track">
+      <div id="progress-fill"></div>
+    </div>
+
+    <!-- Meta row -->
+    <div id="timer-meta">
+      <span id="gift-hint">🎁 Los regalos extienden el tiempo</span>
+      <span id="live-dot"><span class="ld"></span>LIVE</span>
+    </div>
+
+    <!-- +Time flash (absolute) -->
+    <div id="time-flash"></div>
+
+  </div><!-- /timer-inner -->
+</div><!-- /timer-widget -->
+
+
+<!-- ══════════════════════════════════════════════════════════
+     Firebase SDKs (compat v9.22.2)
+═══════════════════════════════════════════════════════════ -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+<script>
+/* ─────────────────────────────────────────────────────────────
+   CONFIG
+───────────────────────────────────────────────────────────── */
+const FIREBASE_CONFIG = {
+  apiKey:            'AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU',
+  authDomain:        'zero-strom-web.firebaseapp.com',
+  projectId:         'zero-strom-web',
+  storageBucket:     'zero-strom-web.appspot.com',
+  messagingSenderId: '758369466349',
+  appId:             '1:758369466349:web:f2ced362a5a049c70b59e4',
+};
+
+const FIRESTORE_DOC = 'systemConfig/timerConfig';
+
+/* ─────────────────────────────────────────────────────────────
+   URL PARAM OVERRIDES
+   ?primaryColor=%23a855f7&label=Mi+Timer
+───────────────────────────────────────────────────────────── */
+const params   = new URLSearchParams(location.search);
+const urlColor = params.get('primaryColor');
+const urlLabel = params.get('label');
+
+if (urlColor) {
+  document.documentElement.style.setProperty('--primary', urlColor);
+  // rough glow from hex → rgba
+  try {
+    const r = parseInt(urlColor.slice(1,3),16);
+    const g = parseInt(urlColor.slice(3,5),16);
+    const b = parseInt(urlColor.slice(5,7),16);
+    document.documentElement.style.setProperty('--primary-glow', `rgba(${r},${g},${b},0.55)`);
+  } catch(_) {}
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DOM REFS
+───────────────────────────────────────────────────────────── */
+const widget       = document.getElementById('timer-widget');
+const digitsEl     = document.getElementById('timer-digits');
+const labelEl      = document.getElementById('label-text');
+const progressFill = document.getElementById('progress-fill');
+const timeFlash    = document.getElementById('time-flash');
+
+/* ─────────────────────────────────────────────────────────────
+   STATE
+───────────────────────────────────────────────────────────── */
+let state          = 'running';
+let endsAt         = Date.now() + 14 * 60 * 1000 + 32 * 1000; // preview default
+let initialDuration = 14 * 60 + 32; // seconds — used for progress bar
+let prevEndsAt     = null;
+let timerInterval  = null;
+let isPreview      = true; // flip to false once Firestore loads
+
+/* ─────────────────────────────────────────────────────────────
+   HELPERS
+───────────────────────────────────────────────────────────── */
+function pad(n) {
+  return String(Math.floor(n)).padStart(2, '0');
+}
+
+function secondsToDisplay(totalSec) {
+  if (totalSec <= 0) return '00:00';
+  const h  = Math.floor(totalSec / 3600);
+  const m  = Math.floor((totalSec % 3600) / 60);
+  const s  = totalSec % 60;
+  if (h > 0) return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  return `${pad(m)}:${pad(s)}`;
+}
+
+function applyPrimaryColor(hex) {
+  if (!hex || urlColor) return; // URL param wins
+  document.documentElement.style.setProperty('--primary', hex);
+  try {
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    document.documentElement.style.setProperty('--primary-glow', `rgba(${r},${g},${b},0.55)`);
+  } catch(_) {}
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FLASH +Xs ANIMATION
+───────────────────────────────────────────────────────────── */
+function showTimeFlash(addedSeconds) {
+  timeFlash.textContent = `+${addedSeconds}s`;
+  timeFlash.classList.remove('show');
+  // Force reflow to re-trigger animation
+  void timeFlash.offsetWidth;
+  timeFlash.classList.add('show');
+  timeFlash.addEventListener('animationend', () => {
+    timeFlash.classList.remove('show');
+  }, { once: true });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   WIDGET STATE CLASSES
+───────────────────────────────────────────────────────────── */
+function setWidgetClass(cls) {
+  widget.classList.remove('danger', 'ended', 'paused');
+  if (cls) widget.classList.add(cls);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   TICK — called every second
+───────────────────────────────────────────────────────────── */
+function tick() {
+  if (state === 'stopped') {
+    widget.style.display = 'none';
+    return;
+  }
+
+  widget.style.display = '';
+
+  if (state === 'paused') {
+    setWidgetClass('paused');
+    // Keep digits frozen (already set)
+    return;
+  }
+
+  // state === 'running'
+  const now       = Date.now();
+  const remaining = Math.max(0, Math.round((endsAt - now) / 1000));
+
+  digitsEl.textContent = secondsToDisplay(remaining);
+
+  // Progress bar
+  const pct = initialDuration > 0
+    ? Math.max(0, Math.min(100, (remaining / initialDuration) * 100))
+    : 0;
+  progressFill.style.width = pct + '%';
+
+  if (remaining <= 0) {
+    setWidgetClass('ended');
+  } else if (remaining <= 60) {
+    setWidgetClass('danger');
+  } else {
+    setWidgetClass(null);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   START / STOP INTERVAL
+───────────────────────────────────────────────────────────── */
+function startInterval() {
+  if (timerInterval) return;
+  tick(); // immediate render
+  timerInterval = setInterval(tick, 1000);
+}
+
+function stopInterval() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   APPLY FIRESTORE DATA
+───────────────────────────────────────────────────────────── */
+function applyData(data) {
+  const {
+    enabled       = true,
+    state: newState = 'running',
+    endsAt: newEndsAt,
+    label         = '⏳ Tiempo de stream',
+    primaryColor  = '',
+    secondsPerGift = 60,
+    timerOpacity,
+    timerRadius,
+    timerFontSize,
+  } = data;
+
+  // Apply visual overrides
+  const root = document.documentElement;
+  if (timerOpacity !== undefined) {
+    root.style.setProperty('--timer-bg-opacity', timerOpacity);
+  }
+  if (timerRadius !== undefined) {
+    root.style.setProperty('--timer-border-radius', timerRadius + 'px');
+  }
+  if (timerFontSize !== undefined) {
+    root.style.setProperty('--timer-font-size', timerFontSize + 'px');
+  }
+
+  // Label
+  labelEl.textContent = urlLabel || label;
+
+  // Color
+  applyPrimaryColor(primaryColor);
+
+  // Gift hint
+  const giftHint = document.getElementById('gift-hint');
+  if (secondsPerGift && secondsPerGift > 0) {
+    giftHint.textContent = `🎁 +${secondsPerGift}s por regalo`;
+  }
+
+  // Enabled check
+  if (!enabled) {
+    widget.style.display = 'none';
+    stopInterval();
+    return;
+  }
+  widget.style.display = '';
+
+  state = newState;
+
+  // endsAt — detect extension
+  if (newEndsAt) {
+    const ms = newEndsAt.toMillis ? newEndsAt.toMillis()
+             : newEndsAt.seconds  ? newEndsAt.seconds * 1000
+             : Number(newEndsAt);
+
+    if (prevEndsAt !== null && ms > prevEndsAt + 1000 && isPreview === false) {
+      const addedSec = Math.round((ms - prevEndsAt) / 1000);
+      showTimeFlash(addedSec);
+    }
+    prevEndsAt = ms;
+    endsAt = ms;
+  }
+
+  // Update initial duration for progress bar (only on first load / when stopped→running)
+  if (state === 'running' && isPreview) {
+    const remaining = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
+    initialDuration = remaining;
+    isPreview = false;
+  }
+
+  startInterval();
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FIREBASE INIT
+───────────────────────────────────────────────────────────── */
+(function initFirebase() {
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    const db = firebase.firestore();
+
+    db.doc(FIRESTORE_DOC).onSnapshot(
+      (snap) => {
+        if (!snap.exists) {
+          console.warn('[TimerOverlay] Documento timerConfig no encontrado. Modo preview.');
+          startInterval(); // keep showing preview
+          return;
+        }
+        applyData(snap.data());
+      },
+      (err) => {
+        console.error('[TimerOverlay] Firestore error:', err);
+        startInterval(); // fallback preview
+      }
+    );
+  } catch (e) {
+    console.error('[TimerOverlay] Firebase init error:', e);
+    startInterval(); // preview mode
+  }
+})();
+
+/* ─────────────────────────────────────────────────────────────
+   PREVIEW BOOTSTRAP (shown before Firestore responds)
+───────────────────────────────────────────────────────────── */
+// Start showing preview immediately so OBS scene isn't blank
+startInterval();
+</script>
+</body>
+</html>

@@ -309,11 +309,13 @@
         }
         applyTheme(s.theme);
         docEl.style.setProperty('--ticker-height', `${s.height}px`);
-        docEl.style.setProperty('--ticker-font-size', `${s.fontSize}px`);
+        const finalFontSize = window.tickerFontSizeOverride !== undefined ? window.tickerFontSizeOverride : s.fontSize;
+        docEl.style.setProperty('--ticker-font-size', `${finalFontSize}px`);
         docEl.style.setProperty('--ticker-speed', `${s.speed}s`);
         docEl.style.setProperty('--ticker-padding-x', `${s.paddingX}px`);
         docEl.style.setProperty('--ticker-blur', `${s.blur}px`);
-        docEl.style.setProperty('--ticker-bg', computeBg(s.theme, s.opacity));
+        const finalOpacity = window.tickerOpacityOverride !== undefined ? window.tickerOpacityOverride * 100 : s.opacity;
+        docEl.style.setProperty('--ticker-bg', computeBg(s.theme, finalOpacity));
         return s;
       }
 
@@ -513,6 +515,15 @@
             currentSettings = applySettings({ ...defaults, ...currentSettings, ...remoteSettings });
             saveLocal(currentSettings);
             if (isConfig) updateConfigUI(currentSettings);
+          }, () => {});
+
+          db.collection('systemConfig').doc('overlayAlertsConfig').onSnapshot((doc) => {
+            if (!doc || !doc.exists) return;
+            const data = doc.data() || {};
+            if (data.tickerOpacity !== undefined) window.tickerOpacityOverride = data.tickerOpacity;
+            if (data.tickerFontSize !== undefined) window.tickerFontSizeOverride = data.tickerFontSize;
+            
+            currentSettings = applySettings(currentSettings);
           }, () => {});
         } catch (_) {}
       }

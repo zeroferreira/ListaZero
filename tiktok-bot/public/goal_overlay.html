@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meta — Zero FM</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <!-- Firebase SDK compat v9.22.2 -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+    <style>
+        /* =============================================
+           RESET & BASE
+        ============================================= */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', 'Segoe UI', sans-serif;
+            background: transparent;
+            overflow: hidden;
+            width: 500px;
+        }
+
+        /* =============================================
+           CARD PRINCIPAL
+        ============================================= */
+        #goalCard {
+            width: 500px;
+            padding: 20px 22px 18px;
+            border-radius: var(--goal-border-radius, 22px);
+            background: rgba(10, 10, 20, var(--goal-bg-opacity, 0.78));
+            backdrop-filter: blur(22px) saturate(160%);
+            -webkit-backdrop-filter: blur(22px) saturate(160%);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            box-shadow:
+                0 8px 40px rgba(0, 0, 0, 0.55),
+                0 0 0 1px rgba(255, 255, 255, 0.04),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            position: relative;
+            overflow: hidden;
+            display: none; /* shown when enabled */
+        }
+
+        #goalCard.visible {
+            display: block;
+            animation: cardEntrance 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+
+        @keyframes cardEntrance {
+            from { opacity: 0; transform: translateY(12px) scale(0.97); }
+            to   { opacity: 1; transform: translateY(0)   scale(1);    }
+        }
+
+        /* Glow background decoration */
+        #goalCard::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: var(--goal-border-radius, 22px);
+            background: radial-gradient(ellipse at 50% -20%, var(--glow-color, rgba(236,72,153,0.18)) 0%, transparent 65%);
+            pointer-events: none;
+            transition: background 0.6s ease;
+        }
+
+        /* =============================================
+           HEADER ROW
+        ============================================= */
+        #goalHeader {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        #goalIcon {
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            background: var(--primary-rgba, rgba(236,72,153,0.18));
+            border: 1px solid var(--primary-border, rgba(236,72,153,0.3));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2em;
+            flex-shrink: 0;
+            box-shadow: 0 2px 12px var(--primary-shadow, rgba(236,72,153,0.25));
+            transition: background 0.4s, border-color 0.4s, box-shadow 0.4s;
+            animation: iconFloat 3s ease-in-out infinite;
+        }
+
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(0); }
+            50%       { transform: translateY(-3px); }
+        }
+
+        #goalMeta {
+            flex: 1;
+            min-width: 0;
+        }
+
+        #goalLabel {
+            font-size: 0.82em;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.45);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            line-height: 1;
+            margin-bottom: 3px;
+        }
+
+        #goalTitle {
+            font-size: 1.05em;
+            font-weight: 800;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+        }
+
+        #goalCounters {
+            display: flex;
+            align-items: baseline;
+            gap: 3px;
+        }
+
+        #goalCurrent {
+            font-size: 1.7em;
+            font-weight: 900;
+            color: var(--primary-color, #ec4899);
+            line-height: 1;
+            letter-spacing: -0.03em;
+            transition: color 0.4s;
+            font-variant-numeric: tabular-nums;
+        }
+
+        #goalSep {
+            font-size: 1em;
+            font-weight: 700;
+            color: rgba(255,255,255,0.25);
+        }
+
+        #goalTarget {
+            font-size: 0.95em;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.38);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* =============================================
+           PROGRESS BAR
+        ============================================= */
+        #progressWrap {
+            position: relative;
+            width: 100%;
+            height: 18px;
+            border-radius: 100px;
+            background: rgba(255, 255, 255, 0.06);
+            overflow: visible;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            margin-bottom: 12px;
+        }
+
+        #progressTrack {
+            position: absolute;
+            inset: 0;
+            border-radius: 100px;
+            overflow: hidden;
+        }
+
+        #progressBar {
+            height: 100%;
+            border-radius: 100px;
+            width: 0%;
+            background: linear-gradient(90deg,
+                var(--bar-start, #be185d),
+                var(--primary-color, #ec4899),
+                var(--bar-end, #f472b6)
+            );
+            box-shadow:
+                0 0 14px var(--primary-shadow, rgba(236,72,153,0.6)),
+                inset 0 1px 0 rgba(255,255,255,0.25);
+            transition: width 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+            position: relative;
+        }
+
+        /* Shimmer sweep */
+        #progressBar::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 100px;
+            background: linear-gradient(
+                100deg,
+                transparent 0%,
+                rgba(255, 255, 255, 0.35) 50%,
+                transparent 100%
+            );
+            background-size: 200% 100%;
+            animation: shimmer 2.2s linear infinite;
+        }
+
+        @keyframes shimmer {
+            0%   { background-position: -200% 0; }
+            100% { background-position: 200%  0; }
+        }
+
+        /* Percentage bubble that follows progress */
+        #pctBubble {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(10, 10, 20, 0.92);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 100px;
+            padding: 1px 7px;
+            font-size: 0.68em;
+            font-weight: 800;
+            color: #fff;
+            white-space: nowrap;
+            pointer-events: none;
+            transition: left 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+        }
+
+        /* =============================================
+           REWARD TEXT
+        ============================================= */
+        #rewardRow {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-top: 2px;
+        }
+
+        #rewardIcon {
+            font-size: 0.85em;
+            opacity: 0.7;
+        }
+
+        #rewardText {
+            font-size: 0.78em;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.48);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            letter-spacing: 0.01em;
+        }
+
+        /* =============================================
+           CELEBRATION MODE (100%)
+        ============================================= */
+        #goalCard.complete #goalTitle {
+            color: var(--primary-color, #ec4899);
+        }
+
+        #goalCard.complete #rewardText {
+            color: var(--primary-color, #ec4899);
+            font-weight: 700;
+        }
+
+        #goalCard.complete #rewardIcon {
+            opacity: 1;
+        }
+
+        #goalCard.complete #progressBar {
+            animation: pulseBar 1.4s ease-in-out infinite;
+        }
+
+        @keyframes pulseBar {
+            0%, 100% { box-shadow: 0 0 14px var(--primary-shadow, rgba(236,72,153,0.6)); }
+            50%       { box-shadow: 0 0 36px var(--primary-shadow, rgba(236,72,153,0.9)),
+                                    0 0 60px var(--primary-shadow, rgba(236,72,153,0.4)); }
+        }
+
+        #goalCard.complete::before {
+            animation: glowPulse 1.6s ease-in-out infinite;
+        }
+
+        @keyframes glowPulse {
+            0%, 100% { opacity: 0.7; }
+            50%       { opacity: 1.4; }
+        }
+
+        /* Celebration text badge */
+        #celebrationBadge {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 10px;
+            padding: 7px 14px;
+            border-radius: 100px;
+            background: linear-gradient(
+                135deg,
+                var(--bar-start, #be185d),
+                var(--primary-color, #ec4899)
+            );
+            box-shadow:
+                0 4px 20px var(--primary-shadow, rgba(236,72,153,0.45)),
+                inset 0 1px 0 rgba(255,255,255,0.2);
+            font-size: 0.8em;
+            font-weight: 800;
+            color: #fff;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            animation: badgePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+
+        #goalCard.complete #celebrationBadge {
+            display: flex;
+        }
+
+        @keyframes badgePop {
+            from { transform: scale(0.6); opacity: 0; }
+            to   { transform: scale(1);   opacity: 1; }
+        }
+
+        /* =============================================
+           CONFETTI CANVAS
+        ============================================= */
+        #confettiCanvas {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 999;
+            display: none;
+        }
+
+        /* =============================================
+           PARTICLE SPARKS (progress milestone)
+        ============================================= */
+        .spark {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: var(--primary-color, #ec4899);
+            pointer-events: none;
+            animation: sparkFly var(--d, 0.8s) ease-out forwards;
+        }
+
+        @keyframes sparkFly {
+            0%   { transform: translate(0, 0) scale(1); opacity: 1; }
+            100% { transform: translate(var(--tx, 30px), var(--ty, -30px)) scale(0); opacity: 0; }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Confetti canvas for celebration -->
+    <canvas id="confettiCanvas"></canvas>
+
+    <div id="goalCard">
+        <!-- Decorative header -->
+        <div id="goalHeader">
+            <div id="goalIcon">🎯</div>
+            <div id="goalMeta">
+                <div id="goalLabel">Meta de sesión</div>
+                <div id="goalTitle">¡Meta de seguidores!</div>
+            </div>
+            <div id="goalCounters">
+                <span id="goalCurrent">0</span>
+                <span id="goalSep">/</span>
+                <span id="goalTarget">500</span>
+            </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div id="progressWrap">
+            <div id="progressTrack">
+                <div id="progressBar"></div>
+            </div>
+            <div id="pctBubble">0%</div>
+        </div>
+
+        <!-- Reward text -->
+        <div id="rewardRow">
+            <span id="rewardIcon">🎁</span>
+            <span id="rewardText">¡Desbloqueas una canción especial!</span>
+        </div>
+
+        <!-- Celebration badge (shown at 100%) -->
+        <div id="celebrationBadge">
+            <span>🎉</span>
+            <span id="celebText">¡META ALCANZADA!</span>
+            <span>🎉</span>
+        </div>
+    </div>
+
+    <script>
+        // =============================================
+        //  URL PARAMS (overrides)
+        // =============================================
+        const params     = new URLSearchParams(location.search);
+        const P_TYPE     = params.get('type')   || null;   // follows|likes|shares|coins
+        const P_TARGET   = params.get('target') ? parseInt(params.get('target')) : null;
+        const P_LABEL    = params.get('label')  || null;
+        const P_COLOR    = params.get('color')  || null;
+
+        // =============================================
+        //  STATE
+        // =============================================
+        let cfg = {
+            goalType:       P_TYPE   || 'follows',
+            goalTarget:     P_TARGET || 500,
+            goalLabel:      P_LABEL  || '¡Meta de seguidores!',
+            goalRewardText: '¡Desbloqueas una canción especial!',
+            primaryColor:   P_COLOR  || '#ec4899',
+            enabled:        true
+        };
+
+        let currentValue    = 0;
+        let wasComplete     = false;
+        let confettiRunning = false;
+
+        const GOAL_ICONS = {
+            follows: '👥',
+            likes:   '❤️',
+            shares:  '🔁',
+            coins:   '🪙'
+        };
+
+        // =============================================
+        //  FIREBASE INIT
+        // =============================================
+        const firebaseConfig = {
+            apiKey:            'AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU',
+            authDomain:        'zero-strom-web.firebaseapp.com',
+            projectId:         'zero-strom-web',
+            storageBucket:     'zero-strom-web.appspot.com',
+            messagingSenderId: '758369466349',
+            appId:             '1:758369466349:web:f2ced362a5a049c70b59e4'
+        };
+
+        let db             = null;
+        let hasFirebase    = false;
+
+        try {
+            if (typeof firebase !== 'undefined') {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                hasFirebase = true;
+                console.log('[Firebase] Conectado ✓');
+
+                // Listen: systemConfig/goalOverlayConfig
+                db.collection('systemConfig').doc('goalOverlayConfig').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const d = doc.data();
+                        console.log('[Firebase] goalOverlayConfig actualizado ✓', d);
+
+                        // URL params take priority over Firestore config
+                        cfg.goalType       = P_TYPE   || d.goalType       || cfg.goalType;
+                        cfg.goalTarget     = P_TARGET || d.goalTarget     || cfg.goalTarget;
+                        cfg.goalLabel      = P_LABEL  || d.goalLabel      || cfg.goalLabel;
+                        cfg.goalRewardText = d.goalRewardText || cfg.goalRewardText;
+                        cfg.primaryColor   = P_COLOR  || d.primaryColor   || cfg.primaryColor;
+                        cfg.enabled        = d.enabled !== undefined ? d.enabled : true;
+                        cfg.goalsOpacity   = d.goalsOpacity !== undefined ? d.goalsOpacity : 0.85;
+                        cfg.goalsRadius    = d.goalsRadius !== undefined ? d.goalsRadius : 22;
+
+                        applyConfig();
+                    }
+                }, err => console.warn('[Firebase] goalOverlayConfig error:', err));
+
+                // Listen: globalStats/general
+                db.collection('globalStats').doc('general').onSnapshot(doc => {
+                    if (doc.exists) {
+                        const d = doc.data();
+                        const fieldMap = {
+                            follows: 'sessionFollows',
+                            likes:   'sessionLikes',
+                            shares:  'sessionShares',
+                            coins:   'sessionCoins'
+                        };
+                        const field = fieldMap[cfg.goalType] || 'sessionFollows';
+                        const val   = Number(d[field] || 0);
+                        console.log(`[Firebase] globalStats.general → ${field} = ${val}`);
+                        updateProgress(val);
+                    }
+                }, err => console.warn('[Firebase] globalStats/general error:', err));
+            }
+        } catch (e) {
+            console.error('[Firebase] Error al iniciar:', e);
+        }
+
+        // =============================================
+        //  APPLY CONFIG TO DOM
+        // =============================================
+        function applyConfig() {
+            const card = document.getElementById('goalCard');
+
+            // enabled guard
+            if (!cfg.enabled) {
+                card.style.display = 'none';
+                return;
+            }
+
+            card.classList.add('visible');
+
+            // Colors
+            setColorVars(cfg.primaryColor);
+
+            // Opacity & Border Radius Overrides
+            const root = document.documentElement;
+            if (cfg.goalsOpacity !== undefined) {
+                root.style.setProperty('--goal-bg-opacity', cfg.goalsOpacity);
+            }
+            if (cfg.goalsRadius !== undefined) {
+                root.style.setProperty('--goal-border-radius', cfg.goalsRadius + 'px');
+            }
+
+            // Icon
+            const icon = GOAL_ICONS[cfg.goalType] || '🎯';
+            document.getElementById('goalIcon').textContent = icon;
+
+            // Texts
+            document.getElementById('goalLabel').textContent = labelForType(cfg.goalType);
+            document.getElementById('goalTitle').textContent = cfg.goalLabel;
+            document.getElementById('rewardText').textContent = cfg.goalRewardText;
+            document.getElementById('goalTarget').textContent = cfg.goalTarget.toLocaleString('es-MX');
+        }
+
+        function labelForType(type) {
+            const labels = {
+                follows: 'Seguidores',
+                likes:   'Me gusta',
+                shares:  'Compartidos',
+                coins:   'Monedas'
+            };
+            return labels[type] || 'Meta';
+        }
+
+        function setColorVars(hex) {
+            const rgb = hexToRgb(hex);
+            if (!rgb) return;
+            const r = rgb.r, g = rgb.g, b = rgb.b;
+
+            const root = document.documentElement;
+            root.style.setProperty('--primary-color',  hex);
+            root.style.setProperty('--primary-rgba',   `rgba(${r},${g},${b},0.18)`);
+            root.style.setProperty('--primary-border',  `rgba(${r},${g},${b},0.30)`);
+            root.style.setProperty('--primary-shadow',  `rgba(${r},${g},${b},0.55)`);
+            root.style.setProperty('--glow-color',      `rgba(${r},${g},${b},0.22)`);
+            root.style.setProperty('--bar-start',       shiftColor(hex, -30));
+            root.style.setProperty('--bar-end',         shiftColor(hex, +40));
+        }
+
+        // =============================================
+        //  UPDATE PROGRESS
+        // =============================================
+        function updateProgress(val) {
+            const prev    = currentValue;
+            currentValue  = Math.max(0, val);
+            const target  = Math.max(1, cfg.goalTarget);
+            const pct     = Math.min(100, (currentValue / target) * 100);
+            const pctInt  = Math.round(pct);
+            const isComp  = pct >= 100;
+
+            // Animate counter
+            animateCounter(
+                document.getElementById('goalCurrent'),
+                prev,
+                currentValue
+            );
+
+            // Bar
+            document.getElementById('progressBar').style.width = pct + '%';
+
+            // Percentage bubble
+            const bubble = document.getElementById('pctBubble');
+            bubble.textContent = pctInt + '%';
+            const clampedLeft = Math.min(Math.max(pct, 4), 96);
+            bubble.style.left  = clampedLeft + '%';
+
+            // Sparks at milestones (25, 50, 75, 100)
+            const milestones = [25, 50, 75, 100];
+            const prevPct    = Math.min(100, (prev / target) * 100);
+            milestones.forEach(m => {
+                if (prevPct < m && pct >= m) emitSparks(m);
+            });
+
+            // Complete state
+            const card = document.getElementById('goalCard');
+            if (isComp) {
+                if (!wasComplete) {
+                    card.classList.add('complete');
+                    startConfetti();
+                    wasComplete = true;
+                }
+            } else {
+                if (wasComplete) {
+                    card.classList.remove('complete');
+                    stopConfetti();
+                    wasComplete = false;
+                }
+            }
+        }
+
+        // =============================================
+        //  ANIMATED NUMBER COUNTER
+        // =============================================
+        function animateCounter(el, from, to) {
+            const duration = 900;
+            const start    = performance.now();
+            const diff     = to - from;
+
+            function step(now) {
+                const t        = Math.min((now - start) / duration, 1);
+                const ease     = 1 - Math.pow(1 - t, 4);
+                const current  = Math.round(from + diff * ease);
+                el.textContent = current.toLocaleString('es-MX');
+                if (t < 1) requestAnimationFrame(step);
+                else el.textContent = to.toLocaleString('es-MX');
+            }
+            requestAnimationFrame(step);
+        }
+
+        // =============================================
+        //  SPARKS BURST
+        // =============================================
+        function emitSparks(milestone) {
+            const wrap = document.getElementById('progressWrap');
+            const pct  = Math.min(milestone, 96);
+
+            for (let i = 0; i < 8; i++) {
+                const spark = document.createElement('div');
+                spark.className = 'spark';
+                const angle = (Math.random() * 180 + 180) * (Math.PI / 180);
+                const dist  = 20 + Math.random() * 30;
+                const tx    = Math.round(Math.cos(angle) * dist);
+                const ty    = Math.round(Math.sin(angle) * dist - 15);
+                const dur   = 0.5 + Math.random() * 0.5;
+                spark.style.setProperty('--tx', tx + 'px');
+                spark.style.setProperty('--ty', ty + 'px');
+                spark.style.setProperty('--d',  dur + 's');
+                spark.style.left = pct + '%';
+                spark.style.top  = '50%';
+                wrap.appendChild(spark);
+                spark.addEventListener('animationend', () => spark.remove());
+            }
+        }
+
+        // =============================================
+        //  CONFETTI ENGINE
+        // =============================================
+        const canvas  = document.getElementById('confettiCanvas');
+        const ctx     = canvas.getContext('2d');
+        let confetti  = [];
+        let confettiRaf = null;
+
+        function startConfetti() {
+            if (confettiRunning) return;
+            confettiRunning = true;
+            canvas.style.display = 'block';
+            canvas.width  = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            // Spawn particles
+            const colors = buildConfettiPalette(cfg.primaryColor);
+            for (let i = 0; i < 120; i++) {
+                confetti.push(makeParticle(colors));
+            }
+
+            // Auto-stop after 4 s
+            setTimeout(stopConfetti, 4000);
+            drawConfetti();
+        }
+
+        function stopConfetti() {
+            confettiRunning = false;
+            cancelAnimationFrame(confettiRaf);
+            confetti = [];
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.style.display = 'none';
+        }
+
+        function buildConfettiPalette(hex) {
+            return [
+                hex,
+                shiftColor(hex, -30),
+                shiftColor(hex, +40),
+                '#ffffff',
+                '#ffec9b',
+                '#a5f3fc'
+            ];
+        }
+
+        function makeParticle(colors) {
+            return {
+                x:      Math.random() * canvas.width,
+                y:      Math.random() * -canvas.height * 0.5,
+                w:      6  + Math.random() * 8,
+                h:      3  + Math.random() * 5,
+                color:  colors[Math.floor(Math.random() * colors.length)],
+                rot:    Math.random() * Math.PI * 2,
+                rotV:   (Math.random() - 0.5) * 0.18,
+                vx:     (Math.random() - 0.5) * 3,
+                vy:     2  + Math.random() * 4,
+                alpha:  0.85 + Math.random() * 0.15
+            };
+        }
+
+        function drawConfetti() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            confetti.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rot);
+                ctx.fillStyle = p.color;
+                ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+                ctx.restore();
+
+                p.x   += p.vx;
+                p.y   += p.vy;
+                p.rot += p.rotV;
+                if (p.y > canvas.height + 20) {
+                    p.y = -10;
+                    p.x = Math.random() * canvas.width;
+                }
+            });
+            if (confettiRunning) {
+                confettiRaf = requestAnimationFrame(drawConfetti);
+            }
+        }
+
+        // =============================================
+        //  COLOR UTILITIES
+        // =============================================
+        function hexToRgb(hex) {
+            hex = hex.replace(/^#/, '');
+            if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+            const n = parseInt(hex, 16);
+            return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+        }
+
+        function rgbToHex(r, g, b) {
+            return '#' + [r, g, b].map(v =>
+                Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')
+            ).join('');
+        }
+
+        function shiftColor(hex, amount) {
+            const { r, g, b } = hexToRgb(hex);
+            return rgbToHex(r + amount, g + amount, b + amount);
+        }
+
+        // =============================================
+        //  PREVIEW (mock data when no Firebase)
+        // =============================================
+        function showPreview() {
+            console.log('[Goal] Mostrando preview (sin Firebase)');
+            cfg = {
+                goalType:       P_TYPE   || 'follows',
+                goalTarget:     P_TARGET || 500,
+                goalLabel:      P_LABEL  || '¡Meta de seguidores!',
+                goalRewardText: '¡Desbloqueas una canción especial!',
+                primaryColor:   P_COLOR  || '#ec4899',
+                enabled:        true
+            };
+            applyConfig();
+            const card = document.getElementById('goalCard');
+            card.classList.add('visible');
+            // 65% progress demo
+            const mockVal = Math.round(cfg.goalTarget * 0.65);
+            updateProgress(mockVal);
+        }
+
+        // =============================================
+        //  INIT
+        // =============================================
+        window.addEventListener('load', () => {
+            // Apply initial config (URL params / defaults)
+            applyConfig();
+
+        // Receptor de mensajería (postMessage) para previsualización interactiva offline
+        window.addEventListener('message', function(event) {
+            if (event.data) {
+                if (event.data.action === 'triggerTestGoal') {
+                    console.log("[goal_overlay] Progreso de prueba recibido:", event.data.payload);
+                    updateProgress(Number(event.data.payload.value));
+                } else if (event.data.action === 'updateConfig') {
+                    console.log("[goal_overlay] Config de prueba recibida:", event.data.payload);
+                    Object.assign(cfg, event.data.payload);
+                    applyConfig();
+                    
+                    const barText = document.getElementById('barText');
+                    let currentVal = 0;
+                    if (barText) {
+                        const parts = barText.textContent.split('/');
+                        if (parts.length > 0) currentVal = parseInt(parts[0]) || 0;
+                    }
+                    updateProgress(currentVal);
+                }
+            }
+        });
+    </script>
+
+</body>
+</html>

@@ -531,7 +531,8 @@
        root.style.setProperty('--queue-item-spacing', (s.spacing !== undefined ? s.spacing : 15) + 'px');
        root.style.setProperty('--queue-padding', Math.floor(padding * verticalScale) + 'px');
        root.style.setProperty('--queue-text-gap', Math.floor(textGap * verticalScale) + 'px');
-       root.style.setProperty('--queue-border-radius', s.borderRadius + 'px');
+       const finalRadius = window.queueRadiusOverride !== undefined ? window.queueRadiusOverride : s.borderRadius;
+       root.style.setProperty('--queue-border-radius', finalRadius + 'px');
       
       // Set Global Animation Classes on Container
       const container = document.getElementById('queue-container');
@@ -573,26 +574,32 @@
       root.style.setProperty('--queue-font-family', s.font);
       
       // FIX: Escalar fuente si reducimos mucho la altura para que no se corte
-      const baseFontSize = s.fontSize || 16;
-      let fontScale = 1.0;
-      if (heightScale < 0.8) fontScale = heightScale * 1.2; // Reducción suave
-      if (fontScale > 1.0) fontScale = 1.0;
-      
-      root.style.setProperty('--queue-font-size', Math.floor(baseFontSize * fontScale) + 'px');
-      root.style.setProperty('--queue-accent-color', s.accent);
-      root.style.setProperty('--queue-text-color', s.text);
-      
-      const r = parseInt(s.bg.substr(1,2), 16);
-      const g = parseInt(s.bg.substr(3,2), 16);
-      const b = parseInt(s.bg.substr(5,2), 16);
-      
-      const primaryOpacity = (s.primaryOpacity !== undefined ? s.primaryOpacity : 100) / 100;
-      const opacity = (s.secondaryOpacity !== undefined ? s.secondaryOpacity : 60) / 100;
-      const tertiaryOpacity = Math.max(0, opacity * 0.5); // 50% de la opacidad secundaria
-      
-      root.style.setProperty('--queue-bg-color', `rgba(${r},${g},${b},${primaryOpacity})`);
-      root.style.setProperty('--queue-bg-color-transparent', `rgba(${r},${g},${b},${opacity})`);
-      root.style.setProperty('--queue-bg-color-tertiary', `rgba(${r},${g},${b},${tertiaryOpacity})`);
+       const baseFontSize = window.queueFontSizeOverride !== undefined ? window.queueFontSizeOverride : (s.fontSize || 16);
+       let fontScale = 1.0;
+       if (heightScale < 0.8) fontScale = heightScale * 1.2; // Reducción suave
+       if (fontScale > 1.0) fontScale = 1.0;
+       
+       root.style.setProperty('--queue-font-size', Math.floor(baseFontSize * fontScale) + 'px');
+       root.style.setProperty('--queue-accent-color', s.accent);
+       root.style.setProperty('--queue-text-color', s.text);
+       
+       const r = parseInt(s.bg.substr(1,2), 16);
+       const g = parseInt(s.bg.substr(3,2), 16);
+       const b = parseInt(s.bg.substr(5,2), 16);
+       
+       let rawPrimary = s.primaryOpacity !== undefined ? s.primaryOpacity : 100;
+       let rawSecondary = s.secondaryOpacity !== undefined ? s.secondaryOpacity : 60;
+       if (window.queueOpacityOverride !== undefined) {
+          rawPrimary = window.queueOpacityOverride * 100;
+          rawSecondary = window.queueOpacityOverride * 60;
+       }
+       const primaryOpacity = rawPrimary / 100;
+       const opacity = rawSecondary / 100;
+       const tertiaryOpacity = Math.max(0, opacity * 0.5); // 50% de la opacidad secundaria
+       
+       root.style.setProperty('--queue-bg-color', `rgba(${r},${g},${b},${primaryOpacity})`);
+       root.style.setProperty('--queue-bg-color-transparent', `rgba(${r},${g},${b},${opacity})`);
+       root.style.setProperty('--queue-bg-color-tertiary', `rgba(${r},${g},${b},${tertiaryOpacity})`);
       
       // Force render queue to update empty state based on new settings if needed
       if (typeof renderQueue === 'function' && window.allRequests) {
@@ -783,6 +790,26 @@
           }
         }, (error) => {
            console.warn("No se pudo sincronizar configuración remota:", error);
+        });
+
+      // Escuchar personalización visual del reproductor de cola independiente
+      db.collection('systemConfig').doc('overlayAlertsConfig')
+        .onSnapshot((doc) => {
+          if (doc.exists) {
+            const data = doc.data();
+            if (data.queueOpacity !== undefined) window.queueOpacityOverride = data.queueOpacity;
+            if (data.queueRadius !== undefined) window.queueRadiusOverride = data.queueRadius;
+            if (data.queueFontSize !== undefined) window.queueFontSizeOverride = data.queueFontSize;
+            
+            // Re-aplicar configuración
+            if (window.appliedSettings) {
+              applySettings(window.appliedSettings);
+            } else {
+              applySettings(defaultSettings);
+            }
+          }
+        }, (error) => {
+           console.warn("No se pudo sincronizar overlayAlertsConfig para queue:", error);
         });
     } else {
       console.warn("Firestore no inicializado. No se cargará configuración remota.");
