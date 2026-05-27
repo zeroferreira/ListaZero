@@ -287,8 +287,13 @@ function parseSrCommand(message, aliases) {
 }
 
 function detectYoutubeUrl(text) {
-    const match = String(text || '').match(/(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/[^\s]+/i);
-    return match ? match[0] : null;
+    const match = String(text || '').match(/(https?:\/\/)?([a-z0-9-]+\.)?(youtube\.com|youtu\.be)\/[^\s]+/i);
+    if (!match) return null;
+    let url = match[0];
+    if (!/^https?:\/\//i.test(url)) {
+        url = 'https://' + url;
+    }
+    return url;
 }
 
 async function extractYoutubeMetadata(url) {
