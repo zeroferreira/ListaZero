@@ -2257,7 +2257,8 @@
         }
       }, 3000);
 
-      // Listener de Notificaciones
+      // El usuario solicitó desactivar las alertas flotantes en este overlay
+      /*
       db.collection('notifications')
         .orderBy('timestamp', 'desc')
         .limit(5)
@@ -2265,7 +2266,6 @@
           snapshot.docChanges().forEach((change) => {
             if (change.type === 'added') {
               const data = change.doc.data();
-              // Solo mostrar si es reciente (últimos 10 segundos)
               const now = Date.now();
               const ts = data.timestamp ? (data.timestamp.toMillis ? data.timestamp.toMillis() : new Date(data.timestamp).getTime()) : now;
               
@@ -2275,6 +2275,7 @@
             }
           });
         });
+      */
 
     } else {
       console.warn("Firestore no disponible. Cola no podrá sincronizarse.");
@@ -2282,37 +2283,7 @@
     }
 
     function showNotification(data) {
-        const container = document.getElementById('notification-container');
-        if (!container) return;
-        
-        const div = document.createElement('div');
-        div.className = `notification-toast ${data.type || ''}`;
-        
-        let icon = '🔔';
-        let title = 'Notificación';
-        
-        if (data.type === 'points') {
-            icon = '💰';
-            title = 'Puntos Zero FM';
-        }
-        
-        div.innerHTML = `
-            <div class="notification-icon">${icon}</div>
-            <div class="notification-content">
-                <div class="notification-title">${title}</div>
-                <div class="notification-msg">${escapeHTML(data.message)}</div>
-            </div>
-        `;
-        
-        container.appendChild(div);
-        
-        // Auto remove
-        setTimeout(() => {
-            div.style.animation = 'fadeOutRight 0.5s forwards';
-            setTimeout(() => {
-                if (div.parentNode) div.parentNode.removeChild(div);
-            }, 500);
-        }, 5000);
+        // Desactivado a petición del usuario
     }
 
     // --- Lógica de Simulación ---

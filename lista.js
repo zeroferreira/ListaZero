@@ -721,6 +721,17 @@
         return false;
       };
 
+      // Helper global para verificar si un usuario es VIP (cualquier rango: VIP, z0-VIP, z0-Platino)
+      window.isUserVipGlobal = function (username) {
+        if (!username) return false;
+        const u = String(username).trim().toLowerCase();
+        const hasMember = typeof window.hasMembership === 'function' ? window.hasMembership : (s, name) => s && s.has(name);
+        
+        return hasMember(window.vipSet, u) || 
+               hasMember(window.z0VipSet, u) || 
+               hasMember(window.z0PlatinumSet, u);
+      };
+
       window.START_POINTS_DAY = window.START_POINTS_DAY || '';
       function normalizeDay(str) {
         const raw = String(str || '').trim();
@@ -3425,7 +3436,7 @@
           const arr = Array.isArray(byDay[dayValue]) ? byDay[dayValue] : [];
           let items = arr
             .filter(it => !(window.isDummyRequestForList ? window.isDummyRequestForList(it) : (String(it?.usuario || '').trim().toLowerCase() === 'prueba')))
-            .filter(it => !vipOnly.checked || vipSet.has(it.usuario) || z0VipSet.has(it.usuario))
+            .filter(it => !vipOnly.checked || (typeof window.isUserVipGlobal === 'function' ? window.isUserVipGlobal(it.usuario) : (vipSet.has(it.usuario) || z0VipSet.has(it.usuario))))
             .map(it => ({
               requestId: it.id,
               usuario: it.usuario,
@@ -3474,7 +3485,7 @@
           snap.forEach((doc) => {
             const data = doc.data();
             if (window.isDummyRequestForList ? window.isDummyRequestForList(data) : (String(data?.usuario || '').trim().toLowerCase() === 'prueba')) return;
-            const isVip = vipSet.has(data.usuario) || z0VipSet.has(data.usuario);
+            const isVip = typeof window.isUserVipGlobal === 'function' ? window.isUserVipGlobal(data.usuario) : (vipSet.has(data.usuario) || z0VipSet.has(data.usuario));
 
             const itemObj = {
               id: doc.id,
@@ -8301,7 +8312,7 @@ function shouldShowStatsTicker() {
         const container = document.getElementById('achievements-list');
 
         container.innerHTML = ACHIEVEMENTS.map(achievement => {
-          const isUnlocked = data.achievements.includes(achievement.id);
+          const isUnlocked = Array.isArray(data.achievements) && data.achievements.includes(achievement.id);
           const prog = getAchievementProgress(achievement, data.stats);
 
           return `
@@ -8799,55 +8810,7 @@ function shouldShowStatsTicker() {
         }
       }
 
-      // Event listeners para tabs de gamificación
-      document.querySelectorAll('.gamification-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-          const targetTab = tab.dataset.tab;
-
-          // Actualizar tabs activos
-          document.querySelectorAll('.gamification-tab').forEach(t => t.classList.remove('active'));
-          document.querySelectorAll('.gamification-panel').forEach(p => p.classList.remove('active'));
-
-          tab.classList.add('active');
-          document.getElementById(`gamification-${targetTab}`).classList.add('active');
-
-          // Forzar repintado de títulos en TODOS los dispositivos (especialmente en modo oscuro)
-          setTimeout(() => {
-            const activePanel = document.getElementById(`gamification-${targetTab}`);
-            if (activePanel) {
-              const titles = activePanel.querySelectorAll('h3, h4');
-              const isDarkTheme = document.body.classList.contains('dark-theme');
-
-              titles.forEach(title => {
-                // Forzar repintado más agresivo para modo oscuro
-                if (isDarkTheme) {
-                  // Forzar recálculo de color en modo oscuro
-                  const originalColor = title.style.color;
-                  title.style.color = 'transparent';
-
-                  requestAnimationFrame(() => {
-                    title.style.color = originalColor || '';
-                    // Forzar repintado adicional con transform
-                    const originalTransform = title.style.transform;
-                    title.style.transform = 'translate3d(0.1px, 0, 0)';
-
-                    requestAnimationFrame(() => {
-                      title.style.transform = originalTransform || 'translate3d(0, 0, 0)';
-                    });
-                  });
-                } else {
-                  // Repintado normal para modo claro
-                  const originalTransform = title.style.transform;
-                  title.style.transform = 'translateZ(0.1px)';
-                  requestAnimationFrame(() => {
-                    title.style.transform = originalTransform || 'translateZ(0)';
-                  });
-                }
-              });
-            }
-          }, 10);
-        });
-      });
+      // Event listeners para tabs de gamificación consolidados y unificados en setupBreakdownTab delegado
 
       // Admin Section Tabs Logic
       document.querySelectorAll('.admin-section-tabs .points-tab').forEach(tab => {
@@ -8917,7 +8880,6 @@ function shouldShowStatsTicker() {
           initializeCalendarNavigation();
           window.__calendarNavInit__ = true;
         }
-        await renderStreakCalendar();
         if (gamificationModal) gamificationModal.hidden = false;
       });
 
@@ -9851,10 +9813,12 @@ function shouldShowStatsTicker() {
 
       async function computeUserBreakdown(u, options = {}) {
         window.__sessionBreakdownCache = window.__sessionBreakdownCache || {};
-        const sessKey = String(u || '').toLowerCase();
+        const sessKey = String(u || '').trim().replace(/^@/, '').toLowerCase(); // Unificado sin @
         if (!options.force && window.__sessionBreakdownCache[sessKey]) return window.__sessionBreakdownCache[sessKey];
 
         let tiktokId = null;
+        let vipEligibleSongs = 0;
+        let playedArtistsSetSize = 0; // Fallback para artistas únicos
         const rawUser = String(u || '').trim();
         const usuario = rawUser.replace(/^@/, '');
         const unameLc = String(usuario || '').trim().toLowerCase();
@@ -9894,12 +9858,15 @@ function shouldShowStatsTicker() {
 
         // --- COMPROBACIÓN SIMÉTRICA DE RANGO VIP ---
         let isVip = false;
-        if (window.vipSet || window.z0VipSet) {
+        if (typeof window.isUserVipGlobal === 'function') {
+          isVip = fusedIds.some(fid => window.isUserVipGlobal(fid));
+        } else if (window.vipSet || window.z0VipSet || window.z0PlatinumSet) {
           isVip = fusedIds.some(fid => {
             const fidLc = String(fid || '').trim().toLowerCase();
             const fidRawLc = String(fid || '').trim().toLowerCase().replace(/^@/, '');
             return (window.vipSet && (window.vipSet.has(fidLc) || window.vipSet.has(fidRawLc))) ||
-                   (window.z0VipSet && (window.z0VipSet.has(fidLc) || window.z0VipSet.has(fidRawLc)));
+                   (window.z0VipSet && (window.z0VipSet.has(fidLc) || window.z0VipSet.has(fidRawLc))) ||
+                   (window.z0PlatinumSet && (window.z0PlatinumSet.has(fidLc) || window.z0PlatinumSet.has(fidRawLc)));
           });
         }
         const getHourKey = (x) => {
@@ -9948,6 +9915,34 @@ function shouldShowStatsTicker() {
         const daysSet = new Set();
         const perDaySongs = new Map();
         const playedArtistsSet = new Set();
+        
+        // --- RECOLECTAR ARTISTAS DE SYSTEM EVENTS ---
+        try {
+          const qs = await db.collection('systemEvents')
+            .where('type', '==', 'togglePlayed')
+            .where('usuario', 'in', fusedIds)
+            .get();
+          
+          const latestAction = {};
+          qs.forEach(doc => {
+            const d = doc.data() || {};
+            const sid = String(d.songId || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+            if (!sid) return;
+            const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
+            if (!latestAction[sid] || ts > latestAction[sid].ts) {
+              latestAction[sid] = { action: d.action, ts, artista: d.artista };
+            }
+          });
+
+          Object.keys(latestAction).forEach(sid => {
+            const info = latestAction[sid];
+            if (info.action === 'mark' && info.artista) {
+              const a = String(info.artista).trim().toLowerCase();
+              if (a) playedArtistsSet.add(a);
+            }
+          });
+        } catch (e) { console.error('Error fetching artists from systemEvents:', e); }
+
         try {
           const userSnap = await db.collection('solicitudes').where('usuario', 'in', fusedIds).get();
           totalRequestedCount = userSnap.size + playedCount;
@@ -9973,7 +9968,6 @@ function shouldShowStatsTicker() {
 
         let activeDaysValid = 0;
         const detail = [];
-        const days = Array.from(daysSet);
         const totalPlayedSet = new Set();
         // (El resto de la lógica de totalPlayedSet es redundante ahora, pero la mantengo limpia para evitar romper rachas)
 
@@ -9995,6 +9989,31 @@ function shouldShowStatsTicker() {
           allPlayedSnap.forEach(doc => { playedDocsMap[doc.id] = doc.data() || {}; });
         } catch(e) {}
 
+        // --- POBLAR DÍAS ACTIVOS HISTÓRICOS DESDE PLAYEDDOCSMAP ---
+        const userPrefixes = fusedIds.map(fid => String(fid || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '') + '-');
+        Object.keys(playedDocsMap).forEach(day => {
+          if (!isOnOrAfterStart(day)) return;
+          const pdata = playedDocsMap[day] || {};
+          const playedArrRaw = Array.isArray(pdata.songs) ? pdata.songs : (Array.isArray(pdata.list) ? pdata.list : (Array.isArray(pdata.songIds) ? pdata.songIds : []));
+          const skippedArr = Array.isArray(pdata.skipped) ? pdata.skipped : [];
+          const playedArr = playedArrRaw.filter(x => !skippedArr.includes(x));
+
+          let userPlayedThatDay = false;
+          for (let k = 0; k < playedArr.length; k++) {
+            const xl = String(playedArr[k] || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+            if (userPrefixes.some(pref => xl.startsWith(pref))) {
+              userPlayedThatDay = true;
+              break;
+            }
+          }
+
+          if (userPlayedThatDay) {
+            daysSet.add(day);
+          }
+        });
+
+        const days = Array.from(daysSet).sort();
+
         // Iterar días SOLO para calcular días activos y rachas, NO para recontar canciones (Rápido en memoria)
         for (let i = 0; i < days.length; i++) {
           const day = days[i];
@@ -10010,7 +10029,6 @@ function shouldShowStatsTicker() {
 
           // Contar canciones del usuario en este día específico para validar "Día Activo"
           const cleanLc = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-          const userPrefixes = fusedIds.map(fid => `${cleanLc(fid)}-`);
           let userPlayedThatDay = 0;
 
           for (let k = 0; k < playedArr.length; k++) {
@@ -10115,7 +10133,7 @@ function shouldShowStatsTicker() {
           }
 
           if (vipActivationDate) {
-            let vipEligibleSongs = 0;
+            vipEligibleSongs = 0;
             detail.forEach(d => {
               if (d.day >= vipActivationDate) {
                 vipEligibleSongs += d.played;
@@ -10125,6 +10143,7 @@ function shouldShowStatsTicker() {
             console.log(`💎 VIP Bonus calculado desde ${vipActivationDate}: ${vipEligibleSongs} canciones (${vipBonus} pts)`);
           } else {
             // Comportamiento legacy: todas las canciones cuentan si no hay fecha
+            vipEligibleSongs = playedCount;
             vipBonus = playedCount * 40;
             // console.log(`💎 VIP Bonus legacy (sin fecha): ${playedCount} canciones (${vipBonus} pts)`);
           }
@@ -10281,6 +10300,14 @@ function shouldShowStatsTicker() {
                 manualBonus += sDoc.lastManualAdjustment.amount;
               }
 
+              // FALLBACK DE SEGURIDAD NUBE PARA DÍAS ACTIVOS Y ARTISTAS
+              if (typeof sDoc.activeDays === 'number') {
+                activeDaysValid = Math.max(activeDaysValid, sDoc.activeDays);
+              }
+              if (typeof sDoc.uniqueArtists === 'number') {
+                playedArtistsSetSize = Math.max(playedArtistsSetSize, sDoc.uniqueArtists);
+              }
+
               if (!statsDoc.totalPoints) statsDoc = sDoc; // Guardar referencia para otros campos
             } catch (_) { }
           }
@@ -10344,7 +10371,15 @@ function shouldShowStatsTicker() {
               });
             } catch (_) { }
           }
-          redemptions = Array.from(map.values()).sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+          const safeGetTime = (ts) => {
+            if (!ts) return 0;
+            if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+            if (typeof ts.toMillis === 'function') return ts.toMillis();
+            if (ts.seconds) return ts.seconds * 1000;
+            const d = new Date(ts);
+            return isNaN(d.getTime()) ? 0 : d.getTime();
+          };
+          redemptions = Array.from(map.values()).sort((a, b) => safeGetTime(b.timestamp) - safeGetTime(a.timestamp));
           redemptionsSpent = redemptions
             .filter(r => r && (r.status === 'pending' || r.status === 'approved' || r.status === 'completed' || r.status === 'delivered'))
             .reduce((sum, r) => sum + Math.max(0, Number(r.cost || 0)), 0);
@@ -10455,7 +10490,7 @@ function shouldShowStatsTicker() {
         return {
           usuario,
           playedCount,
-          vipEligibleSongs: (isVip ? (typeof vipEligibleSongs !== 'undefined' ? vipEligibleSongs : playedCount) : 0),
+          vipEligibleSongs: (isVip ? vipEligibleSongs : 0),
           activeDaysValid,
           isVip,
           base: (playedCount * 25),
@@ -10475,8 +10510,8 @@ function shouldShowStatsTicker() {
           detail,
           achievementsList,
           requestedCount: totalRequestedCount,
-          uniqueArtists: playedArtistsSet.size,
-          uniqueArtistsPlayed: playedArtistsSet.size,
+          uniqueArtists: Math.max(playedArtistsSet.size, playedArtistsSetSize || 0),
+          uniqueArtistsPlayed: Math.max(playedArtistsSet.size, playedArtistsSetSize || 0),
           redemptions,
           likesPoints,
           likesCount,
@@ -10499,12 +10534,17 @@ function shouldShowStatsTicker() {
         let bd;
         // COHERENCIA: Eliminado bloque de renderizado rápido que causaba discrepancias (83 vs 452)
         // Ahora esperamos al cálculo consolidado oficial para evitar inconsistencias entre pestañas.
-        if (!force && cached && (now - cached.updatedAt) < 5000) { // Reduced from 30000 to 5000 for faster updates
-          bd = cached.data;
-        } else {
-          bd = await computeUserBreakdown(u);
-          window.__breakdownCache[key] = { updatedAt: now, data: bd };
+        try {
+          if (!force && cached && (now - cached.updatedAt) < 5000) { // Reduced from 30000 to 5000 for faster updates
+            bd = cached.data;
+          } else {
+            bd = await computeUserBreakdown(u);
+            window.__breakdownCache[key] = { updatedAt: now, data: bd };
+          }
+        } catch (err) {
+          console.error('❌ Error rendering points breakdown (main load):', err);
         }
+
         const activePanel = document.getElementById('gamification-breakdown');
         const currentUserAtPaint = getCurrentProfileUser();
         if (!activePanel || !activePanel.classList.contains('active') || String(currentUserAtPaint || '').toLowerCase() !== key) {
@@ -10519,7 +10559,16 @@ function shouldShowStatsTicker() {
         // de sumar cuentas vinculadas y calcular ajustes de forma robusta.
         if (!bd || typeof bd.total !== 'number') {
           console.warn('⚠️ Breakdown data incomplete, attempting emergency fallback.');
-          bd = await computeUserBreakdown(u);
+          try {
+            bd = await computeUserBreakdown(u);
+          } catch (err) {
+            console.error('❌ Emergency fallback failed:', err);
+          }
+        }
+
+        if (!bd) {
+          console.error('❌ Cannot render breakdown: data is unavailable.');
+          return;
         }
 
         setNum('breakdown-played-base', Number(bd.playedCount || 0));
@@ -10631,12 +10680,33 @@ function shouldShowStatsTicker() {
             const rList = Array.isArray(bd.redemptions) ? bd.redemptions : [];
             let rHtml = '';
             if (rList.length > 0) {
-              const itemsHtml = rList.map(r => `
-                <div style="display:flex; justify-content:space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); opacity: 0.8;">
-                  <span>${r.rewardName || 'Recompensa'}</span>
-                  <span>-${r.cost} pts</span>
-                </div>
-              `).join('');
+              const itemsHtml = rList.map(r => {
+                const isRejectedOrCancelled = r.status === 'rejected' || r.status === 'cancelled';
+                const statusLabel = r.status === 'rejected' ? ' (Rechazado)' : 
+                                    r.status === 'cancelled' ? ' (Cancelado)' : 
+                                    r.status === 'pending' ? ' (Pendiente)' : '';
+                
+                const statusColor = r.status === 'rejected' ? '#ef4444' : 
+                                    r.status === 'cancelled' ? '#9ca3af' : 
+                                    r.status === 'pending' ? '#eab308' : '#22c55e';
+                                    
+                const textDecoration = isRejectedOrCancelled ? 'line-through' : 'none';
+                const opacity = isRejectedOrCancelled ? 0.6 : 1.0;
+                const costDisplay = isRejectedOrCancelled ? `0 pts` : `-${r.cost} pts`;
+                
+                return `
+                  <div style="display:flex; justify-content:space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); opacity: ${opacity};">
+                    <span>
+                      ${r.rewardName || 'Recompensa'} 
+                      ${statusLabel ? `<strong style="color: ${statusColor}; font-size: 0.85em; font-weight: 800;">${statusLabel}</strong>` : ''}
+                    </span>
+                    <span style="text-decoration: ${textDecoration}; font-weight: ${isRejectedOrCancelled ? 'normal' : 'bold'}; color: ${isRejectedOrCancelled ? '#9ca3af' : '#ff0050'};">
+                      ${costDisplay}
+                    </span>
+                  </div>
+                `;
+              }).join('');
+              
               rHtml = `
                 <div id="redemption-breakdown-list" style="display:none; width:100%; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 8px; margin-top: 8px; font-size: 0.9em; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);">
                   ${itemsHtml}
@@ -10711,22 +10781,59 @@ function shouldShowStatsTicker() {
           const btn = e.target && e.target.closest('.gamification-tab');
           if (!btn) return;
           const tab = btn.getAttribute('data-tab') || '';
+          
+          // Actualizar tabs activos
+          const tabs = document.querySelectorAll('.gamification-tab');
+          tabs.forEach(t => t.classList.remove('active'));
+          btn.classList.add('active');
+
           const panels = document.querySelectorAll('.gamification-panel');
           panels.forEach(p => p.classList.remove('active'));
           const activePanel = document.getElementById('gamification-' + tab);
           if (activePanel) activePanel.classList.add('active');
-          const tabs = document.querySelectorAll('.gamification-tab');
-          tabs.forEach(t => t.classList.remove('active'));
-          btn.classList.add('active');
+
+          // Forzar repintado agresivo de títulos para modo oscuro y dispositivos táctiles
+          setTimeout(() => {
+            if (activePanel) {
+              const titles = activePanel.querySelectorAll('h3, h4');
+              const isDarkTheme = document.body.classList.contains('dark-theme');
+
+              titles.forEach(title => {
+                if (isDarkTheme) {
+                  const originalColor = title.style.color;
+                  title.style.color = 'transparent';
+                  requestAnimationFrame(() => {
+                    title.style.color = originalColor || '';
+                    const originalTransform = title.style.transform;
+                    title.style.transform = 'translate3d(0.1px, 0, 0)';
+                    requestAnimationFrame(() => {
+                      title.style.transform = originalTransform || 'translate3d(0, 0, 0)';
+                    });
+                  });
+                } else {
+                  const originalTransform = title.style.transform;
+                  title.style.transform = 'translateZ(0.1px)';
+                  requestAnimationFrame(() => {
+                    title.style.transform = originalTransform || 'translateZ(0)';
+                  });
+                }
+              });
+            }
+          }, 10);
+
           if (tab === 'breakdown') {
             const u = getCurrentProfileUser();
             if (u) {
-              // Limpiar valores visuales para evitar ver datos viejos
-              ['breakdown-played-base', 'breakdown-vip-bonus', 'breakdown-daily-bonus', 'breakdown-achievements', 'breakdown-streak-residual', 'breakdown-total'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.textContent = '-';
-              });
-              await renderPointsBreakdownForUser(u, true);
+              try {
+                // Limpiar valores visuales para evitar ver datos viejos
+                ['breakdown-played-base', 'breakdown-vip-bonus', 'breakdown-daily-bonus', 'breakdown-achievements', 'breakdown-streak-residual', 'breakdown-total'].forEach(id => {
+                  const el = document.getElementById(id);
+                  if (el) el.textContent = '-';
+                });
+                await renderPointsBreakdownForUser(u, true);
+              } catch (err) {
+                console.error('❌ Error handling breakdown tab click:', err);
+              }
             }
           }
           if (tab === 'stats') {
@@ -10736,7 +10843,8 @@ function shouldShowStatsTicker() {
                 const localData = getLocalGamificationData(u) || {};
                 await renderPersonalStatsForUser(localData, u);
                 startCloudRealtimeForUser(u);
-              } catch (_) {
+              } catch (err) {
+                console.error('❌ Error handling stats tab click:', err);
                 const ids = ['personal-total-songs', 'personal-unique-artists', 'personal-active-days', 'personal-rank'];
                 ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = id === 'personal-rank' ? '-' : '0'; });
               }
@@ -10749,7 +10857,13 @@ function shouldShowStatsTicker() {
             const panel = document.getElementById('gamification-breakdown');
             if (panel && panel.classList.contains('active')) {
               const u = getCurrentProfileUser();
-              if (u) await renderPointsBreakdownForUser(u, true);
+              if (u) {
+                try {
+                  await renderPointsBreakdownForUser(u, true);
+                } catch (err) {
+                  console.error('❌ Error on user select change for breakdown:', err);
+                }
+              }
             }
             const statsPanel = document.getElementById('gamification-stats');
             if (statsPanel && statsPanel.classList.contains('active')) {
@@ -10832,129 +10946,49 @@ function shouldShowStatsTicker() {
         unsubscribeUserRealtime();
         const u = String(usuario || '').trim().replace(/^@/, '');
         const norm = u.toLowerCase();
-        const sanitize = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
-        window.__userReqPrefixes = window.__userReqPrefixes || {};
-        window.__userReqPrefixes[norm] = new Set();
 
-        let localRequests = new Set();
-        let localPlayedSnapshot = null;
-        window.__userToggleSet = window.__userToggleSet || {};
-        window.__userToggleSet[norm] = window.__userToggleSet[norm] || new Set();
-
-        const recalcPlayed = () => {
-          if (!localPlayedSnapshot) return;
-          // COHERENCIA: Usar todos los IDs fusionados para el prefijo, no solo el actual
-          const fused = typeof getFusedIds === 'function' ? getFusedIds(u) : [u];
-          const prefixes = fused.map(fid => sanitize(`${fid.replace(/^@/, '')}-`));
-          const ids = new Set();
-
-          // Solo procesar si tenemos requests cargados para validar
-          const hasRequests = localRequests && localRequests.size > 0;
-
-          // 1. Incorporar datos de Firestore (Snapshot)
-          localPlayedSnapshot.forEach(doc => {
-            const dayId = String(doc.id || '');
-            if (!isOnOrAfterStart(dayId)) return;
-            const d = doc.data() || {};
-            const arr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : (Array.isArray(d.songIds) ? d.songIds : []));
-            arr.forEach(x => {
-              const id = sanitize(x);
-              if (prefixes.some(p => id.startsWith(p))) {
-                ids.add(id);
-              }
-            });
-          });
-
-          // 2. Incorporar datos de LocalStorage (Prioridad local)
+        // Utilidad para sincronizar UI de estadísticas con el desglose en tiempo real consolidado
+        const syncStatsWithBreakdown = async () => {
           try {
-            const localPlayedMap = JSON.parse(localStorage.getItem('playedSongs') || '{}');
-            Object.keys(localPlayedMap).forEach(day => {
-              if (!isOnOrAfterStart(day)) return;
-              const arr = Array.isArray(localPlayedMap[day]) ? localPlayedMap[day] : [];
-              arr.forEach(x => {
-                const id = sanitize(x);
-                if (prefixes.some(p => id.startsWith(p))) {
-                  ids.add(id);
+            console.log(`📊 [RealtimeStats] Sincronizando estadísticas en tiempo real para ${u}...`);
+            const fresh = await computeUserBreakdown(u);
+            if (fresh) {
+              const sessKey = norm;
+              window.__sessionBreakdownCache = window.__sessionBreakdownCache || {};
+              window.__sessionBreakdownCache[sessKey] = fresh;
+
+              // Actualizar UI de Estadísticas
+              stableSetStat('personal-total-songs', Math.max(fresh.requestedCount || 0, fresh.playedCount || 0), u);
+              stableSetStat('personal-unique-artists', fresh.uniqueArtists || 0, u);
+              stableSetStat('personal-active-days', fresh.activeDaysValid || 0, u);
+              setPlayedStat(fresh.playedCount || 0);
+
+              // Si la pestaña de Transparencia (Breakdown) está activa, repintar
+              const bdPanel = document.getElementById('gamification-breakdown');
+              if (bdPanel && bdPanel.classList.contains('active')) {
+                const curProfile = getCurrentProfileUser();
+                if (curProfile && String(curProfile).toLowerCase() === norm) {
+                  renderPointsBreakdownForUser(u, true).catch(() => { });
                 }
-              });
-            });
-          } catch (_) { }
-
-          // Actualizar el Set global y la UI
-          window.__userToggleSet[norm] = ids;
-          window.__toggleReady = window.__toggleReady || {};
-          window.__toggleReady[norm] = true;
-
-          setPlayedStat(ids.size);
-
-          // NEW: Actualizar también la sección de Transparencia (Breakdown) si está visible
-          const bdPanel = document.getElementById('gamification-breakdown');
-          if (bdPanel && bdPanel.classList.contains('active')) {
-            // Verificar que estamos viendo el perfil de este usuario
-            const curProfile = getCurrentProfileUser();
-            if (curProfile && String(curProfile).toLowerCase() === norm) {
-              renderPointsBreakdownForUser(u, true).catch(() => { });
+              }
             }
+          } catch (e) {
+            console.error('Error en syncStatsWithBreakdown:', e);
           }
         };
 
         try {
-          const pollUserSolicitudes = async () => {
-            const totalSongs = typeof countTotalRequestedSongsForUser === 'function' ? await countTotalRequestedSongsForUser(u) : 0;
-            
-            let userSolicitudes = [];
-            if (typeof getAllCombinedSolicitudes === 'function') {
-              const all = await getAllCombinedSolicitudes();
-              userSolicitudes = all.filter(s => String(s.usuario || '').trim().replace(/^@/, '').toLowerCase() === norm);
-            }
-
-            const artists = new Set(userSolicitudes.map(s => s.artista).filter(Boolean));
-            const days = new Set(userSolicitudes.map(s => String(s.day || (s.fecha || '').split('T')[0] || '').trim()).filter(d => d));
-            
-            const snap = await db.collection('solicitudes').where('usuario', '==', u).get();
-            const reqIds = new Set();
-            snap.forEach(doc => {
-              const d = doc.data() || {};
-              const rid = `${d.usuario}-${d.cancion}-${d.artista}-${d.hora || '00:00'}`.replace(/[^a-zA-Z0-9-]/g, '');
-              reqIds.add(sanitize(rid));
-              reqIds.add(sanitize(`${d.usuario}-${d.cancion}-${d.artista}`.replace(/[^a-zA-Z0-9-]/g, '')));
-            });
-
-            localRequests = reqIds;
-            window.__userReqPrefixes[norm] = reqIds; 
-            stableSetStat('personal-total-songs', totalSongs, u);
-            stableSetStat('personal-unique-artists', artists.size, u);
-            stableSetStat('personal-active-days', days.size, u);
-
-            if (localPlayedSnapshot) recalcPlayed();
-          };
-          pollUserSolicitudes().catch(() => { });
-          const intervalId = setInterval(() => { pollUserSolicitudes().catch(() => { }); }, 45000);
+          // Ejecución inmediata
+          syncStatsWithBreakdown();
+          
+          // Intervalo de recarga (cada 45 segundos)
+          const intervalId = setInterval(syncStatsWithBreakdown, 45000);
           window.__userSubs.solicitudes = () => clearInterval(intervalId);
         } catch (_) { }
+
         try {
-          const pollPlayedSongs = async () => {
-            const snap = await db.collection('playedSongs').get();
-            localPlayedSnapshot = snap;
-            // Si ya tenemos requests, filtramos. Si no, esperamos a que lleguen (el snapshot de solicitudes llega casi junto)
-            if (localRequests.size > 0 || (window.__userReqPrefixes[norm] && window.__userReqPrefixes[norm].size > 0)) {
-              if (localRequests.size === 0 && window.__userReqPrefixes[norm]) localRequests = window.__userReqPrefixes[norm];
-              recalcPlayed();
-            } else {
-              // Primera carga: intentar recalcular sin filtro estricto si está vacío, o esperar?
-              // Si localRequests está vacío, recalcPlayed devuelve todo.
-              // Mejor esperar un poco o confiar en el estado inicial
-              recalcPlayed();
-            }
-          };
-          pollPlayedSongs().catch(() => { });
-          const intervalId = setInterval(() => { pollPlayedSongs().catch(() => { }); }, 60000);
-          window.__userSubs.played = () => clearInterval(intervalId);
-        } catch (_) { }
-        try {
+          // Polling para el rango global consolidado
           const pollAllSolicitudes = async () => {
-            // FIX: Para el rank, necesitamos los totales reales de todos, no solo de 'solicitudes'
-            // Leemos del documento 'userTotals' que ya tiene todo consolidado
             try {
               const doc = await db.collection('globalStats').doc('userTotals').get();
               if (doc.exists) {
@@ -10968,44 +11002,9 @@ function shouldShowStatsTicker() {
             }
           };
           pollAllSolicitudes().catch(() => { });
-          const intervalId = setInterval(() => { pollAllSolicitudes().catch(() => { }); }, 60000);
+          const intervalId = setInterval(pollAllSolicitudes, 60000);
           window.__userSubs.allSolicitudes = () => clearInterval(intervalId);
         } catch (_) { }
-        try {
-          const pollToggleEvents = async () => {
-            const snap = await db.collection('systemEvents')
-              .where('type', '==', 'togglePlayed')
-              .where('usuario', '==', String(u || '').trim().replace(/^@/, '').toLowerCase())
-              .get();
-            const latest = {};
-            snap.forEach(doc => {
-              const d = doc.data() || {};
-              const sid = sanitize(String(d.songId || ''));
-              if (!sid) return;
-              const day = String(d.day || '');
-              const ts = d.ts && d.ts.toMillis ? d.ts.toMillis() : 0;
-              const action = String(d.action || '').toLowerCase();
-              const key = `${sid}|${day}`;
-              const cur = latest[key];
-              if (!cur || ts >= cur.ts) latest[key] = { action, ts, sid, day };
-            });
-            const set = new Set();
-            Object.keys(latest).forEach(k => {
-              const it = latest[k];
-              if (it && it.action === 'mark') set.add(it.sid);
-            });
-            window.__userToggleSet = window.__userToggleSet || {};
-            window.__userToggleSet[norm] = set;
-            window.__toggleReady = window.__toggleReady || {};
-            window.__toggleReady[norm] = true;
-            try { setPlayedStat(set.size); } catch (_) { }
-            recalcPlayed();
-          };
-          pollToggleEvents().catch(() => { });
-          const intervalId = setInterval(() => { pollToggleEvents().catch(() => { }); }, 45000);
-          window.__userSubs.toggleEvents = () => clearInterval(intervalId);
-        } catch (_) { }
-        try { backfillToggleEventsForUser(u); } catch (_) { }
       }
       async function recountToggleTotalsForUser(usuario, startDay = '', endDay = '') {
         try {
@@ -11508,7 +11507,8 @@ function shouldShowStatsTicker() {
                 const updated = d.updatedAt ? (typeof d.updatedAt.toDate === 'function' ? d.updatedAt.toDate() : new Date(d.updatedAt)) : null;
                 const isRecent = updated && (now - updated.getTime() < threshold);
                 const uNorm = doc.id.toLowerCase().replace(/^@/, '');
-                const isVip = (window.vipSet && window.vipSet.has(uNorm)) || (window.z0VipSet && window.z0VipSet.has(uNorm));
+                const isVip = typeof window.isUserVipGlobal === 'function' ? window.isUserVipGlobal(uNorm) :
+                              ((window.vipSet && window.vipSet.has(uNorm)) || (window.z0VipSet && window.z0VipSet.has(uNorm)));
 
                 // FILTRO DE ACTIVIDAD ESTRICTO:
                 // 1. No debe ser un nombre inválido (bots, chino, spam)
@@ -11572,6 +11572,8 @@ function shouldShowStatsTicker() {
           // 4. GENERAR EL SELECTOR LIMPIO
           const usersList = Array.from(activeUsers.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
           
+          window.__activeUsersList = usersList; // Guardar en cache global para filtrado
+
           userSelect.innerHTML = '<option value="">Selecciona un usuario</option>';
           usersList.forEach(name => {
             const option = document.createElement('option');
@@ -11589,6 +11591,13 @@ function shouldShowStatsTicker() {
           if (current && activeWhitelist.has(current.toLowerCase().replace(/^@/, ''))) {
             userSelect.value = current;
           }
+          
+          // Sincronizar campo de texto visible
+          const filterInput = document.getElementById('user-search-filter');
+          if (filterInput) {
+            filterInput.value = userSelect.value || '';
+          }
+
           populateBadgeSelectForUser(getCurrentSelectedUser());
         } catch (error) {
           console.error('Error populateUserSelector:', error);
@@ -11626,6 +11635,8 @@ function shouldShowStatsTicker() {
 
           const usersList = Array.from(users.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
           
+          window.__activeUsersList = usersList; // Guardar en cache global para filtrado
+
           userSelect.innerHTML = '<option value="">Selecciona un usuario</option>';
           usersList.forEach(name => {
             const option = document.createElement('option');
@@ -11636,6 +11647,12 @@ function shouldShowStatsTicker() {
 
           if (usersList.length === 0) {
             userSelect.innerHTML = '<option value="">No hay usuarios locales</option>';
+          }
+
+          // Sincronizar campo de texto visible
+          const filterInput = document.getElementById('user-search-filter');
+          if (filterInput) {
+            filterInput.value = userSelect.value || '';
           }
         } catch (error) {
           console.error('Error populateUserSelectorFromLocalStorage:', error);
@@ -12190,10 +12207,6 @@ function shouldShowStatsTicker() {
           }
 
           const totalUsers = window.vipSet.size + window.z0VipSet.size + window.donadorSet.size;
-          if (totalUsers === 0) {
-            console.warn(`⚠️ Sets vacíos para ${username}, datos aún no cargados`);
-            return false;
-          }
           // Verificar que los sets estén disponibles
           console.log(`📊 Estado de sets: vipSet=${typeof window.vipSet !== 'undefined'}, z0VipSet=${typeof window.z0VipSet !== 'undefined'}, donadorSet=${typeof window.donadorSet !== 'undefined'}`);
 
@@ -12476,14 +12489,7 @@ function shouldShowStatsTicker() {
             return existingData;
           }
 
-          // Verificar que al menos uno de los sets tenga datos (indicando que ya se cargaron)
-          const totalUsers = vipSet.size + z0VipSet.size + donadorSet.size;
-          if (totalUsers === 0) {
-            console.log(`⏳ Sets de insignias vacíos para ${username}, esperando carga de datos... reintentando en 3 segundos`);
-            setTimeout(() => processAchievementsForUser(username, existingData), 3000);
-            return existingData;
-          }
-
+          // Si los sets de insignias están vacíos, procedemos con cautela (Firebase cargará de forma asíncrona)
           console.log(`✅ Sets cargados: VIP(${vipSet.size}), Z0-VIP(${z0VipSet.size}), Donador(${donadorSet.size})`);
 
           // Usar datos existentes como base
@@ -12962,9 +12968,8 @@ function shouldShowStatsTicker() {
           });
 
           // Verificar estado VIP desde Firebase (sets globales)
-          const vipSetAvailable = typeof vipSet !== 'undefined';
-          const z0VipSetAvailable = typeof z0VipSet !== 'undefined';
-          const isVip = (vipSetAvailable && vipSet.has(targetUser)) || (z0VipSetAvailable && z0VipSet.has(targetUser));
+          const isVip = typeof window.isUserVipGlobal === 'function' ? window.isUserVipGlobal(targetUser) : 
+                        ((typeof vipSet !== 'undefined' && vipSet.has(targetUser)) || (typeof z0VipSet !== 'undefined' && z0VipSet.has(targetUser)));
 
           // Obtener datos de gamificación existentes para preservar rachas
           const existingData = getGamificationDataForUser(targetUser);
@@ -13075,15 +13080,10 @@ function shouldShowStatsTicker() {
           });
 
           // Verificar estado VIP desde Firebase (sets globales)
-          const vipSetAvailable = typeof vipSet !== 'undefined' && vipSet;
-          const z0VipSetAvailable = typeof z0VipSet !== 'undefined' && z0VipSet;
-          const isVip = (vipSetAvailable && vipSet.has(targetUser)) || (z0VipSetAvailable && z0VipSet.has(targetUser));
+          const isVip = typeof window.isUserVipGlobal === 'function' ? window.isUserVipGlobal(targetUser) : 
+                        ((typeof vipSet !== 'undefined' && vipSet.has(targetUser)) || (typeof z0VipSet !== 'undefined' && z0VipSet.has(targetUser)));
 
           console.log(`👑 Verificación VIP para ${targetUser}:`);
-          console.log(`   - vipSet disponible: ${vipSetAvailable}`);
-          console.log(`   - z0VipSet disponible: ${z0VipSetAvailable}`);
-          if (vipSetAvailable) console.log(`   - En vipSet: ${vipSet.has(targetUser)}`);
-          if (z0VipSetAvailable) console.log(`   - En z0VipSet: ${z0VipSet.has(targetUser)}`);
           console.log(`   - Es VIP final: ${isVip}`);
 
           // Obtener datos de gamificación existentes para preservar rachas
@@ -13113,9 +13113,14 @@ function shouldShowStatsTicker() {
       async function renderGamificationModal() {
         const targetUser = getCurrentSelectedUser();
         console.log(`🎨 INICIO - Renderizando modal para usuario: ${targetUser}`);
+        
+        let freshStats = null; // DECLARAR AQUÍ EN EL ÁMBITO SUPERIOR
 
         // RESET INICIAL: Limpiar campos de UI para evitar "fantasmas" o previsualizaciones erróneas
         try {
+          const filterInput = document.getElementById('user-search-filter');
+          if (filterInput) filterInput.value = ''; // Limpiar buscador al abrir modal
+
           const idsToClear = ['user-points', 'personal-total-songs', 'personal-total-played', 'personal-unique-artists', 'personal-active-days', 'personal-rank', 'breakdown-played-base', 'breakdown-vip-bonus', 'breakdown-daily-bonus', 'breakdown-achievements', 'breakdown-streak-residual', 'breakdown-total', 'current-xp', 'next-level-xp'];
           idsToClear.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '...'; });
           const pf = document.getElementById('progress-fill'); if (pf) pf.style.width = '0%';
@@ -13140,13 +13145,13 @@ function shouldShowStatsTicker() {
 
         // LIMPIAR CACHE DE SESIÓN PARA ASEGURAR DATOS FRESCOS AL ABRIR
         window.__sessionBreakdownCache = window.__sessionBreakdownCache || {};
-        const sessKey = String(targetUser || '').toLowerCase();
+        const sessKey = String(targetUser || '').trim().replace(/^@/, '').toLowerCase(); // Unificado
         delete window.__sessionBreakdownCache[sessKey];
 
         // RECALCULAR RACHAS Y ESTADÍSTICAS EN TIEMPO REAL (FUSIÓN DE CUENTAS)
         console.log(`🔥 Recalculando breakdown para ${targetUser}...`);
         try {
-          const freshStats = await computeUserBreakdown(targetUser);
+          freshStats = await computeUserBreakdown(targetUser);
           if (freshStats) {
             window.__sessionBreakdownCache[sessKey] = freshStats; // Guardar en cache de sesión
             data.streaks.current = freshStats.currentStreak;
@@ -13253,16 +13258,21 @@ function shouldShowStatsTicker() {
           console.log(`🎯 Configurando selector: targetUser=${targetUser}, getCurrentUser()=${getCurrentUser()}`);
 
           if (userSelect) {
+            const container = document.querySelector('.user-autocomplete-container');
             if (targetUser !== getCurrentUser()) {
               userSelect.value = targetUser;
-              userSelect.style.display = 'none';
+              if (container) container.style.display = 'none';
               if (backBtn) {
                 backBtn.style.display = 'inline-block';
               }
               console.log(`✅ Selector configurado a: ${targetUser}`);
             } else {
               userSelect.value = '';
-              userSelect.style.display = 'block';
+              if (container) container.style.display = 'block';
+              const filterInput = document.getElementById('user-search-filter');
+              if (filterInput) {
+                filterInput.value = ''; // Limpiar buscador
+              }
               if (backBtn) {
                 backBtn.style.display = 'none';
               }
@@ -13289,7 +13299,7 @@ function shouldShowStatsTicker() {
         console.log(`🎯 Renderizando ${ACHIEVEMENTS.length} logros con progreso`);
 
         container.innerHTML = ACHIEVEMENTS.map(achievement => {
-          const isUnlocked = data.achievements.includes(achievement.id);
+          const isUnlocked = Array.isArray(data.achievements) && data.achievements.includes(achievement.id);
           const prog = typeof getAchievementProgress === 'function'
             ? getAchievementProgress(achievement, data.stats || {})
             : null;
@@ -13339,25 +13349,42 @@ function shouldShowStatsTicker() {
       }
 
       async function renderStreaksForUser(data) {
-        console.log(`🔥 Renderizando rachas para usuario:`, data.streaks);
+        const targetUser = getCurrentSelectedUser() || getCurrentUser();
+        const sessKey = String(targetUser || '').toLowerCase();
+        const cachedBreakdown = window.__sessionBreakdownCache && window.__sessionBreakdownCache[sessKey];
+        
+        let currentStreak = (data && data.streaks && data.streaks.current) || 0;
+        let bestStreak = (data && data.streaks && data.streaks.best) || 0;
+        let calendarActivity = (data && data.streaks && data.streaks.calendar) || {};
+
+        if (cachedBreakdown) {
+          currentStreak = cachedBreakdown.currentStreak || currentStreak;
+          bestStreak = cachedBreakdown.bestStreak || bestStreak;
+          
+          // Reconstruir calendario a partir del desglose oficial para coherencia absoluta
+          if (Array.isArray(cachedBreakdown.detail)) {
+            const reconstructed = {};
+            cachedBreakdown.detail.forEach(d => {
+              if (d.day) reconstructed[d.day] = (reconstructed[d.day] || 0) + (d.played || 0);
+            });
+            calendarActivity = reconstructed;
+          }
+        }
+
+        console.log(`🔥 Renderizando rachas para usuario ${targetUser}:`, { currentStreak, bestStreak });
 
         const currentStreakEl = document.getElementById('current-streak');
         const bestStreakEl = document.getElementById('best-streak');
 
         if (currentStreakEl) {
-          currentStreakEl.textContent = `${data.streaks.current || 0} días`;
-        } else {
-          console.warn('❌ Elemento current-streak no encontrado');
+          currentStreakEl.textContent = `${currentStreak} días`;
         }
-
         if (bestStreakEl) {
-          bestStreakEl.textContent = `${data.streaks.best || 0} días`;
-        } else {
-          console.warn('❌ Elemento best-streak no encontrado');
+          bestStreakEl.textContent = `${bestStreak} días`;
         }
 
         // Renderizar calendario de actividad
-        await renderStreakCalendarForUser(data.streaks.calendar || {});
+        await renderStreakCalendarForUser(calendarActivity);
       }
 
       async function renderStreakCalendarForUser(calendar) {
@@ -13711,8 +13738,26 @@ function shouldShowStatsTicker() {
       }
 
       async function renderPersonalStatsForUser(data, usuario) {
-        const stats = (data && data.stats) || {};
         const targetUser = usuario || getCurrentSelectedUser();
+        const normKey = String(targetUser || '').trim().toLowerCase().replace(/^@/, '');
+        
+        let stats = (data && data.stats) || {};
+
+        // COHERENCIA CRÍTICA: Si tenemos datos frescos de desglose en la sesión (que lee directo de playedSongs y solicitudes),
+        // usarlos como fuente autoritativa de verdad para evitar discrepancias visuales entre pestañas (ej: 133 vs 402).
+        if (window.__sessionBreakdownCache && window.__sessionBreakdownCache[normKey]) {
+          const fresh = window.__sessionBreakdownCache[normKey];
+          console.log(`📊 [PersonalStats] Usando caché de breakdown en tiempo real para ${targetUser}:`, fresh);
+          stats = {
+            totalSongs: Math.max(fresh.requestedCount || 0, fresh.playedCount || 0),
+            requestedCount: Math.max(fresh.requestedCount || 0, fresh.playedCount || 0),
+            totalPlayedSongs: fresh.playedCount,
+            songCount: fresh.playedCount,
+            activeDays: fresh.activeDaysValid,
+            uniqueArtists: fresh.uniqueArtists || stats.uniqueArtists || 0,
+            uniqueArtistsPlayed: fresh.uniqueArtistsPlayed || stats.uniqueArtistsPlayed || 0
+          };
+        }
         
         console.log(`📊 Renderizando estadísticas para ${targetUser}:`, stats);
 
@@ -13739,7 +13784,7 @@ function shouldShowStatsTicker() {
         } catch (e) { }
 
         try {
-          const allSolicitudes = await getAllCombinedSolicitudes({ allTime: (typeof allTime !== 'undefined' ? allTime : false) });
+          const allSolicitudes = await getAllCombinedSolicitudes({ allTime: false });
           const userCounts = {};
           allSolicitudes.forEach(s => {
             const day = String(s.day || (s.fecha || '').split('T')[0] || '').trim();
@@ -13748,11 +13793,12 @@ function shouldShowStatsTicker() {
             userCounts[key] = (userCounts[key] || 0) + 1;
           });
           const sortedUsers = Object.entries(userCounts).sort((a, b) => b[1] - a[1]);
-          const userRank = sortedUsers.findIndex(([user]) => user === normUser) + 1;
+          const normTargetUser = String(targetUser || '').trim().replace(/^@/, '').toLowerCase();
+          const userRank = sortedUsers.findIndex(([user]) => user === normTargetUser) + 1;
           const personalRankEl = document.getElementById('personal-rank');
           if (personalRankEl) personalRankEl.textContent = userRank > 0 ? `#${userRank}` : '-';
         } catch (error) {
-          // Fallback rank
+          console.error("❌ Error calculating user stats rank:", error);
         }
 
         // --- NUEVA LÓGICA: Contar canjes aceptados ---
@@ -13818,6 +13864,7 @@ function shouldShowStatsTicker() {
         const userSelect = document.getElementById('gamification-user-select');
         const backBtn = document.getElementById('back-to-my-profile');
         const badgeSelect = document.getElementById('badge-select');
+        const container = document.querySelector('.user-autocomplete-container');
 
         console.log(`🔄 Selector cambió a: ${e.target.value}`);
 
@@ -13827,16 +13874,20 @@ function shouldShowStatsTicker() {
 
         // Si se selecciona un usuario diferente al actual, ocultar selector y mostrar botón "Cambiar Usuario"
         if (e.target.value && e.target.value !== getCurrentUser()) {
-          if (userSelect) {
-            userSelect.style.display = 'none';
+          if (container) {
+            container.style.display = 'none';
           }
           if (backBtn) {
             backBtn.style.display = 'inline-block';
           }
         } else {
           // Mostrar selector y ocultar botón si se escoge el usuario actual o se limpia la selección
-          if (userSelect) {
-            userSelect.style.display = 'block';
+          if (container) {
+            container.style.display = 'block';
+          }
+          const filterInput = document.getElementById('user-search-filter');
+          if (filterInput) {
+            filterInput.value = ''; // Limpiar query
           }
           if (backBtn) {
             backBtn.style.display = 'none';
@@ -13851,11 +13902,20 @@ function shouldShowStatsTicker() {
       document.getElementById('back-to-my-profile')?.addEventListener('click', async () => {
         const userSelect = document.getElementById('gamification-user-select');
         const backBtn = document.getElementById('back-to-my-profile');
+        const container = document.querySelector('.user-autocomplete-container');
 
         // Mostrar el selector de nuevo
         if (userSelect) {
-          userSelect.style.display = 'block';
           userSelect.value = ''; // Resetear selección
+        }
+
+        if (container) {
+          container.style.display = 'block';
+        }
+
+        const filterInput = document.getElementById('user-search-filter');
+        if (filterInput) {
+          filterInput.value = ''; // Limpiar query
         }
 
         // Ocultar botón "Cambiar Usuario"
@@ -13865,6 +13925,84 @@ function shouldShowStatsTicker() {
 
         // Volver al usuario actual
         await switchToUser('');
+      });
+
+      // Función para reconstruir la lista flotante del buscador
+      function rebuildAutocompleteDropdown() {
+        const dropdown = document.getElementById('user-search-dropdown');
+        const filterInput = document.getElementById('user-search-filter');
+        const userSelect = document.getElementById('gamification-user-select');
+        if (!dropdown || !filterInput) return;
+
+        const query = filterInput.value.toLowerCase().trim();
+        const users = window.__activeUsersList || [];
+        
+        dropdown.innerHTML = '';
+
+        // Siempre añadir la opción "Selecciona un usuario" al inicio (como reset)
+        const defaultItem = document.createElement('div');
+        defaultItem.className = 'user-dropdown-item';
+        defaultItem.textContent = '👤 Selecciona un usuario';
+        defaultItem.addEventListener('click', () => {
+          filterInput.value = '';
+          if (userSelect) {
+            userSelect.value = '';
+            userSelect.dispatchEvent(new Event('change'));
+          }
+          dropdown.hidden = true;
+        });
+        dropdown.appendChild(defaultItem);
+
+        const filtered = users.filter(name => name.toLowerCase().includes(query));
+
+        filtered.forEach(name => {
+          const item = document.createElement('div');
+          item.className = 'user-dropdown-item';
+          if (userSelect && userSelect.value === name) {
+            item.classList.add('active');
+          }
+          
+          item.textContent = name;
+          item.addEventListener('click', () => {
+            filterInput.value = name;
+            if (userSelect) {
+              userSelect.value = name;
+              userSelect.dispatchEvent(new Event('change'));
+            }
+            dropdown.hidden = true;
+          });
+          dropdown.appendChild(item);
+        });
+
+        if (filtered.length === 0 && query !== '') {
+          const noMatch = document.createElement('div');
+          noMatch.className = 'user-dropdown-item no-matches';
+          noMatch.textContent = '❌ Sin coincidencias';
+          dropdown.appendChild(noMatch);
+        }
+      }
+
+      // Escuchar entrada en el input de búsqueda de usuarios
+      document.getElementById('user-search-filter')?.addEventListener('input', () => {
+        rebuildAutocompleteDropdown();
+        const dropdown = document.getElementById('user-search-dropdown');
+        if (dropdown) dropdown.hidden = false;
+      });
+
+      // Escuchar foco para abrir la lista de inmediato
+      document.getElementById('user-search-filter')?.addEventListener('focus', () => {
+        rebuildAutocompleteDropdown();
+        const dropdown = document.getElementById('user-search-dropdown');
+        if (dropdown) dropdown.hidden = false;
+      });
+
+      // Cerrar la lista cuando se hace click fuera
+      document.addEventListener('click', (e) => {
+        const container = document.querySelector('.user-autocomplete-container');
+        const dropdown = document.getElementById('user-search-dropdown');
+        if (dropdown && container && !container.contains(e.target)) {
+          dropdown.hidden = true;
+        }
       });
 
       // Inicializar al cargar la página
