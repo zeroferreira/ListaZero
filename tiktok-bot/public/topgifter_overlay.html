@@ -26,9 +26,14 @@
             padding: 0;
         }
 
+        :root {
+            --topgifter-opacity: 0.72;
+            --topgifter-radius: 16px;
+            --topgifter-font-size: 14px;
+        }
+
         body {
             font-family: 'Outfit', 'Segoe UI', sans-serif;
-            font-size: var(--topgifter-font-size, 16px);
             background: transparent;
             overflow: hidden;
             width: 340px;
@@ -55,8 +60,8 @@
             align-items: center;
             gap: 10px;
             padding: 7px 12px 7px 10px;
-            border-radius: var(--topgifter-border-radius, 16px);
-            background: rgba(15, 15, 25, var(--topgifter-opacity, 0.72));
+            border-radius: var(--topgifter-radius);
+            background: rgba(15, 15, 25, var(--topgifter-opacity));
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.07);
@@ -67,6 +72,7 @@
             overflow: visible;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
             animation: slideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+            font-size: var(--topgifter-font-size);
         }
 
         .rankUser:hover {
@@ -75,7 +81,7 @@
 
         /* First place special card */
         .rankUser.first-place {
-            background: rgba(20, 15, 5, var(--topgifter-opacity, 0.80));
+            background: rgba(20, 15, 5, var(--topgifter-opacity));
             border-color: rgba(255, 195, 0, 0.35);
             box-shadow:
                 0 4px 24px rgba(255, 185, 0, 0.18),
@@ -556,32 +562,68 @@
         });
 
         // =============================================
-        //  PREVIEW (datos de ejemplo)
+        //  PREVIEW (datos de ejemplo aleatorios)
         // =============================================
         window.preview = function() {
-            updateRanking([
-                { totalAmount: 15005, username: "exampleuser1", nickname: "Zero FM Fan #1",
-                  profilePictureUrl: "https://i.pravatar.cc/100?img=1" },
-                { totalAmount: 10536, username: "exampleuser2", nickname: "Gifter Pro",
-                  profilePictureUrl: "https://i.pravatar.cc/100?img=2" },
-                { totalAmount: 7056,  username: "exampleuser3", nickname: "MúsicaVida",
-                  profilePictureUrl: "https://i.pravatar.cc/100?img=3" },
-                { totalAmount: 1533,  username: "exampleuser4", nickname: "TikFan4",
-                  profilePictureUrl: "https://i.pravatar.cc/100?img=4" },
-                { totalAmount: 830,   username: "exampleuser5", nickname: "CoinsRain5",
-                  profilePictureUrl: "https://i.pravatar.cc/100?img=5" },
-                { totalAmount: 414,   username: "exampleuser6", nickname: "ZeroFM_Love",
-                  profilePictureUrl: "https://i.pravatar.cc/100?img=6" },
-                { totalAmount: 200,   username: "exampleuser7", nickname: "Supporter7",
-                  profilePictureUrl: "https://i.pravatar.cc/100?img=7" },
-                { totalAmount: 90,    username: "exampleuser8", nickname: "NightOwl8",
-                  profilePictureUrl: "https://i.pravatar.cc/100?img=8" },
-                { totalAmount: 40,    username: "exampleuser9", nickname: "Rookie9",
-                  profilePictureUrl: "https://i.pravatar.cc/100?img=9" },
-                { totalAmount: 7,     username: "exampleuser10", nickname: "JustStarting",
-                  profilePictureUrl: "https://i.pravatar.cc/100?img=10" }
-            ]);
+            const firstNames = ["Zero", "Donador", "Música", "TikTok", "Gifter", "Super", "Night", "Fan", "Sponsor", "VIP"];
+            const lastNames = ["FM", "Lover", "Pro", "Star", "King", "Owl", "Vida", "Activo", "Zero", "Collector"];
+            
+            const count = Math.floor(Math.random() * 4) + 6; // 6 a 9 usuarios aleatorios
+            const list = [];
+            for (let i = 0; i < count; i++) {
+                const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
+                const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
+                const username = (fn + "_" + ln + Math.floor(Math.random() * 90 + 10)).toLowerCase();
+                const nickname = fn + " " + ln + (Math.random() > 0.7 ? " 👑" : "");
+                const randomPicId = Math.floor(Math.random() * 70) + 1;
+                
+                list.push({
+                    username: username,
+                    nickname: nickname,
+                    profilePictureUrl: `https://i.pravatar.cc/100?img=${randomPicId}`,
+                    totalAmount: Math.floor(Math.random() * 18000) + 100
+                });
+            }
+            // Ordenar de mayor a menor
+            list.sort((a, b) => b.totalAmount - a.totalAmount);
+            
+            updateRanking(list);
         };
+
+        // Receptor de eventos de mensajería (postMessage) para simulación local offline y actualización en tiempo real
+        window.addEventListener('message', function(event) {
+            if (!event.data) return;
+            
+            if (event.data.action === 'triggerTestTopGifters' || event.data.action === 'triggerTestAlert') {
+                console.log("[topgifter_overlay] Alerta de prueba local recibida. Generando datos de prueba aleatorios...");
+                window.preview();
+            } else if (event.data.action === 'updateLiveConfig' || event.data.action === 'updateConfig') {
+                console.log("[topgifter_overlay] Configuración en tiempo real recibida:", event.data.config || event.data.payload);
+                const data = event.data.config || event.data.payload || {};
+                
+                // Mapear configuraciones de estilos
+                if (data.topgifterOpacity !== undefined) {
+                    document.documentElement.style.setProperty('--topgifter-opacity', data.topgifterOpacity);
+                }
+                if (data.topgifterRadius !== undefined) {
+                    document.documentElement.style.setProperty('--topgifter-radius', data.topgifterRadius + 'px');
+                }
+                if (data.topgifterFontSize !== undefined) {
+                    document.documentElement.style.setProperty('--topgifter-font-size', data.topgifterFontSize + 'px');
+                }
+                if (data.topgifter_show_crown !== undefined) {
+                    settings.topgifter_showCrown = data.topgifter_show_crown;
+                }
+                if (data.topgifter_show_coin_symbol !== undefined) {
+                    settings.topgifter_showCoinSymbol = data.topgifter_show_coin_symbol;
+                }
+                if (data.topgifter_max !== undefined) {
+                    maxItems = Number(data.topgifter_max);
+                }
+                
+                updateSettings(true);
+            }
+        });
     </script>
 
 </body>

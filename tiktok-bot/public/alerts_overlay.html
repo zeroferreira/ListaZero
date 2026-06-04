@@ -429,6 +429,8 @@
         let db = null;
         let alertQueue = [];
         let isAlertPlaying = false;
+        let activeAlertTimeout = null;
+        let activeAlertExitTimeout = null;
         const overlayStartedAt = new Date(); // Para jugar solo alertas nuevas
 
         // =============================================
@@ -802,10 +804,14 @@
             // Mostrar el overlay con animación
             $wrapper.css("display", "flex").addClass("anim-enter");
 
+            // Clear any existing active timeouts
+            if (activeAlertTimeout) clearTimeout(activeAlertTimeout);
+            if (activeAlertExitTimeout) clearTimeout(activeAlertExitTimeout);
+
             // Duración de la alerta (5.5 segundos)
-            setTimeout(() => {
+            activeAlertTimeout = setTimeout(() => {
                 $wrapper.addClass("anim-exit");
-                setTimeout(() => {
+                activeAlertExitTimeout = setTimeout(() => {
                     $wrapper.hide();
                     isAlertPlaying = false;
                     processQueue(); // Siguiente alerta
@@ -929,14 +935,108 @@
             addAlert(mockData);
         };
 
-        // Receptor de eventos de mensajería (postMessage) para simulación local offline
+        // Receptor de eventos de mensajería (postMessage) para simulación local offline y actualizaciones en tiempo real
         window.addEventListener('message', function(event) {
-            if (event.data && event.data.action === 'triggerTestAlert') {
+            if (!event.data) return;
+            
+            if (event.data.action === 'triggerTestAlert') {
                 console.log("[alerts_overlay] Alerta de prueba local recibida:", event.data.payload);
                 const payload = event.data.payload;
                 // Filtrar simulación por tipo si la URL está restringida
                 if (urlType === 'all' || payload.type === urlType) {
                     addAlert(payload);
+                }
+            } else if (event.data.action === 'updateLiveConfig') {
+                console.log("[alerts_overlay] Configuración en tiempo real recibida:", event.data.config);
+                window.overlayAlertsConfig = event.data.config;
+                // Aplicar estilos estáticos inmediatos
+                applyInitialStyles();
+                
+                // Si la alerta actual está reproduciéndose, actualizarla en tiempo real en el DOM
+                if (isAlertPlaying) {
+                    const config = window.overlayAlertsConfig || {};
+                    const alertBox = document.querySelector('.alert-box');
+                    if (alertBox) {
+                        let opacity = 0.76;
+                        let radius = 28;
+                        let fontSize = 16;
+                        let showCard = true;
+                        let fontFamily = 'Outfit';
+                        let textShadow = '3d-retro';
+                        let messageTemplate = '';
+                        
+                        const $wrapper = $("#alertWrapper");
+                        let type = 'follow';
+                        if ($wrapper.hasClass('type-like')) type = 'like';
+                        else if ($wrapper.hasClass('type-gift')) type = 'gift';
+                        else if ($wrapper.hasClass('type-subscribe')) type = 'subscribe';
+                        
+                        if (type === 'follow') {
+                            opacity = config.followOpacity !== undefined ? config.followOpacity : 0.76;
+                            radius = config.followRadius !== undefined ? config.followRadius : 28;
+                            fontSize = config.followFontSize !== undefined ? config.followFontSize : 16;
+                            showCard = config.followShowCard !== undefined ? config.followShowCard : true;
+                            fontFamily = config.followFontFamily !== undefined ? config.followFontFamily : 'Outfit';
+                            textShadow = config.followTextShadow !== undefined ? config.followTextShadow : '3d-retro';
+                        } else if (type === 'like') {
+                            opacity = config.likeOpacity !== undefined ? config.likeOpacity : 0.76;
+                            radius = config.likeRadius !== undefined ? config.likeRadius : 28;
+                            fontSize = config.likeFontSize !== undefined ? config.likeFontSize : 16;
+                            showCard = config.likeShowCard !== undefined ? config.likeShowCard : true;
+                            fontFamily = config.likeFontFamily !== undefined ? config.likeFontFamily : 'Outfit';
+                            textShadow = config.likeTextShadow !== undefined ? config.likeTextShadow : '3d-retro';
+                            messageTemplate = config.likesAlertMsg || '¡Envió {likes} likes! ❤️';
+                        } else if (type === 'gift') {
+                            opacity = config.giftOpacity !== undefined ? config.giftOpacity : 0.76;
+                            radius = config.giftRadius !== undefined ? config.giftRadius : 28;
+                            fontSize = config.giftFontSize !== undefined ? config.giftFontSize : 16;
+                            showCard = config.giftShowCard !== undefined ? config.giftShowCard : true;
+                            fontFamily = config.giftFontFamily !== undefined ? config.giftFontFamily : 'Outfit';
+                            textShadow = config.giftTextShadow !== undefined ? config.giftTextShadow : '3d-retro';
+                        } else if (type === 'subscribe') {
+                            opacity = config.subscribeOpacity !== undefined ? config.subscribeOpacity : 0.76;
+                            radius = config.subscribeRadius !== undefined ? config.subscribeRadius : 28;
+                            fontSize = config.subscribeFontSize !== undefined ? config.subscribeFontSize : 16;
+                            showCard = config.subscribeShowCard !== undefined ? config.subscribeShowCard : true;
+                            fontFamily = config.subscribeFontFamily !== undefined ? config.subscribeFontFamily : 'Outfit';
+                            textShadow = config.subscribeTextShadow !== undefined ? config.subscribeTextShadow : '3d-retro';
+                        }
+                        
+                        alertBox.style.setProperty('--card-bg-opacity', opacity);
+                        alertBox.style.setProperty('--card-border-radius', radius + 'px');
+                        document.documentElement.style.setProperty('--font-size-base', fontSize + 'px');
+                        
+                        if (!showCard) {
+                            alertBox.classList.add('no-card-bg');
+                        } else {
+                            alertBox.classList.remove('no-card-bg');
+                        }
+                        
+                        loadFontDynamically(fontFamily);
+                        const theme = ALERT_THEMES[type] || ALERT_THEMES.follow;
+                        applyTextShadow(textShadow, theme.color);
+                        
+                        // Si es de tipo Likes, actualizar mensaje si cambió
+                        if (type === 'like' && messageTemplate) {
+                            $("#alertMessage").text(messageTemplate.replace('{likes}', '150'));
+                        }
+                    }
+                    
+                    // Prolongar la duración de la alerta mientras el usuario configure cosas
+                    if (activeAlertTimeout) clearTimeout(activeAlertTimeout);
+                    if (activeAlertExitTimeout) clearTimeout(activeAlertExitTimeout);
+                    
+                    const $wrapper = $("#alertWrapper");
+                    $wrapper.removeClass("anim-exit"); // Evitar animación de salida durante edición
+                    
+                    activeAlertTimeout = setTimeout(() => {
+                        $wrapper.addClass("anim-exit");
+                        activeAlertExitTimeout = setTimeout(() => {
+                            $wrapper.hide();
+                            isAlertPlaying = false;
+                            processQueue();
+                        }, 400);
+                    }, 5500); // 5.5 segundos más
                 }
             }
         });

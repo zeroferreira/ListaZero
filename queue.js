@@ -709,15 +709,8 @@
     // Inicializar settings
     loadSettings();
 
-    // Configuración de Firebase
-    const firebaseConfig = {
-      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-      authDomain: "zero-strom-web.firebaseapp.com",
-      projectId: "zero-strom-web",
-      storageBucket: "zero-strom-web.firebasestorage.app",
-      messagingSenderId: "758369466349",
-      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
-    };
+    // Configuración de Firebase (centralizada en firebase-config.js)
+    const firebaseConfig = window.ZERO_FM_FIREBASE;
 
     let db = null;
     try {

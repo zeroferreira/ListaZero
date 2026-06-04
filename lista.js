@@ -2041,8 +2041,17 @@
           }
         }
       };
-
+      let renderTimeout = null;
       function renderSolicitudes(items) {
+        window.__pendingItemsToRender = items;
+        if (renderTimeout) clearTimeout(renderTimeout);
+        renderTimeout = setTimeout(() => {
+          const itemsToRender = window.__pendingItemsToRender || [];
+          actualRenderSolicitudes(itemsToRender);
+        }, 40);
+      }
+
+      function actualRenderSolicitudes(items) {
         if (!solicitudesList) {
           console.error('❌ solicitudesList no encontrado');
           return;
@@ -4931,8 +4940,13 @@ function shouldShowStatsTicker() {
     function ensureStatsTicker() {
       const el = document.getElementById('stats-ticker');
       if (!el) return;
-      document.body.classList.add('has-stats-ticker');
-      el.hidden = !shouldShowStatsTicker();
+      const show = shouldShowStatsTicker();
+      el.hidden = !show;
+      if (show) {
+        document.body.classList.add('has-stats-ticker');
+      } else {
+        document.body.classList.remove('has-stats-ticker');
+      }
     }
 
     function initListStatsTickerConfig() {
@@ -9819,6 +9833,10 @@ function shouldShowStatsTicker() {
         let tiktokId = null;
         let vipEligibleSongs = 0;
         let playedArtistsSetSize = 0; // Fallback para artistas únicos
+        let cloudFirstRequests = 0; // Fallback para logros de primero en pedir
+        let cloudZeroFMSongs = 0; // Fallback para logros de Zero FM
+        let cloudTopArtistCount = 0;
+        let cloudTopArtistCountPlayed = 0;
         const rawUser = String(u || '').trim();
         const usuario = rawUser.replace(/^@/, '');
         const unameLc = String(usuario || '').trim().toLowerCase();
@@ -9915,8 +9933,16 @@ function shouldShowStatsTicker() {
         const daysSet = new Set();
         const perDaySongs = new Map();
         const playedArtistsSet = new Set();
+        const artistCountsAll = {};
+        const artistCountsPlayed = {};
         
         // --- RECOLECTAR ARTISTAS DE SYSTEM EVENTS ---
+        let calculatedZeroFMPlayed = 0;
+        const isZeroFM = (name) => {
+          const n = String(name || '').toLowerCase();
+          return n.includes('zerofm') || n.includes('zero fm');
+        };
+
         try {
           const qs = await db.collection('systemEvents')
             .where('type', '==', 'togglePlayed')
@@ -9938,7 +9964,12 @@ function shouldShowStatsTicker() {
             const info = latestAction[sid];
             if (info.action === 'mark' && info.artista) {
               const a = String(info.artista).trim().toLowerCase();
-              if (a) playedArtistsSet.add(a);
+              if (a) {
+                playedArtistsSet.add(a);
+                artistCountsPlayed[a] = (artistCountsPlayed[a] || 0) + 1;
+                artistCountsAll[a] = (artistCountsAll[a] || 0) + 1;
+              }
+              if (isZeroFM(info.artista)) calculatedZeroFMPlayed++;
             }
           });
         } catch (e) { console.error('Error fetching artists from systemEvents:', e); }
@@ -9950,7 +9981,10 @@ function shouldShowStatsTicker() {
             const d = doc.data() || {};
             if (d.artista) {
               const a = String(d.artista).trim().toLowerCase();
-              if (a) playedArtistsSet.add(a);
+              if (a) {
+                playedArtistsSet.add(a);
+                artistCountsAll[a] = (artistCountsAll[a] || 0) + 1;
+              }
             }
             const rawDay = d.day || (d.fecha ? (typeof d.fecha.toDate === 'function' ? d.fecha.toDate().toISOString().split('T')[0] : String(d.fecha).split('T')[0]) : '');
             const day = normalizeDay(rawDay);
@@ -9965,6 +9999,9 @@ function shouldShowStatsTicker() {
 
         // Coherencia visual: Pedidas >= Reproducidas (Solo visual, NO afecta puntos)
         totalRequestedCount = Math.max(totalRequestedCount, playedCount);
+
+        const calculatedTopArtistCount = Object.values(artistCountsAll).reduce((max, n) => Math.max(max, n), 0);
+        const calculatedTopArtistCountPlayed = Object.values(artistCountsPlayed).reduce((max, n) => Math.max(max, n), 0);
 
         let activeDaysValid = 0;
         const detail = [];
@@ -10308,6 +10345,31 @@ function shouldShowStatsTicker() {
                 playedArtistsSetSize = Math.max(playedArtistsSetSize, sDoc.uniqueArtists);
               }
 
+              // FALLBACK DE SEGURIDAD NUBE PARA LOGROS (PRIMERO EN PEDIR Y ZERO FM)
+              if (typeof sDoc.firstRequests === 'number') {
+                cloudFirstRequests = Math.max(cloudFirstRequests, sDoc.firstRequests);
+              } else if (sDoc.gamification && sDoc.gamification.stats && typeof sDoc.gamification.stats.firstRequests === 'number') {
+                cloudFirstRequests = Math.max(cloudFirstRequests, sDoc.gamification.stats.firstRequests);
+              }
+
+              if (typeof sDoc.zeroFMSongs === 'number') {
+                cloudZeroFMSongs = Math.max(cloudZeroFMSongs, sDoc.zeroFMSongs);
+              } else if (sDoc.gamification && sDoc.gamification.stats && typeof sDoc.gamification.stats.zeroFMSongs === 'number') {
+                cloudZeroFMSongs = Math.max(cloudZeroFMSongs, sDoc.gamification.stats.zeroFMSongs);
+              }
+
+              if (typeof sDoc.topArtistCount === 'number') {
+                cloudTopArtistCount = Math.max(cloudTopArtistCount, sDoc.topArtistCount);
+              } else if (sDoc.gamification && sDoc.gamification.stats && typeof sDoc.gamification.stats.topArtistCount === 'number') {
+                cloudTopArtistCount = Math.max(cloudTopArtistCount, sDoc.gamification.stats.topArtistCount);
+              }
+
+              if (typeof sDoc.topArtistCountPlayed === 'number') {
+                cloudTopArtistCountPlayed = Math.max(cloudTopArtistCountPlayed, sDoc.topArtistCountPlayed);
+              } else if (sDoc.gamification && sDoc.gamification.stats && typeof sDoc.gamification.stats.topArtistCountPlayed === 'number') {
+                cloudTopArtistCountPlayed = Math.max(cloudTopArtistCountPlayed, sDoc.gamification.stats.topArtistCountPlayed);
+              }
+
               if (!statsDoc.totalPoints) statsDoc = sDoc; // Guardar referencia para otros campos
             } catch (_) { }
           }
@@ -10522,7 +10584,12 @@ function shouldShowStatsTicker() {
           fusedIds,
           fusedDetails,
           currentStreak: currentStreakComputed || 0,
-          bestStreak: Math.max(bestStreakComputed || 0, bestStreakVal || 0)
+          bestStreak: Math.max(bestStreakComputed || 0, bestStreakVal || 0),
+          firstRequests: cloudFirstRequests,
+          zeroFMSongs: Math.max(calculatedZeroFMPlayed, cloudZeroFMSongs),
+          zeroFMSongsPlayed: Math.max(calculatedZeroFMPlayed, cloudZeroFMSongs),
+          topArtistCount: Math.max(calculatedTopArtistCount, cloudTopArtistCount),
+          topArtistCountPlayed: Math.max(calculatedTopArtistCountPlayed, cloudTopArtistCountPlayed)
         };
       }
       async function renderPointsBreakdownForUser(u, force = false) {
@@ -12561,42 +12628,56 @@ function shouldShowStatsTicker() {
           data.stats.isZ0Vip = isZ0Vip;
           data.stats.isDonador = isDonador;
 
-          // --- NUEVO: Evaluar logros de actividad (Canciones, Días, etc.) ---
-          const s = data.stats;
-          const songAchievements = [
-            { id: 'first_song', target: 1, points: 25, title: 'Primera Canción' },
-            { id: 'music_lover', target: 10, points: 50, title: 'Amante de la Música' },
-            { id: 'music_addict', target: 50, points: 100, title: 'Adicto a la Música' },
-            { id: 'music_master', target: 100, points: 200, title: 'Maestro Musical' }
-          ];
+          // --- NUEVO: Evaluar todos los logros del catálogo de forma dinámica ---
+          // Copiar stats para evitar efectos secundarios y unificar campos de conteo (Hallazgo 5)
+          const s = { ...data.stats };
+          
+          const songCountVal = Math.max(s.totalPlayedSongs || 0, s.songCount || 0, s.requestedCount || 0, s.totalSongs || 0);
+          s.totalPlayedSongs = songCountVal;
+          s.songCount = songCountVal;
+          s.totalSongs = songCountVal;
+          s.requestedCount = songCountVal;
 
-          songAchievements.forEach(ach => {
-            const played = Number(s.totalPlayedSongs || s.songCount || 0);
-            const requested = Number(s.requestedCount || s.totalSongs || 0);
-            const highest = Math.max(played, requested);
+          const artistCountVal = Math.max(s.uniqueArtists || 0, s.uniqueArtistsPlayed || 0);
+          s.uniqueArtists = artistCountVal;
+          s.uniqueArtistsPlayed = artistCountVal;
 
-            if (!data.achievements.includes(ach.id) && highest >= ach.target) {
-              console.log(`🎉 LOGRO DESBLOQUEADO para ${username}: ${ach.title} (${highest}/${ach.target})`);
-              data.achievements.push(ach.id);
-              data.points += ach.points;
-              data.xp += ach.points;
-              data.lastUnlockedAchievementAt = Date.now();
-              achievementsGranted.push(`${ach.title} (+${ach.points} pts)`);
-            }
-          });
+          const topArtistVal = Math.max(s.topArtistCount || 0, s.topArtistCountPlayed || 0);
+          s.topArtistCount = topArtistVal;
+          s.topArtistCountPlayed = topArtistVal;
 
-          // Logros de Diversidad
-          if (!data.achievements.includes('diverse_taste') && (s.uniqueArtistsPlayed || 0) >= 10) {
-            data.achievements.push('diverse_taste');
-            data.points += 75;
-            data.xp += 75;
-            achievementsGranted.push('Gusto Diverso (+75 pts)');
+          const zeroFMVal = Math.max(s.zeroFMSongs || 0, s.zeroFMSongsPlayed || 0);
+          s.zeroFMSongs = zeroFMVal;
+          s.zeroFMSongsPlayed = zeroFMVal;
+
+          // Guardar de vuelta para mantener coherencia en toda la estructura de datos
+          data.stats = { ...data.stats, ...s };
+
+          if (Array.isArray(ACHIEVEMENTS)) {
+            ACHIEVEMENTS.forEach(achievement => {
+              // Ignorar logros que ya tiene el usuario o los VIP especiales que ya se procesaron arriba
+              if (data.achievements.includes(achievement.id)) return;
+              if (achievement.id === 'vip_member' || achievement.id === 'z0_vip_member' || achievement.id === 'donador_member') return;
+
+              try {
+                if (typeof achievement.condition === 'function' && achievement.condition(s)) {
+                  console.log(`🎉 LOGRO DESBLOQUEADO dinámicamente para ${username}: ${achievement.title}`);
+                  data.achievements.push(achievement.id);
+                  data.points += achievement.points;
+                  data.xp += achievement.points;
+                  data.lastUnlockedAchievementAt = Date.now();
+                  achievementsGranted.push(`${achievement.title} (+${achievement.points} pts)`);
+                }
+              } catch (err) {
+                console.warn(`⚠️ Error evaluando condición para logro ${achievement.id}:`, err);
+              }
+            });
           }
 
           if (achievementsGranted.length > 0) {
             data.level = calculateLevel(data.xp);
             saveGamificationDataForUser(data, username);
-            console.log(`✅ Logros de actividad otorgados a ${username}:`, achievementsGranted);
+            console.log(`✅ Logros otorgados dinámicamente a ${username}:`, achievementsGranted);
           }
 
           return data;
@@ -13167,6 +13248,11 @@ function shouldShowStatsTicker() {
             data.stats.uniqueArtists = freshStats.uniqueArtists || (data.stats.uniqueArtists || 0);
             data.stats.uniqueArtistsPlayed = freshStats.uniqueArtistsPlayed || (data.stats.uniqueArtistsPlayed || 0);
             data.stats.bestStreak = freshStats.bestStreak;
+            data.stats.firstRequests = freshStats.firstRequests;
+            data.stats.zeroFMSongs = freshStats.zeroFMSongs;
+            data.stats.zeroFMSongsPlayed = freshStats.zeroFMSongsPlayed;
+            data.stats.topArtistCount = freshStats.topArtistCount;
+            data.stats.topArtistCountPlayed = freshStats.topArtistCountPlayed;
 
             // Actualizar también puntos si la diferencia es a favor de la reconstrucción
             if (freshStats.total > data.points) {
@@ -13231,6 +13317,11 @@ function shouldShowStatsTicker() {
             data.stats.totalSongs = Math.max(freshStats.requestedCount || 0, freshStats.playedCount || 0);
             data.stats.uniqueArtists = freshStats.uniqueArtists;
             data.stats.activeDays = freshStats.activeDaysValid;
+            data.stats.firstRequests = freshStats.firstRequests;
+            data.stats.zeroFMSongs = freshStats.zeroFMSongs;
+            data.stats.zeroFMSongsPlayed = freshStats.zeroFMSongsPlayed;
+            data.stats.topArtistCount = freshStats.topArtistCount;
+            data.stats.topArtistCountPlayed = freshStats.topArtistCountPlayed;
           }
           data = await processAchievementsForUser(targetUser, data);
           

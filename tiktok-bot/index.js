@@ -1189,6 +1189,7 @@ function startBot() {
     app.post('/api/goals/reset', async (req, res) => {
         sessionFollows.clear();
         sessionShares.clear();
+        sessionLikes.clear();
         sessionTotalCoins = 0;
         syncSessionCountersToFirestore();
         res.json({ success: true });
@@ -1386,43 +1387,64 @@ function startBot() {
             const subsMsg = overlayConfig.subsAlertMsg || "¡gracias por suscribirte al canal! ⭐";
 
             if (type === 'topgifters') {
-                const mockList = [
-                    {
-                        username: "zero_fan_number1",
-                        nickname: "Zero FM Fan #1 👑",
-                        profilePictureUrl: "https://i.pravatar.cc/100?img=33",
-                        totalAmount: 18500
-                    },
-                    {
-                        username: "donador_estrella",
-                        nickname: "Donador Estrella ⭐",
-                        profilePictureUrl: "https://i.pravatar.cc/100?img=12",
-                        totalAmount: 12400
-                    },
-                    {
-                        username: "musica_lover",
-                        nickname: "Melómano Pro",
-                        profilePictureUrl: "https://i.pravatar.cc/100?img=47",
-                        totalAmount: 9550
-                    },
-                    {
-                        username: "night_listener",
-                        nickname: "Búho Nocturno",
-                        profilePictureUrl: "https://i.pravatar.cc/100?img=8",
-                        totalAmount: 4800
-                    },
-                    {
-                        username: "rookie_gifter",
-                        nickname: "Donador Activo",
-                        profilePictureUrl: "https://i.pravatar.cc/100?img=22",
-                        totalAmount: 1250
-                    }
-                ];
+                const firstNames = ["Zero", "Donador", "Música", "TikTok", "Gifter", "Super", "Night", "Fan", "Sponsor", "VIP"];
+                const lastNames = ["FM", "Lover", "Pro", "Star", "King", "Owl", "Vida", "Activo", "Zero", "Collector"];
+                
+                const count = Math.floor(Math.random() * 4) + 5; // 5 a 8 usuarios aleatorios
+                const mockList = [];
+                for (let i = 0; i < count; i++) {
+                    const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
+                    const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
+                    const username = (fn + "_" + ln + Math.floor(Math.random() * 90 + 10)).toLowerCase();
+                    const nickname = fn + " " + ln + (Math.random() > 0.7 ? " 👑" : "");
+                    const randomPicId = Math.floor(Math.random() * 70) + 1;
+                    
+                    mockList.push({
+                        username: username,
+                        nickname: nickname,
+                        profilePictureUrl: `https://i.pravatar.cc/100?img=${randomPicId}`,
+                        totalAmount: Math.floor(Math.random() * 18000) + 100
+                    });
+                }
+                // Ordenar por monto descendente
+                mockList.sort((a, b) => b.totalAmount - a.totalAmount);
+
                 await setDoc(docFn(db, 'globalStats', 'topGifters'), {
                     list: mockList,
                     lastUpdate: serverTimestampFn()
                 }, { merge: true });
-                res.json({ success: true, message: 'Top Gifters simulated!' });
+                res.json({ success: true, message: 'Top Gifters simulated with random data!' });
+                return;
+            }
+
+            if (type === 'toplikers') {
+                const firstNames = ["Zero", "Lover", "Música", "TikTok", "Heart", "Super", "Pink", "Fan", "Lovely", "VIP"];
+                const lastNames = ["FM", "Liker", "Pro", "Star", "Heart", "Cupid", "Vida", "Activo", "Zero", "Supporter"];
+                
+                const count = Math.floor(Math.random() * 4) + 6; // 6 a 9 usuarios aleatorios
+                const mockList = [];
+                for (let i = 0; i < count; i++) {
+                    const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
+                    const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
+                    const username = (fn + "_" + ln + Math.floor(Math.random() * 90 + 10)).toLowerCase();
+                    const nickname = fn + " " + ln + (Math.random() > 0.7 ? " ❤️" : "");
+                    const randomPicId = Math.floor(Math.random() * 70) + 1;
+                    
+                    mockList.push({
+                        username: username,
+                        nickname: nickname,
+                        profilePictureUrl: `https://i.pravatar.cc/100?img=${randomPicId}`,
+                        totalAmount: Math.floor(Math.random() * 8500) + 150
+                    });
+                }
+                // Ordenar por monto descendente
+                mockList.sort((a, b) => b.totalAmount - a.totalAmount);
+
+                await setDoc(docFn(db, 'globalStats', 'topLikers'), {
+                    list: mockList,
+                    lastUpdate: serverTimestampFn()
+                }, { merge: true });
+                res.json({ success: true, message: 'Top Likers simulated with random data!' });
                 return;
             }
 
@@ -1679,8 +1701,8 @@ function setupListeners() {
     // Debug: Log de conexión exitosa
     tiktokLiveConnection.on('connected', state => {
         console.log(`🟢 Conectado exitosamente (Room ID: ${state.roomId})`);
-        if (activeLiveRoomId && activeLiveRoomId !== state.roomId) {
-            console.log(`🔄 Nuevo room detectado (${activeLiveRoomId} -> ${state.roomId}). Reiniciando tracking de likes de sesión.`);
+        if (!activeLiveRoomId || activeLiveRoomId !== state.roomId) {
+            console.log(`🟢 Conexión inicial o nuevo room detectado (${activeLiveRoomId || 'ninguno'} -> ${state.roomId}). Reiniciando tracking.`);
             resetLikeTracking({ resetSession: true, resetTopLiker: true });
             resetDonationTracking();
         } else {
@@ -2119,6 +2141,12 @@ function setupListeners() {
         // Actualizar Top Liker de sesión (memoria)
         const sessionTotal = (sessionLikes.get(uniqueId) || 0) + delta;
         sessionLikes.set(uniqueId, sessionTotal);
+        
+        sessionLikerDetails.set(uniqueId, {
+            username: uniqueId,
+            nickname: nickname || uniqueId,
+            profilePictureUrl: data.profilePictureUrl || ''
+        });
 
         if (safeLikeCount >= 200) {
             console.log(`❤️ Evento de likes grande detectado: @${nickname} +${safeLikeCount} likes (sesión usuario: ${sessionTotal})`);
@@ -2228,6 +2256,7 @@ function setupListeners() {
 const likeBuffer = new Map();
 // Tracking de sesión para Top Liker
 const sessionLikes = new Map();
+const sessionLikerDetails = new Map();
 // Tracking del último contador enviado por TikTok (para Delta Tracking)
 const lastLikeCountMap = new Map();
 let currentTopLiker = { name: 'N/D', count: 0 };
@@ -2429,7 +2458,40 @@ setInterval(async () => {
             console.error(`Error procesando likes para ${data.displayName}:`, e);
         }
     }
+    
+    try {
+        await recalculateLikerRanks();
+    } catch (err) {
+        console.error('Error recalculando ranking de likes en buffer:', err);
+    }
 }, 30000); // 30 segundos
+
+async function recalculateLikerRanks() {
+    if (!db) return;
+    try {
+        const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
+        const sorted = Array.from(sessionLikes.entries())
+            .sort((a, b) => b[1] - a[1]);
+
+        const list = sorted.map(([uid, amount]) => {
+            const details = sessionLikerDetails.get(uid) || { username: uid, nickname: uid, profilePictureUrl: '' };
+            return {
+                username: uid,
+                nickname: details.nickname || uid,
+                profilePictureUrl: details.profilePictureUrl || '',
+                totalAmount: amount
+            };
+        });
+
+        await setDoc(doc(db, 'globalStats', 'topLikers'), {
+            list: list.slice(0, 20), // Guardar el top 20 de la sesión
+            lastUpdate: serverTimestamp()
+        }, { merge: true });
+        console.log('💾 Top Likers actualizados en Firestore.');
+    } catch (e) {
+        console.error('❌ Error al guardar Top Likers en Firestore:', e);
+    }
+}
 
 // Mapa de donaciones de la sesión
 const sessionDonations = new Map();
@@ -2446,14 +2508,21 @@ function resetDonationTracking() {
     try {
         sessionDonations.clear();
         sessionGifterDetails.clear();
+        sessionLikes.clear();
+        sessionLikerDetails.clear();
         if (db) {
             const { doc, setDoc } = require('firebase/firestore');
             setDoc(doc(db, 'globalStats', 'topGifters'), {
                 list: [],
                 lastUpdate: new Date()
             }, { merge: true }).catch(() => {});
+
+            setDoc(doc(db, 'globalStats', 'topLikers'), {
+                list: [],
+                lastUpdate: new Date()
+            }, { merge: true }).catch(() => {});
         }
-        console.log('🔄 Tracking de donadores reiniciado.');
+        console.log('🔄 Tracking de donadores y likes reiniciado.');
     } catch (_) {}
 }
 

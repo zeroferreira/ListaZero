@@ -17,6 +17,8 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <!-- Configuración compartida de Firebase -->
+    <script src="firebase-config.js"></script>
 
     <style>
         /* =============================================
@@ -280,6 +282,7 @@
             }
             .username-container {
                 font-size: 1.8em;
+            }
             .alert-message {
                 font-size: 1rem;
             }
@@ -356,6 +359,124 @@
             -webkit-text-stroke: 1.5px #000 !important;
         }
 
+
+        /* ================================================================
+           MEJORAS VISUALES — Sistema de Overlays Zero FM
+        ================================================================ */
+
+        /* --- MEJORA 2: Borde de gradiente rotante tipo aurora --- */
+        .alert-frame {
+            width: 100%;
+            border-radius: var(--card-border-radius, 28px);
+            padding: 1.5px;
+            position: relative;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.06); /* borde sólido base */
+        }
+
+        /* Capa rotante del borde */
+        .alert-frame::before {
+            content: '';
+            position: absolute;
+            inset: -80%;
+            animation: rotateBorder 6s linear infinite;
+            transform-origin: 50% 50%;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        /* Borde activo por tipo */
+        .type-follow .alert-frame::before {
+            background: conic-gradient(from 0deg, transparent 0deg, rgba(236,72,153,0.95) 60deg, rgba(167,139,250,0.75) 120deg, transparent 180deg);
+            opacity: 1;
+        }
+        .type-gift .alert-frame::before {
+            background: conic-gradient(from 0deg, transparent 0deg, rgba(250,204,21,1) 60deg, rgba(251,146,60,0.85) 120deg, transparent 180deg);
+            opacity: 1;
+        }
+        .type-subscribe .alert-frame::before {
+            background: conic-gradient(from 0deg, transparent 0deg, rgba(34,211,238,0.95) 60deg, rgba(99,102,241,0.75) 120deg, transparent 180deg);
+            opacity: 1;
+        }
+        .type-like .alert-frame::before {
+            background: conic-gradient(from 0deg, transparent 0deg, rgba(239,68,68,0.95) 60deg, rgba(236,72,153,0.75) 120deg, transparent 180deg);
+            opacity: 1;
+        }
+
+        @keyframes rotateBorder {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
+
+        /* Ocultar borde del frame cuando no hay card */
+        .alert-frame:has(.alert-box.no-card-bg) {
+            background: transparent !important;
+        }
+        .alert-frame:has(.alert-box.no-card-bg)::before {
+            opacity: 0 !important;
+        }
+
+        /* --- MEJORA 1: Glassmorphism mejorado --- */
+        /* Textura de ruido + highlight diagonal sobre el card */
+        .alert-box::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background:
+                linear-gradient(135deg, rgba(255,255,255,0.055) 0%, transparent 50%),
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E") center / 180px 180px;
+            opacity: 0.045;
+            pointer-events: none;
+            mix-blend-mode: overlay;
+        }
+
+        /* Backdrop más vivido */
+        .alert-box {
+            backdrop-filter: blur(20px) saturate(130%);
+            -webkit-backdrop-filter: blur(20px) saturate(130%);
+        }
+
+        /* Sombra exterior con color temático por tipo */
+        .type-follow .alert-box {
+            box-shadow: 0 24px 70px rgba(0,0,0,0.55),
+                        0 0 55px rgba(236,72,153,0.18),
+                        inset 0 1px 0 rgba(255,255,255,0.13);
+        }
+        .type-gift .alert-box {
+            box-shadow: 0 24px 70px rgba(0,0,0,0.55),
+                        0 0 55px rgba(234,179,8,0.18),
+                        inset 0 1px 0 rgba(255,255,255,0.13);
+        }
+        .type-subscribe .alert-box {
+            box-shadow: 0 24px 70px rgba(0,0,0,0.55),
+                        0 0 55px rgba(6,182,212,0.18),
+                        inset 0 1px 0 rgba(255,255,255,0.13);
+        }
+        .type-like .alert-box {
+            box-shadow: 0 24px 70px rgba(0,0,0,0.55),
+                        0 0 55px rgba(239,68,68,0.18),
+                        inset 0 1px 0 rgba(255,255,255,0.13);
+        }
+
+        /* --- MEJORA 3: Partículas tipo-específicas --- */
+        .particle-emoji {
+            position: fixed;
+            pointer-events: none;
+            z-index: 999;
+            line-height: 1;
+            user-select: none;
+            transform-origin: center center;
+            animation: particleFlyEmoji 1.8s cubic-bezier(0.1, 0.8, 0.25, 1) forwards;
+        }
+
+        @keyframes particleFlyEmoji {
+            0%   { transform: translate(0, 0) scale(1.2) rotate(0deg); opacity: 1; }
+            60%  { opacity: 0.8; }
+            100% { transform: translate(var(--tx), var(--ty)) scale(0.2) rotate(var(--rot)); opacity: 0; }
+        }
+
     </style>
 </head>
 
@@ -366,11 +487,13 @@
             <!-- Dynamic Lottie Player or avatar goes here -->
             <img class="user-avatar" id="userAvatar" src="" style="display: none;" />
         </div>
-        <div class="alert-box">
-            <div class="alert-glow"></div>
-            <div class="alert-title" id="alertTitle">Alerta</div>
-            <div class="username-container" id="usernameContainer">Usuario</div>
-            <div class="alert-message" id="alertMessage">¡Gracias por apoyarnos!</div>
+        <div class="alert-frame">
+            <div class="alert-box">
+                <div class="alert-glow"></div>
+                <div class="alert-title" id="alertTitle">Alerta</div>
+                <div class="username-container" id="usernameContainer">Usuario</div>
+                <div class="alert-message" id="alertMessage">¡Gracias por apoyarnos!</div>
+            </div>
         </div>
     </div>
 
@@ -388,8 +511,8 @@
         const ALERT_THEMES = {
             follow: {
                 title: "Nuevo Seguidor",
-                lottie: "https://assets9.lottiefiles.com/packages/lf20_q45qp1.json", // Estrellas brillantes
-                audio: "https://codesandbox.io/p/sandbox/github/zeroferreira/ZeroFM/resources/follow.mp3", // Fallback a sound general
+                lottie: "https://assets9.lottiefiles.com/packages/lf20_q45qp1.json",
+                audio: "https://www.soundjay.com/buttons/sounds/button-4.mp3", // Sonido de notificación limpio
                 defaultAudio: "https://www.myinstants.com/media/sounds/notification_alert.mp3",
                 color: "#ec4899"
             },
@@ -413,15 +536,8 @@
             }
         };
 
-        // Configuración de Firebase (Sincronizado)
-        const firebaseConfig = {
-            apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-            authDomain: "zero-strom-web.firebaseapp.com",
-            projectId: "zero-strom-web",
-            storageBucket: "zero-strom-web.firebasestorage.app",
-            messagingSenderId: "758369466349",
-            appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
-        };
+        // Configuración de Firebase (centralizada en firebase-config.js)
+        const firebaseConfig = window.ZERO_FM_FIREBASE;
 
         // =============================================
         //  ESTADOS DE COLA
@@ -794,7 +910,7 @@
             }
 
             // Disparar explosión de partículas de colores (Confeti)
-            spawnParticles(theme.color);
+            spawnParticles(theme.color, type);
 
             // TTS (Text to Speech) - Leer mensaje en voz alta
             triggerTTS(data, ttsEnabled);
@@ -802,8 +918,19 @@
             // Mostrar el overlay con animación
             $wrapper.css("display", "flex").addClass("anim-enter");
 
+            // Watchdog de seguridad: desbloquea la cola si algo falla inesperadamente
+            const watchdogTimer = setTimeout(() => {
+                if (isAlertPlaying) {
+                    console.warn('[ZeroFM Watchdog] Cola desbloqueada por timeout de seguridad (12s)');
+                    $wrapper.hide();
+                    isAlertPlaying = false;
+                    processQueue();
+                }
+            }, 12000);
+
             // Duración de la alerta (5.5 segundos)
             setTimeout(() => {
+                clearTimeout(watchdogTimer); // Watchdog ya no es necesario
                 $wrapper.addClass("anim-exit");
                 setTimeout(() => {
                     $wrapper.hide();
@@ -816,50 +943,70 @@
         // =============================================
         //  SPAWN PARTICLES (Confeti Premium)
         // =============================================
-        function spawnParticles(color) {
-            const numParticles = 40;
+        // =============================================
+        //  SPAWN PARTICLES (Confeti Premium + Emojis)
+        // =============================================
+        const PARTICLE_EMOJIS = {
+            follow:    ['⭐', '✨', '💫', '🌟'],
+            gift:      ['🪙', '💰', '✨', '💛'],
+            subscribe: ['✨', '💎', '⚡', '🌀'],
+            like:      ['❤️', '💗', '💖', '💝']
+        };
+
+        function spawnParticles(color, type) {
             const container = document.body;
+            const emojis = PARTICLE_EMOJIS[type] || ['✨', '⭐', '💫'];
 
-            for (let i = 0; i < numParticles; i++) {
-                const particle = document.createElement("div");
-                particle.className = "particle";
-                
-                // Color aleatorio derivado o el del tema
-                particle.style.background = color || "#fff";
-                if (Math.random() > 0.5) particle.style.background = "#ffffff";
-
-                // Tamaño aleatorio
-                const size = Math.random() * 12 + 6;
-                particle.style.width = `${size}px`;
+            // --- Partículas geométricas (reducidas a 22) ---
+            for (let i = 0; i < 22; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.background = Math.random() > 0.45 ? color : '#ffffff';
+                const size = Math.random() * 10 + 5;
+                particle.style.width  = `${size}px`;
                 particle.style.height = `${size}px`;
-
-                // Configurar origen en el centro del alerta
-                particle.style.left = "50vw";
-                particle.style.top = "45vh";
-
-                // Configurar destino aleatorio (explosión circular)
-                const angle = Math.random() * Math.PI * 2;
-                const distance = Math.random() * 260 + 100;
-                const tx = Math.cos(angle) * distance;
-                const ty = Math.sin(angle) * distance;
-                const rot = Math.random() * 720 - 360;
-
-                particle.style.setProperty("--tx", `${tx}px`);
-                particle.style.setProperty("--ty", `${ty}px`);
-                particle.style.setProperty("--rot", `${rot}deg`);
-
+                particle.style.left = '50vw';
+                particle.style.top  = '45vh';
+                const angle    = Math.random() * Math.PI * 2;
+                const distance = Math.random() * 240 + 80;
+                particle.style.setProperty('--tx',  `${Math.cos(angle) * distance}px`);
+                particle.style.setProperty('--ty',  `${Math.sin(angle) * distance}px`);
+                particle.style.setProperty('--rot', `${Math.random() * 720 - 360}deg`);
                 container.appendChild(particle);
+                particle.addEventListener('animationend', () => particle.remove());
+            }
 
-                // Remover elemento después de terminar animación
-                particle.addEventListener("animationend", () => {
-                    particle.remove();
-                });
+            // --- Partículas emoji tipo-específicas (16) ---
+            for (let i = 0; i < 16; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle-emoji';
+                p.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+                p.style.fontSize = `${Math.random() * 10 + 14}px`;
+                p.style.left = '50vw';
+                p.style.top  = '45vh';
+                const angle    = Math.random() * Math.PI * 2;
+                const distance = Math.random() * 190 + 60;
+                p.style.setProperty('--tx',  `${Math.cos(angle) * distance}px`);
+                p.style.setProperty('--ty',  `${Math.sin(angle) * distance}px`);
+                p.style.setProperty('--rot', `${Math.random() * 360 - 180}deg`);
+                p.style.animationDelay = `${Math.random() * 0.25}s`;
+                container.appendChild(p);
+                p.addEventListener('animationend', () => p.remove());
             }
         }
 
         // =============================================
         //  TEXT-TO-SPEECH (TTS)
         // =============================================
+
+        // Caché de voces — se llena cuando el navegador las tiene listas
+        let _cachedVoices = [];
+        if ('speechSynthesis' in window) {
+            const _loadVoices = () => { _cachedVoices = window.speechSynthesis.getVoices(); };
+            _loadVoices(); // intento inicial (puede estar vacío en Chrome)
+            window.speechSynthesis.addEventListener('voiceschanged', _loadVoices);
+        }
+
         function triggerTTS(data, ttsEnabled) {
             if (!('speechSynthesis' in window) || !ttsEnabled) return;
             
@@ -867,10 +1014,9 @@
                 const text = `${data.user} ${data.message.replace(/🎁|👤|⭐|❤️/g, "")}`;
                 const utterance = new SpeechSynthesisUtterance(text);
                 
-                // Configurar voz en español
+                // Configurar voz en español usando el caché (ya cargado por voiceschanged)
                 utterance.lang = 'es-MX';
-                const voices = window.speechSynthesis.getVoices();
-                const esVoice = voices.find(v => v.lang.includes('es') || v.lang.includes('ES'));
+                const esVoice = _cachedVoices.find(v => v.lang.includes('es') || v.lang.includes('ES'));
                 if (esVoice) utterance.voice = esVoice;
                 
                 utterance.rate = 1.0;
@@ -878,11 +1024,6 @@
                 
                 window.speechSynthesis.speak(utterance);
             }, 1000); // Retraso de 1s para que suene el audio primero
-        }
-
-        // Pre-cargar voces al iniciar
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.getVoices();
         }
 
         // =============================================
