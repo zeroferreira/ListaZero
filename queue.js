@@ -668,6 +668,45 @@
            }
          });
          
+        // Preset de valores predefinidos según el tema seleccionado
+        const themeDefaults = {
+          classic: {
+            spacing: 15,
+            padding: 15,
+            borderRadius: 6
+          },
+          'neon-glass': {
+            spacing: 20,
+            padding: 16,
+            borderRadius: 24
+          }
+        };
+
+        const themeSelect = document.getElementById('inp-theme');
+        if (themeSelect) {
+          themeSelect.addEventListener('change', (e) => {
+            const newTheme = e.target.value;
+            const prevTheme = newTheme === 'neon-glass' ? 'classic' : 'neon-glass';
+            
+            const spacingEl = document.getElementById('inp-spacing');
+            const paddingEl = document.getElementById('inp-padding');
+            const radiusEl = document.getElementById('inp-borderRadius');
+            
+            // Si el valor actual coincide con el default del tema anterior, lo actualizamos al default del nuevo tema
+            if (spacingEl && Number(spacingEl.value) === themeDefaults[prevTheme].spacing) {
+              spacingEl.value = themeDefaults[newTheme].spacing;
+            }
+            if (paddingEl && Number(paddingEl.value) === themeDefaults[prevTheme].padding) {
+              paddingEl.value = themeDefaults[newTheme].padding;
+            }
+            if (radiusEl && Number(radiusEl.value) === themeDefaults[prevTheme].borderRadius) {
+              radiusEl.value = themeDefaults[newTheme].borderRadius;
+            }
+            
+            previewSettings();
+          });
+        }
+         
         // Checkboxes - Visual Only
         ['inp-showHeader', 'inp-showArtist', 'inp-showUser', 'inp-showEmpty'].forEach(id => {
            const el = document.getElementById(id);
