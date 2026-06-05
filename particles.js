@@ -18,7 +18,7 @@ function initParticles() {
   var velocityX = 0.00015;
   var velocityY = 0.00025;
   var lastScrollY = window.scrollY || 0;
-  var scrollPending = false;
+  var cachedListScroll = null;
   var currentShape = localStorage.getItem('selectedShape') || 'orb';
 
   function hexToRgba(hex, alpha) {
@@ -267,18 +267,14 @@ function initParticles() {
   }
 
   function handleScroll() {
-    // Throttle: solo procesar una vez por frame de animación
-    if (scrollPending) return;
-    scrollPending = true;
-    window.requestAnimationFrame(function() {
-      var listScroll = document.querySelector('.list-scroll-container');
-      var y = listScroll ? listScroll.scrollTop : (window.scrollY || 0);
-      var delta = y - lastScrollY;
-      lastScrollY = y;
-      velocityY += delta * 0.000002;
-      velocityX += delta * 0.000001;
-      scrollPending = false;
-    });
+    if (!cachedListScroll) {
+      cachedListScroll = document.querySelector('.list-scroll-container');
+    }
+    var y = cachedListScroll ? cachedListScroll.scrollTop : (window.scrollY || 0);
+    var delta = y - lastScrollY;
+    lastScrollY = y;
+    velocityY += delta * 0.000002;
+    velocityX += delta * 0.000001;
   }
 
   function boostRotation() {
@@ -302,9 +298,9 @@ function initParticles() {
   
   // Escuchar scroll tanto en window como en el contenedor de la lista
   window.addEventListener('scroll', handleScroll, { passive: true });
-  const listScroll = document.querySelector('.list-scroll-container');
-  if (listScroll) {
-    listScroll.addEventListener('scroll', handleScroll, { passive: true });
+  cachedListScroll = document.querySelector('.list-scroll-container');
+  if (cachedListScroll) {
+    cachedListScroll.addEventListener('scroll', handleScroll, { passive: true });
   }
   window.requestAnimationFrame(renderFrame);
 }
