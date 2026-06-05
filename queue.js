@@ -591,11 +591,29 @@
        
        root.style.setProperty('--queue-font-size', Math.max(10, Math.floor(baseFontSize * fontScale)) + 'px');
       root.style.setProperty('--queue-accent-color', s.accent);
+      if (s.accent && s.accent.startsWith('#')) {
+        const ar = parseInt(s.accent.substr(1,2), 16);
+        const ag = parseInt(s.accent.substr(3,2), 16);
+        const ab = parseInt(s.accent.substr(5,2), 16);
+        if (!isNaN(ar) && !isNaN(ag) && !isNaN(ab)) {
+          root.style.setProperty('--queue-accent-rgb', `${ar}, ${ag}, ${ab}`);
+        }
+      }
+
       root.style.setProperty('--queue-text-color', s.text);
+      if (s.text && s.text.startsWith('#')) {
+        const tr = parseInt(s.text.substr(1,2), 16);
+        const tg = parseInt(s.text.substr(3,2), 16);
+        const tb = parseInt(s.text.substr(5,2), 16);
+        if (!isNaN(tr) && !isNaN(tg) && !isNaN(tb)) {
+          root.style.setProperty('--queue-text-rgb', `${tr}, ${tg}, ${tb}`);
+        }
+      }
       
       const r = parseInt(s.bg.substr(1,2), 16);
       const g = parseInt(s.bg.substr(3,2), 16);
       const b = parseInt(s.bg.substr(5,2), 16);
+      root.style.setProperty('--queue-bg-rgb', `${r}, ${g}, ${b}`);
       
       const primaryOpacity = (s.primaryOpacity !== undefined ? s.primaryOpacity : 100) / 100;
       const opacity = (s.secondaryOpacity !== undefined ? s.secondaryOpacity : 60) / 100;
@@ -1714,10 +1732,6 @@
             // CASO 2: El elemento es NUEVO
             itemEl = createQueueItem(req, index);
             desiredEls.push(itemEl);
-            
-            // Animar entrada SOLO para este nuevo elemento
-            void itemEl.offsetWidth; // Trigger reflow
-            itemEl.classList.add('show');
         }
       });
 
@@ -1725,8 +1739,18 @@
       const emptyEl = document.getElementById('empty-state');
       desiredEls.forEach((el) => {
         if (!el) return;
+        const isNew = !el.parentNode;
         if (emptyEl && emptyEl.parentNode === container) container.insertBefore(el, emptyEl);
         else container.appendChild(el);
+
+        if (isNew) {
+            void el.offsetWidth; // Trigger layout reflow
+            requestAnimationFrame(() => {
+                if (el && el.isConnected) {
+                    el.classList.add('show');
+                }
+            });
+        }
       });
 
       // 4. Eliminar elementos que ya no están (los que quedaron en existingMap)
