@@ -19,6 +19,11 @@ function initParticles() {
   var velocityY = 0.00025;
   var lastScrollY = window.scrollY || 0;
   var currentShape = localStorage.getItem('selectedShape') || 'orb';
+  var listScrollEl = null; // cacheada, no buscar en cada scroll event
+  var scrollRafPending = false; // throttle del scroll via rAF
+  var projected = [];  // pre-allocada fuera del loop para evitar GC
+  var lastRotX = 0;   // para detectar cambio de rotación
+  var lastRotY = 0;
 
   function hexToRgba(hex, alpha) {
     if (!hex) return hex;
@@ -220,7 +225,6 @@ function initParticles() {
     velocityX *= 0.98;
     velocityY *= 0.98;
     ctx.clearRect(0, 0, width, height);
-    // Centrar partículas en el viewport real
     var centerX = width / 2;
     var centerY = height / 2;
     var cosX = Math.cos(rotationX);
@@ -228,7 +232,9 @@ function initParticles() {
     var cosY = Math.cos(rotationY);
     var sinY = Math.sin(rotationY);
     var fov = baseRadius * 2;
-    var projected = [];
+
+    // Re-usar array pre-allocado para evitar GC en cada frame
+    projected.length = 0;
     
     // Factor de interpolación para transiciones suaves (lerp)
     var lerpFactor = 0.05;
@@ -253,7 +259,15 @@ function initParticles() {
       var py = centerY + y1 * scale;
       projected.push({ x: px, y: py, z: z2, color: p.color, size: p.size * scale });
     }
-    projected.sort(function(a, b) { return a.z - b.z; });
+
+    // Sort solo cuando la rotación cambió suficiente (ahorra ~60 sorts/seg en idle)
+    var rotDiff = Math.abs(rotationX - lastRotX) + Math.abs(rotationY - lastRotY);
+    if (rotDiff > 0.0005) {
+      projected.sort(function(a, b) { return a.z - b.z; });
+      lastRotX = rotationX;
+      lastRotY = rotationY;
+    }
+
     for (var j = 0; j < projected.length; j++) {
       var q = projected[j];
       ctx.beginPath();
@@ -266,12 +280,16 @@ function initParticles() {
   }
 
   function handleScroll() {
-    const listScroll = document.querySelector('.list-scroll-container');
-    var y = listScroll ? listScroll.scrollTop : (window.scrollY || 0);
-    var delta = y - lastScrollY;
-    lastScrollY = y;
-    velocityY += delta * 0.000002;
-    velocityX += delta * 0.000001;
+    if (scrollRafPending) return; // throttle: max 1 update por frame
+    scrollRafPending = true;
+    requestAnimationFrame(function() {
+      scrollRafPending = false;
+      var y = listScrollEl ? listScrollEl.scrollTop : (window.scrollY || 0);
+      var delta = y - lastScrollY;
+      lastScrollY = y;
+      velocityY += delta * 0.000002;
+      velocityX += delta * 0.000001;
+    });
   }
 
   function boostRotation() {
@@ -292,12 +310,15 @@ function initParticles() {
   window.addEventListener('orientationchange', resize);
   window.addEventListener('pointerdown', boostRotation, { passive: true });
   window.addEventListener('touchstart', boostRotation, { passive: true });
-  
-  // Escuchar scroll tanto en window como en el contenedor de la lista
-  window.addEventListener('scroll', handleScroll, { passive: true });
-  const listScroll = document.querySelector('.list-scroll-container');
-  if (listScroll) {
-    listScroll.addEventListener('scroll', handleScroll, { passive: true });
+
+  // Cachear referencia al scroll container y escuchar solo en él
+  // (no en window, para evitar doble disparo y querySelector en cada evento)
+  listScrollEl = document.querySelector('.list-scroll-container');
+  if (listScrollEl) {
+    listScrollEl.addEventListener('scroll', handleScroll, { passive: true });
+  } else {
+    // Fallback: si no existe el contenedor, escuchar en window
+    window.addEventListener('scroll', handleScroll, { passive: true });
   }
   window.requestAnimationFrame(renderFrame);
 }
