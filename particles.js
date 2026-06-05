@@ -267,14 +267,8 @@ function initParticles() {
   }
 
   function handleScroll() {
-    if (!cachedListScroll) {
-      cachedListScroll = document.querySelector('.list-scroll-container');
-    }
-    var y = cachedListScroll ? cachedListScroll.scrollTop : (window.scrollY || 0);
-    var delta = y - lastScrollY;
-    lastScrollY = y;
-    velocityY += delta * 0.000002;
-    velocityX += delta * 0.000001;
+    velocityY += 0.0001;
+    velocityX += 0.00005;
   }
 
   function boostRotation() {
