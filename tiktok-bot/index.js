@@ -959,6 +959,30 @@ function startBot() {
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
 
+    // Endpoint dinámico para servir configuración de Firebase a los overlays
+    app.get('/firebase-config.js', (req, res) => {
+        const fbConfigFile = path.join(__dirname, 'firebase-config.js');
+        res.setHeader('Content-Type', 'application/javascript');
+        if (fs.existsSync(fbConfigFile)) {
+            try {
+                delete require.cache[require.resolve('./firebase-config')];
+                const fbConfig = require('./firebase-config');
+                res.send(`window.ZERO_FM_FIREBASE = ${JSON.stringify(fbConfig)};`);
+            } catch (e) {
+                res.status(500).send(`console.error("Error reading firebase-config.js:", ${JSON.stringify(e.message)});`);
+            }
+        } else {
+            res.send(`window.ZERO_FM_FIREBASE = {
+                apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+                authDomain: "zero-strom-web.firebaseapp.com",
+                projectId: "zero-strom-web",
+                storageBucket: "zero-strom-web.firebasestorage.app",
+                messagingSenderId: "758369466349",
+                appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+            };`);
+        }
+    });
+
     app.get('/api/status', (req, res) => {
         res.json({
             tiktokUsername: TIKTOK_USERNAME,

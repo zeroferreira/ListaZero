@@ -405,6 +405,7 @@
     }
 
     const defaultSettings = {
+      theme: 'classic',
       width: 350,
       minHeight: 80,
       spacing: 15,
@@ -498,6 +499,9 @@
       document.getElementById('inp-showWaitTime').checked = settings.showWaitTime !== undefined ? settings.showWaitTime : false;
       document.getElementById('inp-showTotalDuration').checked = settings.showTotalDuration !== undefined ? settings.showTotalDuration : false;
       document.getElementById('inp-syncAppleMusic').checked = settings.syncAppleMusic !== undefined ? settings.syncAppleMusic : false;
+      if (document.getElementById('inp-theme')) {
+        document.getElementById('inp-theme').value = settings.theme || 'classic';
+      }
     }
 
     function applySettings(s) {
@@ -511,31 +515,36 @@
       // Ajustar altura mínima dinámicamente según cantidad de tarjetas y escala
        // Si hay más de 3 tarjetas, reducimos la altura proporcionalmente para que quepan mejor
        let baseMinHeight = s.minHeight || 80;
+       let adjustedMinHeight = baseMinHeight;
        if (s.maxCards > 3) {
            // Factor de reducción: 0.9x para 4, 0.8x para 5, 0.7x para 6
            const reductionFactor = 1 - ((s.maxCards - 3) * 0.1);
-           baseMinHeight = Math.floor(baseMinHeight * reductionFactor);
+           adjustedMinHeight = Math.floor(adjustedMinHeight * reductionFactor);
        }
        // Aplicar escala de altura final
        const heightScale = s.heightScale || 1.0;
        // Aplicar min-height ajustado
-       root.style.setProperty('--queue-item-min-height', Math.floor(baseMinHeight * heightScale) + 'px');
+       root.style.setProperty('--queue-item-min-height', Math.floor(adjustedMinHeight * heightScale) + 'px');
        
        // FIX: Escalar también los paddings y espacios verticales para permitir tarjetas más delgadas
        const padding = (s.padding !== undefined ? s.padding : 15);
        const textGap = (s.textGap !== undefined ? s.textGap : 4);
        
-       // Si reducimos la altura (< 1.0), reducimos proporcionalmente los espacios internos
-       const verticalScale = heightScale < 1.0 ? heightScale : 1.0;
+       // Escalar espaciados si reducimos la altura base (< 80) o la escala (< 1.0)
+       const minHeightScaleFactor = baseMinHeight < 80 ? (baseMinHeight / 80) : 1.0;
+       const verticalScale = (heightScale < 1.0 ? heightScale : 1.0) * minHeightScaleFactor;
        
        root.style.setProperty('--queue-item-spacing', (s.spacing !== undefined ? s.spacing : 15) + 'px');
        root.style.setProperty('--queue-padding', Math.floor(padding * verticalScale) + 'px');
        root.style.setProperty('--queue-text-gap', Math.floor(textGap * verticalScale) + 'px');
-       const finalRadius = window.queueRadiusOverride !== undefined ? window.queueRadiusOverride : s.borderRadius;
-       root.style.setProperty('--queue-border-radius', finalRadius + 'px');
+       root.style.setProperty('--queue-border-radius', s.borderRadius + 'px');
       
       // Set Global Animation Classes on Container
       const container = document.getElementById('queue-container');
+      if (container) {
+        container.classList.remove('theme-classic', 'theme-neon-glass');
+        container.classList.add(`theme-${s.theme || 'classic'}`);
+      }
       
       // Lista segura de clases de animación para limpiar
       const animationClasses = [
@@ -574,32 +583,27 @@
       root.style.setProperty('--queue-font-family', s.font);
       
       // FIX: Escalar fuente si reducimos mucho la altura para que no se corte
-       const baseFontSize = window.queueFontSizeOverride !== undefined ? window.queueFontSizeOverride : (s.fontSize || 16);
+       const baseFontSize = s.fontSize || 16;
        let fontScale = 1.0;
-       if (heightScale < 0.8) fontScale = heightScale * 1.2; // Reducción suave
+       const combinedHeightScale = heightScale * (baseMinHeight < 80 ? (baseMinHeight / 80) : 1.0);
+       if (combinedHeightScale < 0.8) fontScale = combinedHeightScale * 1.2; // Reducción suave
        if (fontScale > 1.0) fontScale = 1.0;
        
-       root.style.setProperty('--queue-font-size', Math.floor(baseFontSize * fontScale) + 'px');
-       root.style.setProperty('--queue-accent-color', s.accent);
-       root.style.setProperty('--queue-text-color', s.text);
-       
-       const r = parseInt(s.bg.substr(1,2), 16);
-       const g = parseInt(s.bg.substr(3,2), 16);
-       const b = parseInt(s.bg.substr(5,2), 16);
-       
-       let rawPrimary = s.primaryOpacity !== undefined ? s.primaryOpacity : 100;
-       let rawSecondary = s.secondaryOpacity !== undefined ? s.secondaryOpacity : 60;
-       if (window.queueOpacityOverride !== undefined) {
-          rawPrimary = window.queueOpacityOverride * 100;
-          rawSecondary = window.queueOpacityOverride * 60;
-       }
-       const primaryOpacity = rawPrimary / 100;
-       const opacity = rawSecondary / 100;
-       const tertiaryOpacity = Math.max(0, opacity * 0.5); // 50% de la opacidad secundaria
-       
-       root.style.setProperty('--queue-bg-color', `rgba(${r},${g},${b},${primaryOpacity})`);
-       root.style.setProperty('--queue-bg-color-transparent', `rgba(${r},${g},${b},${opacity})`);
-       root.style.setProperty('--queue-bg-color-tertiary', `rgba(${r},${g},${b},${tertiaryOpacity})`);
+       root.style.setProperty('--queue-font-size', Math.max(10, Math.floor(baseFontSize * fontScale)) + 'px');
+      root.style.setProperty('--queue-accent-color', s.accent);
+      root.style.setProperty('--queue-text-color', s.text);
+      
+      const r = parseInt(s.bg.substr(1,2), 16);
+      const g = parseInt(s.bg.substr(3,2), 16);
+      const b = parseInt(s.bg.substr(5,2), 16);
+      
+      const primaryOpacity = (s.primaryOpacity !== undefined ? s.primaryOpacity : 100) / 100;
+      const opacity = (s.secondaryOpacity !== undefined ? s.secondaryOpacity : 60) / 100;
+      const tertiaryOpacity = Math.max(0, opacity * 0.5); // 50% de la opacidad secundaria
+      
+      root.style.setProperty('--queue-bg-color', `rgba(${r},${g},${b},${primaryOpacity})`);
+      root.style.setProperty('--queue-bg-color-transparent', `rgba(${r},${g},${b},${opacity})`);
+      root.style.setProperty('--queue-bg-color-tertiary', `rgba(${r},${g},${b},${tertiaryOpacity})`);
       
       // Force render queue to update empty state based on new settings if needed
       if (typeof renderQueue === 'function' && window.allRequests) {
@@ -613,13 +617,21 @@
     }
 
     function getSettingsFromInputs() {
+      const getNum = (id, fallback) => {
+        const el = document.getElementById(id);
+        if (!el) return fallback;
+        const val = el.value;
+        const num = Number(val);
+        return isNaN(num) || val === '' ? fallback : num;
+      };
       return {
-        width: document.getElementById('inp-width').value,
-        minHeight: document.getElementById('inp-minHeight').value,
-        spacing: document.getElementById('inp-spacing').value,
-        padding: document.getElementById('inp-padding').value,
-        textGap: document.getElementById('inp-textGap').value,
-        borderRadius: document.getElementById('inp-borderRadius').value,
+        theme: document.getElementById('inp-theme') ? document.getElementById('inp-theme').value : 'classic',
+        width: getNum('inp-width', 350),
+        minHeight: getNum('inp-minHeight', 80),
+        spacing: getNum('inp-spacing', 15),
+        padding: getNum('inp-padding', 15),
+        textGap: getNum('inp-textGap', 4),
+        borderRadius: getNum('inp-borderRadius', 6),
         showHeader: document.getElementById('inp-showHeader').checked,
         showArtist: document.getElementById('inp-showArtist').checked,
         showUser: document.getElementById('inp-showUser').checked,
@@ -627,14 +639,14 @@
         animEntry: document.getElementById('inp-animEntry').value,
         animExit: document.getElementById('inp-animExit').value,
         font: document.getElementById('inp-font').value,
-        fontSize: document.getElementById('inp-fontSize').value,
+        fontSize: getNum('inp-fontSize', 16),
         accent: document.getElementById('inp-accent').value,
         bg: document.getElementById('inp-bg').value,
-        primaryOpacity: document.getElementById('inp-primaryOpacity').value,
-        secondaryOpacity: document.getElementById('inp-secondaryOpacity').value,
-        maxCards: document.getElementById('inp-maxCards').value,
-        widthScale: document.getElementById('inp-widthScale').value,
-        heightScale: document.getElementById('inp-heightScale').value,
+        primaryOpacity: getNum('inp-primaryOpacity', 100),
+        secondaryOpacity: getNum('inp-secondaryOpacity', 60),
+        maxCards: getNum('inp-maxCards', 3),
+        widthScale: getNum('inp-widthScale', 1.0),
+        heightScale: getNum('inp-heightScale', 1.0),
         text: document.getElementById('inp-text').value,
         // New inputs
         autocorrect: document.getElementById('inp-autocorrect').checked,
@@ -645,37 +657,42 @@
       };
     }
 
-    // Listeners para vista previa en tiempo real
-    document.addEventListener('DOMContentLoaded', () => {
+    function initSettingsListeners() {
         // Text/Number inputs
-        ['inp-width', 'inp-minHeight', 'inp-spacing', 'inp-padding', 'inp-textGap', 'inp-borderRadius', 'inp-animEntry', 'inp-animExit', 
+        ['inp-theme', 'inp-width', 'inp-minHeight', 'inp-spacing', 'inp-padding', 'inp-textGap', 'inp-borderRadius', 'inp-animEntry', 'inp-animExit', 
          'inp-font', 'inp-fontSize', 'inp-accent', 'inp-bg', 'inp-primaryOpacity', 'inp-secondaryOpacity', 'inp-text', 'inp-maxCards', 'inp-widthScale', 'inp-heightScale'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('input', previewSettings);
              el.addEventListener('change', previewSettings);
            }
-        });
-        
+         });
+         
         // Checkboxes - Visual Only
         ['inp-showHeader', 'inp-showArtist', 'inp-showUser', 'inp-showEmpty'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('change', previewSettings);
            }
-        });
+         });
 
         // Checkboxes - Data/Structure (Requires Re-render)
         ['inp-autocorrect', 'inp-showAlbumArt', 'inp-showWaitTime', 'inp-showTotalDuration', 'inp-syncAppleMusic'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('change', () => {
-                previewSettings();
-                renderQueue(); // Force re-render to apply data changes
-             });
+                 previewSettings();
+                 renderQueue(); // Force re-render to apply data changes
+              });
            }
         });
-    });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSettingsListeners);
+    } else {
+        initSettingsListeners();
+    }
 
     function previewSettings() {
       const settings = getSettingsFromInputs();
@@ -716,15 +733,8 @@
     // Inicializar settings
     loadSettings();
 
-    // Configuración de Firebase
-    const firebaseConfig = {
-      apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-      authDomain: "zero-strom-web.firebaseapp.com",
-      projectId: "zero-strom-web",
-      storageBucket: "zero-strom-web.firebasestorage.app",
-      messagingSenderId: "758369466349",
-      appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
-    };
+    // Configuración de Firebase (centralizada en firebase-config.js)
+    const firebaseConfig = window.ZERO_FM_FIREBASE;
 
     let db = null;
     try {
@@ -790,26 +800,6 @@
           }
         }, (error) => {
            console.warn("No se pudo sincronizar configuración remota:", error);
-        });
-
-      // Escuchar personalización visual del reproductor de cola independiente
-      db.collection('systemConfig').doc('overlayAlertsConfig')
-        .onSnapshot((doc) => {
-          if (doc.exists) {
-            const data = doc.data();
-            if (data.queueOpacity !== undefined) window.queueOpacityOverride = data.queueOpacity;
-            if (data.queueRadius !== undefined) window.queueRadiusOverride = data.queueRadius;
-            if (data.queueFontSize !== undefined) window.queueFontSizeOverride = data.queueFontSize;
-            
-            // Re-aplicar configuración
-            if (window.appliedSettings) {
-              applySettings(window.appliedSettings);
-            } else {
-              applySettings(defaultSettings);
-            }
-          }
-        }, (error) => {
-           console.warn("No se pudo sincronizar overlayAlertsConfig para queue:", error);
         });
     } else {
       console.warn("Firestore no inicializado. No se cargará configuración remota.");
@@ -1065,6 +1055,8 @@
       try {
         const container = document.getElementById('queue-container');
         if (!container) return;
+        
+        // 1. Actualizar tiempos de espera
         const waitEls = Array.from(container.querySelectorAll('.item-wait'));
         const now = Date.now();
         for (const el of waitEls) {
@@ -1074,6 +1066,64 @@
           if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(at) || at <= 0) continue;
           const remaining = Math.max(0, base - (now - at));
           el.innerText = formatWaitCountdownMs(remaining);
+        }
+
+        // 2. Ejecutar simulación si Cider está inactivo
+        const isCiderActive = currentCiderTrack && currentCiderTrack.song;
+        if (!isCiderActive) {
+          if (window.simulatedPlaybackProgress === undefined) {
+            window.simulatedPlaybackProgress = 0;
+          }
+          window.simulatedPlaybackProgress += 0.5; // Avanzar 0.5% por segundo (aprox 3.3 min total)
+          if (window.simulatedPlaybackProgress > 100) {
+            window.simulatedPlaybackProgress = 0;
+          }
+          
+          window.currentCiderDuration = 210000; // 3:30 min
+          window.currentCiderPosition = Math.round(210000 * (window.simulatedPlaybackProgress / 100));
+          window.currentCiderPositionUpdatedAt = Date.now();
+        }
+
+        // 3. Actualizar la barra de progreso física
+        updatePlaybackProgressBar();
+      } catch (_) {}
+    }
+
+    function updatePlaybackProgressBar() {
+      try {
+        const container = document.getElementById('queue-container');
+        if (!container) return;
+        const progressRow = container.querySelector('.playback-progress-row');
+        if (!progressRow) return;
+
+        const fill = progressRow.querySelector('.progress-bar-fill');
+        const timeText = progressRow.querySelector('.progress-time');
+        
+        let duration = window.currentCiderDuration || 0;
+        let position = window.currentCiderPosition || 0;
+        const updatedAt = window.currentCiderPositionUpdatedAt || 0;
+        
+        if (duration > 0 && updatedAt > 0) {
+          const age = Date.now() - updatedAt;
+          let currentPos = position + age;
+          if (currentPos > duration) currentPos = duration;
+          
+          const pct = (currentPos / duration) * 100;
+          if (fill) fill.style.width = pct + '%';
+          
+          const formatTime = (ms) => {
+            const sec = Math.floor(ms / 1000);
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return `${m}:${String(s).padStart(2, '0')}`;
+          };
+          
+          if (timeText) {
+            timeText.innerText = `${formatTime(currentPos)} / ${formatTime(duration)}`;
+          }
+        } else {
+          if (fill) fill.style.width = '0%';
+          if (timeText) timeText.innerText = '0:00 / 0:00';
         }
       } catch (_) {}
     }
@@ -1253,25 +1303,70 @@
       const cleanArtista = escapeHTML(artista);
       const cleanUsuario = escapeHTML(usuario);
 
-      // Structure for optional Album Art and Wait Time
+      // Structure for optional Album Art, Wait Time, Progress Bar and Header
       div.innerHTML = `
-        <div class="queue-item-inner" style="flex-direction: row; align-items: center; gap: 15px;">
-           <img class="item-art" src="" style="display:none; width: 60px; height: 60px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">
-           
-           <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
-               <div class="item-header">
-                  <span>#${index + 1}</span>
-                  <span>En cola</span>
-               </div>
-               <div class="item-song">
-                  <span>${cleanCancion}</span>
-                  ${req.link ? `<span class="song-link-icon" title="Ver enlace">🔗</span>` : ''}
-               </div>
-               <div class="item-artist">${cleanArtista}</div>
-               <div class="item-user">
-                  Pedido por <span class="user-badge"><span class="user-name">${cleanUsuario}</span>${badgeHtml}</span>
-               </div>
-               <div class="item-wait" style="font-size: 11px; color: var(--queue-accent-color); margin-top: 4px; font-weight: bold; display:none;"></div>
+        <div class="queue-item-inner">
+           <!-- Header superior especial (solo para neon-glass pos 1) -->
+           <div class="now-playing-header">
+              <div class="now-playing-badge">
+                 <span class="eq-bars">
+                    <span class="eq-bar"></span>
+                    <span class="eq-bar"></span>
+                    <span class="eq-bar"></span>
+                 </span>
+                 <span>AHORA SONANDO</span>
+              </div>
+              <span class="en-cola-text">EN COLA</span>
+           </div>
+
+           <!-- Contenido principal -->
+           <div class="queue-content-body">
+              <img class="item-art" src="" style="display:none; width: 60px; height: 60px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">
+              
+              <div class="item-details-col">
+                  <div class="item-header">
+                     <span class="pos-badge">#${index + 1}</span>
+                     <span class="header-status">En cola</span>
+                  </div>
+                  <div class="item-song">
+                     <span>${cleanCancion}</span>
+                     ${req.link ? `<span class="song-link-icon" title="Ver enlace">🔗</span>` : ''}
+                  </div>
+                  <div class="item-artist">${cleanArtista}</div>
+                  
+                  <div class="item-user">
+                     Pedido por <span class="user-badge"><span class="user-name">${cleanUsuario}</span>${badgeHtml}</span>
+                  </div>
+                  
+                  <!-- Contenedor del wait-time (incluye reloj para neon-glass) -->
+                  <div class="wait-container">
+                     <span class="clock-icon">🕒</span>
+                     <span class="item-wait" style="display:none; font-size: 11px; color: var(--queue-accent-color); font-weight: bold;"></span>
+                  </div>
+
+                  <!-- Timeline de puntitos para neon-glass en tarjetas 2 y 3 -->
+                  <div class="dots-timeline">
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                  </div>
+              </div>
+           </div>
+
+           <!-- Barra de progreso de música (solo para neon-glass pos 1) -->
+           <div class="playback-progress-row">
+              <span class="progress-eq-icon">📊</span>
+              <div class="progress-bar-container">
+                 <div class="progress-bar-fill" style="width: 0%;"></div>
+              </div>
+              <span class="progress-time">0:00 / 0:00</span>
            </div>
         </div>
       `;
@@ -1710,8 +1805,12 @@
                      }
                  }
                  
-                 if (settings.showAlbumArt && data.artworkUrl) {
-                     artEl.src = data.artworkUrl;
+                 if (settings.showAlbumArt) {
+                     if (data.artworkUrl) {
+                         artEl.src = data.artworkUrl;
+                     } else {
+                         artEl.src = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=150&auto=format&fit=crop';
+                     }
                      artEl.style.display = 'block';
                  } else if (artEl) {
                      artEl.style.display = 'none';
@@ -1745,7 +1844,14 @@
                        accumulatedTime += 3.5; 
                      }
                  }
-                 if (artEl) artEl.style.display = 'none';
+                 if (artEl) {
+                     if (settings.showAlbumArt) {
+                         artEl.src = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=150&auto=format&fit=crop';
+                         artEl.style.display = 'block';
+                     } else {
+                         artEl.style.display = 'none';
+                     }
+                 }
              }
          }
       }
@@ -1844,6 +1950,24 @@
           currentCiderPlayback = { remainingMs, updatedAt: Date.now() };
           const isJump = (Number.isFinite(prevMs) && prevMs > 0 && remainingMs > prevMs + 45000) || (prevMs < 8000 && remainingMs > 45000);
           if (isJump) recomputeWaitCountdownFromDom();
+        }
+
+        // Guardar datos detallados para la barra de progreso
+        const durationMs = normalizeMaybeSecondsToMs(
+          data.durationInMillis || data.durationMs || data.trackTimeMillis || data.duration || data.playbackDuration
+        );
+        const positionMs = normalizeMaybeSecondsToMs(
+          data.playbackTime || data.currentPlaybackTime || data.position || data.elapsedTime || data.elapsedTimeMs
+        );
+        if (durationMs > 0) {
+          window.currentCiderDuration = durationMs;
+          if (positionMs >= 0) {
+            window.currentCiderPosition = positionMs;
+            window.currentCiderPositionUpdatedAt = Date.now();
+          } else {
+            window.currentCiderPosition = Math.max(0, durationMs - remainingMs);
+            window.currentCiderPositionUpdatedAt = Date.now();
+          }
         }
       } catch (_) {}
     }
@@ -2333,8 +2457,8 @@
       const mm = String(now.getMinutes()).padStart(2, '0');
       const hora = `${hh}:${mm}`;
       const uniqueId = Date.now().toString(36); // Timestamp base36 para unicidad
-      const tsValue = (typeof firebase !== 'undefined' && firebase?.firestore?.Timestamp?.fromDate)
-        ? firebase.firestore.Timestamp.fromDate(now)
+      const tsValue = (typeof firebase !== 'undefined' && firebase?.firestore?.FieldValue?.serverTimestamp)
+        ? firebase.firestore.FieldValue.serverTimestamp()
         : now;
       const req = {
         id: `${randomUser}-${randomSong}-${randomArtist}-${hora}-${uniqueId}`.replace(/[^a-zA-Z0-9-]/g, ''),

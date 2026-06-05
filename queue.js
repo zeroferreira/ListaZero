@@ -515,22 +515,24 @@
       // Ajustar altura mínima dinámicamente según cantidad de tarjetas y escala
        // Si hay más de 3 tarjetas, reducimos la altura proporcionalmente para que quepan mejor
        let baseMinHeight = s.minHeight || 80;
+       let adjustedMinHeight = baseMinHeight;
        if (s.maxCards > 3) {
            // Factor de reducción: 0.9x para 4, 0.8x para 5, 0.7x para 6
            const reductionFactor = 1 - ((s.maxCards - 3) * 0.1);
-           baseMinHeight = Math.floor(baseMinHeight * reductionFactor);
+           adjustedMinHeight = Math.floor(adjustedMinHeight * reductionFactor);
        }
        // Aplicar escala de altura final
        const heightScale = s.heightScale || 1.0;
        // Aplicar min-height ajustado
-       root.style.setProperty('--queue-item-min-height', Math.floor(baseMinHeight * heightScale) + 'px');
+       root.style.setProperty('--queue-item-min-height', Math.floor(adjustedMinHeight * heightScale) + 'px');
        
        // FIX: Escalar también los paddings y espacios verticales para permitir tarjetas más delgadas
        const padding = (s.padding !== undefined ? s.padding : 15);
        const textGap = (s.textGap !== undefined ? s.textGap : 4);
        
-       // Si reducimos la altura (< 1.0), reducimos proporcionalmente los espacios internos
-       const verticalScale = heightScale < 1.0 ? heightScale : 1.0;
+       // Escalar espaciados si reducimos la altura base (< 80) o la escala (< 1.0)
+       const minHeightScaleFactor = baseMinHeight < 80 ? (baseMinHeight / 80) : 1.0;
+       const verticalScale = (heightScale < 1.0 ? heightScale : 1.0) * minHeightScaleFactor;
        
        root.style.setProperty('--queue-item-spacing', (s.spacing !== undefined ? s.spacing : 15) + 'px');
        root.style.setProperty('--queue-padding', Math.floor(padding * verticalScale) + 'px');
@@ -581,12 +583,13 @@
       root.style.setProperty('--queue-font-family', s.font);
       
       // FIX: Escalar fuente si reducimos mucho la altura para que no se corte
-      const baseFontSize = s.fontSize || 16;
-      let fontScale = 1.0;
-      if (heightScale < 0.8) fontScale = heightScale * 1.2; // Reducción suave
-      if (fontScale > 1.0) fontScale = 1.0;
-      
-      root.style.setProperty('--queue-font-size', Math.floor(baseFontSize * fontScale) + 'px');
+       const baseFontSize = s.fontSize || 16;
+       let fontScale = 1.0;
+       const combinedHeightScale = heightScale * (baseMinHeight < 80 ? (baseMinHeight / 80) : 1.0);
+       if (combinedHeightScale < 0.8) fontScale = combinedHeightScale * 1.2; // Reducción suave
+       if (fontScale > 1.0) fontScale = 1.0;
+       
+       root.style.setProperty('--queue-font-size', Math.max(10, Math.floor(baseFontSize * fontScale)) + 'px');
       root.style.setProperty('--queue-accent-color', s.accent);
       root.style.setProperty('--queue-text-color', s.text);
       
@@ -614,14 +617,21 @@
     }
 
     function getSettingsFromInputs() {
+      const getNum = (id, fallback) => {
+        const el = document.getElementById(id);
+        if (!el) return fallback;
+        const val = el.value;
+        const num = Number(val);
+        return isNaN(num) || val === '' ? fallback : num;
+      };
       return {
         theme: document.getElementById('inp-theme') ? document.getElementById('inp-theme').value : 'classic',
-        width: document.getElementById('inp-width').value,
-        minHeight: document.getElementById('inp-minHeight').value,
-        spacing: document.getElementById('inp-spacing').value,
-        padding: document.getElementById('inp-padding').value,
-        textGap: document.getElementById('inp-textGap').value,
-        borderRadius: document.getElementById('inp-borderRadius').value,
+        width: getNum('inp-width', 350),
+        minHeight: getNum('inp-minHeight', 80),
+        spacing: getNum('inp-spacing', 15),
+        padding: getNum('inp-padding', 15),
+        textGap: getNum('inp-textGap', 4),
+        borderRadius: getNum('inp-borderRadius', 6),
         showHeader: document.getElementById('inp-showHeader').checked,
         showArtist: document.getElementById('inp-showArtist').checked,
         showUser: document.getElementById('inp-showUser').checked,
@@ -629,14 +639,14 @@
         animEntry: document.getElementById('inp-animEntry').value,
         animExit: document.getElementById('inp-animExit').value,
         font: document.getElementById('inp-font').value,
-        fontSize: document.getElementById('inp-fontSize').value,
+        fontSize: getNum('inp-fontSize', 16),
         accent: document.getElementById('inp-accent').value,
         bg: document.getElementById('inp-bg').value,
-        primaryOpacity: document.getElementById('inp-primaryOpacity').value,
-        secondaryOpacity: document.getElementById('inp-secondaryOpacity').value,
-        maxCards: document.getElementById('inp-maxCards').value,
-        widthScale: document.getElementById('inp-widthScale').value,
-        heightScale: document.getElementById('inp-heightScale').value,
+        primaryOpacity: getNum('inp-primaryOpacity', 100),
+        secondaryOpacity: getNum('inp-secondaryOpacity', 60),
+        maxCards: getNum('inp-maxCards', 3),
+        widthScale: getNum('inp-widthScale', 1.0),
+        heightScale: getNum('inp-heightScale', 1.0),
         text: document.getElementById('inp-text').value,
         // New inputs
         autocorrect: document.getElementById('inp-autocorrect').checked,
@@ -647,8 +657,7 @@
       };
     }
 
-    // Listeners para vista previa en tiempo real
-    document.addEventListener('DOMContentLoaded', () => {
+    function initSettingsListeners() {
         // Text/Number inputs
         ['inp-theme', 'inp-width', 'inp-minHeight', 'inp-spacing', 'inp-padding', 'inp-textGap', 'inp-borderRadius', 'inp-animEntry', 'inp-animExit', 
          'inp-font', 'inp-fontSize', 'inp-accent', 'inp-bg', 'inp-primaryOpacity', 'inp-secondaryOpacity', 'inp-text', 'inp-maxCards', 'inp-widthScale', 'inp-heightScale'].forEach(id => {
@@ -657,27 +666,33 @@
              el.addEventListener('input', previewSettings);
              el.addEventListener('change', previewSettings);
            }
-        });
-        
+         });
+         
         // Checkboxes - Visual Only
         ['inp-showHeader', 'inp-showArtist', 'inp-showUser', 'inp-showEmpty'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('change', previewSettings);
            }
-        });
+         });
 
         // Checkboxes - Data/Structure (Requires Re-render)
         ['inp-autocorrect', 'inp-showAlbumArt', 'inp-showWaitTime', 'inp-showTotalDuration', 'inp-syncAppleMusic'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('change', () => {
-                previewSettings();
-                renderQueue(); // Force re-render to apply data changes
-             });
+                 previewSettings();
+                 renderQueue(); // Force re-render to apply data changes
+              });
            }
         });
-    });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSettingsListeners);
+    } else {
+        initSettingsListeners();
+    }
 
     function previewSettings() {
       const settings = getSettingsFromInputs();
