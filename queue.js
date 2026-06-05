@@ -2442,8 +2442,8 @@
       const mm = String(now.getMinutes()).padStart(2, '0');
       const hora = `${hh}:${mm}`;
       const uniqueId = Date.now().toString(36); // Timestamp base36 para unicidad
-      const tsValue = (typeof firebase !== 'undefined' && firebase?.firestore?.Timestamp?.fromDate)
-        ? firebase.firestore.Timestamp.fromDate(now)
+      const tsValue = (typeof firebase !== 'undefined' && firebase?.firestore?.FieldValue?.serverTimestamp)
+        ? firebase.firestore.FieldValue.serverTimestamp()
         : now;
       const req = {
         id: `${randomUser}-${randomSong}-${randomArtist}-${hora}-${uniqueId}`.replace(/[^a-zA-Z0-9-]/g, ''),
