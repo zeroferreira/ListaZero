@@ -215,6 +215,29 @@
 
 
     // ==========================================
+    // OPTIMIZACIÓN DE SCROLL (GLASSMORPHISM INTERACTIVO)
+    // ==========================================
+    (function initScrollPerformance() {
+      document.addEventListener('DOMContentLoaded', () => {
+        const scrollContainer = document.querySelector('.list-scroll-container');
+        const card = document.querySelector('.card');
+        if (!scrollContainer || !card) return;
+
+        let scrollTimeout;
+        scrollContainer.addEventListener('scroll', () => {
+          if (!card.classList.contains('scrolling')) {
+            card.classList.add('scrolling');
+          }
+          clearTimeout(scrollTimeout);
+          scrollTimeout = setTimeout(() => {
+            card.classList.remove('scrolling');
+          }, 150);
+        }, { passive: true });
+      });
+    })();
+
+
+    // ==========================================
     // PULL TO REFRESH (MÓVILES)
     // ==========================================
     (function initPullToRefresh() {
