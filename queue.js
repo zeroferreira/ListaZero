@@ -405,6 +405,7 @@
     }
 
     const defaultSettings = {
+      theme: 'classic',
       width: 350,
       minHeight: 80,
       spacing: 15,
@@ -498,6 +499,9 @@
       document.getElementById('inp-showWaitTime').checked = settings.showWaitTime !== undefined ? settings.showWaitTime : false;
       document.getElementById('inp-showTotalDuration').checked = settings.showTotalDuration !== undefined ? settings.showTotalDuration : false;
       document.getElementById('inp-syncAppleMusic').checked = settings.syncAppleMusic !== undefined ? settings.syncAppleMusic : false;
+      if (document.getElementById('inp-theme')) {
+        document.getElementById('inp-theme').value = settings.theme || 'classic';
+      }
     }
 
     function applySettings(s) {
@@ -535,6 +539,10 @@
       
       // Set Global Animation Classes on Container
       const container = document.getElementById('queue-container');
+      if (container) {
+        container.classList.remove('theme-classic', 'theme-neon-glass');
+        container.classList.add(`theme-${s.theme || 'classic'}`);
+      }
       
       // Lista segura de clases de animación para limpiar
       const animationClasses = [
@@ -607,6 +615,7 @@
 
     function getSettingsFromInputs() {
       return {
+        theme: document.getElementById('inp-theme') ? document.getElementById('inp-theme').value : 'classic',
         width: document.getElementById('inp-width').value,
         minHeight: document.getElementById('inp-minHeight').value,
         spacing: document.getElementById('inp-spacing').value,
@@ -641,7 +650,7 @@
     // Listeners para vista previa en tiempo real
     document.addEventListener('DOMContentLoaded', () => {
         // Text/Number inputs
-        ['inp-width', 'inp-minHeight', 'inp-spacing', 'inp-padding', 'inp-textGap', 'inp-borderRadius', 'inp-animEntry', 'inp-animExit', 
+        ['inp-theme', 'inp-width', 'inp-minHeight', 'inp-spacing', 'inp-padding', 'inp-textGap', 'inp-borderRadius', 'inp-animEntry', 'inp-animExit', 
          'inp-font', 'inp-fontSize', 'inp-accent', 'inp-bg', 'inp-primaryOpacity', 'inp-secondaryOpacity', 'inp-text', 'inp-maxCards', 'inp-widthScale', 'inp-heightScale'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
@@ -1031,6 +1040,8 @@
       try {
         const container = document.getElementById('queue-container');
         if (!container) return;
+        
+        // 1. Actualizar tiempos de espera
         const waitEls = Array.from(container.querySelectorAll('.item-wait'));
         const now = Date.now();
         for (const el of waitEls) {
@@ -1040,6 +1051,64 @@
           if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(at) || at <= 0) continue;
           const remaining = Math.max(0, base - (now - at));
           el.innerText = formatWaitCountdownMs(remaining);
+        }
+
+        // 2. Ejecutar simulación si Cider está inactivo
+        const isCiderActive = currentCiderTrack && currentCiderTrack.song;
+        if (!isCiderActive) {
+          if (window.simulatedPlaybackProgress === undefined) {
+            window.simulatedPlaybackProgress = 0;
+          }
+          window.simulatedPlaybackProgress += 0.5; // Avanzar 0.5% por segundo (aprox 3.3 min total)
+          if (window.simulatedPlaybackProgress > 100) {
+            window.simulatedPlaybackProgress = 0;
+          }
+          
+          window.currentCiderDuration = 210000; // 3:30 min
+          window.currentCiderPosition = Math.round(210000 * (window.simulatedPlaybackProgress / 100));
+          window.currentCiderPositionUpdatedAt = Date.now();
+        }
+
+        // 3. Actualizar la barra de progreso física
+        updatePlaybackProgressBar();
+      } catch (_) {}
+    }
+
+    function updatePlaybackProgressBar() {
+      try {
+        const container = document.getElementById('queue-container');
+        if (!container) return;
+        const progressRow = container.querySelector('.playback-progress-row');
+        if (!progressRow) return;
+
+        const fill = progressRow.querySelector('.progress-bar-fill');
+        const timeText = progressRow.querySelector('.progress-time');
+        
+        let duration = window.currentCiderDuration || 0;
+        let position = window.currentCiderPosition || 0;
+        const updatedAt = window.currentCiderPositionUpdatedAt || 0;
+        
+        if (duration > 0 && updatedAt > 0) {
+          const age = Date.now() - updatedAt;
+          let currentPos = position + age;
+          if (currentPos > duration) currentPos = duration;
+          
+          const pct = (currentPos / duration) * 100;
+          if (fill) fill.style.width = pct + '%';
+          
+          const formatTime = (ms) => {
+            const sec = Math.floor(ms / 1000);
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return `${m}:${String(s).padStart(2, '0')}`;
+          };
+          
+          if (timeText) {
+            timeText.innerText = `${formatTime(currentPos)} / ${formatTime(duration)}`;
+          }
+        } else {
+          if (fill) fill.style.width = '0%';
+          if (timeText) timeText.innerText = '0:00 / 0:00';
         }
       } catch (_) {}
     }
@@ -1219,25 +1288,70 @@
       const cleanArtista = escapeHTML(artista);
       const cleanUsuario = escapeHTML(usuario);
 
-      // Structure for optional Album Art and Wait Time
+      // Structure for optional Album Art, Wait Time, Progress Bar and Header
       div.innerHTML = `
-        <div class="queue-item-inner" style="flex-direction: row; align-items: center; gap: 15px;">
-           <img class="item-art" src="" style="display:none; width: 60px; height: 60px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">
-           
-           <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
-               <div class="item-header">
-                  <span>#${index + 1}</span>
-                  <span>En cola</span>
-               </div>
-               <div class="item-song">
-                  <span>${cleanCancion}</span>
-                  ${req.link ? `<span class="song-link-icon" title="Ver enlace">🔗</span>` : ''}
-               </div>
-               <div class="item-artist">${cleanArtista}</div>
-               <div class="item-user">
-                  Pedido por <span class="user-badge"><span class="user-name">${cleanUsuario}</span>${badgeHtml}</span>
-               </div>
-               <div class="item-wait" style="font-size: 11px; color: var(--queue-accent-color); margin-top: 4px; font-weight: bold; display:none;"></div>
+        <div class="queue-item-inner">
+           <!-- Header superior especial (solo para neon-glass pos 1) -->
+           <div class="now-playing-header">
+              <div class="now-playing-badge">
+                 <span class="eq-bars">
+                    <span class="eq-bar"></span>
+                    <span class="eq-bar"></span>
+                    <span class="eq-bar"></span>
+                 </span>
+                 <span>AHORA SONANDO</span>
+              </div>
+              <span class="en-cola-text">EN COLA</span>
+           </div>
+
+           <!-- Contenido principal -->
+           <div class="queue-content-body">
+              <img class="item-art" src="" style="display:none; width: 60px; height: 60px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">
+              
+              <div class="item-details-col">
+                  <div class="item-header">
+                     <span class="pos-badge">#${index + 1}</span>
+                     <span class="header-status">En cola</span>
+                  </div>
+                  <div class="item-song">
+                     <span>${cleanCancion}</span>
+                     ${req.link ? `<span class="song-link-icon" title="Ver enlace">🔗</span>` : ''}
+                  </div>
+                  <div class="item-artist">${cleanArtista}</div>
+                  
+                  <div class="item-user">
+                     Pedido por <span class="user-badge"><span class="user-name">${cleanUsuario}</span>${badgeHtml}</span>
+                  </div>
+                  
+                  <!-- Contenedor del wait-time (incluye reloj para neon-glass) -->
+                  <div class="wait-container">
+                     <span class="clock-icon">🕒</span>
+                     <span class="item-wait" style="display:none; font-size: 11px; color: var(--queue-accent-color); font-weight: bold;"></span>
+                  </div>
+
+                  <!-- Timeline de puntitos para neon-glass en tarjetas 2 y 3 -->
+                  <div class="dots-timeline">
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                     <span class="dot"></span>
+                  </div>
+              </div>
+           </div>
+
+           <!-- Barra de progreso de música (solo para neon-glass pos 1) -->
+           <div class="playback-progress-row">
+              <span class="progress-eq-icon">📊</span>
+              <div class="progress-bar-container">
+                 <div class="progress-bar-fill" style="width: 0%;"></div>
+              </div>
+              <span class="progress-time">0:00 / 0:00</span>
            </div>
         </div>
       `;
@@ -1676,8 +1790,12 @@
                      }
                  }
                  
-                 if (settings.showAlbumArt && data.artworkUrl) {
-                     artEl.src = data.artworkUrl;
+                 if (settings.showAlbumArt) {
+                     if (data.artworkUrl) {
+                         artEl.src = data.artworkUrl;
+                     } else {
+                         artEl.src = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=150&auto=format&fit=crop';
+                     }
                      artEl.style.display = 'block';
                  } else if (artEl) {
                      artEl.style.display = 'none';
@@ -1711,7 +1829,14 @@
                        accumulatedTime += 3.5; 
                      }
                  }
-                 if (artEl) artEl.style.display = 'none';
+                 if (artEl) {
+                     if (settings.showAlbumArt) {
+                         artEl.src = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=150&auto=format&fit=crop';
+                         artEl.style.display = 'block';
+                     } else {
+                         artEl.style.display = 'none';
+                     }
+                 }
              }
          }
       }
@@ -1810,6 +1935,24 @@
           currentCiderPlayback = { remainingMs, updatedAt: Date.now() };
           const isJump = (Number.isFinite(prevMs) && prevMs > 0 && remainingMs > prevMs + 45000) || (prevMs < 8000 && remainingMs > 45000);
           if (isJump) recomputeWaitCountdownFromDom();
+        }
+
+        // Guardar datos detallados para la barra de progreso
+        const durationMs = normalizeMaybeSecondsToMs(
+          data.durationInMillis || data.durationMs || data.trackTimeMillis || data.duration || data.playbackDuration
+        );
+        const positionMs = normalizeMaybeSecondsToMs(
+          data.playbackTime || data.currentPlaybackTime || data.position || data.elapsedTime || data.elapsedTimeMs
+        );
+        if (durationMs > 0) {
+          window.currentCiderDuration = durationMs;
+          if (positionMs >= 0) {
+            window.currentCiderPosition = positionMs;
+            window.currentCiderPositionUpdatedAt = Date.now();
+          } else {
+            window.currentCiderPosition = Math.max(0, durationMs - remainingMs);
+            window.currentCiderPositionUpdatedAt = Date.now();
+          }
         }
       } catch (_) {}
     }
