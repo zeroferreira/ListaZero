@@ -11,19 +11,15 @@ function initParticles() {
   var height = 0;
   var dpr = window.devicePixelRatio || 1;
   var particles = [];
-  var particleCount = 900;
+  var particleCount = 600;
   var lastTime = 0;
   var rotationX = 0;
   var rotationY = 0;
   var velocityX = 0.00015;
   var velocityY = 0.00025;
   var lastScrollY = window.scrollY || 0;
+  var scrollPending = false;
   var currentShape = localStorage.getItem('selectedShape') || 'orb';
-  var listScrollEl = null; // cacheada, no buscar en cada scroll event
-  var scrollRafPending = false; // throttle del scroll via rAF
-  var projected = [];  // pre-allocada fuera del loop para evitar GC
-  var lastRotX = 0;   // para detectar cambio de rotación
-  var lastRotY = 0;
 
   function hexToRgba(hex, alpha) {
     if (!hex) return hex;
@@ -133,7 +129,7 @@ function initParticles() {
     
     // Obtener cantidad de partículas guardada o usar default
     var savedCount = localStorage.getItem('particleCount');
-    var defaultCount = isMobile ? 300 : 800; // Default original
+    var defaultCount = isMobile ? 250 : 600; // Reducido para fluidez en scroll
     var targetCount = savedCount ? parseInt(savedCount) : defaultCount;
     
     if (particles.length !== targetCount) {
@@ -225,6 +221,7 @@ function initParticles() {
     velocityX *= 0.98;
     velocityY *= 0.98;
     ctx.clearRect(0, 0, width, height);
+    // Centrar partículas en el viewport real
     var centerX = width / 2;
     var centerY = height / 2;
     var cosX = Math.cos(rotationX);
@@ -232,9 +229,8 @@ function initParticles() {
     var cosY = Math.cos(rotationY);
     var sinY = Math.sin(rotationY);
     var fov = baseRadius * 2;
-
-    // Re-usar array pre-allocado para evitar GC en cada frame
-    projected.length = 0;
+    // ❌ projected array eliminado: sort() era O(n log n) en cada frame
+    // Ahora usamos depth fade por alpha (O(1) por partícula)
     
     // Factor de interpolación para transiciones suaves (lerp)
     var lerpFactor = 0.05;
@@ -257,38 +253,31 @@ function initParticles() {
       var scale = fov / (fov + z2 + baseRadius);
       var px = centerX + x1 * scale;
       var py = centerY + y1 * scale;
-      projected.push({ x: px, y: py, z: z2, color: p.color, size: p.size * scale });
-    }
-
-    // Sort solo cuando la rotación cambió suficiente (ahorra ~60 sorts/seg en idle)
-    var rotDiff = Math.abs(rotationX - lastRotX) + Math.abs(rotationY - lastRotY);
-    if (rotDiff > 0.0005) {
-      projected.sort(function(a, b) { return a.z - b.z; });
-      lastRotX = rotationX;
-      lastRotY = rotationY;
-    }
-
-    for (var j = 0; j < projected.length; j++) {
-      var q = projected[j];
+      // Depth fade por alpha en lugar de sort() — O(1) por partícula
+      var depthAlpha = Math.min(1, Math.max(0.15, (z2 + baseRadius) / (baseRadius * 2)));
+      var sz = p.size * scale;
+      ctx.globalAlpha = depthAlpha;
+      ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.fillStyle = q.color;
-      var s = q.size;
-      ctx.arc(q.x, q.y, s, 0, Math.PI * 2);
+      ctx.arc(px, py, sz, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.globalAlpha = 1;
     window.requestAnimationFrame(renderFrame);
   }
 
   function handleScroll() {
-    if (scrollRafPending) return; // throttle: max 1 update por frame
-    scrollRafPending = true;
-    requestAnimationFrame(function() {
-      scrollRafPending = false;
-      var y = listScrollEl ? listScrollEl.scrollTop : (window.scrollY || 0);
+    // Throttle: solo procesar una vez por frame de animación
+    if (scrollPending) return;
+    scrollPending = true;
+    window.requestAnimationFrame(function() {
+      var listScroll = document.querySelector('.list-scroll-container');
+      var y = listScroll ? listScroll.scrollTop : (window.scrollY || 0);
       var delta = y - lastScrollY;
       lastScrollY = y;
       velocityY += delta * 0.000002;
       velocityX += delta * 0.000001;
+      scrollPending = false;
     });
   }
 
@@ -310,15 +299,12 @@ function initParticles() {
   window.addEventListener('orientationchange', resize);
   window.addEventListener('pointerdown', boostRotation, { passive: true });
   window.addEventListener('touchstart', boostRotation, { passive: true });
-
-  // Cachear referencia al scroll container y escuchar solo en él
-  // (no en window, para evitar doble disparo y querySelector en cada evento)
-  listScrollEl = document.querySelector('.list-scroll-container');
-  if (listScrollEl) {
-    listScrollEl.addEventListener('scroll', handleScroll, { passive: true });
-  } else {
-    // Fallback: si no existe el contenedor, escuchar en window
-    window.addEventListener('scroll', handleScroll, { passive: true });
+  
+  // Escuchar scroll tanto en window como en el contenedor de la lista
+  window.addEventListener('scroll', handleScroll, { passive: true });
+  const listScroll = document.querySelector('.list-scroll-container');
+  if (listScroll) {
+    listScroll.addEventListener('scroll', handleScroll, { passive: true });
   }
   window.requestAnimationFrame(renderFrame);
 }
