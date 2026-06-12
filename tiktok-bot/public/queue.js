@@ -542,7 +542,7 @@
       // Set Global Animation Classes on Container
       const container = document.getElementById('queue-container');
       if (container) {
-        container.classList.remove('theme-classic', 'theme-neon-glass');
+        container.classList.remove('theme-classic', 'theme-neon-glass', 'theme-vision');
         container.classList.add(`theme-${s.theme || 'classic'}`);
       }
       
@@ -589,7 +589,9 @@
        if (combinedHeightScale < 0.8) fontScale = combinedHeightScale * 1.2; // Reducción suave
        if (fontScale > 1.0) fontScale = 1.0;
        
-       root.style.setProperty('--queue-font-size', Math.max(10, Math.floor(baseFontSize * fontScale)) + 'px');
+       const calculatedSize = Math.max(10, Math.floor(baseFontSize * fontScale));
+       root.style.setProperty('--queue-font-size', calculatedSize + 'px');
+       root.style.setProperty('--queue-font-scale', (calculatedSize / 16).toFixed(4));
       root.style.setProperty('--queue-accent-color', s.accent);
       if (s.accent && s.accent.startsWith('#')) {
         const ar = parseInt(s.accent.substr(1,2), 16);
@@ -622,6 +624,8 @@
       root.style.setProperty('--queue-bg-color', `rgba(${r},${g},${b},${primaryOpacity})`);
       root.style.setProperty('--queue-bg-color-transparent', `rgba(${r},${g},${b},${opacity})`);
       root.style.setProperty('--queue-bg-color-tertiary', `rgba(${r},${g},${b},${tertiaryOpacity})`);
+      root.style.setProperty('--queue-primary-opacity', primaryOpacity);
+      root.style.setProperty('--queue-secondary-opacity', opacity);
       
       // Force render queue to update empty state based on new settings if needed
       if (typeof renderQueue === 'function' && window.allRequests) {
@@ -697,28 +701,39 @@
             spacing: 20,
             padding: 16,
             borderRadius: 24
+          },
+          vision: {
+            spacing: 18,
+            padding: 16,
+            borderRadius: 30
           }
         };
 
         const themeSelect = document.getElementById('inp-theme');
         if (themeSelect) {
+          let lastTheme = themeSelect.value;
+          themeSelect.addEventListener('focus', (e) => {
+            lastTheme = e.target.value;
+          });
           themeSelect.addEventListener('change', (e) => {
             const newTheme = e.target.value;
-            const prevTheme = newTheme === 'neon-glass' ? 'classic' : 'neon-glass';
+            const prevTheme = lastTheme || 'classic';
+            lastTheme = newTheme;
             
             const spacingEl = document.getElementById('inp-spacing');
             const paddingEl = document.getElementById('inp-padding');
             const radiusEl = document.getElementById('inp-borderRadius');
             
-            // Si el valor actual coincide con el default del tema anterior, lo actualizamos al default del nuevo tema
-            if (spacingEl && Number(spacingEl.value) === themeDefaults[prevTheme].spacing) {
-              spacingEl.value = themeDefaults[newTheme].spacing;
-            }
-            if (paddingEl && Number(paddingEl.value) === themeDefaults[prevTheme].padding) {
-              paddingEl.value = themeDefaults[newTheme].padding;
-            }
-            if (radiusEl && Number(radiusEl.value) === themeDefaults[prevTheme].borderRadius) {
-              radiusEl.value = themeDefaults[newTheme].borderRadius;
+            if (themeDefaults[prevTheme] && themeDefaults[newTheme]) {
+                if (spacingEl && Number(spacingEl.value) === themeDefaults[prevTheme].spacing) {
+                  spacingEl.value = themeDefaults[newTheme].spacing;
+                }
+                if (paddingEl && Number(paddingEl.value) === themeDefaults[prevTheme].padding) {
+                  paddingEl.value = themeDefaults[newTheme].padding;
+                }
+                if (radiusEl && Number(radiusEl.value) === themeDefaults[prevTheme].borderRadius) {
+                  radiusEl.value = themeDefaults[newTheme].borderRadius;
+                }
             }
             
             previewSettings();

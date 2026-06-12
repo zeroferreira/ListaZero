@@ -8,10 +8,10 @@
       textAnim: 'text-anim-fade',
       font: "'Montserrat', sans-serif",
       // Default font sizes optimized for 1080p vertical
-      fontSizeSong: 24,
-      fontSizeArtist: 16,
-      fontSizeUser: 12,
-      fontSizeHeader: 14,
+      fontSizeSong: 42,
+      fontSizeArtist: 28,
+      fontSizeUser: 21,
+      fontSizeHeader: 24,
       accent: "#ff0055",
       icon: "🎵",
       iconCircleSize: 50,
@@ -47,6 +47,15 @@
         borderRadius: 25,
         opacity: 40,
         iconCircleSize: 0, // Icon hidden in glass mode via CSS, but good to reset
+        iconFontSize: 0
+      },
+      vision: {
+        layoutMode: 'vision',
+        width: 500,
+        minHeight: 130,
+        borderRadius: 30,
+        opacity: 45,
+        iconCircleSize: 0,
         iconFontSize: 0
       }
     };
@@ -128,15 +137,17 @@
       // Apply Layout Mode
       const card = document.getElementById('card');
       const art = document.getElementById('album-art');
+      card.classList.remove('layout-glass', 'layout-vision');
       if (s.layoutMode === 'glass') {
           card.classList.add('layout-glass');
           if (!art.src || art.src === window.location.href || art.src === '') {
-              // Placeholder simple si no hay arte real
-              // En un caso real, aquí iría la URL del álbum
               art.src = 'https://via.placeholder.com/150/000000/FFFFFF/?text=🎵'; 
           }
-      } else {
-          card.classList.remove('layout-glass');
+      } else if (s.layoutMode === 'vision') {
+          card.classList.add('layout-vision');
+          if (!art.src || art.src === window.location.href || art.src === '') {
+              art.src = 'https://via.placeholder.com/150/000000/FFFFFF/?text=🎵'; 
+          }
       }
 
       const root = document.documentElement;
@@ -231,35 +242,42 @@
     }
 
     function getSettingsFromInputs() {
+      const getNum = (id, fallback) => {
+        const el = document.getElementById(id);
+        if (!el) return fallback;
+        const val = el.value;
+        const num = parseInt(val, 10);
+        return isNaN(num) || val === '' ? fallback : num;
+      };
       return {
         layoutMode: document.getElementById('inp-preset').value,
-        width: document.getElementById('inp-width').value,
-        minHeight: document.getElementById('inp-minHeight').value,
-        borderRadius: document.getElementById('inp-borderRadius').value,
+        width: getNum('inp-width', 400),
+        minHeight: getNum('inp-minHeight', 100),
+        borderRadius: getNum('inp-borderRadius', 8),
         animType: document.getElementById('inp-animType').value,
         textAnim: document.getElementById('inp-textAnim').value,
         font: document.getElementById('inp-font').value,
         
-        fontSizeSong: document.getElementById('inp-fontSizeSong').value,
-        fontSizeArtist: document.getElementById('inp-fontSizeArtist').value,
-        fontSizeUser: document.getElementById('inp-fontSizeUser').value,
-        fontSizeHeader: document.getElementById('inp-fontSizeHeader').value,
+        fontSizeSong: getNum('inp-fontSizeSong', 42),
+        fontSizeArtist: getNum('inp-fontSizeArtist', 28),
+        fontSizeUser: getNum('inp-fontSizeUser', 21),
+        fontSizeHeader: getNum('inp-fontSizeHeader', 24),
 
         accent: document.getElementById('inp-accent').value,
         icon: document.getElementById('inp-icon').value,
-        iconCircleSize: document.getElementById('inp-iconCircleSize').value,
-        iconFontSize: document.getElementById('inp-iconFontSize').value,
+        iconCircleSize: getNum('inp-iconCircleSize', 50),
+        iconFontSize: getNum('inp-iconFontSize', 25),
         iconBg: document.getElementById('inp-iconBg').value,
-        iconOpacity: document.getElementById('inp-iconOpacity').value,
+        iconOpacity: getNum('inp-iconOpacity', 20),
         bg: document.getElementById('inp-bg').value,
-        opacity: document.getElementById('inp-opacity').value,
+        opacity: getNum('inp-opacity', 85),
         text: document.getElementById('inp-text').value,
-        duration: document.getElementById('inp-duration').value,
+        duration: getNum('inp-duration', 10),
         autocorrect: defaultSettings.autocorrect === true,
         sepColor: document.getElementById('inp-sepColor').value,
         sepUseAccent: document.getElementById('inp-sepUseAccent').checked,
-        sepOpacity: document.getElementById('inp-sepOpacity').value,
-        sepWidth: document.getElementById('inp-sepWidth').value,
+        sepOpacity: getNum('inp-sepOpacity', 10),
+        sepWidth: getNum('inp-sepWidth', 1),
         sepStyle: document.getElementById('inp-sepStyle').value
       };
     }
@@ -441,8 +459,12 @@
       userEl.textContent = uname;
       if (artEl) {
         const artUrl = String(data.artworkUrl || data.cover || '').trim();
+        const settings = window.appliedOverlaySettings || defaultSettings;
         if (artUrl) {
           artEl.src = artUrl;
+          artEl.style.display = 'block';
+        } else if (settings.layoutMode === 'glass' || settings.layoutMode === 'vision') {
+          artEl.src = 'https://via.placeholder.com/150/000000/FFFFFF/?text=🎵';
           artEl.style.display = 'block';
         } else {
           artEl.removeAttribute('src');
@@ -1090,7 +1112,7 @@
     // 1. Preset Button
     setupDraggable('preset-btn', () => {
         const current = document.getElementById('inp-preset').value;
-        const next = current === 'default' ? 'glass' : 'default';
+        const next = current === 'default' ? 'glass' : (current === 'glass' ? 'vision' : 'default');
         document.getElementById('inp-preset').value = next;
         applyPresetFromInput();
     });
