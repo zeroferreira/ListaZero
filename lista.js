@@ -8,6 +8,25 @@
       }
     });
 
+    // Utilidad global: Obtener clave de fecha local (YYYY-MM-DD) forzada en la zona horaria del streamer (America/Mexico_City)
+    window.getLocalDateKey = function(ts) {
+      const d = ts ? new Date(ts) : new Date();
+      try {
+        const formatter = new Intl.DateTimeFormat('sv-SE', {
+          timeZone: 'America/Mexico_City',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        return formatter.format(d);
+      } catch (e) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+      }
+    };
+
     // Función global de validación y filtrado (Bots, Chino, Pruebas, Usuarios Genéricos)
     window.isInvalid = (val) => {
       if (!val) return true;
@@ -35,7 +54,7 @@
         /^fannumero\d+/i,
         /^test\s*song/i,
         /^canción\s*de\s*prueba/i,
-        /^user\d+/i,
+        /^user_test\d*/i,
         /^prueba\d*/i,
         /^test\d*/i
       ];
@@ -891,7 +910,11 @@
 
       async function updateUserPlayedCounter(usuario, day, delta) {
         try {
-          const u = String(usuario || '').trim().replace(/^@/, '').toLowerCase();
+          const u = (typeof normalizeUserKey === 'function') 
+            ? normalizeUserKey(usuario) 
+            : (window.normalizeUserKey 
+                ? window.normalizeUserKey(usuario) 
+                : String(usuario || '').trim().replace(/^@/, '').toLowerCase());
           const d = normalizeDay(day || '');
           if (!u || !d) return;
           const ref = db.collection('playedSongs').doc('userTotals');
@@ -3494,6 +3517,11 @@
         const end = new Date(start);
         end.setDate(end.getDate() + 1);
 
+        const dayDocs = new Map();
+        const tsDocs = new Map();
+        let unsubDay = null;
+        let unsubTs = null;
+
         const applyItems = (itemsObj) => {
           const { items, allItems } = itemsObj;
           const visibleItems = applyDisplayOrder(items);
@@ -3511,16 +3539,20 @@
           } catch (_) { }
         };
 
-        const itemsFromSnap = (snap) => {
+        const mergeAndApply = () => {
+          const byId = new Map();
+          dayDocs.forEach((v, k) => { if (!byId.has(k)) byId.set(k, v); });
+          tsDocs.forEach((v, k) => { if (!byId.has(k)) byId.set(k, v); });
+
           let items = [];
-          let allItems = []; // NUEVO: Guardar todos los items sin filtrar
-          snap.forEach((doc) => {
-            const data = doc.data();
+          let allItems = [];
+
+          byId.forEach((data, docId) => {
             if (window.isDummyRequestForList ? window.isDummyRequestForList(data) : (String(data?.usuario || '').trim().toLowerCase() === 'prueba')) return;
             const isVip = typeof window.isUserVipGlobal === 'function' ? window.isUserVipGlobal(data.usuario) : (vipSet.has(data.usuario) || z0VipSet.has(data.usuario));
 
             const itemObj = {
-              id: doc.id,
+              id: docId,
               requestId: data.id,
               usuario: data.usuario,
               displayName: data.displayName,
@@ -3532,14 +3564,15 @@
               status: data.status,
               ts: data.ts,
               hora: toHour(data.ts),
-              day: dayValue
+              day: data.day || dayValue
             };
 
-            allItems.push(itemObj); // Siempre guardamos el item completo
+            allItems.push(itemObj);
 
             if (vipOnly.checked && !isVip) return;
             items.push(itemObj);
           });
+
           if (allItems.length === 0) {
             const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
             const arr = Array.isArray(byDay[dayValue]) ? byDay[dayValue] : [];
@@ -3562,50 +3595,40 @@
             allItems = mappedArr;
             items = mappedArr.filter(it => !vipOnly.checked || vipSet.has(it.usuario) || z0VipSet.has(it.usuario));
           }
-          return { items, allItems };
+
+          applyItems({ items, allItems });
         };
 
-        let didFallbackToTs = false;
-        // Remove orderBy to avoid index errors and rely on memory sort
         const qDay = db.collection('solicitudes').where('day', '==', dayValue);
-
-        unsubscribeSolicitudes = qDay.onSnapshot((snap) => {
-          console.log(`📥 Recibidos ${snap.size} documentos para el día ${dayValue}`);
-          const items = itemsFromSnap(snap);
-          if (!items.length && !didFallbackToTs) {
-            didFallbackToTs = true;
-            db.collection('solicitudes')
-              .where('ts', '>=', start)
-              .where('ts', '<', end)
-              .orderBy('ts', 'asc')
-              .limit(1)
-              .get()
-              .then((testSnap) => {
-                if (testSnap && !testSnap.empty) {
-                  try { if (unsubscribeSolicitudes) unsubscribeSolicitudes(); } catch (_) { }
-                  const qTs = db.collection('solicitudes')
-                    .where('ts', '>=', start)
-                    .where('ts', '<', end)
-                    .orderBy('ts', 'asc');
-                  unsubscribeSolicitudes = qTs.onSnapshot((s2) => {
-                    console.log(`📥 (ts) Recibidos ${s2.size} documentos para el día ${dayValue}`);
-                    applyItems(itemsFromSnap(s2));
-                  }, (err) => {
-                    console.error('Error suscripción solicitudes (ts):', err);
-                  });
-                } else {
-                  applyItems(items);
-                }
-              })
-              .catch(() => {
-                applyItems(items);
-              });
-            return;
-          }
-          applyItems(items);
+        unsubDay = qDay.onSnapshot((snap) => {
+          console.log(`📥 Recibidos ${snap.size} documentos por day para ${dayValue}`);
+          dayDocs.clear();
+          snap.forEach((doc) => dayDocs.set(doc.id, doc.data() || {}));
+          mergeAndApply();
         }, (err) => {
-          console.error('Error suscripción solicitudes:', err);
+          console.error('Error suscripción solicitudes (day):', err);
         });
+
+        const qTs = db.collection('solicitudes')
+          .where('ts', '>=', start)
+          .where('ts', '<', end)
+          .orderBy('ts', 'asc');
+        
+        try {
+          unsubTs = qTs.onSnapshot((snap) => {
+            console.log(`📥 Recibidos ${snap.size} documentos por ts para ${dayValue}`);
+            tsDocs.clear();
+            snap.forEach((doc) => tsDocs.set(doc.id, doc.data() || {}));
+            mergeAndApply();
+          }, (err) => {
+            console.warn('Error suscripción solicitudes (ts):', err);
+          });
+        } catch (_) {}
+
+        unsubscribeSolicitudes = () => {
+          try { if (unsubDay) unsubDay(); } catch (_) {}
+          try { if (unsubTs) unsubTs(); } catch (_) {}
+        };
       }
 
       // Hacer accesible desde el IIFE de UI
@@ -7441,7 +7464,7 @@ function shouldShowStatsTicker() {
             const storageKey = 'lastCheckInDate_' + userKey;
             const lastCheckInStr = localStorage.getItem(storageKey);
             const now = new Date();
-            const todayStr = now.toDateString();
+            const todayStr = typeof window.getLocalDateKey === 'function' ? window.getLocalDateKey(now) : now.toDateString();
 
             // Si localStorage dice que ya reclamó hoy, mostrar estado gris
             // PERO no hacer return para permitir verificación con Firestore al hacer click
@@ -7469,8 +7492,8 @@ function shouldShowStatsTicker() {
                 const lastDate = data.lastCheckIn.toDate();
                 const now = new Date();
                 // Verificar si es el mismo día local (reset a medianoche)
-                const lastDateStr = lastDate.toDateString();
-                const todayStr = now.toDateString();
+                const lastDateStr = typeof window.getLocalDateKey === 'function' ? window.getLocalDateKey(lastDate) : lastDate.toDateString();
+                const todayStr = typeof window.getLocalDateKey === 'function' ? window.getLocalDateKey(now) : now.toDateString();
 
                 if (lastDateStr === todayStr) {
                   canClaim = false;
@@ -7516,7 +7539,9 @@ function shouldShowStatsTicker() {
                     const data = latestUserDoc.data();
                     if (data.lastCheckIn) {
                       const lastDate = data.lastCheckIn.toDate();
-                      if (lastDate.toDateString() === now.toDateString()) {
+                      const lastDateStr = typeof window.getLocalDateKey === 'function' ? window.getLocalDateKey(lastDate) : lastDate.toDateString();
+                      const nowStr = typeof window.getLocalDateKey === 'function' ? window.getLocalDateKey(now) : now.toDateString();
+                      if (lastDateStr === nowStr) {
                         throw new Error(`Ya has reclamado tu regalo de hoy. Vuelve en ${getTimeUntilMidnight()}.`);
                       }
                     }
@@ -7526,7 +7551,7 @@ function shouldShowStatsTicker() {
                   if (typeof generateDeviceFingerprint === 'function') {
                     const fingerprint = generateDeviceFingerprint();
                     // Usar fecha del servidor para el ID del dispositivo (reset diario seguro)
-                    const dateStr = now.getFullYear() + '-' + (now.getMonth() + 1).toString().padStart(2, '0') + '-' + now.getDate().toString().padStart(2, '0');
+                    const dateStr = typeof window.getLocalDateKey === 'function' ? window.getLocalDateKey(now) : (now.getFullYear() + '-' + (now.getMonth() + 1).toString().padStart(2, '0') + '-' + now.getDate().toString().padStart(2, '0'));
                     const fingerHash = fingerprint.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
                     const deviceDocId = `${dateStr}_${Math.abs(fingerHash)}`;
                     const deviceRef = db.collection('dailyCheckIns').doc(deviceDocId);
@@ -7558,7 +7583,7 @@ function shouldShowStatsTicker() {
                   // B. Registrar Dispositivo
                   if (typeof generateDeviceFingerprint === 'function') {
                     const fingerprint = generateDeviceFingerprint();
-                    const dateStr = now.getFullYear() + '-' + (now.getMonth() + 1).toString().padStart(2, '0') + '-' + now.getDate().toString().padStart(2, '0');
+                    const dateStr = typeof window.getLocalDateKey === 'function' ? window.getLocalDateKey(now) : (now.getFullYear() + '-' + (now.getMonth() + 1).toString().padStart(2, '0') + '-' + now.getDate().toString().padStart(2, '0'));
                     const fingerHash = fingerprint.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
                     const deviceDocId = `${dateStr}_${Math.abs(fingerHash)}`;
                     const deviceRef = db.collection('dailyCheckIns').doc(deviceDocId);
@@ -7584,7 +7609,7 @@ function shouldShowStatsTicker() {
                   await batch.commit();
 
                   // Guardar local
-                  localStorage.setItem(storageKey, new Date().toDateString());
+                  localStorage.setItem(storageKey, typeof window.getLocalDateKey === 'function' ? window.getLocalDateKey() : new Date().toDateString());
                   try { if (typeof window.playCheckinRedeemFx === 'function') window.playCheckinRedeemFx(btn, points); } catch (_) { }
                   showSuccessNotification(`¡Bono diario reclamado! +${points} puntos. Vuelve en ${getTimeUntilMidnight()}.`);
 
@@ -9813,6 +9838,7 @@ function shouldShowStatsTicker() {
       const TOP1_BONUS_START_DATE = '2025-12-19';
 
       function getFusedIds(u) {
+        const stripAccents = (str) => String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
         const startRaw = String(u || '').trim().replace(/^@/, '');
         // Normalización para búsqueda de ALIAS (minúsculas y sin @)
         const start = startRaw.toLowerCase();
@@ -9827,6 +9853,7 @@ function shouldShowStatsTicker() {
         while (queue.length > 0 && depth < 20) {
           const current = queue.shift();
           const normCurrent = current.toLowerCase();
+          const strippedCurrent = stripAccents(current);
           if (visited.has(normCurrent)) continue;
           visited.add(normCurrent);
           results.add(current);
@@ -9837,10 +9864,19 @@ function shouldShowStatsTicker() {
           }
 
           for (const [alias, target] of Object.entries(map)) {
-            const normAlias = alias.replace(/^@/, '').toLowerCase();
-            const normTarget = target.replace(/^@/, '').toLowerCase();
-            if (normTarget === normCurrent && !visited.has(normAlias)) {
-              queue.push(alias.replace(/^@/, ''));
+            const cleanAlias = alias.replace(/^@/, '');
+            const cleanTarget = target.replace(/^@/, '');
+            const normAlias = cleanAlias.toLowerCase();
+            const normTarget = cleanTarget.toLowerCase();
+            
+            const strippedAlias = stripAccents(cleanAlias);
+            const strippedTarget = stripAccents(cleanTarget);
+
+            if (strippedAlias === strippedCurrent && !visited.has(normTarget)) {
+              queue.push(cleanTarget);
+            }
+            if (strippedTarget === strippedCurrent && !visited.has(normAlias)) {
+              queue.push(cleanAlias);
             }
           }
           depth++;
@@ -11981,6 +12017,7 @@ function shouldShowStatsTicker() {
         // 3. Normalización estándar (preservar espacios para compatibilidad con Firestore)
         return raw.replace(/^@/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
       }
+      window.normalizeUserKey = normalizeUserKey;
 
       function normalizeUserKeyLoose(username) {
         return String(username || '').replace(/^@/, '').toLowerCase();
@@ -14556,14 +14593,14 @@ function shouldShowStatsTicker() {
 
       // Función para actualizar estadísticas del admin
       function updateAdminStats(allRequests) {
-        const today = new Date().toDateString();
+        const today = typeof window.getLocalDateKey === 'function' ? window.getLocalDateKey() : new Date().toDateString();
 
         const pending = allRequests.filter(req => req.status === 'pending').length;
         const approvedToday = allRequests.filter(req =>
-          req.status === 'approved' && new Date(req.timestamp).toDateString() === today
+          req.status === 'approved' && (typeof window.getLocalDateKey === 'function' ? window.getLocalDateKey(req.timestamp) : new Date(req.timestamp).toDateString()) === today
         ).length;
         const rejectedToday = allRequests.filter(req =>
-          req.status === 'rejected' && new Date(req.timestamp).toDateString() === today
+          req.status === 'rejected' && (typeof window.getLocalDateKey === 'function' ? window.getLocalDateKey(req.timestamp) : new Date(req.timestamp).toDateString()) === today
         ).length;
 
         if (totalPendingRequests) totalPendingRequests.textContent = pending;
@@ -15235,7 +15272,7 @@ function shouldShowStatsTicker() {
               return;
             }
             const artist = String(prompt('¿Qué artista? (Opcional)', '') || '').trim();
-            const dayKey = (typeof getLocalDateKey === 'function') ? getLocalDateKey() : (() => {
+            const dayKey = (typeof window.getLocalDateKey === 'function') ? window.getLocalDateKey() : (() => {
               const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const dd = String(d.getDate()).padStart(2, '0'); return `${y}-${m}-${dd}`;
             })();
             extraFields = {
@@ -15699,10 +15736,12 @@ function shouldShowStatsTicker() {
               if (doc.id === 'userTotals' || doc.id === '__userTotals__') return;
               const d = doc.data() || {};
               const songArr = Array.isArray(d.songs) ? d.songs : (Array.isArray(d.list) ? d.list : []);
+              const skippedArr = Array.isArray(d.skipped) ? d.skipped : [];
               
               const isToday = doc.id === today;
 
               songArr.forEach(fullId => {
+                if (skippedArr.includes(fullId)) return; // Ignorar canciones saltadas (skip)
                 const sId = String(fullId || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
                 const meta = masterMetaMap[sId] || {};
                 processItem(sId, meta);
@@ -15711,11 +15750,9 @@ function shouldShowStatsTicker() {
             });
           }
 
-          // 3. Contar solicitudes actuales (Cola)
+          // 3. Contar solicitudes actuales (Cola) - Solo para el contador del día de hoy
           solicitudesSnapshot.forEach(doc => {
             const d = doc.data() || {};
-            const sId = String(d.id || doc.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
-            processItem(sId, d);
             if (d.day === today) totalTodayRequests++;
           });
 

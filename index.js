@@ -351,10 +351,20 @@
     (function () {
       function getLocalDateKey(ts) {
         const d = ts ? new Date(ts) : new Date();
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${dd}`;
+        try {
+          const formatter = new Intl.DateTimeFormat('sv-SE', {
+            timeZone: 'America/Mexico_City',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          });
+          return formatter.format(d);
+        } catch (e) {
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${dd}`;
+        }
       }
 
       // Inicializa Firebase si aún no está
@@ -1144,6 +1154,38 @@
       });
     })();
 
+  let USER_ALIASES_MAP = {};
+  async function loadUserAliases() {
+    try {
+      if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+        const db = firebase.firestore();
+        const doc = await db.collection('systemConfig').doc('userAliases').get();
+        if (doc.exists) {
+          USER_ALIASES_MAP = doc.data() || {};
+          console.log('🔗 Alias de usuarios cargados en index.js:', Object.keys(USER_ALIASES_MAP).length);
+        }
+      }
+    } catch (e) {
+      console.error('Error cargando alias en index.js:', e);
+    }
+  }
+  setTimeout(loadUserAliases, 1000);
+
+  function normalizeUserKey(username, depth = 0) {
+    if (!username || depth > 5) return '';
+    const raw = String(username).trim();
+    const key = raw.replace(/^@/, '').toLowerCase();
+    const map = USER_ALIASES_MAP || {};
+    if (map[key]) {
+      const aliasTarget = map[key];
+      if (aliasTarget.replace(/^@/, '').toLowerCase() === key) {
+        return key.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      }
+      return normalizeUserKey(aliasTarget, depth + 1);
+    }
+    return raw.replace(/^@/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+
 // Autenticación: ya se gestiona arriba durante la inicialización principal.
 
   // ===== FUNCIONES DE GAMIFICACIÓN =====
@@ -1169,7 +1211,7 @@
   function getGamificationData(usuario) {
     const allStr = localStorage.getItem('gamificationData') || '{}';
     const all = JSON.parse(allStr);
-    const u = (usuario || '').toLowerCase();
+    const u = normalizeUserKey(usuario);
     const d = all[u];
     return d || {
       points: 0,
@@ -1186,7 +1228,7 @@
       console.warn(`⚠️ Intento de guardar datos para usuario inválido: ${usuario}`);
       return;
     }
-    const u = (usuario || '').toLowerCase();
+    const u = normalizeUserKey(usuario);
     const allStr = localStorage.getItem('gamificationData') || '{}';
     const all = JSON.parse(allStr);
     all[u] = data;
@@ -1303,10 +1345,11 @@
     const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
     const vipUsers = JSON.parse(localStorage.getItem('vipUsers') || '[]');
     
-    const userSongs = solicitudes.filter(s => s.usuario === usuario);
+    const uNorm = normalizeUserKey(usuario);
+    const userSongs = solicitudes.filter(s => normalizeUserKey(s.usuario) === uNorm);
     const uniqueArtists = [...new Set(userSongs.map(s => s.artista))].length;
     const uniqueDays = [...new Set(userSongs.map(s => s.fecha?.split('T')[0]))].length;
-    const isVip = vipUsers.includes(usuario);
+    const isVip = vipUsers.map(v => normalizeUserKey(v)).includes(uNorm);
 
     return {
       totalSongs: userSongs.length,
@@ -1394,10 +1437,12 @@
   //   usuario, cancion, artista, day,
   //   ts: firebase.firestore.FieldValue.serverTimestamp(),
   // });
-  (function hydrateCurrentUserPoints(){
+  (async function hydrateCurrentUserPoints(){
     try {
-      const current = String(localStorage.getItem('currentUser') || '').trim().replace(/^@/, '').toLowerCase();
-      if (!current) return;
+      const currentRaw = String(localStorage.getItem('currentUser') || '').trim();
+      if (!currentRaw) return;
+      await loadUserAliases();
+      const current = normalizeUserKey(currentRaw);
       const db = firebase.firestore();
       db.collection('userStats').doc(current).onSnapshot((doc) => {
         if (!doc || !doc.exists) return;
@@ -1435,7 +1480,7 @@
   })();
   window.debugUserPoints = async function(usuario){
     try {
-      const u = String(usuario||'').toLowerCase();
+      const u = normalizeUserKey(usuario);
       const db = firebase.firestore();
       const doc = await db.collection('userStats').doc(u).get();
       const cloud = doc.exists ? doc.data() : null;

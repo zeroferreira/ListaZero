@@ -32,10 +32,20 @@ const firebaseConfig = {
     let isSpinning = false;
     function getLocalDayKey() {
       const d = new Date();
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${day}`;
+      try {
+        const formatter = new Intl.DateTimeFormat('sv-SE', {
+          timeZone: 'America/Mexico_City',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        return formatter.format(d);
+      } catch (e) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
     }
     let currentDay = getLocalDayKey();
     let activeSourceTab = 'list';

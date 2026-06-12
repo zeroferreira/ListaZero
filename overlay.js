@@ -529,10 +529,20 @@
 
     function getLocalDateKey(ts) {
       const dt = ts ? new Date(ts) : new Date();
-      const y = dt.getFullYear();
-      const m = String(dt.getMonth() + 1).padStart(2, '0');
-      const d = String(dt.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
+      try {
+        const formatter = new Intl.DateTimeFormat('sv-SE', {
+          timeZone: 'America/Mexico_City',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        return formatter.format(dt);
+      } catch (e) {
+        const y = dt.getFullYear();
+        const m = String(dt.getMonth() + 1).padStart(2, '0');
+        const d = String(dt.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
     }
 
     const currentDay = getLocalDateKey();

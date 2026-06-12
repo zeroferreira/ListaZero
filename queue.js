@@ -878,10 +878,20 @@
     // Utilidad: Obtener clave de fecha local (YYYY-MM-DD)
     function getLocalDateKey(ts) {
       const d = ts ? new Date(ts) : new Date();
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${dd}`;
+      try {
+        const formatter = new Intl.DateTimeFormat('sv-SE', {
+          timeZone: 'America/Mexico_City',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        return formatter.format(d);
+      } catch (e) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+      }
     }
 
     function sanitizeSongId(v) {
@@ -2405,9 +2415,7 @@
       } catch (_) {}
 
       function getYesterdayKey() {
-        const d = new Date();
-        d.setDate(d.getDate() - 1);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return getLocalDateKey(Date.now() - 24 * 60 * 60 * 1000);
       }
       const yesterday = getYesterdayKey();
 
