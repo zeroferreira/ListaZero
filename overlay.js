@@ -377,15 +377,51 @@
     let isShowing = false;
     let isProcessing = false;
 
+    function cleanTextForSearch(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/\([\s\S]*?\)/g, ' ')
+        .replace(/\[[\s\S]*?\]/g, ' ')
+        .replace(/(official\s+video|official\s+audio|video\s+oficial|letra|lyrics|video\s+letra|audio\s+oficial|HD|HQ|1080p|4k)/gi, ' ')
+        .replace(/\s+(feat|ft)\.?\s+[\s\S]+/gi, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function cleanArtistForSearch(artist) {
+      if (!artist) return '';
+      let clean = String(artist);
+      const parts = clean.split(/,|\s+y\s+|\s+&\s+|\s+x\s+|\s+feat\.?\s+|\s+ft\.?\s+/i);
+      if (parts.length > 0) {
+        clean = parts[0];
+      }
+      return cleanTextForSearch(clean);
+    }
+
     const songDataCache = {};
     async function fetchSongData(artist, song) {
-      const query = `${artist || ''} ${song || ''}`.trim();
-      const cacheKey = query.toLowerCase();
-      if (!query) return null;
-      if (songDataCache[cacheKey]) return songDataCache[cacheKey];
+      const cleanArtist = cleanArtistForSearch(artist);
+      const cleanSong = cleanTextForSearch(song);
+      const query = `${cleanArtist} ${cleanSong}`.trim();
+      
+      const rawQuery = `${artist || ''} ${song || ''}`.trim();
+      const cacheKey = rawQuery.toLowerCase();
+      
+      if (!rawQuery) return null;
+      if (songDataCache[cacheKey] !== undefined) return songDataCache[cacheKey];
+
       try {
+        if (!query) {
+          songDataCache[cacheKey] = null;
+          return null;
+        }
+
         const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=10`);
         const data = await res.json();
+        
         if (data && data.resultCount > 0 && Array.isArray(data.results)) {
           let track = data.results[0];
           const avoidKeywords = ['karaoke', 'tribute', 'cover', 'instrumental', 'remix', 'lullaby', 'rendition', 'slowed', 'reverb'];
@@ -401,6 +437,7 @@
             return !hasBadWord;
           });
           if (cleanTrack) track = cleanTrack;
+          
           const result = {
             correctTitle: track.trackName,
             correctArtist: track.artistName,
@@ -408,8 +445,12 @@
           };
           songDataCache[cacheKey] = result;
           return result;
+        } else {
+          songDataCache[cacheKey] = null;
         }
-      } catch (_) {}
+      } catch (_) {
+        songDataCache[cacheKey] = null;
+      }
       return null;
     }
 

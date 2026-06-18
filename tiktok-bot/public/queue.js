@@ -1024,21 +1024,56 @@
       return t.split(' ').filter(Boolean);
     }
 
+    function cleanTextForSearch(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/\([\s\S]*?\)/g, ' ')
+        .replace(/\[[\s\S]*?\]/g, ' ')
+        .replace(/(official\s+video|official\s+audio|video\s+oficial|letra|lyrics|video\s+letra|audio\s+oficial|HD|HQ|1080p|4k)/gi, ' ')
+        .replace(/\s+(feat|ft)\.?\s+[\s\S]+/gi, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function cleanArtistForSearch(artist) {
+      if (!artist) return '';
+      let clean = String(artist);
+      const parts = clean.split(/,|\s+y\s+|\s+&\s+|\s+x\s+|\s+feat\.?\s+|\s+ft\.?\s+/i);
+      if (parts.length > 0) {
+        clean = parts[0];
+      }
+      return cleanTextForSearch(clean);
+    }
+
     async function fetchSongData(artist, song) {
-      const query = `${artist} ${song}`.trim();
-      const cacheKey = query.toLowerCase();
+      const cleanArtist = cleanArtistForSearch(artist);
+      const cleanSong = cleanTextForSearch(song);
+      const query = `${cleanArtist} ${cleanSong}`.trim();
       
-      if (songDataCache[cacheKey]) return songDataCache[cacheKey];
+      const rawQuery = `${artist} ${song}`.trim();
+      const cacheKey = rawQuery.toLowerCase();
+      
+      if (songDataCache[cacheKey] !== undefined) return songDataCache[cacheKey];
 
       try {
-        // Aumentamos el límite para filtrar resultados no deseados
+        if (!query) {
+          songDataCache[cacheKey] = null;
+          return null;
+        }
+
         const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=10`);
         const data = await res.json();
         
-        if (data.resultCount > 0) {
-          const reqArtist = normalizeText(artist);
-          const reqSong = normalizeText(song);
-          if (!reqArtist || !reqSong) return null;
+        if (data && data.resultCount > 0) {
+          const reqArtist = normalizeText(cleanArtist);
+          const reqSong = normalizeText(cleanSong);
+          if (!reqArtist || !reqSong) {
+            songDataCache[cacheKey] = null;
+            return null;
+          }
           const reqArtistTokens = tokenizeText(reqArtist);
           const reqSongTokens = tokenizeText(reqSong);
           const avoidKeywords = ['karaoke', 'tribute', 'cover', 'instrumental', 'remix', 'lullaby', 'rendition', 'slowed', 'reverb'];
@@ -1087,9 +1122,12 @@
             if (s > bestScore) { bestScore = s; best = t; }
           });
 
-          const threshold = Math.max(5, Math.ceil((reqSongTokens.length + reqArtistTokens.length) * 0.75));
+          const threshold = Math.max(3, Math.ceil((reqSongTokens.length + reqArtistTokens.length) * 0.6));
           const track = bestScore >= threshold ? best : null;
-          if (!track) return null;
+          if (!track) {
+            songDataCache[cacheKey] = null;
+            return null;
+          }
 
           const result = {
             artworkUrl: track.artworkUrl100.replace('100x100', '600x600'),
@@ -1099,9 +1137,12 @@
           };
           songDataCache[cacheKey] = result;
           return result;
+        } else {
+          songDataCache[cacheKey] = null;
         }
       } catch (e) {
         console.warn("iTunes API Error:", e);
+        songDataCache[cacheKey] = null;
       }
       return null;
     }
