@@ -1,9 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const https = require('https');
 
 const htmlPath = path.join(__dirname, 'public/index.html');
 const srcHtmlPath = path.join(__dirname, 'public/index.src.html');
+const jsDir = path.join(__dirname, 'public/js');
 
 console.log('--- Zero FM Dashboard Compiler ---');
 
@@ -12,7 +14,68 @@ if (!fs.existsSync(srcHtmlPath)) {
     process.exit(1);
 }
 
-try {
+// Download file helper (handles 301/302 redirects, supports relative paths)
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const dir = path.dirname(dest);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const file = fs.createWriteStream(dest);
+    https.get(url, (response) => {
+      if (response.statusCode === 301 || response.statusCode === 302) {
+        let redirectUrl = response.headers.location;
+        if (!redirectUrl.startsWith('http://') && !redirectUrl.startsWith('https://')) {
+          const baseUrl = new URL(url);
+          redirectUrl = new URL(redirectUrl, baseUrl.origin).href;
+        }
+        downloadFile(redirectUrl, dest).then(resolve).catch(reject);
+        return;
+      }
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download ${url}: HTTP ${response.statusCode}`));
+        return;
+      }
+      response.pipe(file);
+      file.on('finish', () => {
+        file.close();
+        resolve();
+      });
+    }).on('error', (err) => {
+      fs.unlink(dest, () => {});
+      reject(err);
+    });
+  });
+}
+
+const assets = [
+  { url: 'https://unpkg.com/react@18/umd/react.production.min.js', name: 'react.production.min.js' },
+  { url: 'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js', name: 'react-dom.production.min.js' },
+  { url: 'https://unpkg.com/lucide@latest/dist/umd/lucide.min.js', name: 'lucide.min.js' }
+];
+
+async function ensureLocalAssets() {
+  console.log('⏳ Checking local JS dependencies...');
+  for (const asset of assets) {
+    const destPath = path.join(jsDir, asset.name);
+    if (!fs.existsSync(destPath)) {
+      console.log(`  Downloading ${asset.name} from unpkg CDN...`);
+      try {
+        await downloadFile(asset.url, destPath);
+        console.log(`  ✅ Successfully downloaded ${asset.name}`);
+      } catch (e) {
+        console.error(`  ❌ Failed to download ${asset.name}: ${e.message}`);
+      }
+    } else {
+      console.log(`  ✅ ${asset.name} already cached locally.`);
+    }
+  }
+}
+
+async function run() {
+  await ensureLocalAssets();
+
+  try {
     const htmlContent = fs.readFileSync(srcHtmlPath, 'utf8');
 
     // Extract Babel script content
@@ -41,7 +104,6 @@ try {
     const outputJsPath = path.join(__dirname, 'public/dashboard.js');
 
     console.log('⏳ Compiling React JSX to public/dashboard.js using local Babel CLI...');
-    // Run npx babel to compile the jsx file with react preset
     execSync(`npx babel "${tempJsxPath}" --out-file "${outputJsPath}" --presets=@babel/preset-react --no-babelrc`, { stdio: 'inherit' });
 
     // Clean up temporary file
@@ -55,11 +117,20 @@ try {
     // Remove the Babel Standalone CDN script tag if exists
     optimizedHtml = optimizedHtml.replace(/<script\s+src="https:\/\/unpkg\.com\/babel-standalone@[^/]+\/babel\.min\.js"[^>]*><\/script>/gi, '');
 
+    // Replace CDN script tags with local versions in index.html
+    optimizedHtml = optimizedHtml
+      .replace('https://unpkg.com/react@18/umd/react.production.min.js', 'js/react.production.min.js')
+      .replace('https://unpkg.com/react-dom@18/umd/react-dom.production.min.js', 'js/react-dom.production.min.js')
+      .replace('https://unpkg.com/lucide@latest', 'js/lucide.min.js');
+
     // Save the optimized HTML
     fs.writeFileSync(htmlPath, optimizedHtml);
     console.log('✅ Successfully compiled! Created optimized index.html and public/dashboard.js.');
 
-} catch (error) {
+  } catch (error) {
     console.error('❌ Compilation failed:', error.message);
     process.exit(1);
+  }
 }
+
+run();
