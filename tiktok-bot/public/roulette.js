@@ -88,10 +88,10 @@ const firebaseConfig = {
     const rouletteLiveClientId = (() => {
       const key = 'rouletteLiveClientId:v1';
       try {
-        const existing = localStorage.getItem(key);
+        const existing = safeStorage.getItem(key);
         if (existing) return existing;
         const created = `roulette_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
-        localStorage.setItem(key, created);
+        safeStorage.setItem(key, created);
         return created;
       } catch (_) {
         return `roulette_${Math.random().toString(36).slice(2, 10)}`;
@@ -207,7 +207,7 @@ const firebaseConfig = {
       document.documentElement.style.setProperty('--roulette-rim-gradient', T.rimGradient);
       config.colors = [...T.colors];
       config.textColor = T.textColor;
-      localStorage.setItem('rouletteTheme', t);
+      safeStorage.setItem('rouletteTheme', t);
       
       // Actualizar select de tema
       const sel = document.getElementById('inp-theme');
@@ -537,7 +537,7 @@ const firebaseConfig = {
 
     function saveWheelState() {
       try {
-        localStorage.setItem(getWheelStateStorageKey(), JSON.stringify(wheelState));
+        safeStorage.setItem(getWheelStateStorageKey(), JSON.stringify(wheelState));
         publishRouletteLiveState({
           type: 'layout',
           wheelState,
@@ -570,7 +570,7 @@ const firebaseConfig = {
     function loadWheelState() {
       wheelState.size = Math.min(560, getMaxWheelSize());
       try {
-        const raw = localStorage.getItem(getWheelStateStorageKey());
+        const raw = safeStorage.getItem(getWheelStateStorageKey());
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === 'object') {
@@ -673,8 +673,13 @@ const firebaseConfig = {
     function applyOverlayEnabled(enabled, options = {}) {
       overlayEnabled = enabled;
       document.body.classList.toggle('overlay-disabled', !enabled);
-      overlayStatus.textContent = enabled ? 'Estado: ACTIVO' : 'Estado: DESACTIVADO';
-      localStorage.setItem('rouletteOverlayEnabled', enabled ? '1' : '0');
+      if (rouletteContainer) {
+        rouletteContainer.style.display = enabled ? 'flex' : 'none';
+      }
+      if (overlayStatus) {
+        overlayStatus.textContent = enabled ? 'Estado: ACTIVO' : 'Estado: DESACTIVADO';
+      }
+      safeStorage.setItem('rouletteOverlayEnabled', enabled ? '1' : '0');
       if (!enabled) resetWinner({ broadcast: false });
     }
 
@@ -1694,11 +1699,11 @@ const firebaseConfig = {
     }
 
     (function initTheme() {
-      const saved = localStorage.getItem('rouletteTheme') || 'minimal';
+      const saved = safeStorage.getItem('rouletteTheme') || 'minimal';
       applyTheme(saved, { broadcast: false });
     })();
     if (obsLinkInput) obsLinkInput.value = getObsOverlayUrl();
-    applyOverlayEnabled(localStorage.getItem('rouletteOverlayEnabled') !== '0');
+    applyOverlayEnabled(safeStorage.getItem('rouletteOverlayEnabled') !== '0');
     updateConfig();
 
     btnAddName.addEventListener('click', addManualParticipant);
