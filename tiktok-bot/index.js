@@ -58,7 +58,7 @@ function initStatusUpdater(firebaseConfig) {
     }
 }
 
-function updateLiveStatus(isLive) {
+function updateLiveStatus(isLive, roomId = null) {
     if (!dbStatus) {
         console.error("⚠️ updateLiveStatus invocado pero dbStatus es NULL. ¿Falló la inicialización?");
         return;
@@ -66,11 +66,15 @@ function updateLiveStatus(isLive) {
     try {
         const { doc, setDoc, serverTimestamp } = require('firebase/firestore'); 
         const docRef = doc(dbStatus, 'system', 'status');
-        setDoc(docRef, {
+        const updateData = {
             isLive: isLive,
             lastUpdate: serverTimestamp()
-        }, { merge: true })
-        .then(() => console.log(`✅ Estado LIVE actualizado: ${isLive ? 'ONLINE' : 'OFFLINE'}`))
+        };
+        if (isLive && roomId) {
+            updateData.roomId = roomId;
+        }
+        setDoc(docRef, updateData, { merge: true })
+        .then(() => console.log(`✅ Estado LIVE actualizado: ${isLive ? 'ONLINE' : 'OFFLINE'}${roomId ? ' (Room ID: ' + roomId + ')' : ''}`))
         .catch(err => console.error("Error updating live status:", err));
     } catch(e) { console.error("Update live status failed:", e); }
 }
@@ -1745,17 +1749,73 @@ function setupListeners() {
     tiktokLiveConnection.removeAllListeners();
     
     // Debug: Log de conexión exitosa
-    tiktokLiveConnection.on('connected', state => {
+    tiktokLiveConnection.on('connected', async (state) => {
         console.log(`🟢 Conectado exitosamente (Room ID: ${state.roomId})`);
-        if (!activeLiveRoomId || activeLiveRoomId !== state.roomId) {
-            console.log(`🟢 Conexión inicial o nuevo room detectado (${activeLiveRoomId || 'ninguno'} -> ${state.roomId}). Reiniciando tracking.`);
+        
+        let previousRoomId = null;
+        try {
+            // Cargar el roomId anterior de Firestore para ver si es el mismo Live
+            const statusRef = docFn(db, 'system', 'status');
+            const statusSnap = await getDocFn(statusRef);
+            if (statusSnap.exists()) {
+                previousRoomId = statusSnap.data().roomId || null;
+            }
+        } catch (e) {
+            console.error('⚠️ Error al obtener status de Firestore para comprobar roomId anterior:', e);
+        }
+
+        if (previousRoomId && previousRoomId === state.roomId) {
+            console.log(`🟢 Reconexión en el mismo live (${state.roomId}). Recuperando rankings de sesión...`);
+            
+            // 1. Recuperar Top Likers de sesión
+            try {
+                const likersRef = docFn(db, 'globalStats', 'topLikers');
+                const likersSnap = await getDocFn(likersRef);
+                if (likersSnap.exists()) {
+                    const list = likersSnap.data().list || [];
+                    for (const user of list) {
+                        sessionLikes.set(user.username, user.totalAmount);
+                        sessionLikerDetails.set(user.username, {
+                            username: user.username,
+                            nickname: user.nickname,
+                            profilePictureUrl: user.profilePictureUrl
+                        });
+                    }
+                    console.log(`🟢 Recuperados ${list.length} Top Likers de sesión.`);
+                }
+            } catch (e) {
+                console.error('⚠️ Error recuperando topLikers de sesión:', e);
+            }
+
+            // 2. Recuperar Top Gifters de sesión
+            try {
+                const giftersRef = docFn(db, 'globalStats', 'topGifters');
+                const giftersSnap = await getDocFn(giftersRef);
+                if (giftersSnap.exists()) {
+                    const list = giftersSnap.data().list || [];
+                    for (const user of list) {
+                        sessionDonations.set(user.username, user.totalAmount);
+                        sessionGifterDetails.set(user.username, {
+                            username: user.username,
+                            nickname: user.nickname,
+                            profilePictureUrl: user.profilePictureUrl
+                        });
+                    }
+                    console.log(`🟢 Recuperados ${list.length} Top Gifters de sesión.`);
+                }
+            } catch (e) {
+                console.error('⚠️ Error recuperando topGifters de sesión:', e);
+            }
+
+            resetLikeTracking({ resetSession: false, resetTopLiker: false });
+        } else {
+            console.log(`🟢 Conexión inicial o nuevo room detectado (${previousRoomId || 'ninguno'} -> ${state.roomId}). Reiniciando tracking.`);
             resetLikeTracking({ resetSession: true, resetTopLiker: true });
             resetDonationTracking();
-        } else {
-            resetLikeTracking({ resetSession: false, resetTopLiker: false });
         }
+
         activeLiveRoomId = state.roomId || null;
-        updateLiveStatus(true); // Actualizar estado a ONLINE
+        updateLiveStatus(true, state.roomId); // Actualizar estado a ONLINE con roomId
         startLiveHeartbeat();
     });
     
