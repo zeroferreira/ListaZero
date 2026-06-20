@@ -2582,7 +2582,7 @@ setInterval(async () => {
     } catch (err) {
         console.error('Error recalculando ranking de likes en buffer:', err);
     }
-}, 30000); // 30 segundos
+}, 5000); // 5 segundos (más interactivo/en tiempo real)
 
 async function recalculateLikerRanks() {
     if (!db) return;
