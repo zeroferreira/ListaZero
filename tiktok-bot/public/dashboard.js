@@ -142,6 +142,7 @@ function App() {
     rouletteBorderOpacity: 20,
     rouletteBorderStyle: 'solid',
     rouletteShowShadow: true,
+    rouletteOverlayEnabled: true,
     alertsOpacity: 0.85,
     alertsRadius: 22,
     alertsFontSize: 14,
@@ -2301,6 +2302,48 @@ function App() {
       marginBottom: '20px'
     }
   }, "Ruleta interactiva animada de alta fidelidad para sorteos e interacciones directas en tu live."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: '25px',
+      padding: '15px',
+      background: 'rgba(255,255,255,0.02)',
+      borderRadius: '12px',
+      border: '1px solid rgba(255,255,255,0.06)'
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      margin: 0,
+      display: 'flex',
+      alignItems: 'center',
+      gap: '10px',
+      color: '#eab308'
+    }
+  }, "\u26A1 Estado de la Ruleta"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: '0.82rem',
+      color: 'var(--text-secondary)'
+    }
+  }, "Activa o desactiva la visualizaci\xF3n de la ruleta en el overlay de tu stream.")), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      borderBottom: 'none',
+      padding: 0,
+      margin: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.rouletteOverlayEnabled !== false,
+    onChange: e => setOverlays({
+      ...overlays,
+      rouletteOverlayEnabled: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  })))), /*#__PURE__*/React.createElement("div", {
     style: {
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       marginBottom: '20px',

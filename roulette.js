@@ -790,6 +790,10 @@ const firebaseConfig = {
                 winnerOverlay.classList.remove('no-card-bg');
               }
             }
+
+            if (data.rouletteOverlayEnabled !== undefined) {
+              applyOverlayEnabled(data.rouletteOverlayEnabled !== false, { broadcast: false });
+            }
           }
         }, (error) => {
            console.warn("No se pudo sincronizar overlayAlertsConfig para roulette:", error);
