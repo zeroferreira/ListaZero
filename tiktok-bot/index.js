@@ -6,6 +6,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const os = require('os');
 
 let SocketIOServer = null;
 try {
@@ -1568,8 +1569,29 @@ function startBot() {
         const port = Number(preferredPort || 3000) || 3000;
         const server = app.listen(port, () => {
             if (config.dashboardPort !== port) persistConfigSafe({ dashboardPort: port });
-            console.log(`🎛️  Dashboard de Configuración: http://localhost:${port}`);
-            console.log(`🧪 Prueba offline: POST http://localhost:${port}/api/test/sr`);
+
+            // Obtener IPs locales de red (para acceder desde la Mac u otros dispositivos)
+            const nets = os.networkInterfaces();
+            const localIPs = [];
+            for (const iface of Object.values(nets)) {
+                for (const net of iface) {
+                    // Solo IPv4, no loopback
+                    if (net.family === 'IPv4' && !net.internal) {
+                        localIPs.push(net.address);
+                    }
+                }
+            }
+
+            console.log(`\n${'═'.repeat(54)}`);
+            console.log(`🎛️  DASHBOARD LISTO`);
+            console.log(`${'─'.repeat(54)}`);
+            console.log(`📍 En esta PC:     http://localhost:${port}`);
+            if (localIPs.length > 0) {
+                localIPs.forEach(ip => {
+                    console.log(`🌐 Desde tu Mac:   http://${ip}:${port}`);
+                });
+            }
+            console.log(`${'═'.repeat(54)}\n`);
         });
         server.on('error', (err) => {
             if (err && err.code === 'EADDRINUSE') {
