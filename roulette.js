@@ -9,6 +9,15 @@ const firebaseConfig = {
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+
+    const localStorage = {
+      getItem: (key) => {
+        try { return window.localStorage.getItem(key); } catch(e) { return null; }
+      },
+      setItem: (key, val) => {
+        try { window.localStorage.setItem(key, val); } catch(e) {}
+      }
+    };
     if (firebase.auth) {
       firebase.auth().onAuthStateChanged((user) => {
         if (!user) {

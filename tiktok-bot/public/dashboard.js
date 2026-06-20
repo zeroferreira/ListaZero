@@ -575,39 +575,13 @@ function App() {
       }));
     }).catch(() => {});
     fetch('/api/overlays/config').then(r => r.json()).then(data => {
-      const local = localStorage.getItem('offline_overlays_config');
-      if (local) {
-        try {
-          const parsedLocal = JSON.parse(local);
-          const merged = {
-            ...data,
-            ...parsedLocal
-          };
-          setOverlays(prev => ({
-            ...prev,
-            ...merged
-          }));
-
-          // Auto-sincronizar con el bot en segundo plano
-          fetch('/api/overlays/config', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(merged)
-          }).catch(() => {});
-        } catch (_) {
-          setOverlays(prev => ({
-            ...prev,
-            ...data
-          }));
-        }
-      } else {
-        setOverlays(prev => ({
-          ...prev,
-          ...data
-        }));
-      }
+      try {
+        localStorage.setItem('offline_overlays_config', JSON.stringify(data));
+      } catch (_) {}
+      setOverlays(prev => ({
+        ...prev,
+        ...data
+      }));
     }).catch(() => {
       // Si el bot está apagado, cargamos la configuración localmente
       const local = localStorage.getItem('offline_overlays_config');
@@ -621,17 +595,9 @@ function App() {
       }
     });
     fetch('/api/goals/config').then(r => r.json()).then(data => {
-      const local = localStorage.getItem('offline_goals_config');
-      let finalData = data;
-      if (local) {
-        try {
-          const parsedLocal = JSON.parse(local);
-          finalData = {
-            ...data,
-            ...parsedLocal
-          };
-        } catch (_) {}
-      }
+      try {
+        localStorage.setItem('offline_goals_config', JSON.stringify(data));
+      } catch (_) {}
 
       // Asegurar estructura de 4 metas
       setGoals(prev => {
@@ -640,36 +606,26 @@ function App() {
         };
         const types = ['follows', 'likes', 'shares', 'coins'];
         types.forEach(t => {
-          if (finalData[t]) {
+          if (data[t]) {
             merged[t] = {
               ...prev[t],
-              ...finalData[t]
+              ...data[t]
             };
-          } else if (finalData.goalType === t) {
+          } else if (data.goalType === t) {
             // Migración de datos planos anteriores
             merged[t] = {
-              goalTarget: finalData.goalTarget || prev[t].goalTarget,
-              goalLabel: finalData.goalLabel || prev[t].goalLabel,
-              goalRewardText: finalData.goalRewardText || prev[t].goalRewardText,
-              primaryColor: finalData.primaryColor || prev[t].primaryColor,
-              enabled: finalData.enabled !== undefined ? finalData.enabled : prev[t].enabled,
-              goalsOpacity: finalData.goalsOpacity !== undefined ? finalData.goalsOpacity : prev[t].goalsOpacity,
-              goalsRadius: finalData.goalsRadius !== undefined ? finalData.goalsRadius : prev[t].goalsRadius
+              goalTarget: data.goalTarget || prev[t].goalTarget,
+              goalLabel: data.goalLabel || prev[t].goalLabel,
+              goalRewardText: data.goalRewardText || prev[t].goalRewardText,
+              primaryColor: data.primaryColor || prev[t].primaryColor,
+              enabled: data.enabled !== undefined ? data.enabled : prev[t].enabled,
+              goalsOpacity: data.goalsOpacity !== undefined ? data.goalsOpacity : prev[t].goalsOpacity,
+              goalsRadius: data.goalsRadius !== undefined ? data.goalsRadius : prev[t].goalsRadius
             };
           }
         });
         return merged;
       });
-      if (local) {
-        // Auto-sincronizar en segundo plano
-        fetch('/api/goals/config', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(finalData)
-        }).catch(() => {});
-      }
     }).catch(() => {
       const local = localStorage.getItem('offline_goals_config');
       if (local) {
