@@ -2155,9 +2155,19 @@ function setupListeners() {
             return;
         }
         
-        // --- SOLUCIÓN ANT-INFLACIÓN (Delta Tracking) ---
+        // --- SOLUCIÓN ANT-INFLACIÓN (Delta Tracking con Time-out de Racha) ---
         // El conector de TikTok a veces envía el total acumulado de la sesión del usuario.
         // Si lo sumamos directamente, inflamos los puntos exponencialmente.
+        // Si ha pasado más de 2 segundos desde el último like de este usuario, 
+        // asumimos que es una secuencia o racha nueva, por lo que reseteamos su conteo previo a 0.
+        const now = Date.now();
+        const lastTime = lastLikeTimeMap.get(uniqueId) || 0;
+        lastLikeTimeMap.set(uniqueId, now);
+
+        if (now - lastTime > 2000) {
+            lastLikeCountMap.set(uniqueId, 0);
+        }
+
         const lastSeen = lastLikeCountMap.get(uniqueId) || 0;
         let delta = 0;
 
@@ -2305,6 +2315,7 @@ const sessionLikes = new Map();
 const sessionLikerDetails = new Map();
 // Tracking del último contador enviado por TikTok (para Delta Tracking)
 const lastLikeCountMap = new Map();
+const lastLikeTimeMap = new Map();
 let currentTopLiker = { name: 'N/D', count: 0 };
 let activeLiveRoomId = null;
 
@@ -2376,6 +2387,7 @@ function resetLikeTracking(options = {}) {
     if (resetSession) {
         try { sessionLikes.clear(); } catch (_) {}
         try { lastLikeCountMap.clear(); } catch (_) {}
+        try { lastLikeTimeMap.clear(); } catch (_) {}
     }
     if (resetTopLiker) {
         currentTopLiker = { name: 'N/D', count: 0 };
