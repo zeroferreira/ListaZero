@@ -103,12 +103,22 @@ function App() {
     topgifter_rainbow_username: false,
     topgifter_bounce_username: false,
     topgifter_bounce_coins: true,
+    topgifter_rainbow_rank: false,
+    topgifter_bounce_rank: false,
+    topgifter_first_place_color: '#ffd700',
+    topgifter_second_place_color: '#cbd5e1',
+    topgifter_third_place_color: '#cd7f32',
     topliker_show_crown: true,
     topliker_show_heart_symbol: true,
     topliker_max: 10,
     topliker_rainbow_username: false,
     topliker_bounce_username: false,
     topliker_bounce_likes: true,
+    topliker_rainbow_rank: false,
+    topliker_bounce_rank: false,
+    topliker_first_place_color: '#ff4d6d',
+    topliker_second_place_color: '#cbd5e1',
+    topliker_third_place_color: '#fb923c',
     // Specific customization elements
     playerOpacity: 0.78,
     playerRadius: 20,
@@ -5116,6 +5126,139 @@ function App() {
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
   }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.02)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.06)',
+      marginTop: '15px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#a855f7',
+      fontSize: '0.85rem',
+      display: 'block',
+      marginBottom: '10px'
+    }
+  }, "\uD83C\uDFC6 Personalizaci\xF3n de Puestos (Ranking)"), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '6px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Fondo Arco\xEDris Animado \uD83C\uDF08"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topgifter_rainbow_rank,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifter_rainbow_rank: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '6px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Efecto Rebote 3D \uD83E\uDD98"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topgifter_bounce_rank,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifter_bounce_rank: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), !overlays.topgifter_rainbow_rank && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr 1fr',
+      gap: '8px',
+      marginTop: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      margin: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: '0.75rem',
+      marginBottom: '4px',
+      display: 'block'
+    }
+  }, "1er Lugar"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.topgifter_first_place_color || '#ffd700',
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifter_first_place_color: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      margin: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: '0.75rem',
+      marginBottom: '4px',
+      display: 'block'
+    }
+  }, "2do Lugar"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.topgifter_second_place_color || '#cbd5e1',
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifter_second_place_color: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      margin: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: '0.75rem',
+      marginBottom: '4px',
+      display: 'block'
+    }
+  }, "3er Lugar"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.topgifter_third_place_color || '#cd7f32',
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifter_third_place_color: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })))), /*#__PURE__*/React.createElement("div", {
     className: "form-group",
     style: {
       marginTop: '12px'
@@ -5644,6 +5787,139 @@ function App() {
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
   }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.02)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.06)',
+      marginTop: '15px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#ff5e7e',
+      fontSize: '0.85rem',
+      display: 'block',
+      marginBottom: '10px'
+    }
+  }, "\uD83C\uDFC6 Personalizaci\xF3n de Puestos (Ranking)"), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '6px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Fondo Arco\xEDris Animado \uD83C\uDF08"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topliker_rainbow_rank,
+    onChange: e => setOverlays({
+      ...overlays,
+      topliker_rainbow_rank: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '6px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Efecto Rebote 3D \uD83E\uDD98"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topliker_bounce_rank,
+    onChange: e => setOverlays({
+      ...overlays,
+      topliker_bounce_rank: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), !overlays.topliker_rainbow_rank && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr 1fr',
+      gap: '8px',
+      marginTop: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      margin: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: '0.75rem',
+      marginBottom: '4px',
+      display: 'block'
+    }
+  }, "1er Lugar"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.topliker_first_place_color || '#ff4d6d',
+    onChange: e => setOverlays({
+      ...overlays,
+      topliker_first_place_color: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      margin: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: '0.75rem',
+      marginBottom: '4px',
+      display: 'block'
+    }
+  }, "2do Lugar"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.topliker_second_place_color || '#cbd5e1',
+    onChange: e => setOverlays({
+      ...overlays,
+      topliker_second_place_color: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      margin: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: '0.75rem',
+      marginBottom: '4px',
+      display: 'block'
+    }
+  }, "3er Lugar"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.topliker_third_place_color || '#fb923c',
+    onChange: e => setOverlays({
+      ...overlays,
+      topliker_third_place_color: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })))), /*#__PURE__*/React.createElement("div", {
     className: "form-group",
     style: {
       marginTop: '12px'

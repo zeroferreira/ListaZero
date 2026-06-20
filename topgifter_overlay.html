@@ -435,6 +435,29 @@
             color: #ffd700 !important;
         }
 
+        .rainbow-bg {
+            background: linear-gradient(135deg, #ff007f, #ffaa00, #00ffaa, #00aaff, #ff007f) !important;
+            background-size: 300% 300% !important;
+            animation: rainbow-flow 4s linear infinite !important;
+            color: #fff !important;
+            border: 1.5px solid rgba(255, 255, 255, 0.4) !important;
+            box-shadow: 0 0 12px rgba(255, 215, 0, 0.45) !important;
+        }
+
+        .bounce-rank {
+            animation: rankBounce3D 1.8s infinite ease-in-out !important;
+        }
+
+        @keyframes rankBounce3D {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.22);
+                box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+            }
+        }
+
     </style>
 </head>
 
@@ -501,8 +524,29 @@
             topgifterShowCardBg:      true,
             topgifter_rainbow_username: false,
             topgifter_bounce_username:  false,
-            topgifter_bounce_coins:     true
+            topgifter_bounce_coins:     true,
+            topgifter_rainbow_rank:     false,
+            topgifter_bounce_rank:      false,
+            topgifter_first_place_color:  "#ffd700",
+            topgifter_second_place_color: "#cbd5e1",
+            topgifter_third_place_color:  "#cd7f32"
         };
+
+        function makeGradient(hexColor) {
+            if (!hexColor) return "";
+            let color = hexColor.replace("#", "");
+            if (color.length !== 6) return hexColor;
+            let r = parseInt(color.substring(0, 2), 16);
+            let g = parseInt(color.substring(2, 4), 16);
+            let b = parseInt(color.substring(4, 6), 16);
+            
+            let r2 = Math.max(0, Math.floor(r * 0.65));
+            let g2 = Math.max(0, Math.floor(g * 0.65));
+            let b2 = Math.max(0, Math.floor(b * 0.65));
+            
+            let hex2 = "#" + ((1 << 24) + (r2 << 16) + (g2 << 8) + b2).toString(16).slice(1);
+            return `linear-gradient(145deg, ${hexColor}, ${hex2})`;
+        }
 
         // Helper para convertir hex a rgba con opacidad
         function hexToRgba(hex, opacityPercent) {
@@ -735,6 +779,31 @@
                     $rankId.text(rank + ".");
                 }
                 $rankId.toggle(settings.topgifter_showRank !== false);
+
+                // Reset custom styling classes
+                $rankId.removeClass("rainbow-bg bounce-rank");
+                $rankId.css("background", "");
+
+                // Rainbow rank background animation
+                if (settings.topgifter_rainbow_rank) {
+                    $rankId.addClass("rainbow-bg");
+                }
+
+                // Bounce rank animation
+                if (settings.topgifter_bounce_rank) {
+                    $rankId.addClass("bounce-rank");
+                }
+
+                // Custom place colors
+                if (!settings.topgifter_rainbow_rank) {
+                    if (rank === 1 && settings.topgifter_first_place_color) {
+                        $rankId.css("background", makeGradient(settings.topgifter_first_place_color));
+                    } else if (rank === 2 && settings.topgifter_second_place_color) {
+                        $rankId.css("background", makeGradient(settings.topgifter_second_place_color));
+                    } else if (rank === 3 && settings.topgifter_third_place_color) {
+                        $rankId.css("background", makeGradient(settings.topgifter_third_place_color));
+                    }
+                }
 
                 // Avatar (solo si es nueva o cambió la URL)
                 const picUrl = user.profilePictureUrl || NOTHUMB;
@@ -976,6 +1045,21 @@
                 }
                 if (data.topgifter_bounce_coins !== undefined) {
                     settings.topgifter_bounce_coins = data.topgifter_bounce_coins;
+                }
+                if (data.topgifter_rainbow_rank !== undefined) {
+                    settings.topgifter_rainbow_rank = data.topgifter_rainbow_rank;
+                }
+                if (data.topgifter_bounce_rank !== undefined) {
+                    settings.topgifter_bounce_rank = data.topgifter_bounce_rank;
+                }
+                if (data.topgifter_first_place_color !== undefined) {
+                    settings.topgifter_first_place_color = data.topgifter_first_place_color;
+                }
+                if (data.topgifter_second_place_color !== undefined) {
+                    settings.topgifter_second_place_color = data.topgifter_second_place_color;
+                }
+                if (data.topgifter_third_place_color !== undefined) {
+                    settings.topgifter_third_place_color = data.topgifter_third_place_color;
                 }
                 
                 updateSettings(true);
