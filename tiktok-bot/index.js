@@ -1224,6 +1224,14 @@ function startBot() {
         res.json({ success: true });
     });
 
+    // Resetear ranking de likes
+    app.post('/api/likes/reset', async (req, res) => {
+        resetLikeTracking({ resetSession: true, resetTopLiker: true });
+        await recalculateLikerRanks();
+        syncSessionCountersToFirestore(true);
+        res.json({ success: true });
+    });
+
     // ═══════════════════════════════════════════════════════════════════════════
     //  TIMER API
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1813,6 +1821,8 @@ function setupListeners() {
             console.log(`🟢 Conexión inicial o nuevo room detectado (${previousRoomId || 'ninguno'} -> ${state.roomId}). Reiniciando tracking.`);
             resetLikeTracking({ resetSession: true, resetTopLiker: true });
             resetDonationTracking();
+            await recalculateLikerRanks();
+            syncSessionCountersToFirestore(true);
         }
 
         activeLiveRoomId = state.roomId || null;
@@ -1835,11 +1845,13 @@ function setupListeners() {
     //     console.error('⚠️ Error de conexión TikTok:', err);
     // });
  
-    tiktokLiveConnection.on('streamEnd', () => {
+    tiktokLiveConnection.on('streamEnd', async () => {
         console.log('🏁 El stream ha terminado.');
         activeLiveRoomId = null;
         resetLikeTracking({ resetSession: true, resetTopLiker: true });
         resetDonationTracking();
+        await recalculateLikerRanks();
+        syncSessionCountersToFirestore(true);
         updateGlobalTopLiker('N/D', 0).catch(() => {});
         stopLiveHeartbeat();
         updateLiveStatus(false); // Asegurar OFFLINE al terminar stream
@@ -2032,6 +2044,30 @@ function setupListeners() {
             return;
         }
 
+        // --- COMANDO DE RESETEAR LIKES (!reset_likes o !reiniciar_likes) ---
+        const isResetLikesCmd = lowerMsg === '!reset_likes' || lowerMsg === '!reiniciar_likes';
+        if (isResetLikesCmd && (isModerator || isStreamer)) {
+            try {
+                console.log(`🔄 Comando de reinicio de likes recibido de @${displayName}`);
+                resetLikeTracking({ resetSession: true, resetTopLiker: true });
+                await recalculateLikerRanks();
+                syncSessionCountersToFirestore(true);
+                await updateGlobalTopLiker('N/D', 0);
+
+                if (db && typeof addDoc === 'function' && typeof collection === 'function') {
+                    await addDoc(collection(db, 'notifications'), {
+                        type: 'success',
+                        user: displayName,
+                        message: `🔄 @${displayName} reinició la sesión de likes`,
+                        timestamp: serverTimestamp()
+                    });
+                }
+            } catch (e) {
+                console.error('Error al procesar comando de reset_likes:', e);
+            }
+            return;
+        }
+
         const aliases = getSrAliases();
         const parsed = parseSrCommand(msg, aliases);
         if (parsed) {
@@ -2216,8 +2252,28 @@ function setupListeners() {
             return;
         }
         
-        // En tiktok-live-connector, likeCount es la cantidad de likes en este evento específico (no es acumulativo de la sesión del usuario)
-        const delta = safeLikeCount;
+        // --- SOLUCIÓN DE DELTA TRACKING (Sin Timeout de Racha) ---
+        // El valor likeCount que envía TikTok en el primer evento es acumulativo para su sesión actual.
+        // Los eventos posteriores del mismo usuario envían deltas o lotes (o también acumulativos mayores).
+        const lastSeen = lastLikeCountMap.get(uniqueId);
+        let delta = 0;
+
+        if (lastSeen === undefined) {
+            // Primer evento visto en esta sesión de bot: tomamos el acumulado actual como delta inicial
+            delta = safeLikeCount;
+        } else if (safeLikeCount > lastSeen) {
+            // Caso normal: El nuevo número es mayor, la diferencia son los likes nuevos
+            delta = safeLikeCount - lastSeen;
+        } else if (safeLikeCount < lastSeen) {
+            // Caso reinicio del contador del usuario (ej. abrió otra sesión de TikTok)
+            delta = safeLikeCount;
+        }
+
+        lastLikeCountMap.set(uniqueId, safeLikeCount);
+
+        if (delta <= 0) {
+            return;
+        }
 
         // Acumular likes en buffer para no saturar Firestore
         const current = likeBuffer.get(uniqueId) || { 
@@ -2239,8 +2295,8 @@ function setupListeners() {
             profilePictureUrl: data.profilePictureUrl || ''
         });
 
-        if (safeLikeCount >= 200) {
-            console.log(`❤️ Evento de likes grande detectado: @${nickname} +${safeLikeCount} likes (sesión usuario: ${sessionTotal})`);
+        if (delta >= 200) {
+            console.log(`❤️ Evento de likes grande detectado: @${nickname} +${delta} likes (sesión usuario: ${sessionTotal})`);
         }
         
         // Solo actualizar si supera al actual líder
@@ -2361,9 +2417,10 @@ let sessionTotalCoins = 0;       // coins acumuladas
 
 // Sincronizar contadores de sesión a Firestore (globalStats/general) para que los overlays los lean
 let _syncCountersTimeout = null;
-function syncSessionCountersToFirestore() {
+function syncSessionCountersToFirestore(immediate = false) {
     if (_syncCountersTimeout) clearTimeout(_syncCountersTimeout);
-    _syncCountersTimeout = setTimeout(async () => {
+    
+    const runSync = async () => {
         if (!db) return;
         try {
             const totalFollows = Array.from(sessionFollows.values()).reduce((a, b) => a + b, 0);
@@ -2379,7 +2436,13 @@ function syncSessionCountersToFirestore() {
         } catch (e) {
             console.error('Error sincronizando contadores de sesión:', e);
         }
-    }, 2000); // Debounce 2s
+    };
+
+    if (immediate) {
+        runSync();
+    } else {
+        _syncCountersTimeout = setTimeout(runSync, 2000);
+    }
 }
 
 // ─── TIMER EN MEMORIA ─────────────────────────────────────────────────────────
