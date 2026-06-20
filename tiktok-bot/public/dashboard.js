@@ -2337,10 +2337,24 @@ function App() {
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: overlays.rouletteOverlayEnabled !== false,
-    onChange: e => setOverlays({
-      ...overlays,
-      rouletteOverlayEnabled: e.target.checked
-    })
+    onChange: async e => {
+      const val = e.target.checked;
+      const next = {
+        ...overlays,
+        rouletteOverlayEnabled: val
+      };
+      setOverlays(next);
+      localStorage.setItem('offline_overlays_config', JSON.stringify(next));
+      try {
+        await fetch('/api/overlays/config', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(next)
+        });
+      } catch (_) {}
+    }
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
   })))), /*#__PURE__*/React.createElement("div", {
