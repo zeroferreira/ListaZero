@@ -760,6 +760,7 @@ const firebaseConfig = {
                 applyOverlayEnabled(data.enabled !== false, { broadcast: false });
               }
             }
+          });
         });
 
       // Escuchar personalización visual de la ruleta desde el panel de control
