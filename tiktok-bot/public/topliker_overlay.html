@@ -321,6 +321,21 @@
             align-items: center;
         }
 
+        .inactive-warning {
+            display: none;
+            color: #ff9f43;
+            font-size: 1.1em;
+            margin-left: auto;
+            margin-right: 5px;
+            cursor: help;
+            animation: warningPulse 1.5s infinite alternate;
+        }
+
+        @keyframes warningPulse {
+            0% { opacity: 0.35; transform: scale(0.9); }
+            100% { opacity: 1; transform: scale(1.1); }
+        }
+
         .coin-amount {
             letter-spacing: 0.02em;
         }
@@ -462,6 +477,7 @@
                     <span class="currency-label">Likes</span>
                 </div>
             </div>
+            <div class="inactive-warning" title="Conteo detenido / Inactivo">⚠️</div>
         </div>
     </div>
 
@@ -848,6 +864,12 @@
                     }, 350);
                 }
 
+                // Inactivity check (1.5 minutes = 90000ms threshold)
+                const lastActive = parseInt(user.lastActive) || Date.now();
+                card.attr("data-last-active", lastActive);
+                const isInactive = (Date.now() - lastActive) > 90000;
+                card.find(".inactive-warning").toggle(isInactive);
+
                 const $coinIcon = card.find(".coin-icon");
                 if (settings.topliker_showHeartSymbol === false) {
                     $coinIcon.hide();
@@ -921,6 +943,15 @@
                     window.preview && window.preview();
                 }
             }, 1500);
+
+            // Inactivity scanner interval
+            setInterval(() => {
+                $(".rankUser:not(#rankTemplate)").each(function() {
+                    const lastActive = parseInt($(this).attr("data-last-active")) || Date.now();
+                    const isInactive = (Date.now() - lastActive) > 90000;
+                    $(this).find(".inactive-warning").toggle(isInactive);
+                });
+            }, 10000);
         });
 
         let previewInterval = null;
@@ -943,7 +974,8 @@
                     username: username,
                     nickname: nickname,
                     profilePictureUrl: `https://i.pravatar.cc/100?img=${randomPicId}`,
-                    totalAmount: 1000 - i * 100
+                    totalAmount: 1000 - i * 100,
+                    lastActive: (i === 2 || i === 4) ? (Date.now() - 120000) : Date.now()
                 });
             }
             
@@ -958,6 +990,7 @@
                 const randomUserIndex = Math.floor(Math.random() * list.length);
                 const extraAmount = Math.floor(Math.random() * 400) + 100;
                 list[randomUserIndex].totalAmount += extraAmount;
+                list[randomUserIndex].lastActive = Date.now();
                 
                 if (Math.random() > 0.8) {
                     const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
@@ -970,7 +1003,8 @@
                         username: username,
                         nickname: nickname,
                         profilePictureUrl: `https://i.pravatar.cc/100?img=${randomPicId}`,
-                        totalAmount: list[list.length - 2].totalAmount - 50
+                        totalAmount: list[list.length - 2].totalAmount - 50,
+                        lastActive: Date.now()
                     };
                 }
 

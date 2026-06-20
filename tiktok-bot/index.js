@@ -2276,7 +2276,8 @@ function setupListeners() {
         sessionLikerDetails.set(uniqueId, {
             username: uniqueId,
             nickname: nickname || uniqueId,
-            profilePictureUrl: data.profilePictureUrl || ''
+            profilePictureUrl: data.profilePictureUrl || '',
+            lastActive: Date.now()
         });
 
         if (delta >= 200) {
@@ -2617,12 +2618,13 @@ async function recalculateLikerRanks() {
             .sort((a, b) => b[1] - a[1]);
 
         const list = sorted.map(([uid, amount]) => {
-            const details = sessionLikerDetails.get(uid) || { username: uid, nickname: uid, profilePictureUrl: '' };
+            const details = sessionLikerDetails.get(uid) || { username: uid, nickname: uid, profilePictureUrl: '', lastActive: Date.now() };
             return {
                 username: uid,
                 nickname: details.nickname || uid,
                 profilePictureUrl: details.profilePictureUrl || '',
-                totalAmount: amount
+                totalAmount: amount,
+                lastActive: details.lastActive || Date.now()
             };
         });
 
