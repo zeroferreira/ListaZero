@@ -119,6 +119,7 @@ function App() {
     topliker_first_place_color: '#ff4d6d',
     topliker_second_place_color: '#cbd5e1',
     topliker_third_place_color: '#fb923c',
+    topliker_inactivity_threshold: 90,
     // Specific customization elements
     playerOpacity: 0.78,
     playerRadius: 20,
@@ -5919,7 +5920,36 @@ function App() {
       border: 'none',
       borderRadius: '8px'
     }
-  })))), /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      marginTop: '12px',
+      marginBottom: 0
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: '0.75rem',
+      marginBottom: '4px',
+      display: 'block'
+    }
+  }, "Tiempo L\xEDmite de Inactividad (segundos)"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "10",
+    max: "600",
+    value: overlays.topliker_inactivity_threshold || 90,
+    onChange: e => setOverlays({
+      ...overlays,
+      topliker_inactivity_threshold: parseInt(e.target.value) || 90
+    }),
+    style: {
+      width: '100%',
+      padding: '6px 10px',
+      border: '1px solid #3f3f46',
+      borderRadius: '6px',
+      background: '#27272a',
+      color: '#fff'
+    }
+  }))), /*#__PURE__*/React.createElement("div", {
     className: "form-group",
     style: {
       marginTop: '12px'
