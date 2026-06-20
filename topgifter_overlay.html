@@ -390,6 +390,51 @@
                 inset 0 1px 0 rgba(255,255,255,0.07);
         }
 
+        /* =============================================
+           ANIMATIONS (Rainbow, 3D Bounce, Heartbeat)
+        ============================================= */
+        @keyframes rainbow-flow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .rainbow-text, .rainbow-text span {
+            background: linear-gradient(90deg, #ff007f, #ffaa00, #00ffaa, #00aaff, #ff007f) !important;
+            background-size: 300% 100% !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            color: transparent !important;
+            animation: rainbow-flow 4s linear infinite !important;
+            display: inline-block;
+        }
+
+        .bounce-letter {
+            display: inline-block;
+            animation: letterBounce3D 1.8s infinite ease-in-out;
+        }
+
+        @keyframes letterBounce3D {
+            0%, 100% {
+                transform: translateY(0) scale(1);
+            }
+            50% {
+                transform: translateY(-6px) scale(1.15) rotate(4deg);
+                text-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+            }
+        }
+
+        @keyframes heartbeat {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.12); }
+            100% { transform: scale(1); }
+        }
+
+        .heartbeat-active {
+            animation: heartbeat 0.3s ease-in-out;
+            color: #ffd700 !important;
+        }
+
     </style>
 </head>
 
@@ -453,7 +498,10 @@
             topgifter_usernameColor:  "#ffffff",
             showUserNicknames:        true,
             currencyName:             currency,
-            topgifterShowCardBg:      true
+            topgifterShowCardBg:      true,
+            topgifter_rainbow_username: false,
+            topgifter_bounce_username:  false,
+            topgifter_bounce_coins:     true
         };
 
         // Helper para convertir hex a rgba con opacidad
@@ -719,16 +767,49 @@
                 const displayName = settings.showUserNicknames === false
                     ? ("@" + user.username)
                     : (user.nickname || ("@" + user.username));
-                card.find(".username").text(displayName);
+                const $usernameEl = card.find(".username");
+
+                // Rainbow Text Animation
+                if (settings.topgifter_rainbow_username) {
+                    $usernameEl.addClass("rainbow-text");
+                } else {
+                    $usernameEl.removeClass("rainbow-text");
+                }
+
+                // Bounce Text Animation
+                if (settings.topgifter_bounce_username) {
+                    $usernameEl.empty();
+                    const chars = displayName.split("");
+                    chars.forEach((char, charIdx) => {
+                        const $span = $("<span>").text(char === " " ? "\u00A0" : char);
+                        $span.addClass("bounce-letter");
+                        $span.css("animation-delay", (charIdx * 0.08) + "s");
+                        $usernameEl.append($span);
+                    });
+                } else {
+                    $usernameEl.text(displayName);
+                }
 
                 // Points / Coins
                 const amount = parseFloat(user.totalAmount) || 0;
-                card.find(".coin-amount").text(amount.toLocaleString("es-MX"));
+                const $amountSpan = card.find(".coin-amount");
+                const oldAmount = parseFloat($amountSpan.attr("data-prev-amount")) || 0;
+
+                $amountSpan.text(amount.toLocaleString("es-MX"));
+                $amountSpan.attr("data-prev-amount", amount);
+
+                if (!isNew && amount > oldAmount && settings.topgifter_bounce_coins !== false) {
+                    const $pointsDiv = card.find(".points");
+                    $pointsDiv.addClass("heartbeat-active");
+                    setTimeout(() => {
+                        $pointsDiv.removeClass("heartbeat-active");
+                    }, 350);
+                }
 
                 const $coinIcon = card.find(".coin-icon");
                 if (settings.topgifter_showCoinSymbol === false) {
                     $coinIcon.hide();
-                    card.find(".coin-amount").text(amount.toLocaleString("es-MX") + " Coins");
+                    $amountSpan.text(amount.toLocaleString("es-MX") + " Coins");
                 } else {
                     $coinIcon.show();
                 }
@@ -886,6 +967,15 @@
                 }
                 if (data.topgifter_max !== undefined) {
                     maxItems = Number(data.topgifter_max);
+                }
+                if (data.topgifter_rainbow_username !== undefined) {
+                    settings.topgifter_rainbow_username = data.topgifter_rainbow_username;
+                }
+                if (data.topgifter_bounce_username !== undefined) {
+                    settings.topgifter_bounce_username = data.topgifter_bounce_username;
+                }
+                if (data.topgifter_bounce_coins !== undefined) {
+                    settings.topgifter_bounce_coins = data.topgifter_bounce_coins;
                 }
                 
                 updateSettings(true);

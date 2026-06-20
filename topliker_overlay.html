@@ -365,6 +365,40 @@
         }
 
         /* =============================================
+           ANIMATIONS (Rainbow & 3D Bounce)
+        ============================================= */
+        @keyframes rainbow-flow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .rainbow-text, .rainbow-text span {
+            background: linear-gradient(90deg, #ff007f, #ffaa00, #00ffaa, #00aaff, #ff007f) !important;
+            background-size: 300% 100% !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            color: transparent !important;
+            animation: rainbow-flow 4s linear infinite !important;
+            display: inline-block;
+        }
+
+        .bounce-letter {
+            display: inline-block;
+            animation: letterBounce3D 1.8s infinite ease-in-out;
+        }
+
+        @keyframes letterBounce3D {
+            0%, 100% {
+                transform: translateY(0) scale(1);
+            }
+            50% {
+                transform: translateY(-6px) scale(1.15) rotate(4deg);
+                text-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+            }
+        }
+
+        /* =============================================
            EMPTY STATE
         ============================================= */
         #emptyState {
@@ -438,7 +472,10 @@
             topliker_pointsColor:     null,
             topliker_usernameColor:   "#ffffff",
             showUserNicknames:         true,
-            toplikerShowCardBg:       true
+            toplikerShowCardBg:       true,
+            topliker_rainbow_username: false,
+            topliker_bounce_username:  false,
+            topliker_bounce_likes:     true
         };
 
         // Helper para convertir hex a rgba con opacidad
@@ -579,6 +616,15 @@
                         if (data.topliker_max !== undefined) {
                             maxItems = Number(data.topliker_max);
                         }
+                        if (data.topliker_rainbow_username !== undefined) {
+                            settings.topliker_rainbow_username = data.topliker_rainbow_username;
+                        }
+                        if (data.topliker_bounce_username !== undefined) {
+                            settings.topliker_bounce_username = data.topliker_bounce_username;
+                        }
+                        if (data.topliker_bounce_likes !== undefined) {
+                            settings.topliker_bounce_likes = data.topliker_bounce_likes;
+                        }
                         
                         updateSettings(true);
                     }
@@ -678,7 +724,28 @@
                 const displayName = settings.showUserNicknames === false
                     ? ("@" + user.username)
                     : (user.nickname || ("@" + user.username));
-                card.find(".username").text(displayName);
+                const $usernameEl = card.find(".username");
+
+                // Rainbow Text Animation
+                if (settings.topliker_rainbow_username) {
+                    $usernameEl.addClass("rainbow-text");
+                } else {
+                    $usernameEl.removeClass("rainbow-text");
+                }
+
+                // Bounce Text Animation
+                if (settings.topliker_bounce_username) {
+                    $usernameEl.empty();
+                    const chars = displayName.split("");
+                    chars.forEach((char, charIdx) => {
+                        const $span = $("<span>").text(char === " " ? "\u00A0" : char);
+                        $span.addClass("bounce-letter");
+                        $span.css("animation-delay", (charIdx * 0.08) + "s");
+                        $usernameEl.append($span);
+                    });
+                } else {
+                    $usernameEl.text(displayName);
+                }
 
                 // Points / Likes
                 const amount = parseFloat(user.totalAmount) || 0;
@@ -688,7 +755,7 @@
                 $amountSpan.text(amount.toLocaleString("es-MX"));
                 $amountSpan.attr("data-prev-amount", amount);
 
-                if (!isNew && amount > oldAmount) {
+                if (!isNew && amount > oldAmount && settings.topliker_bounce_likes !== false) {
                     const $pointsDiv = card.find(".points");
                     $pointsDiv.addClass("heartbeat-active");
                     setTimeout(() => {
@@ -848,6 +915,15 @@
                 }
                 if (data.topliker_max !== undefined) {
                     maxItems = Number(data.topliker_max);
+                }
+                if (data.topliker_rainbow_username !== undefined) {
+                    settings.topliker_rainbow_username = data.topliker_rainbow_username;
+                }
+                if (data.topliker_bounce_username !== undefined) {
+                    settings.topliker_bounce_username = data.topliker_bounce_username;
+                }
+                if (data.topliker_bounce_likes !== undefined) {
+                    settings.topliker_bounce_likes = data.topliker_bounce_likes;
                 }
                 
                 updateSettings(true);

@@ -100,9 +100,15 @@ function App() {
     topgifter_show_crown: true,
     topgifter_show_coin_symbol: true,
     topgifter_max: 10,
+    topgifter_rainbow_username: false,
+    topgifter_bounce_username: false,
+    topgifter_bounce_coins: true,
     topliker_show_crown: true,
     topliker_show_heart_symbol: true,
     topliker_max: 10,
+    topliker_rainbow_username: false,
+    topliker_bounce_username: false,
+    topliker_bounce_likes: true,
     // Specific customization elements
     playerOpacity: 0.78,
     playerRadius: 20,
@@ -5053,6 +5059,62 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
+  }))), /*#__PURE__*/React.createElement("h4", {
+    style: {
+      margin: '15px 0 10px 0',
+      color: '#a855f7'
+    }
+  }, "\u2728 Animaciones de Tabla"), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '8px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Texto Gradiente Animado (Arco\xEDris) \uD83C\uDF08"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topgifter_rainbow_username,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifter_rainbow_username: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '8px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Efecto Rebote 3D de Letras \uD83E\uDD98"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topgifter_bounce_username,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifter_bounce_username: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '8px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Animar Latido de Monedas al Sumar \uD83D\uDC93"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topgifter_bounce_coins,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifter_bounce_coins: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
   }))), /*#__PURE__*/React.createElement("div", {
     className: "form-group",
     style: {
@@ -5522,6 +5584,62 @@ function App() {
     onChange: e => setOverlays({
       ...overlays,
       topliker_show_heart_symbol: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), /*#__PURE__*/React.createElement("h4", {
+    style: {
+      margin: '15px 0 10px 0',
+      color: '#ff5e7e'
+    }
+  }, "\u2728 Animaciones de Tabla"), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '8px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Texto Gradiente Animado (Arco\xEDris) \uD83C\uDF08"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topliker_rainbow_username,
+    onChange: e => setOverlays({
+      ...overlays,
+      topliker_rainbow_username: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '8px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Efecto Rebote 3D de Letras \uD83E\uDD98"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topliker_bounce_username,
+    onChange: e => setOverlays({
+      ...overlays,
+      topliker_bounce_username: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '8px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Animar Latido de Likes al Sumar \uD83D\uDC93"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topliker_bounce_likes,
+    onChange: e => setOverlays({
+      ...overlays,
+      topliker_bounce_likes: e.target.checked
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
