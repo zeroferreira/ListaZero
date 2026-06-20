@@ -434,7 +434,21 @@
       // Visual Scaling
        maxCards: 3,
        widthScale: 1.0,
-       heightScale: 1.0
+       heightScale: 1.0,
+       
+      // Visual Customizations (Borders & Shadows)
+      showCardBg: true,
+      borderWidth: 0,
+      borderColor: "#ffffff",
+      borderOpacity: 15,
+      borderStyle: "solid",
+      showAccentBorder: true,
+      accentBorderWidth: 5,
+      showShadow: true,
+      shadowColor: "#000000",
+      shadowBlur: 15,
+      shadowOpacity: 40,
+      showSweepBorder: true
      };
  
      window.appliedSettings = { ...defaultSettings };
@@ -502,9 +516,57 @@
       if (document.getElementById('inp-theme')) {
         document.getElementById('inp-theme').value = settings.theme || 'classic';
       }
+
+      // Visual Customizations (Borders & Shadows)
+      if (document.getElementById('inp-showCardBg')) {
+        document.getElementById('inp-showCardBg').checked = settings.showCardBg !== undefined ? settings.showCardBg : true;
+        document.getElementById('inp-borderWidth').value = settings.borderWidth !== undefined ? settings.borderWidth : 0;
+        document.getElementById('inp-borderColor').value = settings.borderColor || '#ffffff';
+        
+        const bOpVal = settings.borderOpacity !== undefined ? settings.borderOpacity : 15;
+        document.getElementById('inp-borderOpacity').value = bOpVal;
+        document.getElementById('border-opacity-val').innerText = bOpVal + '%';
+        
+        document.getElementById('inp-borderStyle').value = settings.borderStyle || 'solid';
+        document.getElementById('inp-showAccentBorder').checked = settings.showAccentBorder !== undefined ? settings.showAccentBorder : true;
+        document.getElementById('inp-accentBorderWidth').value = settings.accentBorderWidth !== undefined ? settings.accentBorderWidth : 5;
+        document.getElementById('inp-showShadow').checked = settings.showShadow !== undefined ? settings.showShadow : true;
+        document.getElementById('inp-shadowColor').value = settings.shadowColor || '#000000';
+        document.getElementById('inp-shadowBlur').value = settings.shadowBlur !== undefined ? settings.shadowBlur : 15;
+        
+        const sOpVal = settings.shadowOpacity !== undefined ? settings.shadowOpacity : 40;
+        document.getElementById('inp-shadowOpacity').value = sOpVal;
+        document.getElementById('shadow-opacity-val').innerText = sOpVal + '%';
+        
+        document.getElementById('inp-showSweepBorder').checked = settings.showSweepBorder !== undefined ? settings.showSweepBorder : true;
+      }
     }
 
     function applySettings(s) {
+      // Si el panel de configuración local está abierto, estamos editando/previsualizando localmente.
+      // En ese caso, omitimos los overrides del dashboard remoto para que se pueda ver el cambio en tiempo real.
+      const isConfiguringLocally = document.getElementById('settings-panel')?.classList.contains('open');
+      
+      if (!isConfiguringLocally) {
+        // Apply specific overrides if window variables exist (from Firestore overlayAlertsConfig snapshot)
+        if (window.queueOpacityOverride !== undefined) s.primaryOpacity = window.queueOpacityOverride * 100;
+        if (window.queueRadiusOverride !== undefined) s.borderRadius = window.queueRadiusOverride;
+        if (window.queueFontSizeOverride !== undefined) s.fontSize = window.queueFontSizeOverride;
+        
+        if (window.queueShowCardBgOverride !== undefined) s.showCardBg = window.queueShowCardBgOverride;
+        if (window.queueBorderWidthOverride !== undefined) s.borderWidth = window.queueBorderWidthOverride;
+        if (window.queueBorderColorOverride !== undefined) s.borderColor = window.queueBorderColorOverride;
+        if (window.queueBorderOpacityOverride !== undefined) s.borderOpacity = window.queueBorderOpacityOverride;
+        if (window.queueBorderStyleOverride !== undefined) s.borderStyle = window.queueBorderStyleOverride;
+        if (window.queueShowAccentBorderOverride !== undefined) s.showAccentBorder = window.queueShowAccentBorderOverride;
+        if (window.queueAccentBorderWidthOverride !== undefined) s.accentBorderWidth = window.queueAccentBorderWidthOverride;
+        if (window.queueShowShadowOverride !== undefined) s.showShadow = window.queueShowShadowOverride;
+        if (window.queueShadowColorOverride !== undefined) s.shadowColor = window.queueShadowColorOverride;
+        if (window.queueShadowBlurOverride !== undefined) s.shadowBlur = window.queueShadowBlurOverride;
+        if (window.queueShadowOpacityOverride !== undefined) s.shadowOpacity = window.queueShadowOpacityOverride;
+        if (window.queueShowSweepBorderOverride !== undefined) s.showSweepBorder = window.queueShowSweepBorderOverride;
+      }
+
       window.appliedSettings = s;
       const root = document.documentElement;
       // Aplicar escala de anchura
@@ -592,7 +654,7 @@
        const calculatedSize = Math.max(10, Math.floor(baseFontSize * fontScale));
        root.style.setProperty('--queue-font-size', calculatedSize + 'px');
        root.style.setProperty('--queue-font-scale', (calculatedSize / 16).toFixed(4));
-      root.style.setProperty('--queue-accent-color', s.accent);
+       root.style.setProperty('--queue-accent-color', s.accent);
       if (s.accent && s.accent.startsWith('#')) {
         const ar = parseInt(s.accent.substr(1,2), 16);
         const ag = parseInt(s.accent.substr(3,2), 16);
@@ -621,9 +683,58 @@
       const opacity = (s.secondaryOpacity !== undefined ? s.secondaryOpacity : 60) / 100;
       const tertiaryOpacity = Math.max(0, opacity * 0.5); // 50% de la opacidad secundaria
       
-      root.style.setProperty('--queue-bg-color', `rgba(${r},${g},${b},${primaryOpacity})`);
-      root.style.setProperty('--queue-bg-color-transparent', `rgba(${r},${g},${b},${opacity})`);
-      root.style.setProperty('--queue-bg-color-tertiary', `rgba(${r},${g},${b},${tertiaryOpacity})`);
+      // Visual Customizations (Borders & Shadows)
+      const bColor = s.borderColor || '#ffffff';
+      const br = parseInt(bColor.substr(1,2), 16);
+      const bg_val = parseInt(bColor.substr(3,2), 16);
+      const bb = parseInt(bColor.substr(5,2), 16);
+      const bOp = (s.borderOpacity !== undefined ? s.borderOpacity : 15) / 100;
+      
+      root.style.setProperty('--queue-border-width', (s.borderWidth !== undefined ? s.borderWidth : 0) + 'px');
+      root.style.setProperty('--queue-border-color', `rgba(${br},${bg_val},${bb},${bOp})`);
+      root.style.setProperty('--queue-border-style', s.borderStyle || 'solid');
+      
+      const showAccent = s.showAccentBorder !== undefined ? s.showAccentBorder : true;
+      const accWidth = showAccent ? (s.accentBorderWidth !== undefined ? s.accentBorderWidth : 5) : 0;
+      root.style.setProperty('--queue-accent-border-width', accWidth + 'px');
+      
+      root.style.setProperty('--queue-sweep-display', (s.showSweepBorder !== undefined ? s.showSweepBorder : true) ? 'block' : 'none');
+
+      const showBg = s.showCardBg !== undefined ? s.showCardBg : true;
+      if (!showBg) {
+        root.style.setProperty('--queue-bg-color', 'transparent');
+        root.style.setProperty('--queue-bg-color-transparent', 'transparent');
+        root.style.setProperty('--queue-bg-color-tertiary', 'transparent');
+        root.style.setProperty('--queue-box-shadow', 'none');
+        document.querySelectorAll('.queue-item-inner').forEach(el => el.classList.add('no-card-bg'));
+      } else {
+        document.querySelectorAll('.queue-item-inner').forEach(el => el.classList.remove('no-card-bg'));
+        root.style.setProperty('--queue-bg-color', `rgba(${r},${g},${b},${primaryOpacity})`);
+        root.style.setProperty('--queue-bg-color-transparent', `rgba(${r},${g},${b},${opacity})`);
+        root.style.setProperty('--queue-bg-color-tertiary', `rgba(${r},${g},${b},${tertiaryOpacity})`);
+        
+        let shadowStr = '0 5px 15px rgba(0,0,0,0.4)';
+        if (s.theme === 'neon-glass') {
+          shadowStr = '0 0 20px rgba(var(--queue-accent-rgb, 0, 229, 255), 0.25), inset 0 0 12px rgba(var(--queue-accent-rgb, 0, 229, 255), 0.1)';
+        } else if (s.theme === 'vision') {
+          shadowStr = 'inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 8px 30px rgba(0, 0, 0, 0.35)';
+        }
+
+        const showShadow = s.showShadow !== undefined ? s.showShadow : true;
+        if (!showShadow) {
+          root.style.setProperty('--queue-box-shadow', 'none');
+        } else if (s.shadowBlur !== undefined && s.shadowOpacity !== undefined) {
+          const shColor = s.shadowColor || '#000000';
+          const shr = parseInt(shColor.substr(1,2), 16);
+          const shg = parseInt(shColor.substr(3,2), 16);
+          const shb = parseInt(shColor.substr(5,2), 16);
+          const shop = s.shadowOpacity / 100;
+          
+          root.style.setProperty('--queue-box-shadow', `0 ${Math.round(s.shadowBlur/3)}px ${s.shadowBlur}px rgba(${shr},${shg},${shb},${shop})`);
+        } else {
+          root.style.setProperty('--queue-box-shadow', shadowStr);
+        }
+      }
       root.style.setProperty('--queue-primary-opacity', primaryOpacity);
       root.style.setProperty('--queue-secondary-opacity', opacity);
       
@@ -675,14 +786,30 @@
         showAlbumArt: document.getElementById('inp-showAlbumArt').checked,
         showWaitTime: document.getElementById('inp-showWaitTime').checked,
         showTotalDuration: document.getElementById('inp-showTotalDuration').checked,
-        syncAppleMusic: document.getElementById('inp-syncAppleMusic').checked
+        syncAppleMusic: document.getElementById('inp-syncAppleMusic').checked,
+        
+        // Visual Customizations (Borders & Shadows)
+        showCardBg: document.getElementById('inp-showCardBg') ? document.getElementById('inp-showCardBg').checked : true,
+        borderWidth: getNum('inp-borderWidth', 0),
+        borderColor: document.getElementById('inp-borderColor') ? document.getElementById('inp-borderColor').value : '#ffffff',
+        borderOpacity: getNum('inp-borderOpacity', 15),
+        borderStyle: document.getElementById('inp-borderStyle') ? document.getElementById('inp-borderStyle').value : 'solid',
+        showAccentBorder: document.getElementById('inp-showAccentBorder') ? document.getElementById('inp-showAccentBorder').checked : true,
+        accentBorderWidth: getNum('inp-accentBorderWidth', 5),
+        showShadow: document.getElementById('inp-showShadow') ? document.getElementById('inp-showShadow').checked : true,
+        shadowColor: document.getElementById('inp-shadowColor') ? document.getElementById('inp-shadowColor').value : '#000000',
+        shadowBlur: getNum('inp-shadowBlur', 15),
+        shadowOpacity: getNum('inp-shadowOpacity', 40),
+        showSweepBorder: document.getElementById('inp-showSweepBorder') ? document.getElementById('inp-showSweepBorder').checked : true
       };
     }
 
     function initSettingsListeners() {
         // Text/Number inputs
         ['inp-theme', 'inp-width', 'inp-minHeight', 'inp-spacing', 'inp-padding', 'inp-textGap', 'inp-borderRadius', 'inp-animEntry', 'inp-animExit', 
-         'inp-font', 'inp-fontSize', 'inp-accent', 'inp-bg', 'inp-primaryOpacity', 'inp-secondaryOpacity', 'inp-text', 'inp-maxCards', 'inp-widthScale', 'inp-heightScale'].forEach(id => {
+         'inp-font', 'inp-fontSize', 'inp-accent', 'inp-bg', 'inp-primaryOpacity', 'inp-secondaryOpacity', 'inp-text', 'inp-maxCards', 'inp-widthScale', 'inp-heightScale',
+         'inp-showCardBg', 'inp-borderWidth', 'inp-borderColor', 'inp-borderOpacity', 'inp-borderStyle', 'inp-showAccentBorder', 'inp-accentBorderWidth',
+         'inp-showShadow', 'inp-shadowColor', 'inp-shadowBlur', 'inp-shadowOpacity', 'inp-showSweepBorder'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('input', previewSettings);
@@ -783,6 +910,27 @@
         db.collection('userSettings').doc('global_queue_config').set(settings)
           .then(() => console.log("Configuración guardada en la nube"))
           .catch(err => console.error("Error guardando configuración:", err));
+
+        // Sincronizar también con la configuración centralizada del dashboard (overlayAlertsConfig)
+        db.collection('systemConfig').doc('overlayAlertsConfig').set({
+          queueOpacity: settings.primaryOpacity / 100,
+          queueRadius: settings.borderRadius,
+          queueFontSize: settings.fontSize,
+          queueShowCardBg: settings.showCardBg,
+          queueBorderWidth: settings.borderWidth,
+          queueBorderColor: settings.borderColor,
+          queueBorderOpacity: settings.borderOpacity,
+          queueBorderStyle: settings.borderStyle,
+          queueShowAccentBorder: settings.showAccentBorder,
+          queueAccentBorderWidth: settings.accentBorderWidth,
+          queueShowShadow: settings.showShadow,
+          queueShadowColor: settings.shadowColor,
+          queueShadowBlur: settings.shadowBlur,
+          queueShadowOpacity: settings.shadowOpacity,
+          queueShowSweepBorder: settings.showSweepBorder
+        }, { merge: true })
+          .then(() => console.log("Sync con overlayAlertsConfig completado"))
+          .catch(err => console.warn("Error al sincronizar con overlayAlertsConfig:", err));
       }
 
       toggleSettings(); // close panel

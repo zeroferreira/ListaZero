@@ -543,23 +543,29 @@
     }
 
     function applySettings(s) {
-      // Apply specific overrides if window variables exist (from Firestore overlayAlertsConfig snapshot)
-      if (window.queueOpacityOverride !== undefined) s.primaryOpacity = window.queueOpacityOverride * 100;
-      if (window.queueRadiusOverride !== undefined) s.borderRadius = window.queueRadiusOverride;
-      if (window.queueFontSizeOverride !== undefined) s.fontSize = window.queueFontSizeOverride;
+      // Si el panel de configuración local está abierto, estamos editando/previsualizando localmente.
+      // En ese caso, omitimos los overrides del dashboard remoto para que se pueda ver el cambio en tiempo real.
+      const isConfiguringLocally = document.getElementById('settings-panel')?.classList.contains('open');
       
-      if (window.queueShowCardBgOverride !== undefined) s.showCardBg = window.queueShowCardBgOverride;
-      if (window.queueBorderWidthOverride !== undefined) s.borderWidth = window.queueBorderWidthOverride;
-      if (window.queueBorderColorOverride !== undefined) s.borderColor = window.queueBorderColorOverride;
-      if (window.queueBorderOpacityOverride !== undefined) s.borderOpacity = window.queueBorderOpacityOverride;
-      if (window.queueBorderStyleOverride !== undefined) s.borderStyle = window.queueBorderStyleOverride;
-      if (window.queueShowAccentBorderOverride !== undefined) s.showAccentBorder = window.queueShowAccentBorderOverride;
-      if (window.queueAccentBorderWidthOverride !== undefined) s.accentBorderWidth = window.queueAccentBorderWidthOverride;
-      if (window.queueShowShadowOverride !== undefined) s.showShadow = window.queueShowShadowOverride;
-      if (window.queueShadowColorOverride !== undefined) s.shadowColor = window.queueShadowColorOverride;
-      if (window.queueShadowBlurOverride !== undefined) s.shadowBlur = window.queueShadowBlurOverride;
-      if (window.queueShadowOpacityOverride !== undefined) s.shadowOpacity = window.queueShadowOpacityOverride;
-      if (window.queueShowSweepBorderOverride !== undefined) s.showSweepBorder = window.queueShowSweepBorderOverride;
+      if (!isConfiguringLocally) {
+        // Apply specific overrides if window variables exist (from Firestore overlayAlertsConfig snapshot)
+        if (window.queueOpacityOverride !== undefined) s.primaryOpacity = window.queueOpacityOverride * 100;
+        if (window.queueRadiusOverride !== undefined) s.borderRadius = window.queueRadiusOverride;
+        if (window.queueFontSizeOverride !== undefined) s.fontSize = window.queueFontSizeOverride;
+        
+        if (window.queueShowCardBgOverride !== undefined) s.showCardBg = window.queueShowCardBgOverride;
+        if (window.queueBorderWidthOverride !== undefined) s.borderWidth = window.queueBorderWidthOverride;
+        if (window.queueBorderColorOverride !== undefined) s.borderColor = window.queueBorderColorOverride;
+        if (window.queueBorderOpacityOverride !== undefined) s.borderOpacity = window.queueBorderOpacityOverride;
+        if (window.queueBorderStyleOverride !== undefined) s.borderStyle = window.queueBorderStyleOverride;
+        if (window.queueShowAccentBorderOverride !== undefined) s.showAccentBorder = window.queueShowAccentBorderOverride;
+        if (window.queueAccentBorderWidthOverride !== undefined) s.accentBorderWidth = window.queueAccentBorderWidthOverride;
+        if (window.queueShowShadowOverride !== undefined) s.showShadow = window.queueShowShadowOverride;
+        if (window.queueShadowColorOverride !== undefined) s.shadowColor = window.queueShadowColorOverride;
+        if (window.queueShadowBlurOverride !== undefined) s.shadowBlur = window.queueShadowBlurOverride;
+        if (window.queueShadowOpacityOverride !== undefined) s.shadowOpacity = window.queueShadowOpacityOverride;
+        if (window.queueShowSweepBorderOverride !== undefined) s.showSweepBorder = window.queueShowSweepBorderOverride;
+      }
 
       window.appliedSettings = s;
       const root = document.documentElement;
@@ -904,6 +910,27 @@
         db.collection('userSettings').doc('global_queue_config').set(settings)
           .then(() => console.log("Configuración guardada en la nube"))
           .catch(err => console.error("Error guardando configuración:", err));
+
+        // Sincronizar también con la configuración centralizada del dashboard (overlayAlertsConfig)
+        db.collection('systemConfig').doc('overlayAlertsConfig').set({
+          queueOpacity: settings.primaryOpacity / 100,
+          queueRadius: settings.borderRadius,
+          queueFontSize: settings.fontSize,
+          queueShowCardBg: settings.showCardBg,
+          queueBorderWidth: settings.borderWidth,
+          queueBorderColor: settings.borderColor,
+          queueBorderOpacity: settings.borderOpacity,
+          queueBorderStyle: settings.borderStyle,
+          queueShowAccentBorder: settings.showAccentBorder,
+          queueAccentBorderWidth: settings.accentBorderWidth,
+          queueShowShadow: settings.showShadow,
+          queueShadowColor: settings.shadowColor,
+          queueShadowBlur: settings.shadowBlur,
+          queueShadowOpacity: settings.shadowOpacity,
+          queueShowSweepBorder: settings.showSweepBorder
+        }, { merge: true })
+          .then(() => console.log("Sync con overlayAlertsConfig completado"))
+          .catch(err => console.warn("Error al sincronizar con overlayAlertsConfig:", err));
       }
 
       toggleSettings(); // close panel
