@@ -873,6 +873,39 @@
         }, (error) => {
            console.warn("No se pudo sincronizar configuración remota:", error);
         });
+
+      // Escuchar personalización visual de la cola desde el panel de control
+      db.collection('systemConfig').doc('overlayAlertsConfig')
+        .onSnapshot((doc) => {
+          if (doc.exists) {
+            const data = doc.data();
+            if (data.queueOpacity !== undefined) window.queueOpacityOverride = data.queueOpacity;
+            if (data.queueRadius !== undefined) window.queueRadiusOverride = data.queueRadius;
+            if (data.queueFontSize !== undefined) window.queueFontSizeOverride = data.queueFontSize;
+            
+            if (data.queueShowCardBg !== undefined) window.queueShowCardBgOverride = data.queueShowCardBg;
+            if (data.queueBorderWidth !== undefined) window.queueBorderWidthOverride = data.queueBorderWidth;
+            if (data.queueBorderColor !== undefined) window.queueBorderColorOverride = data.queueBorderColor;
+            if (data.queueBorderOpacity !== undefined) window.queueBorderOpacityOverride = data.queueBorderOpacity;
+            if (data.queueBorderStyle !== undefined) window.queueBorderStyleOverride = data.queueBorderStyle;
+            if (data.queueShowAccentBorder !== undefined) window.queueShowAccentBorderOverride = data.queueShowAccentBorder;
+            if (data.queueAccentBorderWidth !== undefined) window.queueAccentBorderWidthOverride = data.queueAccentBorderWidth;
+            if (data.queueShowShadow !== undefined) window.queueShowShadowOverride = data.queueShowShadow;
+            if (data.queueShadowColor !== undefined) window.queueShadowColorOverride = data.queueShadowColor;
+            if (data.queueShadowBlur !== undefined) window.queueShadowBlurOverride = data.queueShadowBlur;
+            if (data.queueShadowOpacity !== undefined) window.queueShadowOpacityOverride = data.queueShadowOpacity;
+            if (data.queueShowSweepBorder !== undefined) window.queueShowSweepBorderOverride = data.queueShowSweepBorder;
+            
+            // Re-aplicar configuración
+            if (window.appliedSettings) {
+              applySettings({ ...window.appliedSettings });
+            } else {
+              applySettings({ ...defaultSettings });
+            }
+          }
+        }, (error) => {
+           console.warn("No se pudo sincronizar overlayAlertsConfig para queue:", error);
+        });
     } else {
       console.warn("Firestore no inicializado. No se cargará configuración remota.");
     }
@@ -1427,8 +1460,10 @@
       const cleanUsuario = escapeHTML(usuario);
 
       // Structure for optional Album Art, Wait Time, Progress Bar and Header
+      const showBg = (window.appliedSettings && window.appliedSettings.showCardBg !== undefined) ? window.appliedSettings.showCardBg : true;
+      const innerClass = showBg ? 'queue-item-inner' : 'queue-item-inner no-card-bg';
       div.innerHTML = `
-        <div class="queue-item-inner">
+        <div class="${innerClass}">
            <!-- Header superior especial (solo para neon-glass pos 1) -->
            <div class="now-playing-header">
               <div class="now-playing-badge">

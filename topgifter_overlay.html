@@ -32,13 +32,21 @@
             --topgifter-opacity: 0.72;
             --topgifter-radius: 16px;
             --topgifter-font-size: 14px;
+            --topgifter-width: 340px;
+            --topgifter-gap: 6px;
+            --topgifter-card-padding: 7px 12px 7px 10px;
+            --topgifter-border-width: 1px;
+            --topgifter-border-style: solid;
+            --topgifter-border-color: rgba(255, 255, 255, 0.07);
+            --topgifter-box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+            --topgifter-animation-duration: 0.35s;
         }
 
         body {
             font-family: 'Outfit', 'Segoe UI', sans-serif;
             background: transparent;
             overflow: hidden;
-            width: 340px;
+            width: var(--topgifter-width);
         }
 
         /* =============================================
@@ -47,9 +55,9 @@
         #rankingContainer {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: var(--topgifter-gap);
             padding: 4px 2px;
-            width: 340px;
+            width: var(--topgifter-width);
             max-height: 100vh;
             overflow: hidden;
         }
@@ -61,20 +69,25 @@
             display: none;
             align-items: center;
             gap: 10px;
-            padding: 7px 12px 7px 10px;
+            padding: var(--topgifter-card-padding);
             border-radius: var(--topgifter-radius);
             background: rgba(15, 15, 25, var(--topgifter-opacity));
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.07);
-            box-shadow:
-                0 4px 20px rgba(0, 0, 0, 0.35),
-                inset 0 1px 0 rgba(255,255,255,0.06);
+            border: var(--topgifter-border-width) var(--topgifter-border-style) var(--topgifter-border-color);
+            box-shadow: var(--topgifter-box-shadow);
             position: relative;
             overflow: visible;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
-            animation: slideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+            animation: slideIn var(--topgifter-animation-duration) cubic-bezier(0.34, 1.56, 0.64, 1) both;
             font-size: var(--topgifter-font-size);
+        }
+
+        .rankUser.no-card-bg {
+            background: transparent !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-shadow: none !important;
         }
 
         .rankUser:hover {
@@ -84,19 +97,16 @@
         /* First place special card */
         .rankUser.first-place {
             background: rgba(20, 15, 5, var(--topgifter-opacity));
-            border-color: rgba(255, 195, 0, 0.35);
-            box-shadow:
-                0 4px 24px rgba(255, 185, 0, 0.18),
-                0 0 0 1px rgba(255, 185, 0, 0.12),
-                inset 0 1px 0 rgba(255, 220, 80, 0.10);
+            border-color: var(--topgifter-first-border-color, rgba(255, 195, 0, 0.35));
+            box-shadow: var(--topgifter-first-box-shadow, 0 4px 24px rgba(255, 185, 0, 0.18), 0 0 0 1px rgba(255, 185, 0, 0.12), inset 0 1px 0 rgba(255, 220, 80, 0.10));
         }
 
         .rankUser.second-place {
-            border-color: rgba(192, 192, 192, 0.25);
+            border-color: var(--topgifter-second-border-color, rgba(192, 192, 192, 0.25));
         }
 
         .rankUser.third-place {
-            border-color: rgba(205, 127, 50, 0.25);
+            border-color: var(--topgifter-third-border-color, rgba(205, 127, 50, 0.25));
         }
 
         @keyframes slideIn {
@@ -435,8 +445,99 @@
             topgifter_pointsColor:    null,
             topgifter_usernameColor:  "#ffffff",
             showUserNicknames:        true,
-            currencyName:             currency
+            currencyName:             currency,
+            topgifterShowCardBg:      true
         };
+
+        // Helper para convertir hex a rgba con opacidad
+        function hexToRgba(hex, opacityPercent) {
+            let c;
+            if(/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)){
+                c = hex.substring(1).split('');
+                if(c.length == 3){
+                    c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+                }
+                c = '0x' + c.join('');
+                return 'rgba(' + [(c>>16)&255, (c>>8)&255, c&255].join(',') + ',' + (opacityPercent/100) + ')';
+            }
+            return hex;
+        }
+
+        function applyGifterStyles(data) {
+            const root = document.documentElement;
+            
+            if (data.topgifterOpacity !== undefined) {
+                root.style.setProperty('--topgifter-opacity', data.topgifterOpacity);
+            }
+            if (data.topgifterRadius !== undefined) {
+                root.style.setProperty('--topgifter-radius', data.topgifterRadius + 'px');
+            }
+            if (data.topgifterFontSize !== undefined) {
+                root.style.setProperty('--topgifter-font-size', data.topgifterFontSize + 'px');
+            }
+            if (data.topgifterWidth !== undefined) {
+                root.style.setProperty('--topgifter-width', data.topgifterWidth + 'px');
+            }
+            if (data.topgifterGap !== undefined) {
+                root.style.setProperty('--topgifter-gap', data.topgifterGap + 'px');
+            }
+            if (data.topgifterCardPadding !== undefined) {
+                let p = '7px 12px 7px 10px';
+                if (data.topgifterCardPadding === 'small') p = '5px 8px';
+                if (data.topgifterCardPadding === 'large') p = '10px 16px';
+                root.style.setProperty('--topgifter-card-padding', p);
+            }
+            if (data.topgifterAnimationDuration !== undefined) {
+                root.style.setProperty('--topgifter-animation-duration', data.topgifterAnimationDuration + 's');
+            }
+            
+            // Bordes
+            const borderWidth = data.topgifterBorderWidth !== undefined ? data.topgifterBorderWidth : 1;
+            const borderStyle = data.topgifterBorderStyle || 'solid';
+            const borderColor = data.topgifterBorderColor || '#ffffff';
+            const borderOpacity = data.topgifterBorderOpacity !== undefined ? data.topgifterBorderOpacity : 7;
+            
+            const rgbaBorderColor = hexToRgba(borderColor, borderOpacity);
+            root.style.setProperty('--topgifter-border-width', borderWidth + 'px');
+            root.style.setProperty('--topgifter-border-style', borderStyle);
+            root.style.setProperty('--topgifter-border-color', rgbaBorderColor);
+            
+            // Bordes especiales para 1st, 2nd, 3rd place (solo si el borde general es el default, de lo contrario aplicar el personalizado a todos)
+            if (data.topgifterBorderWidth !== undefined || data.topgifterBorderColor !== undefined) {
+                root.style.setProperty('--topgifter-first-border-color', rgbaBorderColor);
+                root.style.setProperty('--topgifter-second-border-color', rgbaBorderColor);
+                root.style.setProperty('--topgifter-third-border-color', rgbaBorderColor);
+            } else {
+                root.style.removeProperty('--topgifter-first-border-color');
+                root.style.removeProperty('--topgifter-second-border-color');
+                root.style.removeProperty('--topgifter-third-border-color');
+            }
+            
+            // Sombras
+            const showShadow = data.topgifterShowShadow !== undefined ? data.topgifterShowShadow : true;
+            if (showShadow) {
+                const shadowColor = data.topgifterShadowColor || '#000000';
+                const shadowBlur = data.topgifterShadowBlur !== undefined ? data.topgifterShadowBlur : 20;
+                const shadowOpacity = data.topgifterShadowOpacity !== undefined ? data.topgifterShadowOpacity : 35;
+                const rgbaShadowColor = hexToRgba(shadowColor, shadowOpacity);
+                root.style.setProperty('--topgifter-box-shadow', `0 4px ${shadowBlur}px ${rgbaShadowColor}, inset 0 1px 0 rgba(255,255,255,0.06)`);
+                root.style.removeProperty('--topgifter-first-box-shadow');
+            } else {
+                root.style.setProperty('--topgifter-box-shadow', 'none');
+                root.style.setProperty('--topgifter-first-box-shadow', 'none');
+            }
+            
+            // Mostrar Fondo
+            const showBg = data.topgifterShowCardBg !== undefined ? data.topgifterShowCardBg : true;
+            settings.topgifterShowCardBg = showBg;
+            
+            // Aplicar la clase .no-card-bg a todos los elementos rankUser
+            if (!showBg) {
+                $('.rankUser').addClass('no-card-bg');
+            } else {
+                $('.rankUser').removeClass('no-card-bg');
+            }
+        }
 
         // =============================================
         //  FIREBASE FIRESTORE (Conexión al Bot)
@@ -461,8 +562,10 @@
                         const data = doc.data();
                         if (data && Array.isArray(data.list)) {
                             console.log("[Firebase] Ranking Top Gifters actualizado ✓");
-                            hasFirebaseData = true;
-                            updateRanking(data.list);
+                            if (data.list.length > 0) {
+                                hasFirebaseData = true;
+                                updateRanking(data.list);
+                            }
                         }
                     }
                 }, err => {
@@ -475,6 +578,7 @@
                         const data = doc.data();
                         console.log("[Firebase] Configuración de estilo de Top Gifter actualizada ✓");
                         settings = Object.assign(settings, data);
+                        applyGifterStyles(data);
                         if (data.topgifter_max !== undefined) {
                             maxItems = Number(data.topgifter_max);
                         }
@@ -521,6 +625,11 @@
         //  RENDER RANKING
         // =============================================
         function updateRanking(userList) {
+            if (!template) {
+                template = $("#rankTemplate").clone();
+                template.removeAttr("id");
+                $("#rankTemplate").remove();
+            }
             if (!userList) userList = lastUserList;
             lastUserList = userList;
 
@@ -593,6 +702,10 @@
 
                     card.find(".points").toggle(settings.topgifter_showCoins !== false);
 
+                    if (settings.topgifterShowCardBg === false) {
+                        card.addClass("no-card-bg");
+                    }
+
                     // Animate in with stagger
                     card.css("display", "none");
                     rankingContainer.append(card);
@@ -621,11 +734,13 @@
         // =============================================
         //  INIT
         // =============================================
-        $(window).on("load", function() {
+        $(function() {
             // Clone template BEFORE removing it
-            template = $("#rankTemplate").clone();
-            template.removeAttr("id");
-            $("#rankTemplate").remove();
+            if (!template) {
+                template = $("#rankTemplate").clone();
+                template.removeAttr("id");
+                $("#rankTemplate").remove();
+            }
 
             updateSettings(false);
 
@@ -678,15 +793,7 @@
                 const data = event.data.config || event.data.payload || {};
                 
                 // Mapear configuraciones de estilos
-                if (data.topgifterOpacity !== undefined) {
-                    document.documentElement.style.setProperty('--topgifter-opacity', data.topgifterOpacity);
-                }
-                if (data.topgifterRadius !== undefined) {
-                    document.documentElement.style.setProperty('--topgifter-radius', data.topgifterRadius + 'px');
-                }
-                if (data.topgifterFontSize !== undefined) {
-                    document.documentElement.style.setProperty('--topgifter-font-size', data.topgifterFontSize + 'px');
-                }
+                applyGifterStyles(data);
                 if (data.topgifter_show_crown !== undefined) {
                     settings.topgifter_showCrown = data.topgifter_show_crown;
                 }

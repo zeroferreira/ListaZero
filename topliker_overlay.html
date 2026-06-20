@@ -32,13 +32,21 @@
             --topliker-opacity: 0.85;
             --topliker-radius: 22px;
             --topliker-font-size: 14px;
+            --topliker-width: 340px;
+            --topliker-gap: 6px;
+            --topliker-card-padding: 7px 12px 7px 10px;
+            --topliker-border-width: 1px;
+            --topliker-border-style: solid;
+            --topliker-border-color: rgba(255, 255, 255, 0.07);
+            --topliker-box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+            --topliker-animation-duration: 0.35s;
         }
 
         body {
             font-family: 'Outfit', 'Segoe UI', sans-serif;
             background: transparent;
             overflow: hidden;
-            width: 340px;
+            width: var(--topliker-width);
         }
 
         /* =============================================
@@ -47,9 +55,9 @@
         #rankingContainer {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: var(--topliker-gap);
             padding: 4px 2px;
-            width: 340px;
+            width: var(--topliker-width);
             max-height: 100vh;
             overflow: hidden;
         }
@@ -61,20 +69,25 @@
             display: none;
             align-items: center;
             gap: 10px;
-            padding: 7px 12px 7px 10px;
+            padding: var(--topliker-card-padding);
             border-radius: var(--topliker-radius);
             background: rgba(20, 10, 15, var(--topliker-opacity));
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.07);
-            box-shadow:
-                0 4px 20px rgba(0, 0, 0, 0.35),
-                inset 0 1px 0 rgba(255,255,255,0.06);
+            border: var(--topliker-border-width) var(--topliker-border-style) var(--topliker-border-color);
+            box-shadow: var(--topliker-box-shadow);
             position: relative;
             overflow: visible;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
-            animation: slideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+            animation: slideIn var(--topliker-animation-duration) cubic-bezier(0.34, 1.56, 0.64, 1) both;
             font-size: var(--topliker-font-size);
+        }
+
+        .rankUser.no-card-bg {
+            background: transparent !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-shadow: none !important;
         }
 
         .rankUser:hover {
@@ -84,19 +97,16 @@
         /* First place special card */
         .rankUser.first-place {
             background: rgba(35, 12, 20, var(--topliker-opacity));
-            border-color: rgba(255, 94, 126, 0.35);
-            box-shadow:
-                0 4px 24px rgba(255, 94, 126, 0.18),
-                0 0 0 1px rgba(255, 94, 126, 0.12),
-                inset 0 1px 0 rgba(255, 182, 193, 0.10);
+            border-color: var(--topliker-first-border-color, rgba(255, 94, 126, 0.35));
+            box-shadow: var(--topliker-first-box-shadow, 0 4px 24px rgba(255, 94, 126, 0.18), 0 0 0 1px rgba(255, 94, 126, 0.12), inset 0 1px 0 rgba(255, 182, 193, 0.10));
         }
 
         .rankUser.second-place {
-            border-color: rgba(255, 133, 167, 0.25);
+            border-color: var(--topliker-second-border-color, rgba(255, 133, 167, 0.25));
         }
 
         .rankUser.third-place {
-            border-color: rgba(255, 182, 193, 0.25);
+            border-color: var(--topliker-third-border-color, rgba(255, 182, 193, 0.25));
         }
 
         @keyframes slideIn {
@@ -344,8 +354,99 @@
             topliker_rankColor:       null,
             topliker_pointsColor:     null,
             topliker_usernameColor:   "#ffffff",
-            showUserNicknames:         true
+            showUserNicknames:         true,
+            toplikerShowCardBg:       true
         };
+
+        // Helper para convertir hex a rgba con opacidad
+        function hexToRgba(hex, opacityPercent) {
+            let c;
+            if(/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)){
+                c = hex.substring(1).split('');
+                if(c.length == 3){
+                    c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+                }
+                c = '0x' + c.join('');
+                return 'rgba(' + [(c>>16)&255, (c>>8)&255, c&255].join(',') + ',' + (opacityPercent/100) + ')';
+            }
+            return hex;
+        }
+
+        function applyLikerStyles(data) {
+            const root = document.documentElement;
+            
+            if (data.toplikerOpacity !== undefined) {
+                root.style.setProperty('--topliker-opacity', data.toplikerOpacity);
+            }
+            if (data.toplikerRadius !== undefined) {
+                root.style.setProperty('--topliker-radius', data.toplikerRadius + 'px');
+            }
+            if (data.toplikerFontSize !== undefined) {
+                root.style.setProperty('--topliker-font-size', data.toplikerFontSize + 'px');
+            }
+            if (data.toplikerWidth !== undefined) {
+                root.style.setProperty('--topliker-width', data.toplikerWidth + 'px');
+            }
+            if (data.toplikerGap !== undefined) {
+                root.style.setProperty('--topliker-gap', data.toplikerGap + 'px');
+            }
+            if (data.toplikerCardPadding !== undefined) {
+                let p = '7px 12px 7px 10px';
+                if (data.toplikerCardPadding === 'small') p = '5px 8px';
+                if (data.toplikerCardPadding === 'large') p = '10px 16px';
+                root.style.setProperty('--topliker-card-padding', p);
+            }
+            if (data.toplikerAnimationDuration !== undefined) {
+                root.style.setProperty('--topliker-animation-duration', data.toplikerAnimationDuration + 's');
+            }
+            
+            // Bordes
+            const borderWidth = data.toplikerBorderWidth !== undefined ? data.toplikerBorderWidth : 1;
+            const borderStyle = data.toplikerBorderStyle || 'solid';
+            const borderColor = data.toplikerBorderColor || '#ffffff';
+            const borderOpacity = data.toplikerBorderOpacity !== undefined ? data.toplikerBorderOpacity : 7;
+            
+            const rgbaBorderColor = hexToRgba(borderColor, borderOpacity);
+            root.style.setProperty('--topliker-border-width', borderWidth + 'px');
+            root.style.setProperty('--topliker-border-style', borderStyle);
+            root.style.setProperty('--topliker-border-color', rgbaBorderColor);
+            
+            // Bordes especiales para 1st, 2nd, 3rd place (solo si el borde general es el default, de lo contrario aplicar el personalizado a todos)
+            if (data.toplikerBorderWidth !== undefined || data.toplikerBorderColor !== undefined) {
+                root.style.setProperty('--topliker-first-border-color', rgbaBorderColor);
+                root.style.setProperty('--topliker-second-border-color', rgbaBorderColor);
+                root.style.setProperty('--topliker-third-border-color', rgbaBorderColor);
+            } else {
+                root.style.removeProperty('--topliker-first-border-color');
+                root.style.removeProperty('--topliker-second-border-color');
+                root.style.removeProperty('--topliker-third-border-color');
+            }
+            
+            // Sombras
+            const showShadow = data.toplikerShowShadow !== undefined ? data.toplikerShowShadow : true;
+            if (showShadow) {
+                const shadowColor = data.toplikerShadowColor || '#000000';
+                const shadowBlur = data.toplikerShadowBlur !== undefined ? data.toplikerShadowBlur : 20;
+                const shadowOpacity = data.toplikerShadowOpacity !== undefined ? data.toplikerShadowOpacity : 35;
+                const rgbaShadowColor = hexToRgba(shadowColor, shadowOpacity);
+                root.style.setProperty('--topliker-box-shadow', `0 4px ${shadowBlur}px ${rgbaShadowColor}, inset 0 1px 0 rgba(255,255,255,0.06)`);
+                root.style.removeProperty('--topliker-first-box-shadow');
+            } else {
+                root.style.setProperty('--topliker-box-shadow', 'none');
+                root.style.setProperty('--topliker-first-box-shadow', 'none');
+            }
+            
+            // Mostrar Fondo
+            const showBg = data.toplikerShowCardBg !== undefined ? data.toplikerShowCardBg : true;
+            settings.toplikerShowCardBg = showBg;
+            
+            // Aplicar la clase .no-card-bg a todos los elementos rankUser
+            if (!showBg) {
+                $('.rankUser').addClass('no-card-bg');
+            } else {
+                $('.rankUser').removeClass('no-card-bg');
+            }
+        }
 
         // =============================================
         //  FIREBASE FIRESTORE (Conexión al Bot)
@@ -370,8 +471,10 @@
                         const data = doc.data();
                         if (data && Array.isArray(data.list)) {
                             console.log("[Firebase] Ranking Top Likers actualizado ✓");
-                            hasFirebaseData = true;
-                            updateRanking(data.list);
+                            if (data.list.length > 0) {
+                                hasFirebaseData = true;
+                                updateRanking(data.list);
+                            }
                         }
                     }
                 }, err => {
@@ -385,15 +488,7 @@
                         console.log("[Firebase] Configuración de estilo de Top Liker actualizada ✓");
                         
                         // Mapear desde Firestore
-                        if (data.toplikerOpacity !== undefined) {
-                            document.documentElement.style.setProperty('--topliker-opacity', data.toplikerOpacity);
-                        }
-                        if (data.toplikerRadius !== undefined) {
-                            document.documentElement.style.setProperty('--topliker-radius', data.toplikerRadius + 'px');
-                        }
-                        if (data.toplikerFontSize !== undefined) {
-                            document.documentElement.style.setProperty('--topliker-font-size', data.toplikerFontSize + 'px');
-                        }
+                        applyLikerStyles(data);
                         if (data.topliker_show_crown !== undefined) {
                             settings.topliker_showCrown = data.topliker_show_crown;
                         }
@@ -418,6 +513,11 @@
         //  RENDER RANKING
         // =============================================
         function updateRanking(userList) {
+            if (!template) {
+                template = $("#rankTemplate").clone();
+                template.removeAttr("id");
+                $("#rankTemplate").remove();
+            }
             if (!userList) userList = lastUserList;
             lastUserList = userList;
 
@@ -487,6 +587,10 @@
 
                     card.find(".points").toggle(settings.topliker_showHearts !== false);
 
+                    if (settings.toplikerShowCardBg === false) {
+                        card.addClass("no-card-bg");
+                    }
+
                     // Animate in with stagger
                     card.css("display", "none");
                     rankingContainer.append(card);
@@ -514,17 +618,19 @@
         // =============================================
         //  INIT
         // =============================================
-        $(window).on("load", function() {
+        $(function() {
             // Clone template BEFORE removing it
-            template = $("#rankTemplate").clone();
-            template.removeAttr("id");
-            $("#rankTemplate").remove();
+            if (!template) {
+                template = $("#rankTemplate").clone();
+                template.removeAttr("id");
+                $("#rankTemplate").remove();
+            }
 
             updateSettings(false);
 
             // Si no hay datos del bot en Firebase, iniciar preview
             setTimeout(function() {
-                if (!hasFirebaseData) {
+                if ($(".rankUser:not(#rankTemplate)").length === 0) {
                     window.preview && window.preview();
                 }
             }, 1200);
@@ -571,15 +677,7 @@
                 const data = event.data.config || event.data.payload || {};
                 
                 // Mapear configuraciones de estilos
-                if (data.toplikerOpacity !== undefined) {
-                    document.documentElement.style.setProperty('--topliker-opacity', data.toplikerOpacity);
-                }
-                if (data.toplikerRadius !== undefined) {
-                    document.documentElement.style.setProperty('--topliker-radius', data.toplikerRadius + 'px');
-                }
-                if (data.toplikerFontSize !== undefined) {
-                    document.documentElement.style.setProperty('--topliker-font-size', data.toplikerFontSize + 'px');
-                }
+                applyLikerStyles(data);
                 if (data.topliker_show_crown !== undefined) {
                     settings.topliker_showCrown = data.topliker_show_crown;
                 }

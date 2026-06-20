@@ -27,7 +27,20 @@
       sepUseAccent: true,
       sepOpacity: 10,
       sepWidth: 1,
-      sepStyle: "solid"
+      sepStyle: "solid",
+      
+      // Card Visual Customizations
+      showCardBg: true,
+      borderWidth: 0,
+      borderColor: "#ffffff",
+      borderOpacity: 15,
+      borderStyle: "solid",
+      showAccentBorder: true,
+      accentBorderWidth: 6,
+      showShadow: true,
+      shadowColor: "#000000",
+      shadowBlur: 30,
+      shadowOpacity: 50
     };
 
     const presetConfigs = {
@@ -128,11 +141,55 @@
       document.getElementById('inp-sepOpacity').value = sepOpVal;
       document.getElementById('sep-opacity-val').innerText = sepOpVal + '%';
 
-      document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
+       document.getElementById('inp-sepWidth').value = settings.sepWidth !== undefined ? settings.sepWidth : 1;
       document.getElementById('inp-sepStyle').value = settings.sepStyle || 'solid';
+
+      // Visual Customizations (Borders & Shadows)
+      if (document.getElementById('inp-showCardBg')) {
+        document.getElementById('inp-showCardBg').checked = settings.showCardBg !== undefined ? settings.showCardBg : true;
+        document.getElementById('inp-borderWidth').value = settings.borderWidth !== undefined ? settings.borderWidth : 0;
+        document.getElementById('inp-borderColor').value = settings.borderColor || '#ffffff';
+        
+        const bOpVal = settings.borderOpacity !== undefined ? settings.borderOpacity : 15;
+        document.getElementById('inp-borderOpacity').value = bOpVal;
+        document.getElementById('border-opacity-val').innerText = bOpVal + '%';
+        
+        document.getElementById('inp-borderStyle').value = settings.borderStyle || 'solid';
+        document.getElementById('inp-showAccentBorder').checked = settings.showAccentBorder !== undefined ? settings.showAccentBorder : true;
+        document.getElementById('inp-accentBorderWidth').value = settings.accentBorderWidth !== undefined ? settings.accentBorderWidth : 6;
+        document.getElementById('inp-showShadow').checked = settings.showShadow !== undefined ? settings.showShadow : true;
+        document.getElementById('inp-shadowColor').value = settings.shadowColor || '#000000';
+        document.getElementById('inp-shadowBlur').value = settings.shadowBlur !== undefined ? settings.shadowBlur : 30;
+        
+        const sOpVal = settings.shadowOpacity !== undefined ? settings.shadowOpacity : 50;
+        document.getElementById('inp-shadowOpacity').value = sOpVal;
+        document.getElementById('shadow-opacity-val').innerText = sOpVal + '%';
+      }
     }
 
     function applySettings(s) {
+      // Apply specific overrides if window variables exist (from Firestore overlayAlertsConfig snapshot)
+      if (window.playerOpacityOverride !== undefined) s.opacity = window.playerOpacityOverride * 100;
+      if (window.playerRadiusOverride !== undefined) s.borderRadius = window.playerRadiusOverride;
+      if (window.playerFontSizeOverride !== undefined) {
+          s.fontSizeHeader = window.playerFontSizeOverride;
+          s.fontSizeSong = Math.round(window.playerFontSizeOverride * 1.7);
+          s.fontSizeArtist = Math.round(window.playerFontSizeOverride * 1.1);
+          s.fontSizeUser = Math.round(window.playerFontSizeOverride * 0.8);
+      }
+      if (window.playerColorOverride !== undefined) s.accent = window.playerColorOverride;
+      if (window.playerShowCardBgOverride !== undefined) s.showCardBg = window.playerShowCardBgOverride;
+      if (window.playerBorderWidthOverride !== undefined) s.borderWidth = window.playerBorderWidthOverride;
+      if (window.playerBorderColorOverride !== undefined) s.borderColor = window.playerBorderColorOverride;
+      if (window.playerBorderOpacityOverride !== undefined) s.borderOpacity = window.playerBorderOpacityOverride;
+      if (window.playerBorderStyleOverride !== undefined) s.borderStyle = window.playerBorderStyleOverride;
+      if (window.playerShowAccentBorderOverride !== undefined) s.showAccentBorder = window.playerShowAccentBorderOverride;
+      if (window.playerAccentBorderWidthOverride !== undefined) s.accentBorderWidth = window.playerAccentBorderWidthOverride;
+      if (window.playerShowShadowOverride !== undefined) s.showShadow = window.playerShowShadowOverride;
+      if (window.playerShadowColorOverride !== undefined) s.shadowColor = window.playerShadowColorOverride;
+      if (window.playerShadowBlurOverride !== undefined) s.shadowBlur = window.playerShadowBlurOverride;
+      if (window.playerShadowOpacityOverride !== undefined) s.shadowOpacity = window.playerShadowOpacityOverride;
+
       window.appliedOverlaySettings = s;
       // Apply Layout Mode
       const card = document.getElementById('card');
@@ -153,9 +210,7 @@
       const root = document.documentElement;
       root.style.setProperty('--card-width', s.width + 'px');
       root.style.setProperty('--card-min-height', s.minHeight + 'px');
-      
-      const finalRadius = window.playerRadiusOverride !== undefined ? window.playerRadiusOverride : s.borderRadius;
-      root.style.setProperty('--card-border-radius', finalRadius + 'px');
+      root.style.setProperty('--card-border-radius', s.borderRadius + 'px');
       
       // Apply Animation Class to Container or Card Wrapper
       const container = document.getElementById('notification-container');
@@ -167,14 +222,12 @@
       root.style.setProperty('--font-family', s.font);
       
       // Apply specific font sizes
-      const finalFontSize = window.playerFontSizeOverride !== undefined ? window.playerFontSizeOverride : s.fontSizeHeader;
-      root.style.setProperty('--font-size-header', finalFontSize + 'px');
-      root.style.setProperty('--font-size-song', Math.round(finalFontSize * 1.7) + 'px');
-      root.style.setProperty('--font-size-artist', Math.round(finalFontSize * 1.1) + 'px');
-      root.style.setProperty('--font-size-user', Math.round(finalFontSize * 0.8) + 'px');
+      root.style.setProperty('--font-size-song', s.fontSizeSong + 'px');
+      root.style.setProperty('--font-size-artist', s.fontSizeArtist + 'px');
+      root.style.setProperty('--font-size-user', s.fontSizeUser + 'px');
+      root.style.setProperty('--font-size-header', s.fontSizeHeader + 'px');
 
-      const finalAccent = window.playerColorOverride !== undefined ? window.playerColorOverride : s.accent;
-      root.style.setProperty('--accent-color', finalAccent);
+      root.style.setProperty('--accent-color', s.accent);
       root.style.setProperty('--text-color', s.text);
       
       // Icon Content & Size
@@ -201,27 +254,73 @@
       
       // Asegurarse que opacity sea un número entre 0 y 1
       let rawOpacity = s.opacity;
-      if (window.playerOpacityOverride !== undefined) {
-          rawOpacity = window.playerOpacityOverride * 100;
-      }
       if (rawOpacity === undefined || rawOpacity === null || rawOpacity === "") {
         rawOpacity = 85;
       }
       const opacity = parseFloat(rawOpacity) / 100;
+
+      // Borders & Customizations
+      const bColor = s.borderColor || '#ffffff';
+      const br = parseInt(bColor.substr(1,2), 16);
+      const bg_val = parseInt(bColor.substr(3,2), 16);
+      const bb = parseInt(bColor.substr(5,2), 16);
+      const bOp = (s.borderOpacity !== undefined ? s.borderOpacity : 15) / 100;
       
-      root.style.setProperty('--card-bg-color', `rgba(${r},${g},${b},${opacity})`);
+      root.style.setProperty('--card-border-width', (s.borderWidth !== undefined ? s.borderWidth : (s.layoutMode === 'default' ? 0 : 1)) + 'px');
+      root.style.setProperty('--card-border-color', `rgba(${br},${bg_val},${bb},${bOp})`);
+      root.style.setProperty('--card-border-style', s.borderStyle || 'solid');
+      
+      const showAccent = s.showAccentBorder !== undefined ? s.showAccentBorder : true;
+      const accWidth = showAccent ? (s.accentBorderWidth !== undefined ? s.accentBorderWidth : 6) : 0;
+      root.style.setProperty('--card-accent-border-width', accWidth + 'px');
+
+      const showBg = s.showCardBg !== undefined ? s.showCardBg : true;
+      if (!showBg) {
+        root.style.setProperty('--card-bg-color', 'transparent');
+        root.style.setProperty('--card-box-shadow', 'none');
+        card.classList.add('no-card-bg');
+      } else {
+        card.classList.remove('no-card-bg');
+        root.style.setProperty('--card-bg-color', `rgba(${r},${g},${b},${opacity})`);
+        
+        let shadowStr = '0 10px 30px rgba(0,0,0,0.5)';
+        if (s.layoutMode === 'glass') {
+          shadowStr = '0 8px 32px 0 rgba(0, 0, 0, 0.37)';
+        } else if (s.layoutMode === 'vision') {
+          shadowStr = 'inset 0 1px 1px rgba(255, 255, 255, 0.25), 0 12px 40px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.05)';
+        }
+
+        const showShadow = s.showShadow !== undefined ? s.showShadow : true;
+        if (!showShadow) {
+          root.style.setProperty('--card-box-shadow', 'none');
+        } else if (s.shadowBlur !== undefined && s.shadowOpacity !== undefined) {
+          const shColor = s.shadowColor || '#000000';
+          const shr = parseInt(shColor.substr(1,2), 16);
+          const shg = parseInt(shColor.substr(3,2), 16);
+          const shb = parseInt(shColor.substr(5,2), 16);
+          const shop = s.shadowOpacity / 100;
+          
+          if (s.layoutMode === 'vision') {
+             root.style.setProperty('--card-box-shadow', `inset 0 1px 1px rgba(255, 255, 255, 0.25), 0 ${s.shadowBlur}px ${s.shadowBlur*3}px rgba(${shr},${shg},${shb},${shop})`);
+          } else {
+             root.style.setProperty('--card-box-shadow', `0 ${Math.round(s.shadowBlur/3)}px ${s.shadowBlur}px rgba(${shr},${shg},${shb},${shop})`);
+          }
+        } else {
+          root.style.setProperty('--card-box-shadow', shadowStr);
+        }
+      }
 
       // Calculate accent color rgba variants
-      const ar = parseInt(finalAccent.substr(1,2), 16);
-      const ag = parseInt(finalAccent.substr(3,2), 16);
-      const ab = parseInt(finalAccent.substr(5,2), 16);
+      const ar = parseInt(s.accent.substr(1,2), 16);
+      const ag = parseInt(s.accent.substr(3,2), 16);
+      const ab = parseInt(s.accent.substr(5,2), 16);
       root.style.setProperty('--accent-color-bg', `rgba(${ar},${ag},${ab},0.2)`);
       root.style.setProperty('--accent-color-glow', `rgba(${ar},${ag},${ab},0.4)`);
       
       // Separator
       let finalSepColor = s.sepColor || '#ffffff';
       if (s.sepUseAccent) {
-         finalSepColor = finalAccent;
+         finalSepColor = s.accent;
       }
 
       const sr = parseInt(finalSepColor.substr(1,2), 16);
@@ -285,7 +384,20 @@
         sepUseAccent: document.getElementById('inp-sepUseAccent').checked,
         sepOpacity: getNum('inp-sepOpacity', 10),
         sepWidth: getNum('inp-sepWidth', 1),
-        sepStyle: document.getElementById('inp-sepStyle').value
+        sepStyle: document.getElementById('inp-sepStyle').value,
+        
+        // Visual Customizations (Borders & Shadows)
+        showCardBg: document.getElementById('inp-showCardBg') ? document.getElementById('inp-showCardBg').checked : true,
+        borderWidth: getNum('inp-borderWidth', 0),
+        borderColor: document.getElementById('inp-borderColor') ? document.getElementById('inp-borderColor').value : '#ffffff',
+        borderOpacity: getNum('inp-borderOpacity', 15),
+        borderStyle: document.getElementById('inp-borderStyle') ? document.getElementById('inp-borderStyle').value : 'solid',
+        showAccentBorder: document.getElementById('inp-showAccentBorder') ? document.getElementById('inp-showAccentBorder').checked : true,
+        accentBorderWidth: getNum('inp-accentBorderWidth', 6),
+        showShadow: document.getElementById('inp-showShadow') ? document.getElementById('inp-showShadow').checked : true,
+        shadowColor: document.getElementById('inp-shadowColor') ? document.getElementById('inp-shadowColor').value : '#000000',
+        shadowBlur: getNum('inp-shadowBlur', 30),
+        shadowOpacity: getNum('inp-shadowOpacity', 50)
       };
     }
 
@@ -318,7 +430,9 @@
          'inp-font', 'inp-fontSizeSong', 'inp-fontSizeArtist', 'inp-fontSizeUser', 'inp-fontSizeHeader', 
          'inp-accent', 'inp-icon', 'inp-iconCircleSize', 'inp-iconFontSize', 'inp-iconBg', 'inp-iconOpacity',
          'inp-bg', 'inp-opacity', 'inp-text', 'inp-duration',
-         'inp-sepColor', 'inp-sepUseAccent', 'inp-sepOpacity', 'inp-sepWidth', 'inp-sepStyle'].forEach(id => {
+         'inp-sepColor', 'inp-sepUseAccent', 'inp-sepOpacity', 'inp-sepWidth', 'inp-sepStyle',
+         'inp-showCardBg', 'inp-borderWidth', 'inp-borderColor', 'inp-borderOpacity', 'inp-borderStyle',
+         'inp-showAccentBorder', 'inp-accentBorderWidth', 'inp-showShadow', 'inp-shadowColor', 'inp-shadowBlur', 'inp-shadowOpacity'].forEach(id => {
            const el = document.getElementById(id);
            if(el) {
              el.addEventListener('input', previewSettings);
@@ -807,7 +921,7 @@
            console.warn("No se pudo sincronizar configuración remota (posiblemente offline o sin permisos):", error);
         });
 
-      // Escuchar personalización visual del reproductor principal
+      // Escuchar personalización visual del reproductor principal desde el panel de control
       db.collection('systemConfig').doc('overlayAlertsConfig')
         .onSnapshot((doc) => {
           if (doc.exists) {
@@ -817,11 +931,25 @@
             if (data.playerFontSize !== undefined) window.playerFontSizeOverride = data.playerFontSize;
             if (data.playerColor !== undefined) window.playerColorOverride = data.playerColor;
             
+            // Nuevas opciones avanzadas de personalización
+            if (data.playerShowCardBg !== undefined) window.playerShowCardBgOverride = data.playerShowCardBg;
+            if (data.playerBorderWidth !== undefined) window.playerBorderWidthOverride = data.playerBorderWidth;
+            if (data.playerBorderColor !== undefined) window.playerBorderColorOverride = data.playerBorderColor;
+            if (data.playerBorderOpacity !== undefined) window.playerBorderOpacityOverride = data.playerBorderOpacity;
+            if (data.playerBorderStyle !== undefined) window.playerBorderStyleOverride = data.playerBorderStyle;
+            if (data.playerShowAccentBorder !== undefined) window.playerShowAccentBorderOverride = data.playerShowAccentBorder;
+            if (data.playerAccentBorderWidth !== undefined) window.playerAccentBorderWidthOverride = data.playerAccentBorderWidth;
+            if (data.playerShowShadow !== undefined) window.playerShowShadowOverride = data.playerShowShadow;
+            if (data.playerShadowColor !== undefined) window.playerShadowColorOverride = data.playerShadowColor;
+            if (data.playerShadowBlur !== undefined) window.playerShadowBlurOverride = data.playerShadowBlur;
+            if (data.playerShadowOpacity !== undefined) window.playerShadowOpacityOverride = data.playerShadowOpacity;
+            
             // Re-aplicar configuración
             if (window.appliedOverlaySettings) {
-              applySettings(window.appliedOverlaySettings);
+              const settingsToApply = { ...window.appliedOverlaySettings };
+              applySettings(settingsToApply);
             } else {
-              applySettings(defaultSettings);
+              applySettings({ ...defaultSettings });
             }
           }
         }, (error) => {

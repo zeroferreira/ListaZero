@@ -108,20 +108,91 @@ function App() {
     playerRadius: 20,
     playerFontSize: 14,
     playerColor: '#ff0050',
+    playerShowCardBg: true,
+    playerBorderColor: '#ffffff',
+    playerBorderWidth: 1,
+    playerBorderOpacity: 15,
+    playerBorderStyle: 'solid',
+    playerShowAccentBorder: true,
+    playerAccentBorderWidth: 6,
+    playerShowShadow: true,
+    playerShadowColor: '#000000',
+    playerShadowBlur: 30,
+    playerShadowOpacity: 50,
     queueOpacity: 0.80,
     queueRadius: 22,
     queueFontSize: 14,
+    queueShowCardBg: true,
+    queueBorderColor: '#ffffff',
+    queueBorderWidth: 1,
+    queueBorderOpacity: 15,
+    queueBorderStyle: 'solid',
+    queueShowAccentBorder: true,
+    queueAccentBorderWidth: 5,
+    queueShowShadow: true,
+    queueShadowColor: '#000000',
+    queueShadowBlur: 15,
+    queueShadowOpacity: 40,
+    queueShowSweepBorder: true,
     rouletteOpacity: 0.90,
     rouletteRadius: 22,
+    rouletteShowCardBg: true,
+    rouletteBorderColor: '#ffffff',
+    rouletteBorderWidth: 1,
+    rouletteBorderOpacity: 20,
+    rouletteBorderStyle: 'solid',
+    rouletteShowShadow: true,
     alertsOpacity: 0.85,
     alertsRadius: 22,
     alertsFontSize: 14,
+    followBorderColor: '#ffffff',
+    followBorderWidth: 1,
+    followBorderOpacity: 8,
+    followBorderStyle: 'solid',
+    likeBorderColor: '#ffffff',
+    likeBorderWidth: 1,
+    likeBorderOpacity: 8,
+    likeBorderStyle: 'solid',
+    giftBorderColor: '#ffffff',
+    giftBorderWidth: 1,
+    giftBorderOpacity: 8,
+    giftBorderStyle: 'solid',
+    subscribeBorderColor: '#ffffff',
+    subscribeBorderWidth: 1,
+    subscribeBorderOpacity: 8,
+    subscribeBorderStyle: 'solid',
     topgifterOpacity: 0.85,
     topgifterRadius: 22,
     topgifterFontSize: 14,
+    topgifterShowCardBg: true,
+    topgifterWidth: 340,
+    topgifterGap: 6,
+    topgifterCardPadding: 'medium',
+    topgifterBorderColor: '#ffffff',
+    topgifterBorderWidth: 1,
+    topgifterBorderOpacity: 7,
+    topgifterBorderStyle: 'solid',
+    topgifterShowShadow: true,
+    topgifterShadowColor: '#000000',
+    topgifterShadowBlur: 20,
+    topgifterShadowOpacity: 35,
+    topgifterAnimationDuration: 0.35,
     toplikerOpacity: 0.85,
     toplikerRadius: 22,
     toplikerFontSize: 14,
+    toplikerShowCardBg: true,
+    toplikerWidth: 340,
+    toplikerGap: 6,
+    toplikerCardPadding: 'medium',
+    toplikerBorderColor: '#ffffff',
+    toplikerBorderWidth: 1,
+    toplikerBorderOpacity: 7,
+    toplikerBorderStyle: 'solid',
+    toplikerShowShadow: true,
+    toplikerShadowColor: '#000000',
+    toplikerShadowBlur: 20,
+    toplikerShadowOpacity: 35,
+    toplikerAnimationDuration: 0.35,
     likeslockOpacity: 0.85,
     likeslockRadius: 22,
     tickerOpacity: 0.85,
@@ -1577,7 +1648,242 @@ function App() {
       border: '1px solid var(--border-glass)',
       borderRadius: '10px'
     }
-  }))), /*#__PURE__*/React.createElement("button", {
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      marginTop: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.playerShowCardBg !== false,
+    onChange: e => setOverlays({
+      ...overlays,
+      playerShowCardBg: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      cursor: 'pointer'
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      cursor: 'pointer',
+      margin: 0
+    }
+  }, "Mostrar Tarjeta (Fondo)")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.02)',
+      padding: '15px',
+      borderRadius: '12px',
+      border: '1px solid rgba(255,255,255,0.05)',
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("h5", {
+    style: {
+      marginBottom: '12px',
+      color: '#ff0050',
+      fontWeight: 'bold'
+    }
+  }, "Contorno / Borde"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor del Contorno: ", overlays.playerBorderWidth || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "1",
+    value: overlays.playerBorderWidth || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      playerBorderWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Estilo de Contorno"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.playerBorderStyle || 'solid',
+    onChange: e => setOverlays({
+      ...overlays,
+      playerBorderStyle: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '40px',
+      padding: '0 10px',
+      background: 'rgba(0,0,0,0.4)',
+      color: '#fff',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "solid"
+  }, "S\xF3lido"), /*#__PURE__*/React.createElement("option", {
+    value: "dashed"
+  }, "Segmentado"), /*#__PURE__*/React.createElement("option", {
+    value: "dotted"
+  }, "Puntos"), /*#__PURE__*/React.createElement("option", {
+    value: "double"
+  }, "Doble"), /*#__PURE__*/React.createElement("option", {
+    value: "none"
+  }, "Ninguno")))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.playerBorderColor || '#ffffff',
+    onChange: e => setOverlays({
+      ...overlays,
+      playerBorderColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '40px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad de Contorno: ", overlays.playerBorderOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.playerBorderOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      playerBorderOpacity: parseInt(e.target.value)
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.playerShowAccentBorder !== false,
+    onChange: e => setOverlays({
+      ...overlays,
+      playerShowAccentBorder: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      cursor: 'pointer'
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      cursor: 'pointer',
+      margin: 0
+    }
+  }, "Borde de Acento Izquierdo")), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor Acento: ", overlays.playerAccentBorderWidth || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "20",
+    step: "1",
+    value: overlays.playerAccentBorderWidth || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      playerAccentBorderWidth: parseInt(e.target.value)
+    }),
+    disabled: overlays.playerShowAccentBorder === false
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.02)',
+      padding: '15px',
+      borderRadius: '12px',
+      border: '1px solid rgba(255,255,255,0.05)',
+      marginTop: '15px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("h5", {
+    style: {
+      marginBottom: '12px',
+      color: '#ff0050',
+      fontWeight: 'bold'
+    }
+  }, "Sombra de Tarjeta"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      alignSelf: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.playerShowShadow !== false,
+    onChange: e => setOverlays({
+      ...overlays,
+      playerShowShadow: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      cursor: 'pointer'
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      cursor: 'pointer',
+      margin: 0
+    }
+  }, "Activar Sombra")), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Sombra"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.playerShadowColor || '#000000',
+    onChange: e => setOverlays({
+      ...overlays,
+      playerShadowColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '40px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    },
+    disabled: overlays.playerShowShadow === false
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Desenfoque (Blur): ", overlays.playerShadowBlur || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.playerShadowBlur || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      playerShadowBlur: parseInt(e.target.value)
+    }),
+    disabled: overlays.playerShowShadow === false
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad de Sombra: ", overlays.playerShadowOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.playerShadowOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      playerShadowOpacity: parseInt(e.target.value)
+    }),
+    disabled: overlays.playerShowShadow === false
+  })))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
     onClick: () => handleSaveOverlaysConfigOnly('Player'),
     style: {
@@ -1678,7 +1984,270 @@ function App() {
       ...overlays,
       queueFontSize: parseInt(e.target.value)
     })
-  }))), /*#__PURE__*/React.createElement("button", {
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      marginTop: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.queueShowCardBg !== false,
+    onChange: e => setOverlays({
+      ...overlays,
+      queueShowCardBg: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      cursor: 'pointer'
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      cursor: 'pointer',
+      margin: 0
+    }
+  }, "Mostrar Tarjeta (Fondo)")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.02)',
+      padding: '15px',
+      borderRadius: '12px',
+      border: '1px solid rgba(255,255,255,0.05)',
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("h5", {
+    style: {
+      marginBottom: '12px',
+      color: '#00e5ff',
+      fontWeight: 'bold'
+    }
+  }, "Contorno / Borde"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor del Contorno: ", overlays.queueBorderWidth || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "1",
+    value: overlays.queueBorderWidth || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      queueBorderWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Estilo de Contorno"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.queueBorderStyle || 'solid',
+    onChange: e => setOverlays({
+      ...overlays,
+      queueBorderStyle: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '40px',
+      padding: '0 10px',
+      background: 'rgba(0,0,0,0.4)',
+      color: '#fff',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "solid"
+  }, "S\xF3lido"), /*#__PURE__*/React.createElement("option", {
+    value: "dashed"
+  }, "Segmentado"), /*#__PURE__*/React.createElement("option", {
+    value: "dotted"
+  }, "Puntos"), /*#__PURE__*/React.createElement("option", {
+    value: "double"
+  }, "Doble"), /*#__PURE__*/React.createElement("option", {
+    value: "none"
+  }, "Ninguno")))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.queueBorderColor || '#ffffff',
+    onChange: e => setOverlays({
+      ...overlays,
+      queueBorderColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '40px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad de Contorno: ", overlays.queueBorderOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.queueBorderOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      queueBorderOpacity: parseInt(e.target.value)
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.queueShowAccentBorder !== false,
+    onChange: e => setOverlays({
+      ...overlays,
+      queueShowAccentBorder: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      cursor: 'pointer'
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      cursor: 'pointer',
+      margin: 0
+    }
+  }, "Borde de Acento Izquierdo")), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor Acento: ", overlays.queueAccentBorderWidth || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "20",
+    step: "1",
+    value: overlays.queueAccentBorderWidth || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      queueAccentBorderWidth: parseInt(e.target.value)
+    }),
+    disabled: overlays.queueShowAccentBorder === false
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.queueShowSweepBorder !== false,
+    onChange: e => setOverlays({
+      ...overlays,
+      queueShowSweepBorder: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      cursor: 'pointer'
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      cursor: 'pointer',
+      margin: 0
+    }
+  }, "Borde de Barrido Animado (Sweep)")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.02)',
+      padding: '15px',
+      borderRadius: '12px',
+      border: '1px solid rgba(255,255,255,0.05)',
+      marginTop: '15px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("h5", {
+    style: {
+      marginBottom: '12px',
+      color: '#00e5ff',
+      fontWeight: 'bold'
+    }
+  }, "Sombra de Tarjeta"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      alignSelf: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.queueShowShadow !== false,
+    onChange: e => setOverlays({
+      ...overlays,
+      queueShowShadow: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      cursor: 'pointer'
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      cursor: 'pointer',
+      margin: 0
+    }
+  }, "Activar Sombra")), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Sombra"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.queueShadowColor || '#000000',
+    onChange: e => setOverlays({
+      ...overlays,
+      queueShadowColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '40px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    },
+    disabled: overlays.queueShowShadow === false
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Desenfoque (Blur): ", overlays.queueShadowBlur || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.queueShadowBlur || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      queueShadowBlur: parseInt(e.target.value)
+    }),
+    disabled: overlays.queueShowShadow === false
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad de Sombra: ", overlays.queueShadowOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.queueShadowOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      queueShadowOpacity: parseInt(e.target.value)
+    }),
+    disabled: overlays.queueShowShadow === false
+  })))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
     onClick: () => handleSaveOverlaysConfigOnly('Queue'),
     style: {
@@ -1767,7 +2336,145 @@ function App() {
       ...overlays,
       rouletteRadius: parseInt(e.target.value)
     })
-  }))), /*#__PURE__*/React.createElement("button", {
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: '15px',
+      marginTop: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.rouletteShowCardBg !== false,
+    onChange: e => setOverlays({
+      ...overlays,
+      rouletteShowCardBg: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      cursor: 'pointer'
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      cursor: 'pointer',
+      margin: 0
+    }
+  }, "Mostrar Tarjeta Ganador")), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.rouletteShowShadow !== false,
+    onChange: e => setOverlays({
+      ...overlays,
+      rouletteShowShadow: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      cursor: 'pointer'
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      cursor: 'pointer',
+      margin: 0
+    }
+  }, "Sombra del Ganador"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.02)',
+      padding: '15px',
+      borderRadius: '12px',
+      border: '1px solid rgba(255,255,255,0.05)',
+      marginTop: '15px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("h5", {
+    style: {
+      marginBottom: '12px',
+      color: '#eab308',
+      fontWeight: 'bold'
+    }
+  }, "Contorno de Tarjeta Ganador"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor del Contorno: ", overlays.rouletteBorderWidth || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "1",
+    value: overlays.rouletteBorderWidth || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      rouletteBorderWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Estilo de Contorno"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.rouletteBorderStyle || 'solid',
+    onChange: e => setOverlays({
+      ...overlays,
+      rouletteBorderStyle: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '40px',
+      padding: '0 10px',
+      background: 'rgba(0,0,0,0.4)',
+      color: '#fff',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "solid"
+  }, "S\xF3lido"), /*#__PURE__*/React.createElement("option", {
+    value: "dashed"
+  }, "Segmentado"), /*#__PURE__*/React.createElement("option", {
+    value: "dotted"
+  }, "Puntos"), /*#__PURE__*/React.createElement("option", {
+    value: "double"
+  }, "Doble"), /*#__PURE__*/React.createElement("option", {
+    value: "none"
+  }, "Ninguno")))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.rouletteBorderColor || '#ffffff',
+    onChange: e => setOverlays({
+      ...overlays,
+      rouletteBorderColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '40px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad de Contorno: ", overlays.rouletteBorderOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.rouletteBorderOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      rouletteBorderOpacity: parseInt(e.target.value)
+    })
+  })))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
     onClick: () => handleSaveOverlaysConfigOnly('Ruleta'),
     style: {
@@ -2052,6 +2759,96 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.01)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.04)',
+      marginTop: '10px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#a855f7',
+      fontSize: '0.85rem'
+    }
+  }, "Personalizar Contorno (Borde)"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor Contorno: ", overlays.followBorderWidth || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "1",
+    value: overlays.followBorderWidth || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      followBorderWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Estilo Contorno"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.followBorderStyle || 'solid',
+    onChange: e => setOverlays({
+      ...overlays,
+      followBorderStyle: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      padding: '0 10px',
+      background: 'rgba(0,0,0,0.4)',
+      color: '#fff',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '8px',
+      fontSize: '0.85rem'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "solid"
+  }, "S\xF3lido"), /*#__PURE__*/React.createElement("option", {
+    value: "dashed"
+  }, "Segmentado"), /*#__PURE__*/React.createElement("option", {
+    value: "dotted"
+  }, "Puntos"), /*#__PURE__*/React.createElement("option", {
+    value: "double"
+  }, "Doble"), /*#__PURE__*/React.createElement("option", {
+    value: "none"
+  }, "Ninguno")))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.followBorderColor || '#ffffff',
+    onChange: e => setOverlays({
+      ...overlays,
+      followBorderColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad Contorno: ", overlays.followBorderOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.followBorderOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      followBorderOpacity: parseInt(e.target.value)
+    })
   })))), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Familia de Fuente"), /*#__PURE__*/React.createElement("select", {
@@ -2468,6 +3265,96 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.01)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.04)',
+      marginTop: '10px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#a855f7',
+      fontSize: '0.85rem'
+    }
+  }, "Personalizar Contorno (Borde)"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor Contorno: ", overlays.likeBorderWidth || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "1",
+    value: overlays.likeBorderWidth || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      likeBorderWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Estilo Contorno"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.likeBorderStyle || 'solid',
+    onChange: e => setOverlays({
+      ...overlays,
+      likeBorderStyle: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      padding: '0 10px',
+      background: 'rgba(0,0,0,0.4)',
+      color: '#fff',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '8px',
+      fontSize: '0.85rem'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "solid"
+  }, "S\xF3lido"), /*#__PURE__*/React.createElement("option", {
+    value: "dashed"
+  }, "Segmentado"), /*#__PURE__*/React.createElement("option", {
+    value: "dotted"
+  }, "Puntos"), /*#__PURE__*/React.createElement("option", {
+    value: "double"
+  }, "Doble"), /*#__PURE__*/React.createElement("option", {
+    value: "none"
+  }, "Ninguno")))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.likeBorderColor || '#ffffff',
+    onChange: e => setOverlays({
+      ...overlays,
+      likeBorderColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad Contorno: ", overlays.likeBorderOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.likeBorderOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      likeBorderOpacity: parseInt(e.target.value)
+    })
   })))), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Familia de Fuente"), /*#__PURE__*/React.createElement("select", {
@@ -2909,6 +3796,96 @@ function App() {
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
   })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.01)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.04)',
+      marginTop: '10px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#a855f7',
+      fontSize: '0.85rem'
+    }
+  }, "Personalizar Contorno (Borde)"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor Contorno: ", overlays.giftBorderWidth || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "1",
+    value: overlays.giftBorderWidth || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      giftBorderWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Estilo Contorno"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.giftBorderStyle || 'solid',
+    onChange: e => setOverlays({
+      ...overlays,
+      giftBorderStyle: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      padding: '0 10px',
+      background: 'rgba(0,0,0,0.4)',
+      color: '#fff',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '8px',
+      fontSize: '0.85rem'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "solid"
+  }, "S\xF3lido"), /*#__PURE__*/React.createElement("option", {
+    value: "dashed"
+  }, "Segmentado"), /*#__PURE__*/React.createElement("option", {
+    value: "dotted"
+  }, "Puntos"), /*#__PURE__*/React.createElement("option", {
+    value: "double"
+  }, "Doble"), /*#__PURE__*/React.createElement("option", {
+    value: "none"
+  }, "Ninguno")))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.giftBorderColor || '#ffffff',
+    onChange: e => setOverlays({
+      ...overlays,
+      giftBorderColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad Contorno: ", overlays.giftBorderOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.giftBorderOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      giftBorderOpacity: parseInt(e.target.value)
+    })
+  })))), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Familia de Fuente"), /*#__PURE__*/React.createElement("select", {
     value: overlays.giftFontFamily,
@@ -3334,6 +4311,96 @@ function App() {
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
   })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.01)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.04)',
+      marginTop: '10px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#a855f7',
+      fontSize: '0.85rem'
+    }
+  }, "Personalizar Contorno (Borde)"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor Contorno: ", overlays.subscribeBorderWidth || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "1",
+    value: overlays.subscribeBorderWidth || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      subscribeBorderWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Estilo Contorno"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.subscribeBorderStyle || 'solid',
+    onChange: e => setOverlays({
+      ...overlays,
+      subscribeBorderStyle: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      padding: '0 10px',
+      background: 'rgba(0,0,0,0.4)',
+      color: '#fff',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '8px',
+      fontSize: '0.85rem'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "solid"
+  }, "S\xF3lido"), /*#__PURE__*/React.createElement("option", {
+    value: "dashed"
+  }, "Segmentado"), /*#__PURE__*/React.createElement("option", {
+    value: "dotted"
+  }, "Puntos"), /*#__PURE__*/React.createElement("option", {
+    value: "double"
+  }, "Doble"), /*#__PURE__*/React.createElement("option", {
+    value: "none"
+  }, "Ninguno")))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.subscribeBorderColor || '#ffffff',
+    onChange: e => setOverlays({
+      ...overlays,
+      subscribeBorderColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad Contorno: ", overlays.subscribeBorderOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.subscribeBorderOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      subscribeBorderOpacity: parseInt(e.target.value)
+    })
+  })))), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Familia de Fuente"), /*#__PURE__*/React.createElement("select", {
     value: overlays.subscribeFontFamily,
@@ -3679,6 +4746,259 @@ function App() {
     })
   }))), /*#__PURE__*/React.createElement("div", {
     style: {
+      marginBottom: '25px',
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      paddingBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginBottom: '15px',
+      color: '#a855f7'
+    }
+  }, "\u2728 Dise\xF1o y Estructura de Tarjeta"), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Fondo de Cristal (Tarjeta)"), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '6px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Mostrar Fondo"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topgifterShowCardBg,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterShowCardBg: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Ancho del Ranking: ", overlays.topgifterWidth || 340, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "200",
+    max: "600",
+    step: "10",
+    value: overlays.topgifterWidth || 340,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Separaci\xF3n entre Tarjetas: ", overlays.topgifterGap || 6, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "25",
+    step: "1",
+    value: overlays.topgifterGap || 6,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterGap: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Espaciado Interno (Padding)"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.topgifterCardPadding || 'medium',
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterCardPadding: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      padding: '0 10px',
+      background: 'rgba(0,0,0,0.4)',
+      color: '#fff',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '8px',
+      fontSize: '0.85rem'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "small"
+  }, "Peque\xF1o"), /*#__PURE__*/React.createElement("option", {
+    value: "medium"
+  }, "Mediano"), /*#__PURE__*/React.createElement("option", {
+    value: "large"
+  }, "Grande"))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Duraci\xF3n Animaci\xF3n Entrada: ", overlays.topgifterAnimationDuration || 0.35, "s"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "2",
+    step: "0.05",
+    value: overlays.topgifterAnimationDuration || 0.35,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterAnimationDuration: parseFloat(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.01)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.04)',
+      marginTop: '10px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#a855f7',
+      fontSize: '0.85rem'
+    }
+  }, "Personalizar Contorno (Borde)"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor Contorno: ", overlays.topgifterBorderWidth || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "1",
+    value: overlays.topgifterBorderWidth || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterBorderWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Estilo Contorno"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.topgifterBorderStyle || 'solid',
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterBorderStyle: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      padding: '0 10px',
+      background: 'rgba(0,0,0,0.4)',
+      color: '#fff',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '8px',
+      fontSize: '0.85rem'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "solid"
+  }, "S\xF3lido"), /*#__PURE__*/React.createElement("option", {
+    value: "dashed"
+  }, "Segmentado"), /*#__PURE__*/React.createElement("option", {
+    value: "dotted"
+  }, "Puntos"), /*#__PURE__*/React.createElement("option", {
+    value: "double"
+  }, "Doble"), /*#__PURE__*/React.createElement("option", {
+    value: "none"
+  }, "Ninguno")))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.topgifterBorderColor || '#ffffff',
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterBorderColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad Contorno: ", overlays.topgifterBorderOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.topgifterBorderOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterBorderOpacity: parseInt(e.target.value)
+    })
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.01)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.04)',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#a855f7',
+      fontSize: '0.85rem'
+    }
+  }, "Personalizar Sombra de Tarjeta"), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '6px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Mostrar Sombra"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.topgifterShowShadow,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterShowShadow: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Sombra"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.topgifterShadowColor || '#000000',
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterShadowColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Desenfoque: ", overlays.topgifterShadowBlur || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.topgifterShadowBlur || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterShadowBlur: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad Sombra: ", overlays.topgifterShadowOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.topgifterShadowOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      topgifterShadowOpacity: parseInt(e.target.value)
+    })
+  }))))), /*#__PURE__*/React.createElement("div", {
+    style: {
       marginBottom: '25px'
     }
   }, /*#__PURE__*/React.createElement("h4", {
@@ -3897,6 +5217,259 @@ function App() {
       toplikerFontSize: parseInt(e.target.value)
     })
   }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: '25px',
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      paddingBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginBottom: '15px',
+      color: '#ff5e7e'
+    }
+  }, "\u2728 Dise\xF1o y Estructura de Tarjeta"), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Fondo de Cristal (Tarjeta)"), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '6px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Mostrar Fondo"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.toplikerShowCardBg,
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerShowCardBg: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Ancho del Ranking: ", overlays.toplikerWidth || 340, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "200",
+    max: "600",
+    step: "10",
+    value: overlays.toplikerWidth || 340,
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Separaci\xF3n entre Tarjetas: ", overlays.toplikerGap || 6, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "25",
+    step: "1",
+    value: overlays.toplikerGap || 6,
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerGap: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Espaciado Interno (Padding)"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.toplikerCardPadding || 'medium',
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerCardPadding: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      padding: '0 10px',
+      background: 'rgba(0,0,0,0.4)',
+      color: '#fff',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '8px',
+      fontSize: '0.85rem'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "small"
+  }, "Peque\xF1o"), /*#__PURE__*/React.createElement("option", {
+    value: "medium"
+  }, "Mediano"), /*#__PURE__*/React.createElement("option", {
+    value: "large"
+  }, "Grande"))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Duraci\xF3n Animaci\xF3n Entrada: ", overlays.toplikerAnimationDuration || 0.35, "s"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "2",
+    step: "0.05",
+    value: overlays.toplikerAnimationDuration || 0.35,
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerAnimationDuration: parseFloat(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.01)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.04)',
+      marginTop: '10px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#ff5e7e',
+      fontSize: '0.85rem'
+    }
+  }, "Personalizar Contorno (Borde)"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor Contorno: ", overlays.toplikerBorderWidth || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "1",
+    value: overlays.toplikerBorderWidth || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerBorderWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Estilo Contorno"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.toplikerBorderStyle || 'solid',
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerBorderStyle: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      padding: '0 10px',
+      background: 'rgba(0,0,0,0.4)',
+      color: '#fff',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '8px',
+      fontSize: '0.85rem'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "solid"
+  }, "S\xF3lido"), /*#__PURE__*/React.createElement("option", {
+    value: "dashed"
+  }, "Segmentado"), /*#__PURE__*/React.createElement("option", {
+    value: "dotted"
+  }, "Puntos"), /*#__PURE__*/React.createElement("option", {
+    value: "double"
+  }, "Doble"), /*#__PURE__*/React.createElement("option", {
+    value: "none"
+  }, "Ninguno")))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.toplikerBorderColor || '#ffffff',
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerBorderColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad Contorno: ", overlays.toplikerBorderOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.toplikerBorderOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerBorderOpacity: parseInt(e.target.value)
+    })
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.01)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.04)',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#ff5e7e',
+      fontSize: '0.85rem'
+    }
+  }, "Personalizar Sombra de Tarjeta"), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      padding: '6px 0',
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Mostrar Sombra"), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: overlays.toplikerShowShadow,
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerShowShadow: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Sombra"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.toplikerShadowColor || '#000000',
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerShadowColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Desenfoque: ", overlays.toplikerShadowBlur || 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.toplikerShadowBlur || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerShadowBlur: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad Sombra: ", overlays.toplikerShadowOpacity || 0, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.toplikerShadowOpacity || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      toplikerShadowOpacity: parseInt(e.target.value)
+    })
+  }))))), /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: '25px'
     }
