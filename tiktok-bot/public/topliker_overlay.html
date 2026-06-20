@@ -84,6 +84,17 @@
             animation: slideIn var(--topliker-animation-duration) cubic-bezier(0.34, 1.56, 0.64, 1) both;
         }
 
+        @keyframes heartbeat {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.12); }
+            100% { transform: scale(1); }
+        }
+
+        .heartbeat-active {
+            animation: heartbeat 0.3s ease-in-out;
+            color: #ff5e7e !important;
+        }
+
         .rankUser.no-card-bg {
             background: transparent !important;
             backdrop-filter: none !important;
@@ -672,7 +683,19 @@
 
                 // Points / Likes
                 const amount = parseFloat(user.totalAmount) || 0;
-                card.find(".coin-amount").text(amount.toLocaleString("es-MX"));
+                const $amountSpan = card.find(".coin-amount");
+                const oldAmount = parseFloat($amountSpan.attr("data-prev-amount")) || 0;
+
+                $amountSpan.text(amount.toLocaleString("es-MX"));
+                $amountSpan.attr("data-prev-amount", amount);
+
+                if (!isNew && amount > oldAmount) {
+                    const $pointsDiv = card.find(".points");
+                    $pointsDiv.addClass("heartbeat-active");
+                    setTimeout(() => {
+                        $pointsDiv.removeClass("heartbeat-active");
+                    }, 350);
+                }
 
                 const $coinIcon = card.find(".coin-icon");
                 if (settings.topliker_showHeartSymbol === false) {
@@ -749,33 +772,60 @@
             }, 1500);
         });
 
-        // =============================================
-        //  PREVIEW (datos de ejemplo aleatorios)
-        // =============================================
+        let previewInterval = null;
         window.preview = function() {
+            if (previewInterval) clearInterval(previewInterval);
+            
             const firstNames = ["Zero", "Lover", "Música", "TikTok", "Heart", "Super", "Pink", "Fan", "Lovely", "VIP"];
             const lastNames = ["FM", "Liker", "Pro", "Star", "Heart", "Cupid", "Vida", "Activo", "Zero", "Supporter"];
             
-            const count = Math.floor(Math.random() * 4) + 6; // 6 a 9 usuarios aleatorios
+            const count = 7;
             const list = [];
             for (let i = 0; i < count; i++) {
-                const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
-                const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
-                const username = (fn + "_" + ln + Math.floor(Math.random() * 90 + 10)).toLowerCase();
-                const nickname = fn + " " + ln + (Math.random() > 0.7 ? " ❤️" : "");
-                const randomPicId = Math.floor(Math.random() * 70) + 1;
+                const fn = firstNames[i % firstNames.length];
+                const ln = lastNames[i % lastNames.length];
+                const username = (fn + "_" + ln + (i + 10)).toLowerCase();
+                const nickname = fn + " " + ln;
+                const randomPicId = 10 + i;
                 
                 list.push({
                     username: username,
                     nickname: nickname,
                     profilePictureUrl: `https://i.pravatar.cc/100?img=${randomPicId}`,
-                    totalAmount: Math.floor(Math.random() * 8500) + 150
+                    totalAmount: 1000 - i * 100
                 });
             }
-            // Ordenar de mayor a menor
-            list.sort((a, b) => b.totalAmount - a.totalAmount);
             
+            list.sort((a, b) => b.totalAmount - a.totalAmount);
             updateRanking(list);
+
+            previewInterval = setInterval(() => {
+                if (hasFirebaseData) {
+                    clearInterval(previewInterval);
+                    return;
+                }
+                const randomUserIndex = Math.floor(Math.random() * list.length);
+                const extraAmount = Math.floor(Math.random() * 400) + 100;
+                list[randomUserIndex].totalAmount += extraAmount;
+                
+                if (Math.random() > 0.8) {
+                    const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
+                    const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
+                    const username = (fn + "_" + ln + Math.floor(Math.random() * 90 + 10)).toLowerCase();
+                    const nickname = fn + " " + ln;
+                    const randomPicId = Math.floor(Math.random() * 70) + 1;
+                    
+                    list[list.length - 1] = {
+                        username: username,
+                        nickname: nickname,
+                        profilePictureUrl: `https://i.pravatar.cc/100?img=${randomPicId}`,
+                        totalAmount: list[list.length - 2].totalAmount - 50
+                    };
+                }
+
+                list.sort((a, b) => b.totalAmount - a.totalAmount);
+                updateRanking(list);
+            }, 3000);
         };
 
         // Receptor de eventos de mensajería (postMessage) para simulación local offline y actualización en tiempo real

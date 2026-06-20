@@ -717,33 +717,60 @@
             }, 1500);
         });
 
-        // =============================================
-        //  PREVIEW (datos de ejemplo aleatorios)
-        // =============================================
+        let previewInterval = null;
         window.preview = function() {
+            if (previewInterval) clearInterval(previewInterval);
+            
             const firstNames = ["Zero", "Donador", "Música", "TikTok", "Gifter", "Super", "Night", "Fan", "Sponsor", "VIP"];
             const lastNames = ["FM", "Lover", "Pro", "Star", "King", "Owl", "Vida", "Activo", "Zero", "Collector"];
             
-            const count = Math.floor(Math.random() * 4) + 6; // 6 a 9 usuarios aleatorios
+            const count = 7;
             const list = [];
             for (let i = 0; i < count; i++) {
-                const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
-                const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
-                const username = (fn + "_" + ln + Math.floor(Math.random() * 90 + 10)).toLowerCase();
-                const nickname = fn + " " + ln + (Math.random() > 0.7 ? " 👑" : "");
-                const randomPicId = Math.floor(Math.random() * 70) + 1;
+                const fn = firstNames[i % firstNames.length];
+                const ln = lastNames[i % lastNames.length];
+                const username = (fn + "_" + ln + (i + 10)).toLowerCase();
+                const nickname = fn + " " + ln;
+                const randomPicId = 10 + i;
                 
                 list.push({
                     username: username,
                     nickname: nickname,
                     profilePictureUrl: `https://i.pravatar.cc/100?img=${randomPicId}`,
-                    totalAmount: Math.floor(Math.random() * 18000) + 100
+                    totalAmount: 5000 - i * 500
                 });
             }
-            // Ordenar de mayor a menor
-            list.sort((a, b) => b.totalAmount - a.totalAmount);
             
+            list.sort((a, b) => b.totalAmount - a.totalAmount);
             updateRanking(list);
+
+            previewInterval = setInterval(() => {
+                if (hasFirebaseData) {
+                    clearInterval(previewInterval);
+                    return;
+                }
+                const randomUserIndex = Math.floor(Math.random() * list.length);
+                const extraAmount = Math.floor(Math.random() * 300) + 50;
+                list[randomUserIndex].totalAmount += extraAmount;
+                
+                if (Math.random() > 0.8) {
+                    const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
+                    const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
+                    const username = (fn + "_" + ln + Math.floor(Math.random() * 90 + 10)).toLowerCase();
+                    const nickname = fn + " " + ln;
+                    const randomPicId = Math.floor(Math.random() * 70) + 1;
+                    
+                    list[list.length - 1] = {
+                        username: username,
+                        nickname: nickname,
+                        profilePictureUrl: `https://i.pravatar.cc/100?img=${randomPicId}`,
+                        totalAmount: list[list.length - 2].totalAmount - 20
+                    };
+                }
+
+                list.sort((a, b) => b.totalAmount - a.totalAmount);
+                updateRanking(list);
+            }, 3000);
         };
 
         // Receptor de eventos de mensajería (postMessage) para simulación local offline y actualización en tiempo real
