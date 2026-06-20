@@ -1819,7 +1819,7 @@ function setupListeners() {
             resetLikeTracking({ resetSession: false, resetTopLiker: false });
         } else {
             console.log(`🟢 Conexión inicial o nuevo room detectado (${previousRoomId || 'ninguno'} -> ${state.roomId}). Reiniciando tracking.`);
-            resetLikeTracking({ resetSession: true, resetTopLiker: true });
+            resetLikeTracking({ resetSession: true, resetTopLiker: true, isNewRoom: true });
             resetDonationTracking();
             await recalculateLikerRanks();
             syncSessionCountersToFirestore(true);
@@ -1848,7 +1848,7 @@ function setupListeners() {
     tiktokLiveConnection.on('streamEnd', async () => {
         console.log('🏁 El stream ha terminado.');
         activeLiveRoomId = null;
-        resetLikeTracking({ resetSession: true, resetTopLiker: true });
+        resetLikeTracking({ resetSession: true, resetTopLiker: true, isNewRoom: true });
         resetDonationTracking();
         await recalculateLikerRanks();
         syncSessionCountersToFirestore(true);
@@ -2252,24 +2252,8 @@ function setupListeners() {
             return;
         }
         
-        // --- SOLUCIÓN DE DELTA TRACKING (Sin Timeout de Racha) ---
-        // El valor likeCount que envía TikTok en el primer evento es acumulativo para su sesión actual.
-        // Los eventos posteriores del mismo usuario envían deltas o lotes (o también acumulativos mayores).
-        const lastSeen = lastLikeCountMap.get(uniqueId);
-        let delta = 0;
-
-        if (lastSeen === undefined) {
-            // Primer evento visto en esta sesión de bot: tomamos el acumulado actual como delta inicial
-            delta = safeLikeCount;
-        } else if (safeLikeCount > lastSeen) {
-            // Caso normal: El nuevo número es mayor, la diferencia son los likes nuevos
-            delta = safeLikeCount - lastSeen;
-        } else if (safeLikeCount < lastSeen) {
-            // Caso reinicio del contador del usuario (ej. abrió otra sesión de TikTok)
-            delta = safeLikeCount;
-        }
-
-        lastLikeCountMap.set(uniqueId, safeLikeCount);
+        // En tiktok-live-connector, likeCount representa el delta (la cantidad de likes en este evento específico/lote)
+        const delta = safeLikeCount;
 
         if (delta <= 0) {
             return;
@@ -2481,11 +2465,14 @@ async function saveTimerToFirestore() {
 function resetLikeTracking(options = {}) {
     const resetSession = options.resetSession === true;
     const resetTopLiker = options.resetTopLiker === true;
+    const isNewRoom = options.isNewRoom === true;
     try { likeBuffer.clear(); } catch (_) {}
     if (resetSession) {
         try { sessionLikes.clear(); } catch (_) {}
-        try { lastLikeCountMap.clear(); } catch (_) {}
-        try { lastLikeTimeMap.clear(); } catch (_) {}
+        if (isNewRoom) {
+            try { lastLikeCountMap.clear(); } catch (_) {}
+            try { lastLikeTimeMap.clear(); } catch (_) {}
+        }
     }
     if (resetTopLiker) {
         currentTopLiker = { name: 'N/D', count: 0 };
