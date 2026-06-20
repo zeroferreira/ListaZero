@@ -2216,34 +2216,8 @@ function setupListeners() {
             return;
         }
         
-        // --- SOLUCIÓN ANT-INFLACIÓN (Delta Tracking con Time-out de Racha) ---
-        // El conector de TikTok a veces envía el total acumulado de la sesión del usuario.
-        // Si lo sumamos directamente, inflamos los puntos exponencialmente.
-        // Si ha pasado más de 2 segundos desde el último like de este usuario, 
-        // asumimos que es una secuencia o racha nueva, por lo que reseteamos su conteo previo a 0.
-        const now = Date.now();
-        const lastTime = lastLikeTimeMap.get(uniqueId) || 0;
-        lastLikeTimeMap.set(uniqueId, now);
-
-        if (now - lastTime > 2000) {
-            lastLikeCountMap.set(uniqueId, 0);
-        }
-
-        const lastSeen = lastLikeCountMap.get(uniqueId) || 0;
-        let delta = 0;
-
-        if (safeLikeCount > lastSeen) {
-            // Caso normal: El nuevo número es mayor, la diferencia son los likes nuevos
-            delta = safeLikeCount - lastSeen;
-        } else if (safeLikeCount < lastSeen) {
-            // Caso reinicio: El usuario salió y volvió o el contador se reseteó
-            delta = safeLikeCount;
-        }
-        // Si safeLikeCount === lastSeen, delta es 0 (duplicado), no hacemos nada.
-        
-        lastLikeCountMap.set(uniqueId, safeLikeCount);
-
-        if (delta <= 0) return; // No hay likes nuevos que procesar
+        // En tiktok-live-connector, likeCount es la cantidad de likes en este evento específico (no es acumulativo de la sesión del usuario)
+        const delta = safeLikeCount;
 
         // Acumular likes en buffer para no saturar Firestore
         const current = likeBuffer.get(uniqueId) || { 
