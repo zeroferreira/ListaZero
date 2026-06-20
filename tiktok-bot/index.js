@@ -1775,13 +1775,14 @@ function setupListeners() {
                     const list = likersSnap.data().list || [];
                     for (const user of list) {
                         sessionLikes.set(user.username, user.totalAmount);
+                        lastLikeCountMap.set(user.username, user.totalAmount);
                         sessionLikerDetails.set(user.username, {
                             username: user.username,
                             nickname: user.nickname,
                             profilePictureUrl: user.profilePictureUrl
                         });
                     }
-                    console.log(`🟢 Recuperados ${list.length} Top Likers de sesión.`);
+                    console.log(`🟢 Recuperados ${list.length} Top Likers de sesión y mapeo de likes inicializado.`);
                 }
             } catch (e) {
                 console.error('⚠️ Error recuperando topLikers de sesión:', e);
