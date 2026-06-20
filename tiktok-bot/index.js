@@ -2617,7 +2617,7 @@ async function recalculateLikerRanks() {
         const sorted = Array.from(sessionLikes.entries())
             .sort((a, b) => b[1] - a[1]);
 
-        const list = sorted.map(([uid, amount]) => {
+        const list = sorted.slice(0, 20).map(([uid, amount]) => {
             const details = sessionLikerDetails.get(uid) || { username: uid, nickname: uid, profilePictureUrl: '', lastActive: Date.now() };
             return {
                 username: uid,
@@ -2629,7 +2629,7 @@ async function recalculateLikerRanks() {
         });
 
         await setDoc(doc(db, 'globalStats', 'topLikers'), {
-            list: list.slice(0, 20), // Guardar el top 20 de la sesión
+            list: list, // Guardar el top 20 de la sesión (ya recortado)
             lastUpdate: serverTimestamp()
         }, { merge: true });
         console.log('💾 Top Likers actualizados en Firestore.');
@@ -2688,7 +2688,7 @@ async function recalculateDonorRanks() {
     if (db) {
         try {
             const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
-            const list = sorted.map(([uid, amount]) => {
+            const list = sorted.slice(0, 20).map(([uid, amount]) => {
                 const details = sessionGifterDetails.get(uid) || { username: uid, nickname: uid, profilePictureUrl: '' };
                 return {
                     username: uid,
@@ -2699,7 +2699,7 @@ async function recalculateDonorRanks() {
             });
 
             await setDoc(doc(db, 'globalStats', 'topGifters'), {
-                list: list.slice(0, 20), // Guardar el top 20 de la sesión
+                list: list, // Guardar el top 20 de la sesión (ya recortado)
                 lastUpdate: serverTimestamp()
             }, { merge: true });
             console.log('💾 Top Gifters actualizados en Firestore.');
