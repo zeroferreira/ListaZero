@@ -474,10 +474,8 @@
                         const data = doc.data();
                         if (data && Array.isArray(data.list)) {
                             console.log("[Firebase] Ranking Top Gifters actualizado ✓");
-                            if (data.list.length > 0) {
-                                hasFirebaseData = true;
-                                updateRanking(data.list);
-                            }
+                            hasFirebaseData = true;
+                            updateRanking(data.list);
                         }
                     }
                 }, err => {
@@ -545,87 +543,137 @@
             if (!userList) userList = lastUserList;
             lastUserList = userList;
 
-            var json = JSON.stringify(userList);
-            if (json === lastRankingJson) return;
-            lastRankingJson = json;
-
             // Limita items
             var list = userList.slice(0, maxItems);
 
-            // Elimina cards actuales con fade
-            $(".rankUser:not(#rankTemplate)").fadeOut(150, function() { $(this).remove(); });
+            // 1. Identificar usuarios que ya no están en el top y eliminarlos
+            const newUsernames = new Set(list.map(u => u.username));
+            $(".rankUser:not(#rankTemplate)").each(function() {
+                const username = $(this).attr("data-username");
+                if (username && !newUsernames.has(username)) {
+                    $(this).fadeOut(150, function() { $(this).remove(); });
+                }
+            });
 
-            setTimeout(function() {
-                list.forEach(function(user, idx) {
-                    var rank = idx + 1;
-                    var card = template.clone();
+            // Si la lista está vacía, no hay nada más que hacer
+            if (list.length === 0) {
+                return;
+            }
+
+            // 2. Procesar cada usuario de la lista en orden
+            list.forEach(function(user, idx) {
+                const rank = idx + 1;
+                let card = $(`.rankUser[data-username="${user.username}"]`);
+                let isNew = false;
+
+                if (card.length === 0) {
+                    // No existe, creamos una nueva tarjeta
+                    card = template.clone();
                     card.removeAttr("id");
+                    card.attr("data-username", user.username);
+                    isNew = true;
+                } else {
+                    // Detener cualquier animación en progreso para evitar que se oculte
+                    card.stop(true, true);
+                }
 
-                    // Clases de posición
-                    card.removeClass("first-place second-place third-place");
-                    if (rank === 1) card.addClass("first-place");
-                    if (rank === 2) card.addClass("second-place");
-                    if (rank === 3) card.addClass("third-place");
+                // Clases de posición
+                card.removeClass("first-place second-place third-place");
+                if (rank === 1) card.addClass("first-place");
+                if (rank === 2) card.addClass("second-place");
+                if (rank === 3) card.addClass("third-place");
 
-                    // Rank number / trophy
-                    var $rankId = card.find(".rankId");
-                    if (settings.topgifter_showTrophy && rank <= 3) {
-                        var trophyEmoji = rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉";
-                        $rankId.html('<span style="font-size:1.1em">' + trophyEmoji + '</span>');
-                    } else {
-                        $rankId.text(rank + ".");
-                    }
-                    $rankId.toggle(settings.topgifter_showRank !== false);
+                // Rank number / trophy
+                const $rankId = card.find(".rankId");
+                if (settings.topgifter_showTrophy && rank <= 3) {
+                    const trophyEmoji = rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉";
+                    $rankId.html('<span style="font-size:1.1em">' + trophyEmoji + '</span>');
+                } else {
+                    $rankId.text(rank + ".");
+                }
+                $rankId.toggle(settings.topgifter_showRank !== false);
 
-                    // Avatar
-                    var picUrl = user.profilePictureUrl || NOTHUMB;
-                    card.find(".profilePicture").attr("src", picUrl).on("error", function() {
+                // Avatar (solo si es nueva o cambió la URL)
+                const picUrl = user.profilePictureUrl || NOTHUMB;
+                const $pic = card.find(".profilePicture");
+                if (isNew || $pic.attr("src") !== picUrl) {
+                    $pic.attr("src", picUrl).on("error", function() {
                         $(this).attr("src", NOTHUMB);
                     });
+                }
 
-                    // Crown (only rank 1)
-                    if (rank === 1 && settings.topgifter_showCrown !== false) {
-                        card.find(".crown1").css("display", "block");
-                    }
+                // Crown (only rank 1)
+                const $crown = card.find(".crown1");
+                if (rank === 1 && settings.topgifter_showCrown !== false) {
+                    $crown.css("display", "block");
+                } else {
+                    $crown.css("display", "none");
+                }
 
-                    // Sparkle for 1st
-                    if (rank === 1) {
+                // Sparkle for 1st
+                let $sparkle = card.find(".sparkle");
+                if (rank === 1) {
+                    if ($sparkle.length === 0) {
                         card.append('<span class="sparkle">✨</span>');
                     }
+                } else {
+                    $sparkle.remove();
+                }
 
-                    // Username
-                    var displayName = settings.showUserNicknames === false
-                        ? ("@" + user.username)
-                        : (user.nickname || ("@" + user.username));
-                    card.find(".username").text(displayName);
+                // Username
+                const displayName = settings.showUserNicknames === false
+                    ? ("@" + user.username)
+                    : (user.nickname || ("@" + user.username));
+                card.find(".username").text(displayName);
 
-                    // Points / Coins
-                    var amount = parseFloat(user.totalAmount) || 0;
-                    card.find(".coin-amount").text(amount.toLocaleString("es-MX"));
+                // Points / Coins
+                const amount = parseFloat(user.totalAmount) || 0;
+                card.find(".coin-amount").text(amount.toLocaleString("es-MX"));
 
-                    var $coinIcon = card.find(".coin-icon");
-                    if (settings.topgifter_showCoinSymbol === false) {
-                        $coinIcon.hide();
-                        card.find(".coin-amount").text(amount.toLocaleString("es-MX") + " Coins");
-                    }
+                const $coinIcon = card.find(".coin-icon");
+                if (settings.topgifter_showCoinSymbol === false) {
+                    $coinIcon.hide();
+                    card.find(".coin-amount").text(amount.toLocaleString("es-MX") + " Coins");
+                } else {
+                    $coinIcon.show();
+                }
 
-                    var $currLabel = card.find(".currency-label");
-                    if (currency) $currLabel.text(" " + currency);
+                const $currLabel = card.find(".currency-label");
+                if (currency) {
+                    $currLabel.text(" " + currency);
+                } else {
+                    $currLabel.text("");
+                }
 
-                    card.find(".points").toggle(settings.topgifter_showCoins !== false);
+                card.find(".points").toggle(settings.topgifter_showCoins !== false);
 
-                    if (settings.topgifterShowCardBg === false) {
-                        card.addClass("no-card-bg");
-                    }
+                if (settings.topgifterShowCardBg === false) {
+                    card.addClass("no-card-bg");
+                } else {
+                    card.removeClass("no-card-bg");
+                }
 
-                    // Animate in with stagger
-                    card.css("display", "none");
-                    rankingContainer.append(card);
-                    setTimeout(function() {
-                        card.fadeIn(180);
-                    }, idx * 80);
-                });
-            }, 180);
+                // Mapear estilos dinámicos del panel si existen
+                if (settings.topgifter_rankColor)   card.find(".rankId").css("color", settings.topgifter_rankColor);
+                if (settings.topgifter_pointsColor) card.find(".points").css("color", settings.topgifter_pointsColor);
+                if (settings.topgifter_usernameColor) card.find(".username").css("color", settings.topgifter_usernameColor);
+
+                // Mover/añadir la tarjeta a la posición correspondiente en el contenedor
+                rankingContainer.append(card);
+
+                if (isNew) {
+                    card.removeAttr('style');
+                    card.css({
+                        display: "flex",
+                        opacity: 0
+                    }).animate({ opacity: 1 }, 180);
+                } else {
+                    card.css({
+                        display: "flex",
+                        opacity: 1
+                    });
+                }
+            });
         }
 
         // =============================================
@@ -656,9 +704,9 @@
 
             updateSettings(false);
 
-            // Si no hay conexión local ni datos del bot en Firebase, iniciar preview
+            // Si no hay datos del bot en Firebase, iniciar preview
             setTimeout(function() {
-                if ($(".rankUser:not(#rankTemplate)").length === 0) {
+                if (!hasFirebaseData) {
                     window.preview && window.preview();
                 }
             }, 1500);
