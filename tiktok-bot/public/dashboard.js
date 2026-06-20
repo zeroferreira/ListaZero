@@ -3456,14 +3456,26 @@ function App() {
     }
   }, "\uD83D\uDCAC Contenido de Alerta"), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
-  }, /*#__PURE__*/React.createElement("label", null, "Mensaje (", `{user}`, " y `", `{likes}`, ")"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, "Mensaje \u2014 Variables: ", /*#__PURE__*/React.createElement("code", {
+    style: {
+      color: '#f87171'
+    }
+  }, `{user}`), " nombre, ", /*#__PURE__*/React.createElement("code", {
+    style: {
+      color: '#f87171'
+    }
+  }, `{likes}`), " batch, ", /*#__PURE__*/React.createElement("code", {
+    style: {
+      color: '#f87171'
+    }
+  }, `{total}`), " acumulado sesi\xF3n"), /*#__PURE__*/React.createElement("input", {
     type: "text",
     value: overlays.likesAlertMsg,
     onChange: e => setOverlays({
       ...overlays,
       likesAlertMsg: e.target.value
     }),
-    placeholder: "\xA1Envi\xF3 {likes} likes! \u2764\uFE0F"
+    placeholder: "\xA1Ya lleva {total} likes esta noche! \u2764\uFE0F"
   })), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Likes M\xEDnimos para Alerta"), /*#__PURE__*/React.createElement("input", {

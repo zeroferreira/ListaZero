@@ -1152,6 +1152,16 @@ function startBot() {
         try {
             const newConfig = req.body || {};
             await setDoc(docFn(db, 'systemConfig', 'overlayAlertsConfig'), newConfig, { merge: true });
+
+            // Si el toggle de la ruleta cambió, sincronizar también en system/status
+            // para que el overlay de la ruleta lo detecte en tiempo real.
+            if (typeof newConfig.rouletteOverlayEnabled === 'boolean') {
+                await setDoc(docFn(db, 'system', 'status'), {
+                    rouletteOverlayEnabled: newConfig.rouletteOverlayEnabled,
+                    lastUpdate: serverTimestamp()
+                }, { merge: true });
+            }
+
             res.json({ success: true });
         } catch (e) {
             console.error("Error guardando overlay config:", e);
@@ -1789,6 +1799,8 @@ function setupListeners() {
                             nickname: user.nickname,
                             profilePictureUrl: user.profilePictureUrl
                         });
+                        // Marcar como presentes al reconectar (se invalidarán en 5 min si no interactúan)
+                        markUserPresent(user.username);
                     }
                     console.log(`🟢 Recuperados ${list.length} Top Likers de sesión y mapeo de likes inicializado.`);
                 }
@@ -1809,6 +1821,8 @@ function setupListeners() {
                             nickname: user.nickname,
                             profilePictureUrl: user.profilePictureUrl
                         });
+                        // Marcar como presentes al reconectar
+                        markUserPresent(user.username);
                     }
                     console.log(`🟢 Recuperados ${list.length} Top Gifters de sesión.`);
                 }
@@ -1858,12 +1872,24 @@ function setupListeners() {
     });
 
     // CHAT
+    // ─── PRESENCIA: registrar entrada de usuarios al live (evento 'member') ────
+    tiktokLiveConnection.on('member', (data) => {
+        const uid = data && data.uniqueId ? String(data.uniqueId).trim() : '';
+        if (uid) {
+            markUserPresent(uid);
+            // console.log(`👤 @${uid} entró al live.`);
+        }
+    });
+
     tiktokLiveConnection.on('chat', async (data) => {
         const msg = data.comment;
         const lowerMsg = msg.toLowerCase();
         const displayName = data.nickname;
         const userId = data.uniqueId;
         const profilePic = data.profilePictureUrl;
+
+        // Marcar presencia activa en el live
+        markUserPresent(userId);
         
         // Actualizar foto de perfil en segundo plano
         if (profilePic) {
@@ -2123,6 +2149,9 @@ function setupListeners() {
             updateUserProfilePic(uid, displayName, profilePic);
         }
 
+        // Marcar presencia activa en el live
+        markUserPresent(uid);
+
         const currentAmount = sessionDonations.get(uid) || 0;
         sessionDonations.set(uid, currentAmount + coins);
         sessionGifterDetails.set(uid, {
@@ -2259,6 +2288,9 @@ function setupListeners() {
             return;
         }
 
+        // Marcar presencia activa en el live
+        markUserPresent(uniqueId);
+
         // Acumular likes en buffer para no saturar Firestore
         const current = likeBuffer.get(uniqueId) || { 
             userId: uniqueId, 
@@ -2392,8 +2424,28 @@ const sessionLikerDetails = new Map();
 // Tracking del último contador enviado por TikTok (para Delta Tracking)
 const lastLikeCountMap = new Map();
 const lastLikeTimeMap = new Map();
+// Tracking de hitos de alerta ya disparados (uid -> último hito alertado)
+const lastLikeAlertMilestone = new Map();
 let currentTopLiker = { name: 'N/D', count: 0 };
 let activeLiveRoomId = null;
+
+// ─── PRESENCIA EN EL LIVE ─────────────────────────────────────────────────────
+// Mapa de uid -> timestamp de la última vez que TikTok envió actividad del usuario
+// (join, like, gift, chat, follow, share). Si supera LIVE_PRESENCE_TTL_MS
+// el usuario se considera fuera del live y se excluye del ranking.
+const livePresenceMap = new Map(); // uid -> lastSeenTimestamp (ms)
+const LIVE_PRESENCE_TTL_MS = 5 * 60 * 1000; // 5 minutos por defecto
+
+function markUserPresent(uid) {
+    if (uid) livePresenceMap.set(uid, Date.now());
+}
+
+function isUserInLive(uid) {
+    if (!uid) return false;
+    const last = livePresenceMap.get(uid);
+    if (!last) return false; // Nunca visto -> no está (o entró antes del bot)
+    return (Date.now() - last) < LIVE_PRESENCE_TTL_MS;
+}
 
 // ─── CONTADORES DE SESIÓN (para Goal Overlays) ────────────────────────────────
 const sessionFollows = new Map(); // uid -> count
@@ -2470,6 +2522,7 @@ function resetLikeTracking(options = {}) {
     try { likeBuffer.clear(); } catch (_) {}
     if (resetSession) {
         try { sessionLikes.clear(); } catch (_) {}
+        try { lastLikeAlertMilestone.clear(); } catch (_) {}
         if (isNewRoom) {
             try { lastLikeCountMap.clear(); } catch (_) {}
             try { lastLikeTimeMap.clear(); } catch (_) {}
@@ -2577,22 +2630,35 @@ setInterval(async () => {
 
             await setDoc(userRef, updateData, { merge: true });
 
-            const minLikes = Number(overlayAlertsConfig.minLikesAlert) || 100;
-            if (totalLikesInBatch >= minLikes && db) {
+            // ─── ALERTA DE HITOS ACUMULADOS ───────────────────────────────────────
+            // Dispara cuando el TOTAL ACUMULADO de sesión cruza un múltiplo del umbral
+            // Ejemplo con umbral=100: dispara en 100, 200, 300, 400...
+            const milestoneStep = Number(overlayAlertsConfig.minLikesAlert) || 100;
+            const sessionTotal = sessionLikes.get(uid) || totalLikesInBatch;
+            const currentMilestone = Math.floor(sessionTotal / milestoneStep) * milestoneStep;
+            const lastMilestone = lastLikeAlertMilestone.get(uid) || 0;
+
+            if (currentMilestone > lastMilestone && currentMilestone > 0 && db) {
+                lastLikeAlertMilestone.set(uid, currentMilestone);
                 try {
-                    let msgTemplate = String(overlayAlertsConfig.likesAlertMsg || "¡Envió {likes} likes! ❤️");
+                    let msgTemplate = String(overlayAlertsConfig.likesAlertMsg || "¡{user} ya lleva {total} likes esta noche! ❤️");
                     let customMsg = msgTemplate
                         .replace(/{user}/g, finalName)
-                        .replace(/{likes}/g, totalLikesInBatch.toLocaleString());
+                        .replace(/{likes}/g, totalLikesInBatch.toLocaleString())
+                        .replace(/{total}/g, sessionTotal.toLocaleString())
+                        .replace(/{milestone}/g, currentMilestone.toLocaleString());
 
                     await addDoc(collection(db, 'notifications'), {
                         type: 'like',
                         user: finalName,
                         uniqueId: uid,
                         likes: totalLikesInBatch,
+                        sessionTotal: sessionTotal,
+                        milestone: currentMilestone,
                         message: customMsg,
                         timestamp: serverTimestamp()
                     });
+                    console.log(`📣 Alerta de hito: @${finalName} alcanzó ${currentMilestone} likes (total sesión: ${sessionTotal})`);
                 } catch (e) {
                     console.error('Error guardando notificación de likes en Firestore:', e);
                 }
@@ -2614,7 +2680,10 @@ async function recalculateLikerRanks() {
     if (!db) return;
     try {
         const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
+
+        // Filtrar solo usuarios que se han visto recientemente en el live
         const sorted = Array.from(sessionLikes.entries())
+            .filter(([uid]) => isUserInLive(uid))
             .sort((a, b) => b[1] - a[1]);
 
         const list = sorted.slice(0, 20).map(([uid, amount]) => {
@@ -2629,10 +2698,10 @@ async function recalculateLikerRanks() {
         });
 
         await setDoc(doc(db, 'globalStats', 'topLikers'), {
-            list: list, // Guardar el top 20 de la sesión (ya recortado)
+            list: list,
             lastUpdate: serverTimestamp()
         }, { merge: true });
-        console.log('💾 Top Likers actualizados en Firestore.');
+        console.log(`💾 Top Likers actualizados en Firestore (${list.length} en live).`);
     } catch (e) {
         console.error('❌ Error al guardar Top Likers en Firestore:', e);
     }
@@ -2655,6 +2724,7 @@ function resetDonationTracking() {
         sessionGifterDetails.clear();
         sessionLikes.clear();
         sessionLikerDetails.clear();
+        livePresenceMap.clear();
         if (db) {
             const { doc, setDoc } = require('firebase/firestore');
             setDoc(doc(db, 'globalStats', 'topGifters'), {
@@ -2667,13 +2737,14 @@ function resetDonationTracking() {
                 lastUpdate: new Date()
             }, { merge: true }).catch(() => {});
         }
-        console.log('🔄 Tracking de donadores y likes reiniciado.');
+        console.log('🔄 Tracking de donadores, likes y presencia reiniciado.');
     } catch (_) {}
 }
 
 async function recalculateDonorRanks() {
-    // Convertir a array y ordenar por monto descendente
+    // Filtrar solo usuarios que se han visto recientemente en el live
     const sorted = Array.from(sessionDonations.entries())
+        .filter(([uid]) => isUserInLive(uid))
         .sort((a, b) => b[1] - a[1]);
 
     donorRanks = {
@@ -2682,7 +2753,7 @@ async function recalculateDonorRanks() {
         bronze: sorted[2] ? { user: sorted[2][0], amount: sorted[2][1] } : null
     };
 
-    console.log('🏆 Ranking Donadores:', donorRanks);
+    console.log(`🏆 Ranking Donadores (${sorted.length} en live):`, donorRanks);
 
     // Guardar ranking completo de la sesión en Firestore
     if (db) {
@@ -2699,10 +2770,10 @@ async function recalculateDonorRanks() {
             });
 
             await setDoc(doc(db, 'globalStats', 'topGifters'), {
-                list: list, // Guardar el top 20 de la sesión (ya recortado)
+                list: list,
                 lastUpdate: serverTimestamp()
             }, { merge: true });
-            console.log('💾 Top Gifters actualizados en Firestore.');
+            console.log(`💾 Top Gifters actualizados en Firestore (${list.length} en live).`);
         } catch (e) {
             console.error('❌ Error al guardar Top Gifters en Firestore:', e);
         }
