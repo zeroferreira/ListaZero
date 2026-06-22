@@ -2251,7 +2251,7 @@ function setupListeners() {
         // Recalcular rangos (VIP, etc.)
         recalculateDonorRanks();
 
-        // ─── GOAL OVERLAYS: acumular coins de sesi\u00f3n ────────────────────────────
+        // ─── GOAL OVERLAYS: acumular coins de sesión ────────────────────────────
         if (isGiftFinal) {
             const actualCount = data.repeatCount || 1;
             const totalCoinsThisGift = coins * actualCount;
@@ -2263,7 +2263,7 @@ function setupListeners() {
                 const secondsToAdd = Number(timerState.secondsPerGift || 30);
                 const msToAdd = secondsToAdd * 1000;
                 timerState.endsAt += msToAdd;
-                console.log(`\u23f1\ufe0f Timer extendido +${secondsToAdd}s por regalo de ${displayName} (termina en: ${Math.round((timerState.endsAt - Date.now()) / 1000)}s)`);
+                console.log(`⏱️ Timer extendido +${secondsToAdd}s por regalo de ${displayName} (termina en: ${Math.round((timerState.endsAt - Date.now()) / 1000)}s)`);
                 saveTimerToFirestore().catch(() => {});
             }
         }
@@ -2281,8 +2281,18 @@ function setupListeners() {
             return;
         }
         
-        // En tiktok-live-connector, likeCount representa el delta (la cantidad de likes en este evento específico/lote)
-        const delta = safeLikeCount;
+        // Delta Tracking para Likes (sin timeout de racha para evitar inflar de más)
+        const lastSeen = lastLikeCountMap.get(uniqueId) || 0;
+        let delta = 0;
+
+        if (safeLikeCount > lastSeen) {
+            delta = safeLikeCount - lastSeen;
+        } else if (safeLikeCount < lastSeen) {
+            // Caso reinicio: El usuario salió y volvió o el contador se reseteó en TikTok
+            delta = safeLikeCount;
+        }
+        
+        lastLikeCountMap.set(uniqueId, safeLikeCount);
 
         if (delta <= 0) {
             return;

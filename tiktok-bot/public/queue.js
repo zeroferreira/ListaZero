@@ -653,7 +653,7 @@
        
        const calculatedSize = Math.max(10, Math.floor(baseFontSize * fontScale));
        root.style.setProperty('--queue-font-size', calculatedSize + 'px');
-       root.style.setProperty('--queue-font-scale', (calculatedSize / 16).toFixed(4));
+       root.style.setProperty('--queue-font-scale', (calculatedSize / 20).toFixed(4));
        root.style.setProperty('--queue-accent-color', s.accent);
       if (s.accent && s.accent.startsWith('#')) {
         const ar = parseInt(s.accent.substr(1,2), 16);
