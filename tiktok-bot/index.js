@@ -2289,11 +2289,9 @@ function setupListeners() {
             delta = safeLikeCount - lastSeen;
             lastLikeCountMap.set(uniqueId, safeLikeCount);
         } else if (safeLikeCount < lastSeen) {
-            // Caso reinicio genuino en TikTok (por ejemplo, contador vuelve a empezar desde cero, < 10)
-            if (safeLikeCount < 10) {
-                delta = safeLikeCount;
-                lastLikeCountMap.set(uniqueId, safeLikeCount);
-            }
+            // Caso reinicio genuino en TikTok (por ejemplo, contador vuelve a empezar desde cero o se conecta desde otro dispositivo)
+            delta = safeLikeCount;
+            lastLikeCountMap.set(uniqueId, safeLikeCount);
         }
 
         if (delta <= 0) {
@@ -2704,9 +2702,8 @@ async function recalculateLikerRanks() {
     try {
         const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
 
-        // Filtrar solo usuarios que se han visto recientemente en el live
+        // Mantener el ranking completo de la sesión sin excluir por inactividad
         const sorted = Array.from(sessionLikes.entries())
-            .filter(([uid]) => isUserInLive(uid))
             .sort((a, b) => b[1] - a[1]);
 
         const list = sorted.slice(0, 20).map(([uid, amount]) => {
@@ -2765,9 +2762,8 @@ function resetDonationTracking() {
 }
 
 async function recalculateDonorRanks() {
-    // Filtrar solo usuarios que se han visto recientemente en el live
+    // Mantener el ranking completo de la sesión sin excluir por inactividad
     const sorted = Array.from(sessionDonations.entries())
-        .filter(([uid]) => isUserInLive(uid))
         .sort((a, b) => b[1] - a[1]);
 
     donorRanks = {
