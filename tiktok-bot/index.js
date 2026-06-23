@@ -2281,18 +2281,8 @@ function setupListeners() {
             return;
         }
         
-        // Delta Tracking para Likes (sin timeout de racha para evitar inflar de más)
-        const lastSeen = lastLikeCountMap.get(uniqueId) || 0;
-        let delta = 0;
-
-        if (safeLikeCount > lastSeen) {
-            delta = safeLikeCount - lastSeen;
-            lastLikeCountMap.set(uniqueId, safeLikeCount);
-        } else if (safeLikeCount < lastSeen) {
-            // Caso reinicio genuino en TikTok (por ejemplo, contador vuelve a empezar desde cero o se conecta desde otro dispositivo)
-            delta = safeLikeCount;
-            lastLikeCountMap.set(uniqueId, safeLikeCount);
-        }
+        // En tiktok-live-connector, likeCount ya es el delta (los likes enviados en este evento)
+        const delta = safeLikeCount;
 
         if (delta <= 0) {
             return;
@@ -2998,8 +2988,8 @@ async function handleSongRequest(user, query, options = {}) {
         // --- DETECTAR Y PROCESAR ENLACE DE YOUTUBE ---
         const ytUrl = detectYoutubeUrl(query || rawQuery);
         if (ytUrl) {
-            // Verificar si el candado de YouTube por likes está habilitado
-            const isLockEnabled = overlayAlertsConfig.enableLikesYoutubeLock !== false;
+            // Verificar si el candado de YouTube por likes está habilitado (desactivado por defecto)
+            const isLockEnabled = overlayAlertsConfig.enableLikesYoutubeLock === true;
             if (isLockEnabled) {
                 const targetLikes = Number(overlayAlertsConfig.likesTargetForYoutubeLink) || 999;
                 let totalSessionLikes = 0;
