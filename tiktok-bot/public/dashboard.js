@@ -30,7 +30,7 @@ function App() {
   });
 
   // Overlays Alert / Visual Configurations
-  const [overlays, setOverlays] = React.useState({
+  const [overlays, _setOverlays] = React.useState({
     enableFollowAlert: true,
     enableSubscribeAlert: true,
     enableLikeAlert: true,
@@ -216,6 +216,47 @@ function App() {
     tickerOpacity: 0.85,
     tickerFontSize: 14
   });
+  const [dirtyKeys, setDirtyKeys] = React.useState({});
+  const setOverlays = React.useCallback(val => {
+    if (typeof val === 'function') {
+      _setOverlays(prev => {
+        const next = val(prev);
+        const changes = {};
+        for (const k in next) {
+          if (next[k] !== prev[k]) {
+            changes[k] = true;
+          }
+        }
+        if (Object.keys(changes).length > 0) {
+          setDirtyKeys(d => ({
+            ...d,
+            ...changes
+          }));
+        }
+        return next;
+      });
+    } else {
+      _setOverlays(prev => {
+        const next = {
+          ...prev,
+          ...val
+        };
+        const changes = {};
+        for (const k in next) {
+          if (next[k] !== prev[k]) {
+            changes[k] = true;
+          }
+        }
+        if (Object.keys(changes).length > 0) {
+          setDirtyKeys(d => ({
+            ...d,
+            ...changes
+          }));
+        }
+        return next;
+      });
+    }
+  }, []);
 
   // Goals Config
   const [goals, setGoals] = React.useState({
@@ -595,7 +636,7 @@ function App() {
       try {
         localStorage.setItem('offline_overlays_config', JSON.stringify(data));
       } catch (_) {}
-      setOverlays(prev => ({
+      _setOverlays(prev => ({
         ...prev,
         ...data
       }));
@@ -604,7 +645,7 @@ function App() {
       const local = localStorage.getItem('offline_overlays_config');
       if (local) {
         try {
-          setOverlays(prev => ({
+          _setOverlays(prev => ({
             ...prev,
             ...JSON.parse(local)
           }));
@@ -765,6 +806,48 @@ function App() {
     return () => clearTimeout(timerId);
   }, [overlays, goals, timer, lastevents, activeSub]);
 
+  // Helper centralizado para guardar configuración de overlays mezclando solo lo modificado ("dirty")
+  const saveOverlaysConfig = async (localOverlays, extraDirtyKeys = {}) => {
+    try {
+      // 1. Obtener la configuración fresca de la nube para no pisar cambios locales de OBS
+      const freshRes = await fetch('/api/overlays/config');
+      const freshData = await freshRes.json();
+
+      // 2. Combinar solo las propiedades modificadas ("dirty") en esta sesión del dashboard
+      const mergedOverlays = {
+        ...freshData
+      };
+      const allDirty = {
+        ...dirtyKeys,
+        ...extraDirtyKeys
+      };
+      for (const k in allDirty) {
+        if (allDirty[k]) {
+          mergedOverlays[k] = localOverlays[k];
+        }
+      }
+
+      // 3. Guardar en la nube
+      const res = await fetch('/api/overlays/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(mergedOverlays)
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Actualizar estado local y limpiar dirty keys
+        _setOverlays(mergedOverlays);
+        setDirtyKeys({});
+        return true;
+      }
+    } catch (e) {
+      console.error("Error al guardar configuración de overlays:", e);
+    }
+    return false;
+  };
+
   // Save Global configuration
   const handleSaveGlobalConfig = async () => {
     localStorage.setItem('offline_overlays_config', JSON.stringify(overlays));
@@ -776,16 +859,9 @@ function App() {
         },
         body: JSON.stringify(config)
       });
-      const res2 = await fetch('/api/overlays/config', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(overlays)
-      });
       const d1 = await res1.json();
-      const d2 = await res2.json();
-      if (d1.success && d2.success) {
+      const success2 = await saveOverlaysConfig(overlays);
+      if (d1.success && success2) {
         triggerSaveBadge('💾 ¡Cambios Guardados!');
       } else {
         triggerSaveBadge('💾 Guardado en navegador (Offline)');
@@ -802,21 +878,10 @@ function App() {
   // Custom specific Overlay config saves
   const handleSaveOverlaysConfigOnly = async (subpanel = '') => {
     localStorage.setItem('offline_overlays_config', JSON.stringify(overlays));
-    try {
-      const res = await fetch('/api/overlays/config', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(overlays)
-      });
-      const data = await res.json();
-      if (data.success) {
-        triggerSaveBadge(`💾 Diseño de ${subpanel} guardado`);
-      } else {
-        triggerSaveBadge(`💾 ${subpanel}: Guardado en navegador (Offline)`);
-      }
-    } catch (e) {
+    const success = await saveOverlaysConfig(overlays);
+    if (success) {
+      triggerSaveBadge(`💾 Diseño de ${subpanel} guardado`);
+    } else {
       triggerSaveBadge(`💾 ${subpanel}: Guardado en navegador (Offline)`);
     }
   };
@@ -2316,17 +2381,15 @@ function App() {
         ...overlays,
         rouletteOverlayEnabled: val
       };
+      setDirtyKeys(d => ({
+        ...d,
+        rouletteOverlayEnabled: true
+      }));
       setOverlays(next);
       localStorage.setItem('offline_overlays_config', JSON.stringify(next));
-      try {
-        await fetch('/api/overlays/config', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(next)
-        });
-      } catch (_) {}
+      saveOverlaysConfig(next, {
+        rouletteOverlayEnabled: true
+      }).catch(() => {});
     }
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"

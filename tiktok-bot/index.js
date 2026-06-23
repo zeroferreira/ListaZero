@@ -2287,12 +2287,14 @@ function setupListeners() {
 
         if (safeLikeCount > lastSeen) {
             delta = safeLikeCount - lastSeen;
+            lastLikeCountMap.set(uniqueId, safeLikeCount);
         } else if (safeLikeCount < lastSeen) {
-            // Caso reinicio: El usuario salió y volvió o el contador se reseteó en TikTok
-            delta = safeLikeCount;
+            // Caso reinicio genuino en TikTok (por ejemplo, contador vuelve a empezar desde cero, < 10)
+            if (safeLikeCount < 10) {
+                delta = safeLikeCount;
+                lastLikeCountMap.set(uniqueId, safeLikeCount);
+            }
         }
-        
-        lastLikeCountMap.set(uniqueId, safeLikeCount);
 
         if (delta <= 0) {
             return;
@@ -2341,6 +2343,9 @@ function setupListeners() {
         const uid = data.uniqueId;
         const profilePic = data.profilePictureUrl;
 
+        // Marcar presencia activa en el live
+        markUserPresent(uid);
+
         // Acumular en contador de sesión para metas
         sessionFollows.set(uid, (sessionFollows.get(uid) || 0) + 1);
         syncSessionCountersToFirestore();
@@ -2373,6 +2378,9 @@ function setupListeners() {
         const uid = data.uniqueId;
         const profilePic = data.profilePictureUrl;
         
+        // Marcar presencia activa en el live
+        markUserPresent(uid);
+        
         console.log(`⭐ @${uid} se suscribió!`);
         if (db) {
             try {
@@ -2398,6 +2406,9 @@ function setupListeners() {
         const displayName = data.nickname || data.uniqueId || 'Usuario';
         const uid = data.uniqueId || '';
         const profilePic = data.profilePictureUrl || '';
+
+        // Marcar presencia activa en el live
+        markUserPresent(uid);
 
         // Acumular en contador de sesión para metas
         sessionShares.set(uid, (sessionShares.get(uid) || 0) + 1);
@@ -2454,7 +2465,9 @@ function isUserInLive(uid) {
     if (!uid) return false;
     const last = livePresenceMap.get(uid);
     if (!last) return false; // Nunca visto -> no está (o entró antes del bot)
-    return (Date.now() - last) < LIVE_PRESENCE_TTL_MS;
+    const thresholdSec = Number(overlayAlertsConfig && overlayAlertsConfig.topliker_inactivity_threshold) || 90;
+    const ttlMs = thresholdSec * 1000;
+    return (Date.now() - last) < ttlMs;
 }
 
 // ─── CONTADORES DE SESIÓN (para Goal Overlays) ────────────────────────────────
