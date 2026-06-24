@@ -18,6 +18,7 @@ function App() {
   const [config, setConfig] = React.useState({
     tiktokUsername: '',
     sessionId: '',
+    ttTargetIdc: '',
     minCoinsForVip: 30,
     requireVipForSr: false,
     allowPointsCommand: true,
@@ -331,6 +332,8 @@ function App() {
     ciderConnected: false,
     tiktokState: 'unknown',
     isConnecting: false,
+    isRetrying: false,
+    lastConnectionError: '',
     mockCiderActive: false,
     mockCiderPort: 10767,
     queueLength: 0
@@ -745,6 +748,8 @@ function App() {
           ciderConnected: !!data.ciderConnected,
           tiktokState: data.tiktokState || 'unknown',
           isConnecting: !!data.isConnecting,
+          isRetrying: !!data.isRetrying,
+          lastConnectionError: data.lastConnectionError || '',
           mockCiderActive: !!data.mockCiderActive,
           mockCiderPort: data.mockCiderPort || 10767,
           queueLength: queueLen
@@ -888,7 +893,7 @@ function App() {
     }
   };
   const handleToggleTikTok = async () => {
-    const isConnectedOrConnecting = status.tiktokState === 'connected' || status.isConnecting;
+    const isConnectedOrConnecting = status.tiktokState === 'connected' || status.isConnecting || status.isRetrying;
     if (isConnectedOrConnecting) {
       try {
         const res = await fetch('/api/tiktok/disconnect', {
@@ -899,7 +904,9 @@ function App() {
           setStatus(prev => ({
             ...prev,
             tiktokState: 'disconnected',
-            isConnecting: false
+            isConnecting: false,
+            isRetrying: false,
+            lastConnectionError: ''
           }));
         }
       } catch (e) {
@@ -1443,19 +1450,28 @@ function App() {
   }, /*#__PURE__*/React.createElement("div", {
     className: "badge-dot"
   }), /*#__PURE__*/React.createElement("span", null, "Cider: ", status.ciderConnected ? 'Conectado' : 'Desconectado')), /*#__PURE__*/React.createElement("div", {
-    className: `badge ${status.tiktokState === 'connected' ? 'active' : status.isConnecting ? 'pending' : 'inactive'}`,
+    className: `badge ${status.tiktokState === 'connected' ? 'active' : status.isConnecting || status.isRetrying ? 'pending' : 'inactive'}`,
     style: {
-      paddingRight: '6px'
+      paddingRight: '6px',
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      gap: '2px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px'
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "badge-dot"
-  }), /*#__PURE__*/React.createElement("span", null, "TikTok: ", status.isConnecting ? 'Conectando...' : status.tiktokState === 'connected' ? 'Conectado' : 'Inactivo'), /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("span", null, "TikTok: ", status.isConnecting ? 'Conectando...' : status.isRetrying ? 'Reintentando en 10s...' : status.tiktokState === 'connected' ? 'Conectado' : 'Inactivo'), /*#__PURE__*/React.createElement("button", {
     onClick: handleToggleTikTok,
     style: {
-      background: status.tiktokState === 'connected' || status.isConnecting ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-      border: `1px solid ${status.tiktokState === 'connected' || status.isConnecting ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`,
+      background: status.tiktokState === 'connected' || status.isConnecting || status.isRetrying ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+      border: `1px solid ${status.tiktokState === 'connected' || status.isConnecting || status.isRetrying ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`,
       borderRadius: '12px',
-      color: status.tiktokState === 'connected' || status.isConnecting ? 'var(--error)' : 'var(--success)',
+      color: status.tiktokState === 'connected' || status.isConnecting || status.isRetrying ? 'var(--error)' : 'var(--success)',
       cursor: 'pointer',
       padding: '3px 10px',
       fontSize: '0.75rem',
@@ -1466,7 +1482,17 @@ function App() {
       alignItems: 'center',
       gap: '4px'
     }
-  }, status.tiktokState === 'connected' ? 'Desconectar' : status.isConnecting ? 'Cancelar' : 'Conectar')), /*#__PURE__*/React.createElement("div", {
+  }, status.tiktokState === 'connected' ? 'Desconectar' : status.isConnecting || status.isRetrying ? 'Cancelar' : 'Conectar')), status.lastConnectionError && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: '0.68rem',
+      color: 'var(--error)',
+      opacity: 0.85,
+      maxWidth: '380px',
+      wordBreak: 'break-word',
+      marginLeft: '2px',
+      paddingTop: '2px'
+    }
+  }, status.lastConnectionError)), /*#__PURE__*/React.createElement("div", {
     className: `badge ${status.mockCiderActive ? 'active' : 'inactive'}`
   }, /*#__PURE__*/React.createElement("div", {
     className: "badge-dot"
@@ -1534,26 +1560,38 @@ function App() {
       paddingTop: '15px',
       borderTop: '1px solid rgba(255,255,255,0.06)'
     }
-  }, /*#__PURE__*/React.createElement("label", null, renderIcon('key'), " Session ID (Opcional - Cookie para Evitar Error 521)"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, renderIcon('key'), " Session ID (Cookie \"sessionid\" de TikTok)"), /*#__PURE__*/React.createElement("input", {
     type: "text",
-    placeholder: "Pegar cookie de sesi\xF3n si no conecta",
-    value: config.sessionId,
+    placeholder: "Pegar cookie sessionid",
+    value: config.sessionId || '',
     onChange: e => setConfig({
       ...config,
       sessionId: e.target.value
     })
-  }), /*#__PURE__*/React.createElement("small", null, "Si el bot no conecta o da error, necesitas tu Session ID.", /*#__PURE__*/React.createElement("a", {
+  }), /*#__PURE__*/React.createElement("small", null, "Cookie ", /*#__PURE__*/React.createElement("code", null, "sessionid"), " de TikTok. Necesaria junto con ", /*#__PURE__*/React.createElement("strong", null, "tt-target-idc"), " para conexi\xF3n autenticada.")), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      marginTop: '14px'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, renderIcon('globe'), " tt-target-idc (Regi\xF3n de tu cuenta TikTok)"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    placeholder: "Ej: us-eastx1, maliva-1, sg-alisg, etc.",
+    value: config.ttTargetIdc || '',
+    onChange: e => setConfig({
+      ...config,
+      ttTargetIdc: e.target.value
+    })
+  }), /*#__PURE__*/React.createElement("small", null, "Cookie ", /*#__PURE__*/React.createElement("code", null, "tt-target-idc"), " de TikTok (requerida junto con Session ID). \xA0", /*#__PURE__*/React.createElement("a", {
     href: "#",
     onClick: e => {
       e.preventDefault();
-      alert('1. Abre TikTok en tu navegador.\n2. Inicia sesión.\n3. Abre Herramientas de Desarrollador (F12) -> Application -> Cookies.\n4. Busca la cookie llamada `sessionid`.\n5. Copia su valor y pégalo aquí.');
+      alert('⚠️ IMPORTANTE: La nueva versión requiere DOS cookies de TikTok:\n\n1. Abre TikTok en Chrome/Firefox\n2. Inicia sesión en tu cuenta\n3. Abre Herramientas de Desarrollador (F12)\n4. Ve a Application → Cookies → https://www.tiktok.com\n5. Busca y copia:\n   • "sessionid" → pegarlo en el campo Session ID\n   • "tt-target-idc" → pegarlo en el campo tt-target-idc\n\nEjemplos de tt-target-idc: us-eastx1, maliva-1, sg-alisg\n\n💡 Sin estas cookies el bot conecta en modo anónimo (funciona si estás en LIVE).');
     },
     style: {
       color: '#ff0050',
-      marginLeft: '5px',
       fontWeight: 'bold'
     }
-  }, "\xBFC\xF3mo obtenerlo?"))), /*#__PURE__*/React.createElement("h3", {
+  }, "\xBFC\xF3mo obtenerlas?"))), /*#__PURE__*/React.createElement("h3", {
     style: {
       marginTop: '35px',
       marginBottom: '18px',

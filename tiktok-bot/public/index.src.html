@@ -885,6 +885,7 @@
             const [config, setConfig] = React.useState({
                 tiktokUsername: '',
                 sessionId: '',
+                ttTargetIdc: '',
                 minCoinsForVip: 30,
                 requireVipForSr: false,
                 allowPointsCommand: true,
@@ -1209,6 +1210,8 @@
                 ciderConnected: false,
                 tiktokState: 'unknown',
                 isConnecting: false,
+                isRetrying: false,
+                lastConnectionError: '',
                 mockCiderActive: false,
                 mockCiderPort: 10767,
                 queueLength: 0
@@ -1585,6 +1588,8 @@
                             ciderConnected: !!data.ciderConnected,
                             tiktokState: data.tiktokState || 'unknown',
                             isConnecting: !!data.isConnecting,
+                            isRetrying: !!data.isRetrying,
+                            lastConnectionError: data.lastConnectionError || '',
                             mockCiderActive: !!data.mockCiderActive,
                             mockCiderPort: data.mockCiderPort || 10767,
                             queueLength: queueLen
@@ -1722,13 +1727,13 @@
             };
 
             const handleToggleTikTok = async () => {
-                const isConnectedOrConnecting = status.tiktokState === 'connected' || status.isConnecting;
+                const isConnectedOrConnecting = status.tiktokState === 'connected' || status.isConnecting || status.isRetrying;
                 if (isConnectedOrConnecting) {
                     try {
                         const res = await fetch('/api/tiktok/disconnect', { method: 'POST' });
                         const d = await res.json();
                         if (d.ok) {
-                            setStatus(prev => ({ ...prev, tiktokState: 'disconnected', isConnecting: false }));
+                            setStatus(prev => ({ ...prev, tiktokState: 'disconnected', isConnecting: false, isRetrying: false, lastConnectionError: '' }));
                         }
                     } catch (e) {
                         console.error("Error al desconectar:", e);
@@ -2150,29 +2155,44 @@
                                 <div className="badge-dot"></div>
                                 <span>Cider: {status.ciderConnected ? 'Conectado' : 'Desconectado'}</span>
                             </div>
-                            <div className={`badge ${status.tiktokState === 'connected' ? 'active' : status.isConnecting ? 'pending' : 'inactive'}`} style={{ paddingRight: '6px' }}>
-                                <div className="badge-dot"></div>
-                                <span>TikTok: {status.isConnecting ? 'Conectando...' : status.tiktokState === 'connected' ? 'Conectado' : 'Inactivo'}</span>
-                                <button 
-                                    onClick={handleToggleTikTok}
-                                    style={{
-                                        background: status.tiktokState === 'connected' || status.isConnecting ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                                        border: `1px solid ${status.tiktokState === 'connected' || status.isConnecting ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`,
-                                        borderRadius: '12px',
-                                        color: status.tiktokState === 'connected' || status.isConnecting ? 'var(--error)' : 'var(--success)',
-                                        cursor: 'pointer',
-                                        padding: '3px 10px',
-                                        fontSize: '0.75rem',
-                                        fontWeight: '700',
-                                        marginLeft: '4px',
-                                        transition: 'all 0.2s ease',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                    }}
-                                >
-                                    {status.tiktokState === 'connected' ? 'Desconectar' : status.isConnecting ? 'Cancelar' : 'Conectar'}
-                                </button>
+                            <div className={`badge ${status.tiktokState === 'connected' ? 'active' : (status.isConnecting || status.isRetrying) ? 'pending' : 'inactive'}`} style={{ paddingRight: '6px', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div className="badge-dot"></div>
+                                    <span>TikTok: {status.isConnecting ? 'Conectando...' : status.isRetrying ? 'Reintentando en 10s...' : status.tiktokState === 'connected' ? 'Conectado' : 'Inactivo'}</span>
+                                    <button 
+                                        onClick={handleToggleTikTok}
+                                        style={{
+                                            background: status.tiktokState === 'connected' || status.isConnecting || status.isRetrying ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                                            border: `1px solid ${status.tiktokState === 'connected' || status.isConnecting || status.isRetrying ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`,
+                                            borderRadius: '12px',
+                                            color: status.tiktokState === 'connected' || status.isConnecting || status.isRetrying ? 'var(--error)' : 'var(--success)',
+                                            cursor: 'pointer',
+                                            padding: '3px 10px',
+                                            fontSize: '0.75rem',
+                                            fontWeight: '700',
+                                            marginLeft: '4px',
+                                            transition: 'all 0.2s ease',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
+                                        }}
+                                    >
+                                        {status.tiktokState === 'connected' ? 'Desconectar' : (status.isConnecting || status.isRetrying) ? 'Cancelar' : 'Conectar'}
+                                    </button>
+                                </div>
+                                {status.lastConnectionError && (
+                                    <div style={{
+                                        fontSize: '0.68rem',
+                                        color: 'var(--error)',
+                                        opacity: 0.85,
+                                        maxWidth: '380px',
+                                        wordBreak: 'break-word',
+                                        marginLeft: '2px',
+                                        paddingTop: '2px'
+                                    }}>
+                                        {status.lastConnectionError}
+                                    </div>
+                                )}
                             </div>
                             <div className={`badge ${status.mockCiderActive ? 'active' : 'inactive'}`}>
                                 <div className="badge-dot"></div>
@@ -2235,19 +2255,32 @@
                                             />
                                         </div>
                                         <div className="form-group" style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                                            <label>{renderIcon('key')} Session ID (Opcional - Cookie para Evitar Error 521)</label>
+                                            <label>{renderIcon('key')} Session ID (Cookie "sessionid" de TikTok)</label>
                                             <input 
                                                 type="text" 
-                                                placeholder="Pegar cookie de sesión si no conecta" 
-                                                value={config.sessionId} 
+                                                placeholder="Pegar cookie sessionid" 
+                                                value={config.sessionId || ''} 
                                                 onChange={(e) => setConfig({ ...config, sessionId: e.target.value })}
                                             />
                                             <small>
-                                                Si el bot no conecta o da error, necesitas tu Session ID. 
+                                                Cookie <code>sessionid</code> de TikTok. Necesaria junto con <strong>tt-target-idc</strong> para conexión autenticada.
+                                            </small>
+                                        </div>
+
+                                        <div className="form-group" style={{ marginTop: '14px' }}>
+                                            <label>{renderIcon('globe')} tt-target-idc (Región de tu cuenta TikTok)</label>
+                                            <input 
+                                                type="text" 
+                                                placeholder="Ej: us-eastx1, maliva-1, sg-alisg, etc." 
+                                                value={config.ttTargetIdc || ''} 
+                                                onChange={(e) => setConfig({ ...config, ttTargetIdc: e.target.value })}
+                                            />
+                                            <small>
+                                                Cookie <code>tt-target-idc</code> de TikTok (requerida junto con Session ID). &nbsp;
                                                 <a href="#" onClick={(e) => {
                                                     e.preventDefault();
-                                                    alert('1. Abre TikTok en tu navegador.\n2. Inicia sesión.\n3. Abre Herramientas de Desarrollador (F12) -> Application -> Cookies.\n4. Busca la cookie llamada `sessionid`.\n5. Copia su valor y pégalo aquí.');
-                                                }} style={{ color: '#ff0050', marginLeft: '5px', fontWeight: 'bold' }}>¿Cómo obtenerlo?</a>
+                                                    alert('⚠️ IMPORTANTE: La nueva versión requiere DOS cookies de TikTok:\n\n1. Abre TikTok en Chrome/Firefox\n2. Inicia sesión en tu cuenta\n3. Abre Herramientas de Desarrollador (F12)\n4. Ve a Application → Cookies → https://www.tiktok.com\n5. Busca y copia:\n   • "sessionid" → pegarlo en el campo Session ID\n   • "tt-target-idc" → pegarlo en el campo tt-target-idc\n\nEjemplos de tt-target-idc: us-eastx1, maliva-1, sg-alisg\n\n💡 Sin estas cookies el bot conecta en modo anónimo (funciona si estás en LIVE).');
+                                                }} style={{ color: '#ff0050', fontWeight: 'bold' }}>¿Cómo obtenerlas?</a>
                                             </small>
                                         </div>
 

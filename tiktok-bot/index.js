@@ -186,7 +186,8 @@ let config = {
     minCoinsForVip: 30,
     vipDurationSession: true,
     tiktokUsername: "zeroferreira", // Default
-    sessionId: "", // TikTok Session ID (obligatorio si hay error 521)
+    sessionId: "", // TikTok Session ID (cookie "sessionid")
+    ttTargetIdc: "", // TikTok region cookie "tt-target-idc" (requerido junto con sessionId)
     dashboardPort: 3000,
     ciderUrl: "http://localhost:10767",
     mockCider: false,
@@ -237,12 +238,36 @@ try {
 let TIKTOK_USERNAME = config.tiktokUsername;
 let tiktokLiveConnection;
 let isConnecting = false;
+let isRetrying = false;       // true durante el timeout de 10s antes del reintento
+let lastConnectionError = ''; // último mensaje de error de conexión TikTok
 let manualDisconnect = false;
+let retryTimeoutId = null;
 let ciderSocket;
 let tiktokWebsocketUpgradeEnabled = true;
 let tiktokConnectionOptions = null;
 
+// --- DEDUPLICACIÓN DE EVENTOS ---
+// Previene que el mismo mensaje/regalo se procese múltiples veces
+// cuando hay múltiples conexiones activas o reconexiones
+const processedMsgIds = new Set();
+const MAX_PROCESSED_IDS = 2000; // Límite para no crecer infinito en memoria
+function isDuplicate(msgId) {
+    if (!msgId) return false;
+    const id = String(msgId);
+    if (processedMsgIds.has(id)) return true;
+    processedMsgIds.add(id);
+    // Limpiar si crece demasiado (FIFO aproximado)
+    if (processedMsgIds.size > MAX_PROCESSED_IDS) {
+        const first = processedMsgIds.values().next().value;
+        processedMsgIds.delete(first);
+    }
+    return false;
+}
+
 function buildTikTokConnectionOptions() {
+    const sessionId = String(config.sessionId || '').trim();
+    const ttTargetIdc = String(config.ttTargetIdc || '').trim();
+
     const opts = {
         processInitialData: false,
         enableExtendedGiftInfo: true,
@@ -259,9 +284,20 @@ function buildTikTokConnectionOptions() {
             browser_version: '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         }
     };
-    if (config.sessionId) {
-        opts.sessionId = String(config.sessionId).trim();
+
+    // IMPORTANTE: la nueva versión de tiktok-live-connector requiere AMBOS
+    // sessionId Y ttTargetIdc juntos. Si falta alguno, no se usa ninguno.
+    if (sessionId && ttTargetIdc) {
+        opts.sessionId = sessionId;
+        opts.ttTargetIdc = ttTargetIdc;
+        console.log(`🔑 Usando sesión autenticada (sessionId + tt-target-idc configurados).`);
+    } else if (sessionId && !ttTargetIdc) {
+        console.warn(`⚠️ sessionId configurado pero falta tt-target-idc. Conectando en modo anónimo.`);
+        console.warn(`💡 Para usar sesión autenticada, ve a Configuración y agrega el valor de la cookie "tt-target-idc" de TikTok.`);
+    } else {
+        console.log(`🔓 Conectando en modo anónimo (sin sesión).`);
     }
+
     return opts;
 }
 
@@ -994,6 +1030,8 @@ function startBot() {
             tiktokUsername: TIKTOK_USERNAME,
             tiktokState: tiktokLiveConnection?.state || 'unknown',
             isConnecting: !!isConnecting,
+            isRetrying: !!isRetrying,
+            lastConnectionError: lastConnectionError || '',
             ciderConnected: !!(ciderSocket && ciderSocket.connected),
             pendingCider: pendingCiderQueue.length,
             mockCiderActive: !!mockCiderIo,
@@ -1009,10 +1047,19 @@ function startBot() {
             }
             
             config.sessionId = body.sessionId;
+            if (body.ttTargetIdc !== undefined) {
+                config.ttTargetIdc = String(body.ttTargetIdc || '').trim();
+            }
             fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
             console.log(`🔑 Session ID sincronizado automáticamente desde la extensión.`);
             
             // Si estaba conectado, reconectar para aplicar la nueva sesión
+            if (retryTimeoutId) {
+                clearTimeout(retryTimeoutId);
+                retryTimeoutId = null;
+            }
+            isRetrying = false;
+
             if (tiktokLiveConnection && tiktokLiveConnection.state === 'connected') {
                 console.log("🔄 Reiniciando conexión para usar la nueva sesión...");
                 try { tiktokLiveConnection.disconnect(); } catch (_) {}
@@ -1050,6 +1097,12 @@ function startBot() {
                 console.log(`💾 Configuración de TikTok actualizada manualmente: Username = ${config.tiktokUsername}`);
             }
             
+            if (retryTimeoutId) {
+                clearTimeout(retryTimeoutId);
+                retryTimeoutId = null;
+            }
+            isRetrying = false;
+
             if (tiktokLiveConnection) {
                 try { tiktokLiveConnection.disconnect(); } catch (_) {}
             }
@@ -1072,6 +1125,11 @@ function startBot() {
         try {
             manualDisconnect = true;
             isConnecting = false;
+            if (retryTimeoutId) {
+                clearTimeout(retryTimeoutId);
+                retryTimeoutId = null;
+            }
+            isRetrying = false;
             if (tiktokLiveConnection) {
                 try { tiktokLiveConnection.disconnect(); } catch (_) {}
             }
@@ -2048,7 +2106,17 @@ function setupListeners() {
         }
     });
 
+    // --- Rate limit cache para SR: usuario -> timestamp del último pedido ---
+    const srRateLimit = new Map(); // userId -> lastRequestTimestamp
+    const SR_COOLDOWN_MS = 15000; // 15 segundos entre pedidos del mismo usuario
+
     tiktokLiveConnection.on('chat', async (data) => {
+        // ── DEDUPLICACIÓN: descartar si este msgId ya fue procesado ──
+        if (isDuplicate(data.msgId)) {
+            // console.log(`[DEDUP] Mensaje duplicado ignorado: ${data.msgId}`);
+            return;
+        }
+
         const msg = data.comment;
         const lowerMsg = msg.toLowerCase();
         const displayName = data.nickname;
@@ -2267,6 +2335,18 @@ function setupListeners() {
             
             console.log(`📝 Comando detectado de ${displayName} (${userId}): ${msg}`);
             
+            // --- Rate-limit de SR por usuario (máximo 1 pedido cada 15 segundos) ---
+            if (!isStreamer && !isModerator) {
+                const now = Date.now();
+                const lastRequest = srRateLimit.get(userId) || 0;
+                if (now - lastRequest < SR_COOLDOWN_MS) {
+                    const remaining = Math.ceil((SR_COOLDOWN_MS - (now - lastRequest)) / 1000);
+                    console.log(`⏳ @${displayName} está en cooldown para pedir canciones. Espera ${remaining}s.`);
+                    return;
+                }
+                srRateLimit.set(userId, now);
+            }
+            
             // Log de depuración para permisos
             if (requireVip && !isVip) {
                 console.log(`🔍 DEBUG PERMISOS: ReqVIP=${requireVip}, UserVIP=${isVip} (Sub=${isSubscriber}, Mod=${isModerator}, Fan=${isSuperFan})`);
@@ -2304,6 +2384,12 @@ function setupListeners() {
 
     // REGALOS
     tiktokLiveConnection.on('gift', async (data) => {
+        // ── DEDUPLICACIÓN: descartar si este msgId ya fue procesado ──
+        if (data.msgId && isDuplicate(data.msgId)) {
+            // console.log(`[DEDUP] Regalo duplicado ignorado: ${data.msgId}`);
+            return;
+        }
+
         const giftName = data.giftName || data.gift?.name || data.gift?.giftName || '';
         const giftKey = normalizeComparableText(giftName);
         const coins = data.diamondCount;
@@ -2973,13 +3059,16 @@ async function recalculateDonorRanks() {
 async function connectToLive() {
     if (manualDisconnect) {
         console.log('⏹️ Conexión abortada: Desconexión manual activa.');
+        isRetrying = false;
         return;
     }
     if (isConnecting) return;
     isConnecting = true;
+    isRetrying = false;
 
     if (tiktokLiveConnection.state === 'connected') {
          isConnecting = false;
+         lastConnectionError = '';
          return;
     }
 
@@ -2989,23 +3078,36 @@ async function connectToLive() {
         .then(state => {
             console.log(`✅ Conectado al Live de ${state.roomId}!`);
             isConnecting = false;
+            isRetrying = false;
+            lastConnectionError = '';
         })
         .catch(err => {
             const msg = String(err && err.message ? err.message : err);
             isConnecting = false;
 
-            if (msg.includes('Unexpected server response: 200')) {
-                console.error('❌ TikTok rechazó la conexión (Error 200).');
-                console.warn('⚠️ Esto sucede cuando TikTok detecta actividad inusual.');
-                console.warn('💡 RECOMENDACIÓN: Si el error persiste, abre TikTok en tu navegador, copia tu "sessionid" de las cookies y ponlo en el config.json');
+            if (msg.includes('Unexpected server response: 200') || msg.includes('400')) {
+                const errMsg = '❌ Error 400/200: TikTok rechazó la conexión. Puede que no estés en LIVE o que TikTok detecte actividad inusual. Verifica que tu sesión esté activa.';
+                lastConnectionError = errMsg;
+                console.error(errMsg);
+            } else if (msg.toLowerCase().includes('live') || msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('no live')) {
+                const errMsg = `❌ No se encontró live activo para @${TIKTOK_USERNAME}. Asegúrate de estar en live antes de conectar.`;
+                lastConnectionError = errMsg;
+                console.warn(errMsg);
             } else {
+                lastConnectionError = `❌ Error al conectar: ${msg}`;
                 console.error('❌ Error al conectar:', msg);
             }
 
             if (!manualDisconnect) {
                 console.log('🔄 Reintentando en 10 segundos...');
-                setTimeout(() => {
-                    if (manualDisconnect) return;
+                isRetrying = true;
+                if (retryTimeoutId) clearTimeout(retryTimeoutId);
+                retryTimeoutId = setTimeout(() => {
+                    if (manualDisconnect) {
+                        isRetrying = false;
+                        return;
+                    }
+                    isRetrying = false;
                     tiktokConnectionOptions = buildTikTokConnectionOptions();
                     try { if (tiktokLiveConnection) tiktokLiveConnection.disconnect(); } catch (_) {}
                     tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
@@ -3013,6 +3115,7 @@ async function connectToLive() {
                     connectToLive();
                 }, 10000);
             } else {
+                isRetrying = false;
                 console.log('⏹️ Desconexión manual activa. No se reintentará conexión.');
             }
         });

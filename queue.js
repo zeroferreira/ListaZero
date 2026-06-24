@@ -2107,7 +2107,22 @@
              if (songEl) songEl.innerText = song;
              if (artistEl) artistEl.innerText = artist;
 
-             const data = await fetchSongData(artist, song);
+             // Priorizar la carátula de Firestore (req.cover)
+             const dbCover = String(req.cover || req.coverUrl || '').trim();
+             const hasDbCover = dbCover && (dbCover.startsWith('http://') || dbCover.startsWith('https://'));
+             const fallbackArtwork = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxZTFiNGIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMzMTEwNDIiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0idXJsKCNnKSIvPjxwYXRoIGQ9Ik00NyA3MGMwIDUuNS00LjUgMTAtMTAgMTBzLTEwLTQuNS0xMC0xMCA0LjUtMTAgMTAtMTAgMTAgNC41IDEwIDEwek03NSA2MGMwIDUuNS00LjUgMTAtMTAgMTBzLTEwLTQuNS0xMC0xMCA0LjUtMTAgMTAtMTAgMTAgNC41IDEwIDEwek03MCAyNWwtMzAgOGMzLjk5OCAxLjMzMiAxMCAzLjMzMyAxMCAxMHYzMmgtMlYzNHMzLTAuMTY3LTgtMS41TjcwIDI1eiIgZmlsbD0iI2Y0M2Y1ZSIgb3BhY2l0eT0iMC44Ii8+PC9zdmc+';
+
+             if (hasDbCover && settings.showAlbumArt) {
+                 if (artEl) {
+                     artEl.src = dbCover;
+                     artEl.style.display = 'block';
+                 }
+             }
+
+             // Solo consultamos iTunes si necesitamos autocorrect, waitTime o si no tenemos portada en Firestore
+             const data = (settings.autocorrect || settings.showWaitTime || (settings.showAlbumArt && !hasDbCover))
+                 ? await fetchSongData(artist, song)
+                 : null;
              
              if (data) {
                  if (settings.autocorrect) {
@@ -2117,14 +2132,12 @@
                      }
                  }
                  
-                 if (settings.showAlbumArt) {
-                     if (data.artworkUrl) {
-                         artEl.src = data.artworkUrl;
-                     } else {
-                         artEl.src = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=150&auto=format&fit=crop';
+                 if (settings.showAlbumArt && !hasDbCover) {
+                     if (artEl) {
+                         artEl.src = data.artworkUrl || fallbackArtwork;
+                         artEl.style.display = 'block';
                      }
-                     artEl.style.display = 'block';
-                 } else if (artEl) {
+                 } else if (!settings.showAlbumArt && artEl) {
                      artEl.style.display = 'none';
                  }
 
@@ -2142,6 +2155,13 @@
                      }
                  }
              } else {
+                 if (settings.showAlbumArt && !hasDbCover) {
+                     if (artEl) {
+                         artEl.src = fallbackArtwork;
+                         artEl.style.display = 'block';
+                     }
+                 }
+
                  // Fallback for wait time if no data found (assume 3:30 min)
                  if (settings.showWaitTime) {
                      waitEl.style.display = 'block';
@@ -2154,14 +2174,6 @@
                      } else {
                        waitEl.innerText = formatWaitTime(accumulatedTime);
                        accumulatedTime += 3.5; 
-                     }
-                 }
-                 if (artEl) {
-                     if (settings.showAlbumArt) {
-                         artEl.src = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=150&auto=format&fit=crop';
-                         artEl.style.display = 'block';
-                     } else {
-                         artEl.style.display = 'none';
                      }
                  }
              }
