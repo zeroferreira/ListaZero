@@ -1044,7 +1044,7 @@ function startBot() {
     app.get('/api/status', (req, res) => {
         res.json({
             tiktokUsername: TIKTOK_USERNAME,
-            tiktokState: tiktokLiveConnection?.state || 'unknown',
+            tiktokState: (tiktokLiveConnection && tiktokLiveConnection.isConnected) ? 'connected' : 'disconnected',
             isConnecting: !!isConnecting,
             isRetrying: !!isRetrying,
             lastConnectionError: lastConnectionError || '',
@@ -1076,7 +1076,7 @@ function startBot() {
             }
             isRetrying = false;
 
-            if (tiktokLiveConnection && tiktokLiveConnection.state === 'connected') {
+            if (tiktokLiveConnection && tiktokLiveConnection.isConnected) {
                 console.log("🔄 Reiniciando conexión para usar la nueva sesión...");
                 try { tiktokLiveConnection.disconnect(); } catch (_) {}
                 isConnecting = false;
@@ -3082,7 +3082,7 @@ async function connectToLive() {
     isConnecting = true;
     isRetrying = false;
 
-    if (tiktokLiveConnection.state === 'connected') {
+    if (tiktokLiveConnection && tiktokLiveConnection.isConnected) {
          isConnecting = false;
          lastConnectionError = '';
          return;
