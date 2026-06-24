@@ -9,8 +9,9 @@ if (window.location.protocol === 'file:') {
   };
 }
 function App() {
-  const [activeTab, setActiveTab] = React.useState('general');
+  const [activeTab, setActiveTab] = React.useState('configuracion');
   const [activeSub, setActiveSub] = React.useState('player');
+  const [activeConfigSub, setActiveConfigSub] = React.useState('commands');
   const [saveStatus, setSaveStatus] = React.useState('');
 
   // System Configurations
@@ -28,6 +29,7 @@ function App() {
     ignoreExampleQuery: 'artista cancion',
     commandAliases: []
   });
+  const [initialConfig, setInitialConfig] = React.useState(null);
 
   // Overlays Alert / Visual Configurations
   const [overlays, _setOverlays] = React.useState({
@@ -357,6 +359,15 @@ function App() {
     artist: 'Bad Bunny',
     resultText: ''
   });
+
+  // Gift simulation state values
+  const [giftTest, setGiftTest] = React.useState({
+    user: 'DonadorPremium',
+    giftName: 'TikTok Rose',
+    coins: 10,
+    seconds: '',
+    resultText: ''
+  });
   const [currentOrigin, setCurrentOrigin] = React.useState('http://localhost:3000');
 
   // MODAL STATES FOR PERSONALIZATION OVERLAYS
@@ -626,11 +637,15 @@ function App() {
 
     // Load all initial configurations
     fetch('/api/config').then(r => r.json()).then(data => {
-      setConfig(prev => ({
-        ...prev,
-        ...data,
-        commandAliases: data.commandAliases || ["!sr", "!pedir", "!cancion"]
-      }));
+      setConfig(prev => {
+        const next = {
+          ...prev,
+          ...data,
+          commandAliases: data.commandAliases || ["!sr", "!pedir", "!cancion"]
+        };
+        setInitialConfig(next);
+        return next;
+      });
     }).catch(() => {});
     fetch('/api/overlays/config').then(r => r.json()).then(data => {
       try {
@@ -866,8 +881,78 @@ function App() {
       } else {
         triggerSaveBadge('💾 Guardado en navegador (Offline)');
       }
+      setInitialConfig(config);
     } catch (e) {
       triggerSaveBadge('💾 ¡Guardado en navegador (Offline)!');
+      setInitialConfig(config);
+    }
+  };
+  const handleToggleTikTok = async () => {
+    const isConnectedOrConnecting = status.tiktokState === 'connected' || status.isConnecting;
+    if (isConnectedOrConnecting) {
+      try {
+        const res = await fetch('/api/tiktok/disconnect', {
+          method: 'POST'
+        });
+        const d = await res.json();
+        if (d.ok) {
+          setStatus(prev => ({
+            ...prev,
+            tiktokState: 'disconnected',
+            isConnecting: false
+          }));
+        }
+      } catch (e) {
+        console.error("Error al desconectar:", e);
+      }
+    } else {
+      try {
+        setStatus(prev => ({
+          ...prev,
+          isConnecting: true
+        }));
+        const res = await fetch('/api/tiktok/connect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            tiktokUsername: config.tiktokUsername,
+            sessionId: config.sessionId
+          })
+        });
+        const d = await res.json();
+        if (!d.ok) {
+          setStatus(prev => ({
+            ...prev,
+            isConnecting: false
+          }));
+          alert('Error al conectar: ' + d.error);
+        }
+      } catch (e) {
+        setStatus(prev => ({
+          ...prev,
+          isConnecting: false
+        }));
+        console.error("Error al conectar:", e);
+      }
+    }
+  };
+  const handleShutdownServer = async () => {
+    if (confirm('¿Estás seguro de que quieres apagar el servidor del bot por completo?\n\nLa página dejará de funcionar y tendrás que iniciarlo manualmente desde tu PC para volver a entrar.')) {
+      try {
+        const res = await fetch('/api/server/shutdown', {
+          method: 'POST'
+        });
+        const d = await res.json();
+        if (d.ok) {
+          alert('El servidor se está apagando. Esta pestaña ya no responderá.');
+          window.location.reload();
+        }
+      } catch (e) {
+        alert('El servidor se ha apagado con éxito.');
+        window.location.reload();
+      }
     }
   };
   const triggerSaveBadge = msg => {
@@ -1276,6 +1361,50 @@ function App() {
       }));
     }
   };
+  const handleSendGiftTest = async () => {
+    setGiftTest(prev => ({
+      ...prev,
+      resultText: 'Enviando regalo de prueba...'
+    }));
+    try {
+      const res = await fetch('/api/timer/test/gift', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user: giftTest.user,
+          giftName: giftTest.giftName,
+          coins: parseInt(giftTest.coins) || 1,
+          seconds: giftTest.seconds ? parseInt(giftTest.seconds) : undefined
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        let msg = `✅ ¡Regalo de prueba enviado!\n`;
+        if (data.extended) {
+          msg += `Timer extendido con éxito +${data.extendedSeconds}s.`;
+        } else {
+          msg += `Alerta enviada. (El timer no se extendió porque no está iniciado/corriendo).`;
+        }
+        setGiftTest(prev => ({
+          ...prev,
+          resultText: msg
+        }));
+        triggerSaveBadge('🎁 Regalo simulado');
+      } else {
+        setGiftTest(prev => ({
+          ...prev,
+          resultText: `Error: ${data.error || 'Desconocido'}`
+        }));
+      }
+    } catch (e) {
+      setGiftTest(prev => ({
+        ...prev,
+        resultText: `Error: ${e.message}`
+      }));
+    }
+  };
 
   // Lucide Icon parser helper for react
   const renderIcon = (name, size = 18, color = "currentColor") => {
@@ -1294,6 +1423,11 @@ function App() {
       window.lucide.createIcons();
     }
   });
+  const isConfigDirty = React.useMemo(() => {
+    if (!initialConfig) return false;
+    return JSON.stringify(config) !== JSON.stringify(initialConfig);
+  }, [config, initialConfig]);
+  const showSaveBar = isConfigDirty || Object.keys(dirtyKeys).length > 0 || !!saveStatus;
   return /*#__PURE__*/React.createElement("div", {
     className: "container"
   }, /*#__PURE__*/React.createElement("header", {
@@ -1309,10 +1443,30 @@ function App() {
   }, /*#__PURE__*/React.createElement("div", {
     className: "badge-dot"
   }), /*#__PURE__*/React.createElement("span", null, "Cider: ", status.ciderConnected ? 'Conectado' : 'Desconectado')), /*#__PURE__*/React.createElement("div", {
-    className: `badge ${status.tiktokState === 'connected' ? 'active' : status.isConnecting ? 'pending' : 'inactive'}`
+    className: `badge ${status.tiktokState === 'connected' ? 'active' : status.isConnecting ? 'pending' : 'inactive'}`,
+    style: {
+      paddingRight: '6px'
+    }
   }, /*#__PURE__*/React.createElement("div", {
     className: "badge-dot"
-  }), /*#__PURE__*/React.createElement("span", null, "TikTok: ", status.isConnecting ? 'Conectando...' : status.tiktokState === 'connected' ? 'Conectado' : 'Inactivo')), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("span", null, "TikTok: ", status.isConnecting ? 'Conectando...' : status.tiktokState === 'connected' ? 'Conectado' : 'Inactivo'), /*#__PURE__*/React.createElement("button", {
+    onClick: handleToggleTikTok,
+    style: {
+      background: status.tiktokState === 'connected' || status.isConnecting ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+      border: `1px solid ${status.tiktokState === 'connected' || status.isConnecting ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`,
+      borderRadius: '12px',
+      color: status.tiktokState === 'connected' || status.isConnecting ? 'var(--error)' : 'var(--success)',
+      cursor: 'pointer',
+      padding: '3px 10px',
+      fontSize: '0.75rem',
+      fontWeight: '700',
+      marginLeft: '4px',
+      transition: 'all 0.2s ease',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '4px'
+    }
+  }, status.tiktokState === 'connected' ? 'Desconectar' : status.isConnecting ? 'Cancelar' : 'Conectar')), /*#__PURE__*/React.createElement("div", {
     className: `badge ${status.mockCiderActive ? 'active' : 'inactive'}`
   }, /*#__PURE__*/React.createElement("div", {
     className: "badge-dot"
@@ -1326,9 +1480,6 @@ function App() {
   }), /*#__PURE__*/React.createElement("span", null, "Cola Cider: ", status.queueLength, " canciones")))), /*#__PURE__*/React.createElement("div", {
     className: "tabs"
   }, /*#__PURE__*/React.createElement("button", {
-    className: `tab-btn ${activeTab === 'general' ? 'active' : ''}`,
-    onClick: () => setActiveTab('general')
-  }, renderIcon('sliders'), " General"), /*#__PURE__*/React.createElement("button", {
     className: `tab-btn ${activeTab === 'configuracion' ? 'active' : ''}`,
     onClick: () => setActiveTab('configuracion')
   }, renderIcon('settings'), " Configuraci\xF3n"), /*#__PURE__*/React.createElement("button", {
@@ -1337,13 +1488,36 @@ function App() {
   }, renderIcon('tv'), " \uD83D\uDCFA Overlays"), /*#__PURE__*/React.createElement("button", {
     className: `tab-btn ${activeTab === 'prueba' ? 'active' : ''}`,
     onClick: () => setActiveTab('prueba')
-  }, renderIcon('test-tube'), " \uD83E\uDDEA Pruebas")), activeTab === 'general' && /*#__PURE__*/React.createElement("div", {
-    className: "glass-card",
-    style: {
-      maxWidth: '750px',
-      margin: '0 auto'
-    }
+  }, renderIcon('test-tube'), " \uD83E\uDDEA Pruebas")), activeTab === 'configuracion' && /*#__PURE__*/React.createElement("div", {
+    className: "config-layout"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "config-sidebar"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: `config-menu-item ${activeConfigSub === 'commands' ? 'active' : ''}`,
+    onClick: () => setActiveConfigSub('commands')
+  }, /*#__PURE__*/React.createElement("span", null, renderIcon('user'), " Conexi\xF3n & Bot")), /*#__PURE__*/React.createElement("button", {
+    className: `config-menu-item ${activeConfigSub === 'permissions' ? 'active' : ''}`,
+    onClick: () => setActiveConfigSub('permissions')
+  }, /*#__PURE__*/React.createElement("span", null, renderIcon('shield'), " Permisos & VIP")), /*#__PURE__*/React.createElement("button", {
+    className: `config-menu-item ${activeConfigSub === 'likes' ? 'active' : ''}`,
+    onClick: () => setActiveConfigSub('likes')
+  }, /*#__PURE__*/React.createElement("span", null, renderIcon('heart'), " Econom\xEDa de Likes")), /*#__PURE__*/React.createElement("button", {
+    className: `config-menu-item ${activeConfigSub === 'system' ? 'active' : ''}`,
+    onClick: () => setActiveConfigSub('system')
+  }, /*#__PURE__*/React.createElement("span", null, renderIcon('power'), " Sistema & Servidor"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flexGrow: 1,
+      minWidth: 0
+    }
+  }, activeConfigSub === 'commands' && /*#__PURE__*/React.createElement("div", {
+    className: "glass-card"
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      marginBottom: '18px',
+      fontSize: '1.2rem',
+      fontWeight: '700'
+    }
+  }, "Acceso a TikTok"), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, renderIcon('user'), " Usuario de TikTok (Live)"), /*#__PURE__*/React.createElement("input", {
     type: "text",
@@ -1354,7 +1528,12 @@ function App() {
       tiktokUsername: e.target.value
     })
   })), /*#__PURE__*/React.createElement("div", {
-    className: "form-group"
+    className: "form-group",
+    style: {
+      marginTop: '20px',
+      paddingTop: '15px',
+      borderTop: '1px solid rgba(255,255,255,0.06)'
+    }
   }, /*#__PURE__*/React.createElement("label", null, renderIcon('key'), " Session ID (Opcional - Cookie para Evitar Error 521)"), /*#__PURE__*/React.createElement("input", {
     type: "text",
     placeholder: "Pegar cookie de sesi\xF3n si no conecta",
@@ -1374,73 +1553,17 @@ function App() {
       marginLeft: '5px',
       fontWeight: 'bold'
     }
-  }, "\xBFC\xF3mo obtenerlo?"))), /*#__PURE__*/React.createElement("div", {
+  }, "\xBFC\xF3mo obtenerlo?"))), /*#__PURE__*/React.createElement("h3", {
     style: {
-      marginTop: '25px',
-      paddingTop: '20px',
-      borderTop: '1px solid rgba(255,255,255,0.06)'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "toggle-row"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "toggle-label"
-  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDD12 Modo Estricto (Solo Donadores/VIP)"), /*#__PURE__*/React.createElement("small", null, "Si est\xE1 activo, solo usuarios VIP o donadores de monedas podr\xE1n pedir canciones.")), /*#__PURE__*/React.createElement("label", {
-    className: "switch"
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: config.requireVipForSr,
-    onChange: e => setConfig({
-      ...config,
-      requireVipForSr: e.target.checked
-    })
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "slider"
-  }))))), activeTab === 'configuracion' && /*#__PURE__*/React.createElement("div", {
-    className: "glass-card",
-    style: {
-      maxWidth: '750px',
-      margin: '0 auto'
-    }
-  }, /*#__PURE__*/React.createElement("h3", {
-    style: {
+      marginTop: '35px',
       marginBottom: '18px',
       fontSize: '1.2rem',
-      fontWeight: '700'
+      fontWeight: '700',
+      paddingTop: '20px',
+      borderTop: '1px solid rgba(255,255,255,0.1)'
     }
-  }, "Configuraci\xF3n Avanzada"), /*#__PURE__*/React.createElement("div", {
-    className: "toggle-row"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "toggle-label"
-  }, /*#__PURE__*/React.createElement("span", null, "Habilitar comando Puntos (!puntos)"), /*#__PURE__*/React.createElement("small", null, "Permite a los usuarios consultar sus puntos acumulados en el chat.")), /*#__PURE__*/React.createElement("label", {
-    className: "switch"
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: config.allowPointsCommand,
-    onChange: e => setConfig({
-      ...config,
-      allowPointsCommand: e.target.checked
-    })
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "slider"
-  }))), /*#__PURE__*/React.createElement("div", {
-    className: "form-group",
-    style: {
-      marginTop: '15px'
-    }
-  }, /*#__PURE__*/React.createElement("label", null, renderIcon('coins'), " Monedas m\xEDnimas para VIP de sesi\xF3n"), /*#__PURE__*/React.createElement("input", {
-    type: "number",
-    value: config.minCoinsForVip,
-    onChange: e => setConfig({
-      ...config,
-      minCoinsForVip: parseInt(e.target.value) || 0
-    })
-  }), /*#__PURE__*/React.createElement("small", null, "Cualquier regalo acumulado con este valor otorgar\xE1 permisos de Song Request VIP al usuario por todo el stream.")), /*#__PURE__*/React.createElement("div", {
-    className: "form-group",
-    style: {
-      marginTop: '20px',
-      paddingTop: '15px',
-      borderTop: '1px solid rgba(255,255,255,0.06)'
-    }
+  }, "Comandos & Comportamiento"), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, renderIcon('message-square'), " Comando de Pedido (Separados por coma)"), /*#__PURE__*/React.createElement("input", {
     type: "text",
     placeholder: "!sr, !pedir, !cancion",
@@ -1449,7 +1572,7 @@ function App() {
       ...config,
       commandAliases: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
     })
-  })), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("small", null, "Los comandos que usar\xE1n los espectadores en el chat (ej. !sr, !pedir).")), /*#__PURE__*/React.createElement("div", {
     className: "form-group",
     style: {
       marginTop: '20px',
@@ -1465,6 +1588,63 @@ function App() {
       ignoreExampleQuery: e.target.value
     })
   }), /*#__PURE__*/React.createElement("small", null, "Si alg\xFAn usuario escribe exactamente ", /*#__PURE__*/React.createElement("code", null, "!sr artista cancion"), ", el bot omitir\xE1 procesar el pedido.")), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      marginTop: '20px',
+      paddingTop: '15px',
+      borderTop: '1px solid rgba(255,255,255,0.06)'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "toggle-label"
+  }, /*#__PURE__*/React.createElement("span", null, "Habilitar comando Puntos (!puntos)"), /*#__PURE__*/React.createElement("small", null, "Permite a los usuarios consultar sus puntos acumulados en el chat de TikTok.")), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: config.allowPointsCommand,
+    onChange: e => setConfig({
+      ...config,
+      allowPointsCommand: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  })))), activeConfigSub === 'permissions' && /*#__PURE__*/React.createElement("div", {
+    className: "glass-card"
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      marginBottom: '18px',
+      fontSize: '1.2rem',
+      fontWeight: '700'
+    }
+  }, "Permisos & Acceso VIP"), /*#__PURE__*/React.createElement("div", {
+    className: "toggle-row",
+    style: {
+      marginBottom: '20px',
+      paddingBottom: '15px',
+      borderBottom: '1px solid rgba(255,255,255,0.06)'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "toggle-label"
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDD12 Modo Estricto (Solo Donadores/VIP)"), /*#__PURE__*/React.createElement("small", null, "Si est\xE1 activo, solo usuarios VIP o donadores de monedas podr\xE1n pedir canciones.")), /*#__PURE__*/React.createElement("label", {
+    className: "switch"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: config.requireVipForSr,
+    onChange: e => setConfig({
+      ...config,
+      requireVipForSr: e.target.checked
+    })
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "slider"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, renderIcon('coins'), " Monedas m\xEDnimas para VIP de sesi\xF3n"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: config.minCoinsForVip,
+    onChange: e => setConfig({
+      ...config,
+      minCoinsForVip: parseInt(e.target.value) || 0
+    })
+  }), /*#__PURE__*/React.createElement("small", null, "Cualquier regalo acumulado con este valor otorgar\xE1 permisos de Song Request VIP al usuario por todo el stream.")), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: '25px',
       paddingTop: '15px',
@@ -1472,16 +1652,16 @@ function App() {
     }
   }, /*#__PURE__*/React.createElement("h4", {
     style: {
-      marginBottom: '10px',
+      marginBottom: '15px',
       fontSize: '0.95rem',
       color: 'white',
       fontWeight: '700'
     }
-  }, "Excepciones de Permiso (Siempre permitidos)"), /*#__PURE__*/React.createElement("div", {
+  }, "Excepciones de Permiso (Siempre permitidos a pedir)"), /*#__PURE__*/React.createElement("div", {
     className: "toggle-row"
   }, /*#__PURE__*/React.createElement("div", {
     className: "toggle-label"
-  }, /*#__PURE__*/React.createElement("span", null, "Permitir Suscriptores")), /*#__PURE__*/React.createElement("label", {
+  }, /*#__PURE__*/React.createElement("span", null, "Permitir Suscriptores"), /*#__PURE__*/React.createElement("small", null, "Los suscriptores de pago siempre pueden pedir canciones.")), /*#__PURE__*/React.createElement("label", {
     className: "switch"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -1496,7 +1676,7 @@ function App() {
     className: "toggle-row"
   }, /*#__PURE__*/React.createElement("div", {
     className: "toggle-label"
-  }, /*#__PURE__*/React.createElement("span", null, "Permitir Moderadores")), /*#__PURE__*/React.createElement("label", {
+  }, /*#__PURE__*/React.createElement("span", null, "Permitir Moderadores"), /*#__PURE__*/React.createElement("small", null, "Tus moderadores del Live siempre pueden pedir canciones.")), /*#__PURE__*/React.createElement("label", {
     className: "switch"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -1511,7 +1691,7 @@ function App() {
     className: "toggle-row"
   }, /*#__PURE__*/React.createElement("div", {
     className: "toggle-label"
-  }, /*#__PURE__*/React.createElement("span", null, "Permitir Super Fans (Nivel > 0)")), /*#__PURE__*/React.createElement("label", {
+  }, /*#__PURE__*/React.createElement("span", null, "Permitir Super Fans (Nivel > 0)"), /*#__PURE__*/React.createElement("small", null, "Los espectadores con insignia de Fan activo pueden pedir.")), /*#__PURE__*/React.createElement("label", {
     className: "switch"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -1522,21 +1702,82 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
-  })))), /*#__PURE__*/React.createElement("div", {
-    className: "form-group",
+  }))))), activeConfigSub === 'likes' && /*#__PURE__*/React.createElement("div", {
+    className: "glass-card"
+  }, /*#__PURE__*/React.createElement("h3", {
     style: {
-      marginTop: '25px',
-      paddingTop: '20px',
-      borderTop: '1px solid rgba(255,255,255,0.06)'
+      marginBottom: '18px',
+      fontSize: '1.2rem',
+      fontWeight: '700'
     }
-  }, /*#__PURE__*/React.createElement("label", null, renderIcon('heart'), " Econom\xEDa de Likes \u2764\uFE0F (Likes para 1 Punto)"), /*#__PURE__*/React.createElement("input", {
+  }, "Econom\xEDa de Likes \u2764\uFE0F"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.88rem',
+      marginBottom: '20px'
+    }
+  }, "Recompensa a los usuarios que apoyan tu Live dando likes con puntos autom\xE1ticos para pedir canciones."), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, renderIcon('heart'), " Likes requeridos para ganar 1 Punto"), /*#__PURE__*/React.createElement("input", {
     type: "number",
     value: config.likesPerPoint,
     onChange: e => setConfig({
       ...config,
       likesPerPoint: parseInt(e.target.value) || 120
     })
-  }), /*#__PURE__*/React.createElement("small", null, "Si se define en 120 likes, enviar 600 likes otorgar\xE1 5 puntos de pedido al espectador."))), activeTab === 'overlays' && /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("small", null, "Si se define en 120 likes, enviar 600 likes otorgar\xE1 5 puntos de pedido al espectador."))), activeConfigSub === 'system' && /*#__PURE__*/React.createElement("div", {
+    className: "glass-card"
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      marginBottom: '18px',
+      fontSize: '1.2rem',
+      fontWeight: '700'
+    }
+  }, "Control del Servidor del Bot \uD83D\uDDA5\uFE0F"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.88rem',
+      marginBottom: '20px'
+    }
+  }, "Administraci\xF3n del sistema Node.js ejecut\xE1ndose localmente en tu PC."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '16px',
+      background: 'rgba(239, 68, 68, 0.05)',
+      border: '1px solid rgba(239, 68, 68, 0.15)',
+      borderRadius: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      color: 'var(--error)',
+      marginTop: 0,
+      marginBottom: '8px',
+      fontSize: '0.95rem',
+      fontWeight: '700'
+    }
+  }, "\u26A0\uFE0F Apagar Servidor"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.82rem',
+      marginBottom: '15px',
+      lineHeight: 1.4
+    }
+  }, "Detiene el programa por completo. Deber\xE1s volver a ejecutar el archivo de inicio (EJECUTAR_SILENCIOSO.vbs o INICIAR_BOT.bat) en tu PC de streaming para encenderlo de nuevo."), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: handleShutdownServer,
+    style: {
+      background: 'rgba(239, 68, 68, 0.15)',
+      border: '1px solid rgba(239, 68, 68, 0.3)',
+      color: 'var(--error)',
+      fontWeight: 'bold',
+      padding: '10px 18px',
+      cursor: 'pointer',
+      borderRadius: '6px',
+      transition: 'all 0.2s ease',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '6px'
+    }
+  }, renderIcon('power'), " Apagar Servidor del Bot"))))), activeTab === 'overlays' && /*#__PURE__*/React.createElement("div", {
     className: "overlays-layout"
   }, /*#__PURE__*/React.createElement("div", {
     className: "overlays-sidebar"
@@ -7091,7 +7332,7 @@ function App() {
     className: "btn btn-green",
     onClick: triggerShareEvent
   }, "\uD83E\uDDEA Simular Evento Share"))))), activeTab === 'prueba' && /*#__PURE__*/React.createElement("div", {
-    className: "grid-2"
+    className: "grid-3"
   }, /*#__PURE__*/React.createElement("div", {
     className: "glass-card"
   }, /*#__PURE__*/React.createElement("h3", {
@@ -7343,14 +7584,119 @@ function App() {
     onClick: () => handleMockCiderAction('clear')
   }, "\uD83E\uDDF9 Limpiar Cola")), /*#__PURE__*/React.createElement("div", {
     className: "result-box"
-  }, mockCider.resultText || 'Mock inactivo...'))), /*#__PURE__*/React.createElement("div", {
-    className: "floating-save-bar"
-  }, /*#__PURE__*/React.createElement("span", null, renderIcon('info', 16), "Ediciones pendientes del bot en vivo", /*#__PURE__*/React.createElement("span", {
+  }, mockCider.resultText || 'Mock inactivo...')), /*#__PURE__*/React.createElement("div", {
+    className: "glass-card"
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      marginBottom: '15px'
+    }
+  }, "\uD83C\uDF81 Simulador de Regalos (Timer & Alertas)"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.82rem',
+      marginBottom: '15px',
+      lineHeight: '1.4'
+    }
+  }, "Simula eventos de regalos en tu directo de TikTok para testear la extensi\xF3n de tiempo en el overlay del Timer y las Alertas Premium."), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Nombre Donador"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: giftTest.user,
+    onChange: e => setGiftTest({
+      ...giftTest,
+      user: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      marginTop: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Regalo de TikTok"), /*#__PURE__*/React.createElement("select", {
+    value: giftTest.giftName,
+    onChange: e => {
+      const gift = e.target.value;
+      let coins = 1;
+      if (gift === 'TikTok León') coins = 2999;else if (gift === 'Caja del Tesoro') coins = 1000;else if (gift === 'Confeti') coins = 100;else if (gift === 'TikTok Rose') coins = 1;
+      setGiftTest({
+        ...giftTest,
+        giftName: gift,
+        coins: coins
+      });
+    },
+    style: {
+      width: '100%',
+      background: 'rgba(0, 0, 0, 0.4)',
+      border: '1px solid var(--border-glass)',
+      color: 'white',
+      padding: '10px',
+      borderRadius: '8px',
+      outline: 'none',
+      fontFamily: 'inherit'
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "TikTok Rose"
+  }, "TikTok Rose (1 Moneda)"), /*#__PURE__*/React.createElement("option", {
+    value: "Confeti"
+  }, "Confeti (100 Monedas)"), /*#__PURE__*/React.createElement("option", {
+    value: "Caja del Tesoro"
+  }, "Caja del Tesoro (1000 Monedas)"), /*#__PURE__*/React.createElement("option", {
+    value: "TikTok Le\xF3n"
+  }, "TikTok Le\xF3n (2999 Monedas)"))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Monedas (Valor)"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: giftTest.coins,
+    onChange: e => setGiftTest({
+      ...giftTest,
+      coins: parseInt(e.target.value) || 1
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Segundos a Sumar (Opcional)"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    placeholder: `Por defecto (${config.secondsPerGift || 30}s)`,
+    value: giftTest.seconds,
+    onChange: e => setGiftTest({
+      ...giftTest,
+      seconds: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-green",
+    style: {
+      width: '100%',
+      marginTop: '20px'
+    },
+    onClick: handleSendGiftTest
+  }, "\uD83C\uDF81 Enviar Regalo de Prueba"), /*#__PURE__*/React.createElement("div", {
+    className: "result-box",
+    style: {
+      minHeight: '80px',
+      whiteSpace: 'pre-line'
+    }
+  }, giftTest.resultText || 'Esperando simulación...'))), /*#__PURE__*/React.createElement("div", {
+    className: `floating-save-bar ${showSaveBar ? 'show' : ''}`
+  }, isConfigDirty || Object.keys(dirtyKeys).length > 0 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, renderIcon('info', 16), "Ediciones pendientes del bot en vivo", /*#__PURE__*/React.createElement("span", {
     className: `save-badge ${saveStatus ? 'show' : ''}`
   }, saveStatus)), /*#__PURE__*/React.createElement("button", {
     className: "btn",
     onClick: handleSaveGlobalConfig
-  }, renderIcon('save'), " Guardar Cambios")));
+  }, renderIcon('save'), " Guardar Cambios")) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '8px',
+      fontSize: '0.95rem',
+      fontWeight: '600',
+      color: 'white'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, saveStatus))));
 }
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(/*#__PURE__*/React.createElement(App, null));

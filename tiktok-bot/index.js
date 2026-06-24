@@ -237,6 +237,7 @@ try {
 let TIKTOK_USERNAME = config.tiktokUsername;
 let tiktokLiveConnection;
 let isConnecting = false;
+let manualDisconnect = false;
 let ciderSocket;
 let tiktokWebsocketUpgradeEnabled = true;
 let tiktokConnectionOptions = null;
@@ -1000,6 +1001,101 @@ function startBot() {
         });
     });
 
+    app.post('/api/tiktok/session', async (req, res) => {
+        try {
+            const body = req.body || {};
+            if (!body.sessionId) {
+                return res.status(400).json({ ok: false, error: 'Falta sessionId' });
+            }
+            
+            config.sessionId = body.sessionId;
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+            console.log(`🔑 Session ID sincronizado automáticamente desde la extensión.`);
+            
+            // Si estaba conectado, reconectar para aplicar la nueva sesión
+            if (tiktokLiveConnection && tiktokLiveConnection.state === 'connected') {
+                console.log("🔄 Reiniciando conexión para usar la nueva sesión...");
+                try { tiktokLiveConnection.disconnect(); } catch (_) {}
+                isConnecting = false;
+                tiktokConnectionOptions = buildTikTokConnectionOptions();
+                tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
+                setupListeners();
+                connectToLive();
+            }
+            
+            res.json({ ok: true, message: 'Session ID guardado con éxito' });
+        } catch (err) {
+            console.error('Error al sincronizar session ID:', err);
+            res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
+    app.post('/api/tiktok/connect', async (req, res) => {
+        try {
+            manualDisconnect = false;
+            
+            const body = req.body || {};
+            let configChanged = false;
+            if (body.tiktokUsername && body.tiktokUsername !== config.tiktokUsername) {
+                config.tiktokUsername = body.tiktokUsername;
+                TIKTOK_USERNAME = body.tiktokUsername;
+                configChanged = true;
+            }
+            if (body.sessionId !== undefined && body.sessionId !== config.sessionId) {
+                config.sessionId = body.sessionId;
+                configChanged = true;
+            }
+            if (configChanged) {
+                fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+                console.log(`💾 Configuración de TikTok actualizada manualmente: Username = ${config.tiktokUsername}`);
+            }
+            
+            if (tiktokLiveConnection) {
+                try { tiktokLiveConnection.disconnect(); } catch (_) {}
+            }
+            
+            isConnecting = false;
+            tiktokConnectionOptions = buildTikTokConnectionOptions();
+            tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
+            setupListeners();
+            
+            connectToLive();
+            
+            res.json({ ok: true, message: 'Conectando...' });
+        } catch (err) {
+            console.error('Error al conectar manualmente:', err);
+            res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
+    app.post('/api/tiktok/disconnect', (req, res) => {
+        try {
+            manualDisconnect = true;
+            isConnecting = false;
+            if (tiktokLiveConnection) {
+                try { tiktokLiveConnection.disconnect(); } catch (_) {}
+            }
+            updateLiveStatus(false);
+            res.json({ ok: true, message: 'Desconectado manualmente.' });
+        } catch (err) {
+            console.error('Error al desconectar manualmente:', err);
+            res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
+    app.post('/api/server/shutdown', (req, res) => {
+        try {
+            res.json({ ok: true, message: 'Servidor apagándose...' });
+            console.log('🔌 Apagando el servidor por solicitud del usuario...');
+            setTimeout(() => {
+                process.exit(0);
+            }, 1000);
+        } catch (err) {
+            console.error('Error al apagar el servidor:', err);
+            res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
     app.get('/api/events', (req, res) => {
         const limit = Math.max(1, Math.min(100, Number(req.query.limit || 30) || 30));
         const out = recentSrEvents.slice(-limit).reverse();
@@ -1351,6 +1447,73 @@ function startBot() {
             }
             await saveTimerToFirestore();
             res.json({ success: true, timerState });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Endpoint para simular regalos de prueba que SÍ extienden el timer
+    app.post('/api/timer/test/gift', async (req, res) => {
+        try {
+            const { user = 'SimuladorGifter', giftName = 'TikTok Rose', coins = 1, seconds } = req.body || {};
+            const randomId = Math.floor(Math.random() * 70) + 1;
+            const avatarUrl = `https://i.pravatar.cc/100?img=${randomId}`;
+            const finalCoins = Number(coins) || 1;
+
+            // 1. Alert message template replacement
+            const docSnap = await getDocFn(docFn(db, 'systemConfig', 'overlayAlertsConfig'));
+            const overlayConfig = docSnap.exists() ? docSnap.data() : {};
+            const giftsMsg = overlayConfig.giftsAlertMsg || "¡Gracias por {repeatCount}x {giftName}! 🎁";
+            const customMsg = giftsMsg
+                .replace(/{user}/g, user)
+                .replace(/{giftname}/g, giftName)
+                .replace(/{giftName}/g, giftName)
+                .replace(/{repeatCount}/g, '1')
+                .replace(/{repeatcount}/g, '1')
+                .replace(/{coins}/g, finalCoins);
+
+            // 2. Add gift notification to firestore (Alert overlay triggers)
+            if (db) {
+                await addDoc(collectionFn(db, 'notifications'), {
+                    type: 'gift',
+                    user: user,
+                    uniqueId: user.toLowerCase(),
+                    profilePic: avatarUrl,
+                    giftName: giftName,
+                    coins: finalCoins,
+                    repeatCount: 1,
+                    message: customMsg,
+                    timestamp: serverTimestampFn()
+                });
+
+                // Simular puntos por donación (1 punto por cada 10 monedas)
+                const pointsFromGift = Math.floor(finalCoins / 10);
+                if (pointsFromGift > 0) {
+                    await addDoc(collectionFn(db, 'notifications'), {
+                        type: 'points_gift',
+                        user: user,
+                        points: pointsFromGift,
+                        message: `+${pointsFromGift} puntos por regalo`,
+                        timestamp: serverTimestampFn()
+                    });
+                }
+            }
+
+            // 3. Extend countdown timer
+            let extendedSec = 0;
+            if (timerState.state === 'running' && timerState.endsAt) {
+                extendedSec = Number(seconds) || Number(timerState.secondsPerGift) || 30;
+                timerState.endsAt += extendedSec * 1000;
+                await saveTimerToFirestore();
+                console.log(`⏱️ [SIMULACIÓN] Timer extendido +${extendedSec}s por regalo de ${user}`);
+            }
+
+            res.json({ 
+                success: true, 
+                extended: extendedSec > 0, 
+                extendedSeconds: extendedSec, 
+                endsAt: timerState.endsAt 
+            });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
@@ -1850,8 +2013,12 @@ function setupListeners() {
         resetLikeTracking({ resetSession: false, resetTopLiker: false });
         stopLiveHeartbeat();
         updateLiveStatus(false); // Actualizar estado a OFFLINE
-        console.log('🔄 Volviendo a buscar Live...');
-        setTimeout(connectToLive, 10000); 
+        if (!manualDisconnect) {
+            console.log('🔄 Volviendo a buscar Live...');
+            setTimeout(connectToLive, 10000); 
+        } else {
+            console.log('⏹️ Desconexión manual activa. No se reintentará conexión.');
+        }
     });
     
     // Ocultado intencionalmente para no ensuciar la consola
@@ -2270,41 +2437,46 @@ function setupListeners() {
     });
 
 
-    // --- MANEJO DE LIKES (NUEVO) ---
+    // ─── MANEJO DE LIKES ───────────────────────────────────────────────────────
+    // PROTO CONFIRMADO: likeCount = tamaño del batch (delta ya listo para sumar)
+    //                   totalLikeCount = acumulativo global del stream
+    // TikFinity suma likeCount directamente por usuario, igual que hacemos aquí.
     tiktokLiveConnection.on('like', (data) => {
         const uniqueId = String(data && data.uniqueId || '').trim();
         const nickname = String(data && data.nickname || uniqueId || 'Usuario').trim();
         const rawLikeCount = Number(data && data.likeCount);
         const safeLikeCount = Number.isFinite(rawLikeCount) ? Math.floor(rawLikeCount) : 0;
-        
-        if (!uniqueId || safeLikeCount <= 0) {
-            return;
-        }
-        
-        // En tiktok-live-connector, likeCount ya es el delta (los likes enviados en este evento)
-        const delta = safeLikeCount;
 
-        if (delta <= 0) {
-            return;
+        // ⚡ TOTAL LIKE COUNT GLOBAL: contador más confiable del stream
+        const rawTotal = Number(data && data.totalLikeCount);
+        if (Number.isFinite(rawTotal) && rawTotal > lastKnownTotalLikeCount) {
+            lastKnownTotalLikeCount = rawTotal;
+            streamTotalLikesCounter = rawTotal; // totalLikeCount ya ES el acumulado real
         }
+
+        // Si TikTok no manda usuario o el batch es 0, ignorar
+        if (!uniqueId || safeLikeCount <= 0) return;
+
+        // likeCount = likes en este batch específico → sumar directo
+        const delta = safeLikeCount;
 
         // Marcar presencia activa en el live
         markUserPresent(uniqueId);
 
-        // Acumular likes en buffer para no saturar Firestore
-        const current = likeBuffer.get(uniqueId) || { 
-            userId: uniqueId, 
-            displayName: nickname, 
-            likes: 0 
+        // Acumular likes en buffer para Firestore (se guarda cada 5 segundos)
+        const current = likeBuffer.get(uniqueId) || {
+            userId: uniqueId,
+            displayName: nickname,
+            likes: 0
         };
         current.displayName = nickname || current.displayName || uniqueId;
-        current.likes += delta; // Sumar SOLO la diferencia real
+        current.likes += delta;
         likeBuffer.set(uniqueId, current);
-        
-        // Actualizar Top Liker de sesión (memoria)
+
+        // Actualizar total de sesión en memoria
         const sessionTotal = (sessionLikes.get(uniqueId) || 0) + delta;
         sessionLikes.set(uniqueId, sessionTotal);
-        
+
         sessionLikerDetails.set(uniqueId, {
             username: uniqueId,
             nickname: nickname || uniqueId,
@@ -2312,11 +2484,9 @@ function setupListeners() {
             lastActive: Date.now()
         });
 
-        if (delta >= 200) {
-            console.log(`❤️ Evento de likes grande detectado: @${nickname} +${delta} likes (sesión usuario: ${sessionTotal})`);
-        }
-        
-        // Solo actualizar si supera al actual líder
+        console.log(`❤️ @${nickname} +${delta} likes → sesión: ${sessionTotal} | stream total: ${streamTotalLikesCounter}`);
+
+        // Actualizar top liker si corresponde
         if (sessionTotal > currentTopLiker.count) {
             currentTopLiker = { name: nickname, count: sessionTotal };
             updateGlobalTopLiker(nickname, sessionTotal);
@@ -2430,13 +2600,18 @@ const likeBuffer = new Map();
 // Tracking de sesión para Top Liker
 const sessionLikes = new Map();
 const sessionLikerDetails = new Map();
-// Tracking del último contador enviado por TikTok (para Delta Tracking)
-const lastLikeCountMap = new Map();
+// ⚡ CLAVE: likeCount en WebcastLikeMessage es ACUMULATIVO por usuario en la sesión.
+// Hay que guardar el último valor visto por usuario para calcular el delta real.
+// Así es exactamente como lo hace TikFinity.
+const lastLikeCountMap = new Map(); // uid -> último likeCount acumulado reportado por TikTok
 const lastLikeTimeMap = new Map();
 // Tracking de hitos de alerta ya disparados (uid -> último hito alertado)
 const lastLikeAlertMilestone = new Map();
 let currentTopLiker = { name: 'N/D', count: 0 };
 let activeLiveRoomId = null;
+// ⚡ TOTAL LIKE COUNT GLOBAL: contador real del stream (vía totalLikeCount)
+let lastKnownTotalLikeCount = 0;
+let streamTotalLikesCounter = 0;
 
 // ─── PRESENCIA EN EL LIVE ─────────────────────────────────────────────────────
 // Mapa de uid -> timestamp de la última vez que TikTok envió actividad del usuario
@@ -2537,6 +2712,10 @@ function resetLikeTracking(options = {}) {
         if (isNewRoom) {
             try { lastLikeCountMap.clear(); } catch (_) {}
             try { lastLikeTimeMap.clear(); } catch (_) {}
+            // ⚡ Resetear contadores de totalLikeCount al iniciar nuevo live
+            lastKnownTotalLikeCount = 0;
+            streamTotalLikesCounter = 0;
+            console.log('🔄 Contadores de likes globales reseteados para nuevo live.');
         }
     }
     if (resetTopLiker) {
@@ -2709,9 +2888,10 @@ async function recalculateLikerRanks() {
 
         await setDoc(doc(db, 'globalStats', 'topLikers'), {
             list: list,
+            streamTotalLikes: streamTotalLikesCounter, // ⚡ total real del stream (incluyendo likes sin uniqueId)
             lastUpdate: serverTimestamp()
         }, { merge: true });
-        console.log(`💾 Top Likers actualizados en Firestore (${list.length} en live).`);
+        console.log(`💾 Top Likers actualizados en Firestore (${list.length} en live). Total stream: ${streamTotalLikesCounter} likes.`);
     } catch (e) {
         console.error('❌ Error al guardar Top Likers en Firestore:', e);
     }
@@ -2791,6 +2971,10 @@ async function recalculateDonorRanks() {
 
 // Conectar al Live
 async function connectToLive() {
+    if (manualDisconnect) {
+        console.log('⏹️ Conexión abortada: Desconexión manual activa.');
+        return;
+    }
     if (isConnecting) return;
     isConnecting = true;
 
@@ -2818,15 +3002,19 @@ async function connectToLive() {
                 console.error('❌ Error al conectar:', msg);
             }
 
-            // Reintentar siempre con parámetros limpios tras 10 segundos
-            console.log('🔄 Reintentando en 10 segundos...');
-            setTimeout(() => {
-                tiktokConnectionOptions = buildTikTokConnectionOptions();
-                try { if (tiktokLiveConnection) tiktokLiveConnection.disconnect(); } catch (_) {}
-                tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
-                setupListeners();
-                connectToLive();
-            }, 10000);
+            if (!manualDisconnect) {
+                console.log('🔄 Reintentando en 10 segundos...');
+                setTimeout(() => {
+                    if (manualDisconnect) return;
+                    tiktokConnectionOptions = buildTikTokConnectionOptions();
+                    try { if (tiktokLiveConnection) tiktokLiveConnection.disconnect(); } catch (_) {}
+                    tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
+                    setupListeners();
+                    connectToLive();
+                }, 10000);
+            } else {
+                console.log('⏹️ Desconexión manual activa. No se reintentará conexión.');
+            }
         });
 }
 

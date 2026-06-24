@@ -596,6 +596,64 @@
             min-height: 60px;
         }
 
+        /* Config Sidebar Layout */
+        .config-layout {
+            display: flex;
+            gap: 24px;
+            margin-top: 10px;
+            align-items: flex-start;
+            width: 100%;
+        }
+
+        .config-sidebar {
+            width: 250px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .config-menu-item {
+            appearance: none;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-glass);
+            color: var(--text-secondary);
+            padding: 14px 18px;
+            border-radius: 12px;
+            text-align: left;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.2s ease-in-out;
+            outline: none;
+            width: 100%;
+        }
+
+        .config-menu-item:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.15);
+            transform: translateX(4px);
+        }
+
+        .config-menu-item.active {
+            color: white;
+            background: rgba(6, 182, 212, 0.1);
+            border-color: #06b6d4;
+            box-shadow: 0 4px 15px rgba(6, 182, 212, 0.15), inset 0 1px 0 rgba(255,255,255,0.05);
+            font-weight: 700;
+        }
+
+        .config-menu-item span {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
         /* Overlays Sidebar Layout */
         .overlays-layout {
             display: flex;
@@ -730,7 +788,7 @@
             position: fixed;
             bottom: 20px;
             left: 50%;
-            transform: translateX(-50%);
+            transform: translate(-50%, 100px);
             width: calc(100% - 40px);
             max-width: 800px;
             background: rgba(13, 13, 20, 0.75);
@@ -744,12 +802,15 @@
             align-items: center;
             box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
             z-index: 999;
-            animation: floatUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            opacity: 0;
+            pointer-events: none;
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
         }
 
-        @keyframes floatUp {
-            from { transform: translate(-50%, 80px); opacity: 0; }
-            to { transform: translate(-50%, 0); opacity: 1; }
+        .floating-save-bar.show {
+            transform: translate(-50%, 0);
+            opacity: 1;
+            pointer-events: auto;
         }
 
         .floating-save-bar span {
@@ -815,8 +876,9 @@
         }
 
         function App() {
-            const [activeTab, setActiveTab] = React.useState('general');
+            const [activeTab, setActiveTab] = React.useState('configuracion');
             const [activeSub, setActiveSub] = React.useState('player');
+            const [activeConfigSub, setActiveConfigSub] = React.useState('commands');
             const [saveStatus, setSaveStatus] = React.useState('');
             
             // System Configurations
@@ -834,6 +896,7 @@
                 ignoreExampleQuery: 'artista cancion',
                 commandAliases: []
             });
+            const [initialConfig, setInitialConfig] = React.useState(null);
 
             // Overlays Alert / Visual Configurations
             const [overlays, _setOverlays] = React.useState({
@@ -1175,6 +1238,15 @@
                 resultText: ''
             });
 
+            // Gift simulation state values
+            const [giftTest, setGiftTest] = React.useState({
+                user: 'DonadorPremium',
+                giftName: 'TikTok Rose',
+                coins: 10,
+                seconds: '',
+                resultText: ''
+            });
+
             const [currentOrigin, setCurrentOrigin] = React.useState('http://localhost:3000');
 
             // MODAL STATES FOR PERSONALIZATION OVERLAYS
@@ -1408,11 +1480,15 @@
                 fetch('/api/config')
                     .then(r => r.json())
                     .then(data => {
-                        setConfig(prev => ({
-                            ...prev,
-                            ...data,
-                            commandAliases: data.commandAliases || ["!sr", "!pedir", "!cancion"]
-                        }));
+                        setConfig(prev => {
+                            const next = {
+                                ...prev,
+                                ...data,
+                                commandAliases: data.commandAliases || ["!sr", "!pedir", "!cancion"]
+                            };
+                            setInitialConfig(next);
+                            return next;
+                        });
                     }).catch(() => {});
 
                 fetch('/api/overlays/config')
@@ -1638,8 +1714,61 @@
                     } else {
                         triggerSaveBadge('💾 Guardado en navegador (Offline)');
                     }
+                    setInitialConfig(config);
                 } catch (e) {
                     triggerSaveBadge('💾 ¡Guardado en navegador (Offline)!');
+                    setInitialConfig(config);
+                }
+            };
+
+            const handleToggleTikTok = async () => {
+                const isConnectedOrConnecting = status.tiktokState === 'connected' || status.isConnecting;
+                if (isConnectedOrConnecting) {
+                    try {
+                        const res = await fetch('/api/tiktok/disconnect', { method: 'POST' });
+                        const d = await res.json();
+                        if (d.ok) {
+                            setStatus(prev => ({ ...prev, tiktokState: 'disconnected', isConnecting: false }));
+                        }
+                    } catch (e) {
+                        console.error("Error al desconectar:", e);
+                    }
+                } else {
+                    try {
+                        setStatus(prev => ({ ...prev, isConnecting: true }));
+                        const res = await fetch('/api/tiktok/connect', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                tiktokUsername: config.tiktokUsername,
+                                sessionId: config.sessionId
+                            })
+                        });
+                        const d = await res.json();
+                        if (!d.ok) {
+                            setStatus(prev => ({ ...prev, isConnecting: false }));
+                            alert('Error al conectar: ' + d.error);
+                        }
+                    } catch (e) {
+                        setStatus(prev => ({ ...prev, isConnecting: false }));
+                        console.error("Error al conectar:", e);
+                    }
+                }
+            };
+
+            const handleShutdownServer = async () => {
+                if (confirm('¿Estás seguro de que quieres apagar el servidor del bot por completo?\n\nLa página dejará de funcionar y tendrás que iniciarlo manualmente desde tu PC para volver a entrar.')) {
+                    try {
+                        const res = await fetch('/api/server/shutdown', { method: 'POST' });
+                        const d = await res.json();
+                        if (d.ok) {
+                            alert('El servidor se está apagando. Esta pestaña ya no responderá.');
+                            window.location.reload();
+                        }
+                    } catch (e) {
+                        alert('El servidor se ha apagado con éxito.');
+                        window.location.reload();
+                    }
                 }
             };
 
@@ -1960,6 +2089,37 @@
                 }
             };
 
+            const handleSendGiftTest = async () => {
+                setGiftTest(prev => ({ ...prev, resultText: 'Enviando regalo de prueba...' }));
+                try {
+                    const res = await fetch('/api/timer/test/gift', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            user: giftTest.user,
+                            giftName: giftTest.giftName,
+                            coins: parseInt(giftTest.coins) || 1,
+                            seconds: giftTest.seconds ? parseInt(giftTest.seconds) : undefined
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        let msg = `✅ ¡Regalo de prueba enviado!\n`;
+                        if (data.extended) {
+                            msg += `Timer extendido con éxito +${data.extendedSeconds}s.`;
+                        } else {
+                            msg += `Alerta enviada. (El timer no se extendió porque no está iniciado/corriendo).`;
+                        }
+                        setGiftTest(prev => ({ ...prev, resultText: msg }));
+                        triggerSaveBadge('🎁 Regalo simulado');
+                    } else {
+                        setGiftTest(prev => ({ ...prev, resultText: `Error: ${data.error || 'Desconocido'}` }));
+                    }
+                } catch (e) {
+                    setGiftTest(prev => ({ ...prev, resultText: `Error: ${e.message}` }));
+                }
+            };
+
             // Lucide Icon parser helper for react
             const renderIcon = (name, size = 18, color = "currentColor") => {
                 return <i data-lucide={name} style={{ width: size, height: size, display: 'inline-block', verticalAlign: 'middle' }}></i>;
@@ -1970,6 +2130,13 @@
                     window.lucide.createIcons();
                 }
             });
+
+            const isConfigDirty = React.useMemo(() => {
+                if (!initialConfig) return false;
+                return JSON.stringify(config) !== JSON.stringify(initialConfig);
+            }, [config, initialConfig]);
+
+            const showSaveBar = isConfigDirty || Object.keys(dirtyKeys).length > 0 || !!saveStatus;
 
             return (
                 <div className="container">
@@ -1983,9 +2150,29 @@
                                 <div className="badge-dot"></div>
                                 <span>Cider: {status.ciderConnected ? 'Conectado' : 'Desconectado'}</span>
                             </div>
-                            <div className={`badge ${status.tiktokState === 'connected' ? 'active' : status.isConnecting ? 'pending' : 'inactive'}`}>
+                            <div className={`badge ${status.tiktokState === 'connected' ? 'active' : status.isConnecting ? 'pending' : 'inactive'}`} style={{ paddingRight: '6px' }}>
                                 <div className="badge-dot"></div>
                                 <span>TikTok: {status.isConnecting ? 'Conectando...' : status.tiktokState === 'connected' ? 'Conectado' : 'Inactivo'}</span>
+                                <button 
+                                    onClick={handleToggleTikTok}
+                                    style={{
+                                        background: status.tiktokState === 'connected' || status.isConnecting ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                                        border: `1px solid ${status.tiktokState === 'connected' || status.isConnecting ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`,
+                                        borderRadius: '12px',
+                                        color: status.tiktokState === 'connected' || status.isConnecting ? 'var(--error)' : 'var(--success)',
+                                        cursor: 'pointer',
+                                        padding: '3px 10px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: '700',
+                                        marginLeft: '4px',
+                                        transition: 'all 0.2s ease',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    {status.tiktokState === 'connected' ? 'Desconectar' : status.isConnecting ? 'Cancelar' : 'Conectar'}
+                                </button>
                             </div>
                             <div className={`badge ${status.mockCiderActive ? 'active' : 'inactive'}`}>
                                 <div className="badge-dot"></div>
@@ -2000,9 +2187,6 @@
 
                     {/* Navigation Tab links */}
                     <div className="tabs">
-                        <button className={`tab-btn ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>
-                            {renderIcon('sliders')} General
-                        </button>
                         <button className={`tab-btn ${activeTab === 'configuracion' ? 'active' : ''}`} onClick={() => setActiveTab('configuracion')}>
                             {renderIcon('settings')} Configuración
                         </button>
@@ -2014,150 +2198,237 @@
                         </button>
                     </div>
 
-                    {/* TAB PANEL 1: GENERAL */}
-                    {activeTab === 'general' && (
-                        <div className="glass-card" style={{ maxWidth: '750px', margin: '0 auto' }}>
-                            <div className="form-group">
-                                <label>{renderIcon('user')} Usuario de TikTok (Live)</label>
-                                <input 
-                                    type="text" 
-                                    placeholder="@usuario" 
-                                    value={config.tiktokUsername} 
-                                    onChange={(e) => setConfig({ ...config, tiktokUsername: e.target.value })}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label>{renderIcon('key')} Session ID (Opcional - Cookie para Evitar Error 521)</label>
-                                <input 
-                                    type="text" 
-                                    placeholder="Pegar cookie de sesión si no conecta" 
-                                    value={config.sessionId} 
-                                    onChange={(e) => setConfig({ ...config, sessionId: e.target.value })}
-                                />
-                                <small>
-                                    Si el bot no conecta o da error, necesitas tu Session ID. 
-                                    <a href="#" onClick={(e) => {
-                                        e.preventDefault();
-                                        alert('1. Abre TikTok en tu navegador.\n2. Inicia sesión.\n3. Abre Herramientas de Desarrollador (F12) -> Application -> Cookies.\n4. Busca la cookie llamada `sessionid`.\n5. Copia su valor y pégalo aquí.');
-                                    }} style={{ color: '#ff0050', marginLeft: '5px', fontWeight: 'bold' }}>¿Cómo obtenerlo?</a>
-                                </small>
-                            </div>
-
-                            <div style={{ marginTop: '25px', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                                <div className="toggle-row">
-                                    <div className="toggle-label">
-                                        <span>🔒 Modo Estricto (Solo Donadores/VIP)</span>
-                                        <small>Si está activo, solo usuarios VIP o donadores de monedas podrán pedir canciones.</small>
-                                    </div>
-                                    <label className="switch">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={config.requireVipForSr} 
-                                            onChange={(e) => setConfig({ ...config, requireVipForSr: e.target.checked })}
-                                        />
-                                        <span className="slider"></span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
                     {/* TAB PANEL 2: ADVANCED CONFIG */}
                     {activeTab === 'configuracion' && (
-                        <div className="glass-card" style={{ maxWidth: '750px', margin: '0 auto' }}>
-                            <h3 style={{ marginBottom: '18px', fontSize: '1.2rem', fontWeight: '700' }}>Configuración Avanzada</h3>
-                            
-                            <div className="toggle-row">
-                                <div className="toggle-label">
-                                    <span>Habilitar comando Puntos (!puntos)</span>
-                                    <small>Permite a los usuarios consultar sus puntos acumulados en el chat.</small>
-                                </div>
-                                <label className="switch">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={config.allowPointsCommand} 
-                                        onChange={(e) => setConfig({ ...config, allowPointsCommand: e.target.checked })}
-                                    />
-                                    <span className="slider"></span>
-                                </label>
+                        <div className="config-layout">
+                            {/* Left Configuration subpanels sidebar selectors */}
+                            <div className="config-sidebar">
+                                <button className={`config-menu-item ${activeConfigSub === 'commands' ? 'active' : ''}`} onClick={() => setActiveConfigSub('commands')}>
+                                    <span>{renderIcon('user')} Conexión & Bot</span>
+                                </button>
+                                <button className={`config-menu-item ${activeConfigSub === 'permissions' ? 'active' : ''}`} onClick={() => setActiveConfigSub('permissions')}>
+                                    <span>{renderIcon('shield')} Permisos & VIP</span>
+                                </button>
+                                <button className={`config-menu-item ${activeConfigSub === 'likes' ? 'active' : ''}`} onClick={() => setActiveConfigSub('likes')}>
+                                    <span>{renderIcon('heart')} Economía de Likes</span>
+                                </button>
+                                <button className={`config-menu-item ${activeConfigSub === 'system' ? 'active' : ''}`} onClick={() => setActiveConfigSub('system')}>
+                                    <span>{renderIcon('power')} Sistema & Servidor</span>
+                                </button>
                             </div>
 
-                            <div className="form-group" style={{ marginTop: '15px' }}>
-                                <label>{renderIcon('coins')} Monedas mínimas para VIP de sesión</label>
-                                <input 
-                                    type="number" 
-                                    value={config.minCoinsForVip} 
-                                    onChange={(e) => setConfig({ ...config, minCoinsForVip: parseInt(e.target.value) || 0 })}
-                                />
-                                <small>Cualquier regalo acumulado con este valor otorgará permisos de Song Request VIP al usuario por todo el stream.</small>
-                            </div>
+                            {/* Right subpanels details configurations */}
+                            <div style={{ flexGrow: 1, minWidth: 0 }}>
+                                
+                                {/* SUBPANEL 1: COMANDOS & BOT */}
+                                {activeConfigSub === 'commands' && (
+                                    <div className="glass-card">
+                                        <h3 style={{ marginBottom: '18px', fontSize: '1.2rem', fontWeight: '700' }}>Acceso a TikTok</h3>
+                                        
+                                        <div className="form-group">
+                                            <label>{renderIcon('user')} Usuario de TikTok (Live)</label>
+                                            <input 
+                                                type="text" 
+                                                placeholder="@usuario" 
+                                                value={config.tiktokUsername} 
+                                                onChange={(e) => setConfig({ ...config, tiktokUsername: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="form-group" style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <label>{renderIcon('key')} Session ID (Opcional - Cookie para Evitar Error 521)</label>
+                                            <input 
+                                                type="text" 
+                                                placeholder="Pegar cookie de sesión si no conecta" 
+                                                value={config.sessionId} 
+                                                onChange={(e) => setConfig({ ...config, sessionId: e.target.value })}
+                                            />
+                                            <small>
+                                                Si el bot no conecta o da error, necesitas tu Session ID. 
+                                                <a href="#" onClick={(e) => {
+                                                    e.preventDefault();
+                                                    alert('1. Abre TikTok en tu navegador.\n2. Inicia sesión.\n3. Abre Herramientas de Desarrollador (F12) -> Application -> Cookies.\n4. Busca la cookie llamada `sessionid`.\n5. Copia su valor y pégalo aquí.');
+                                                }} style={{ color: '#ff0050', marginLeft: '5px', fontWeight: 'bold' }}>¿Cómo obtenerlo?</a>
+                                            </small>
+                                        </div>
 
-                            <div className="form-group" style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                                <label>{renderIcon('message-square')} Comando de Pedido (Separados por coma)</label>
-                                <input 
-                                    type="text" 
-                                    placeholder="!sr, !pedir, !cancion" 
-                                    value={config.commandAliases.join(', ')} 
-                                    onChange={(e) => setConfig({ ...config, commandAliases: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                                />
-                            </div>
+                                        <h3 style={{ marginTop: '35px', marginBottom: '18px', fontSize: '1.2rem', fontWeight: '700', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>Comandos & Comportamiento</h3>
+                                        
+                                        <div className="form-group">
+                                            <label>{renderIcon('message-square')} Comando de Pedido (Separados por coma)</label>
+                                            <input 
+                                                type="text" 
+                                                placeholder="!sr, !pedir, !cancion" 
+                                                value={config.commandAliases.join(', ')} 
+                                                onChange={(e) => setConfig({ ...config, commandAliases: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                                            />
+                                            <small>Los comandos que usarán los espectadores en el chat (ej. !sr, !pedir).</small>
+                                        </div>
 
-                            <div className="form-group" style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                                <label>{renderIcon('eye-off')} Ejemplo a Ignorar en Búsqueda</label>
-                                <input 
-                                    type="text" 
-                                    placeholder="artista cancion" 
-                                    value={config.ignoreExampleQuery} 
-                                    onChange={(e) => setConfig({ ...config, ignoreExampleQuery: e.target.value })}
-                                />
-                                <small>Si algún usuario escribe exactamente <code>!sr artista cancion</code>, el bot omitirá procesar el pedido.</small>
-                            </div>
+                                        <div className="form-group" style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <label>{renderIcon('eye-off')} Ejemplo a Ignorar en Búsqueda</label>
+                                            <input 
+                                                type="text" 
+                                                placeholder="artista cancion" 
+                                                value={config.ignoreExampleQuery} 
+                                                onChange={(e) => setConfig({ ...config, ignoreExampleQuery: e.target.value })}
+                                            />
+                                            <small>Si algún usuario escribe exactamente <code>!sr artista cancion</code>, el bot omitirá procesar el pedido.</small>
+                                        </div>
 
-                            <div style={{ marginTop: '25px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                                <h4 style={{ marginBottom: '10px', fontSize: '0.95rem', color: 'white', fontWeight: '700' }}>Excepciones de Permiso (Siempre permitidos)</h4>
-                                <div className="toggle-row">
-                                    <div className="toggle-label"><span>Permitir Suscriptores</span></div>
-                                    <label className="switch">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={config.allowSubscribers} 
-                                            onChange={(e) => setConfig({ ...config, allowSubscribers: e.target.checked })}
-                                        />
-                                        <span className="slider"></span>
-                                    </label>
-                                </div>
-                                <div className="toggle-row">
-                                    <div className="toggle-label"><span>Permitir Moderadores</span></div>
-                                    <label className="switch">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={config.allowModerators} 
-                                            onChange={(e) => setConfig({ ...config, allowModerators: e.target.checked })}
-                                        />
-                                        <span className="slider"></span>
-                                    </label>
-                                </div>
-                                <div className="toggle-row">
-                                    <div className="toggle-label"><span>Permitir Super Fans (Nivel > 0)</span></div>
-                                    <label className="switch">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={config.allowSuperFans} 
-                                            onChange={(e) => setConfig({ ...config, allowSuperFans: e.target.checked })}
-                                        />
-                                        <span className="slider"></span>
-                                    </label>
-                                </div>
-                            </div>
+                                        <div className="toggle-row" style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <div className="toggle-label">
+                                                <span>Habilitar comando Puntos (!puntos)</span>
+                                                <small>Permite a los usuarios consultar sus puntos acumulados en el chat de TikTok.</small>
+                                            </div>
+                                            <label className="switch">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={config.allowPointsCommand} 
+                                                    onChange={(e) => setConfig({ ...config, allowPointsCommand: e.target.checked })}
+                                                />
+                                                <span className="slider"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
 
-                            <div className="form-group" style={{ marginTop: '25px', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                                <label>{renderIcon('heart')} Economía de Likes ❤️ (Likes para 1 Punto)</label>
-                                <input 
-                                    type="number" 
-                                    value={config.likesPerPoint} 
-                                    onChange={(e) => setConfig({ ...config, likesPerPoint: parseInt(e.target.value) || 120 })}
-                                />
-                                <small>Si se define en 120 likes, enviar 600 likes otorgará 5 puntos de pedido al espectador.</small>
+                                {/* SUBPANEL 2: PERMISOS & VIP */}
+                                {activeConfigSub === 'permissions' && (
+                                    <div className="glass-card">
+                                        <h3 style={{ marginBottom: '18px', fontSize: '1.2rem', fontWeight: '700' }}>Permisos & Acceso VIP</h3>
+                                        
+                                        <div className="toggle-row" style={{ marginBottom: '20px', paddingBottom: '15px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <div className="toggle-label">
+                                                <span>🔒 Modo Estricto (Solo Donadores/VIP)</span>
+                                                <small>Si está activo, solo usuarios VIP o donadores de monedas podrán pedir canciones.</small>
+                                            </div>
+                                            <label className="switch">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={config.requireVipForSr} 
+                                                    onChange={(e) => setConfig({ ...config, requireVipForSr: e.target.checked })}
+                                                />
+                                                <span className="slider"></span>
+                                            </label>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label>{renderIcon('coins')} Monedas mínimas para VIP de sesión</label>
+                                            <input 
+                                                type="number" 
+                                                value={config.minCoinsForVip} 
+                                                onChange={(e) => setConfig({ ...config, minCoinsForVip: parseInt(e.target.value) || 0 })}
+                                            />
+                                            <small>Cualquier regalo acumulado con este valor otorgará permisos de Song Request VIP al usuario por todo el stream.</small>
+                                        </div>
+
+                                        <div style={{ marginTop: '25px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <h4 style={{ marginBottom: '15px', fontSize: '0.95rem', color: 'white', fontWeight: '700' }}>Excepciones de Permiso (Siempre permitidos a pedir)</h4>
+                                            
+                                            <div className="toggle-row">
+                                                <div className="toggle-label">
+                                                    <span>Permitir Suscriptores</span>
+                                                    <small>Los suscriptores de pago siempre pueden pedir canciones.</small>
+                                                </div>
+                                                <label className="switch">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={config.allowSubscribers} 
+                                                        onChange={(e) => setConfig({ ...config, allowSubscribers: e.target.checked })}
+                                                    />
+                                                    <span className="slider"></span>
+                                                </label>
+                                            </div>
+                                            
+                                            <div className="toggle-row">
+                                                <div className="toggle-label">
+                                                    <span>Permitir Moderadores</span>
+                                                    <small>Tus moderadores del Live siempre pueden pedir canciones.</small>
+                                                </div>
+                                                <label className="switch">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={config.allowModerators} 
+                                                        onChange={(e) => setConfig({ ...config, allowModerators: e.target.checked })}
+                                                    />
+                                                    <span className="slider"></span>
+                                                </label>
+                                            </div>
+                                            
+                                            <div className="toggle-row">
+                                                <div className="toggle-label">
+                                                    <span>Permitir Super Fans (Nivel > 0)</span>
+                                                    <small>Los espectadores con insignia de Fan activo pueden pedir.</small>
+                                                </div>
+                                                <label className="switch">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={config.allowSuperFans} 
+                                                        onChange={(e) => setConfig({ ...config, allowSuperFans: e.target.checked })}
+                                                    />
+                                                    <span className="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* SUBPANEL 3: ECONOMÍA DE LIKES */}
+                                {activeConfigSub === 'likes' && (
+                                    <div className="glass-card">
+                                        <h3 style={{ marginBottom: '18px', fontSize: '1.2rem', fontWeight: '700' }}>Economía de Likes ❤️</h3>
+                                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '20px' }}>
+                                            Recompensa a los usuarios que apoyan tu Live dando likes con puntos automáticos para pedir canciones.
+                                        </p>
+                                        
+                                        <div className="form-group">
+                                            <label>{renderIcon('heart')} Likes requeridos para ganar 1 Punto</label>
+                                            <input 
+                                                type="number" 
+                                                value={config.likesPerPoint} 
+                                                onChange={(e) => setConfig({ ...config, likesPerPoint: parseInt(e.target.value) || 120 })}
+                                            />
+                                            <small>Si se define en 120 likes, enviar 600 likes otorgará 5 puntos de pedido al espectador.</small>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* SUBPANEL 4: SISTEMA & SERVIDOR */}
+                                {activeConfigSub === 'system' && (
+                                    <div className="glass-card">
+                                        <h3 style={{ marginBottom: '18px', fontSize: '1.2rem', fontWeight: '700' }}>Control del Servidor del Bot 🖥️</h3>
+                                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '20px' }}>
+                                            Administración del sistema Node.js ejecutándose localmente en tu PC.
+                                        </p>
+                                        
+                                        <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '10px' }}>
+                                            <h4 style={{ color: 'var(--error)', marginTop: 0, marginBottom: '8px', fontSize: '0.95rem', fontWeight: '700' }}>⚠️ Apagar Servidor</h4>
+                                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '15px', lineHeight: 1.4 }}>
+                                                Detiene el programa por completo. Deberás volver a ejecutar el archivo de inicio (EJECUTAR_SILENCIOSO.vbs o INICIAR_BOT.bat) en tu PC de streaming para encenderlo de nuevo.
+                                            </p>
+                                            <button 
+                                                className="btn" 
+                                                onClick={handleShutdownServer}
+                                                style={{
+                                                    background: 'rgba(239, 68, 68, 0.15)',
+                                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                                    color: 'var(--error)',
+                                                    fontWeight: 'bold',
+                                                    padding: '10px 18px',
+                                                    cursor: 'pointer',
+                                                    borderRadius: '6px',
+                                                    transition: 'all 0.2s ease',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px'
+                                                }}
+                                            >
+                                                {renderIcon('power')} Apagar Servidor del Bot
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
                             </div>
                         </div>
                     )}
@@ -4722,7 +4993,7 @@
 
                     {/* TAB PANEL 4: TESTING */}
                     {activeTab === 'prueba' && (
-                        <div className="grid-2">
+                        <div className="grid-3">
                             {/* Panel Izquierdo: Prueba Offline normal */}
                             <div className="glass-card">
                                 <h3 style={{ marginBottom: '15px' }}>🧪 Prueba Offline (Song Request Simulator)</h3>
@@ -4790,7 +5061,7 @@
                                 <div className="result-box">{offlineTest.resultText || 'Esperando simulador...'}</div>
                             </div>
 
-                            {/* Panel Derecho: Mock Cider */}
+                            {/* Panel Centro: Mock Cider */}
                             <div className="glass-card">
                                 <h3 style={{ marginBottom: '15px' }}>🧪 Mock Cider (Controles Integrados)</h3>
                                 
@@ -4837,19 +5108,101 @@
 
                                 <div className="result-box">{mockCider.resultText || 'Mock inactivo...'}</div>
                             </div>
+
+                            {/* Panel Derecho: Simulador de Regalos (Timer Extension) */}
+                            <div className="glass-card">
+                                <h3 style={{ marginBottom: '15px' }}>🎁 Simulador de Regalos (Timer & Alertas)</h3>
+                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '15px', lineHeight: '1.4' }}>
+                                    Simula eventos de regalos en tu directo de TikTok para testear la extensión de tiempo en el overlay del Timer y las Alertas Premium.
+                                </p>
+                                
+                                <div className="form-group">
+                                    <label>Nombre Donador</label>
+                                    <input 
+                                        type="text" 
+                                        value={giftTest.user} 
+                                        onChange={(e) => setGiftTest({ ...giftTest, user: e.target.value })} 
+                                    />
+                                </div>
+
+                                <div className="form-group" style={{ marginTop: '10px' }}>
+                                    <label>Regalo de TikTok</label>
+                                    <select 
+                                        value={giftTest.giftName} 
+                                        onChange={(e) => {
+                                            const gift = e.target.value;
+                                            let coins = 1;
+                                            if (gift === 'TikTok León') coins = 2999;
+                                            else if (gift === 'Caja del Tesoro') coins = 1000;
+                                            else if (gift === 'Confeti') coins = 100;
+                                            else if (gift === 'TikTok Rose') coins = 1;
+                                            setGiftTest({ ...giftTest, giftName: gift, coins: coins });
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            background: 'rgba(0, 0, 0, 0.4)',
+                                            border: '1px solid var(--border-glass)',
+                                            color: 'white',
+                                            padding: '10px',
+                                            borderRadius: '8px',
+                                            outline: 'none',
+                                            fontFamily: 'inherit'
+                                        }}
+                                    >
+                                        <option value="TikTok Rose">TikTok Rose (1 Moneda)</option>
+                                        <option value="Confeti">Confeti (100 Monedas)</option>
+                                        <option value="Caja del Tesoro">Caja del Tesoro (1000 Monedas)</option>
+                                        <option value="TikTok León">TikTok León (2999 Monedas)</option>
+                                    </select>
+                                </div>
+
+                                <div className="grid-2" style={{ marginTop: '10px' }}>
+                                    <div className="form-group">
+                                        <label>Monedas (Valor)</label>
+                                        <input 
+                                            type="number" 
+                                            value={giftTest.coins} 
+                                            onChange={(e) => setGiftTest({ ...giftTest, coins: parseInt(e.target.value) || 1 })} 
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Segundos a Sumar (Opcional)</label>
+                                        <input 
+                                            type="number" 
+                                            placeholder={`Por defecto (${config.secondsPerGift || 30}s)`}
+                                            value={giftTest.seconds} 
+                                            onChange={(e) => setGiftTest({ ...giftTest, seconds: e.target.value })} 
+                                        />
+                                    </div>
+                                </div>
+
+                                <button className="btn btn-green" style={{ width: '100%', marginTop: '20px' }} onClick={handleSendGiftTest}>
+                                    🎁 Enviar Regalo de Prueba
+                                </button>
+
+                                <div className="result-box" style={{ minHeight: '80px', whiteSpace: 'pre-line' }}>{giftTest.resultText || 'Esperando simulación...'}</div>
+                            </div>
                         </div>
                     )}
 
                     {/* Unified Floating Save glass-bar action control */}
-                    <div className="floating-save-bar">
-                        <span>
-                            {renderIcon('info', 16)} 
-                            Ediciones pendientes del bot en vivo
-                            <span className={`save-badge ${saveStatus ? 'show' : ''}`}>{saveStatus}</span>
-                        </span>
-                        <button className="btn" onClick={handleSaveGlobalConfig}>
-                            {renderIcon('save')} Guardar Cambios
-                        </button>
+                    <div className={`floating-save-bar ${showSaveBar ? 'show' : ''}`}>
+                        {(isConfigDirty || Object.keys(dirtyKeys).length > 0) ? (
+                            <React.Fragment>
+                                <span>
+                                    {renderIcon('info', 16)} 
+                                    Ediciones pendientes del bot en vivo
+                                    <span className={`save-badge ${saveStatus ? 'show' : ''}`}>{saveStatus}</span>
+                                </span>
+                                <button className="btn" onClick={handleSaveGlobalConfig}>
+                                    {renderIcon('save')} Guardar Cambios
+                                </button>
+                            </React.Fragment>
+                        ) : (
+                            <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.95rem', fontWeight: '600', color: 'white' }}>
+                                <span>{saveStatus}</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             );
