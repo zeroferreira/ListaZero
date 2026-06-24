@@ -1591,7 +1591,30 @@ function App() {
       color: '#ff0050',
       fontWeight: 'bold'
     }
-  }, "\xBFC\xF3mo obtenerlas?"))), /*#__PURE__*/React.createElement("h3", {
+  }, "\xBFC\xF3mo obtenerlas?"))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      marginTop: '14px',
+      paddingTop: '15px',
+      borderTop: '1px solid rgba(255,255,255,0.06)'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, renderIcon('shield'), " Euler Stream API Key (Opcional - Evita Bloqueos/Rate Limit)"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    placeholder: "Pegar API Key de Euler Stream",
+    value: config.eulerApiKey || '',
+    onChange: e => setConfig({
+      ...config,
+      eulerApiKey: e.target.value
+    })
+  }), /*#__PURE__*/React.createElement("small", null, "Si tienes problemas de conexi\xF3n (error \"Too many connections started\"), puedes crear una cuenta gratis en ", /*#__PURE__*/React.createElement("a", {
+    href: "https://www.eulerstream.com/",
+    target: "_blank",
+    rel: "noopener noreferrer",
+    style: {
+      color: '#ff0050',
+      textDecoration: 'underline'
+    }
+  }, "eulerstream.com"), ", obtener una API Key y pegarla aqu\xED para evitar el l\xEDmite por hora.")), /*#__PURE__*/React.createElement("h3", {
     style: {
       marginTop: '35px',
       marginBottom: '18px',

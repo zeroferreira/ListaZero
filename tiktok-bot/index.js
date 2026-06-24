@@ -268,6 +268,21 @@ function buildTikTokConnectionOptions() {
     const sessionId = String(config.sessionId || '').trim();
     const ttTargetIdc = String(config.ttTargetIdc || '').trim();
 
+    try {
+        const { SignConfig } = require('tiktok-live-connector');
+        if (SignConfig) {
+            const key = String(config.eulerApiKey || '').trim();
+            if (key) {
+                SignConfig.apiKey = key;
+                console.log(`🔑 Configurada API Key de Euler Stream para firma de conexión.`);
+            } else {
+                SignConfig.apiKey = undefined;
+            }
+        }
+    } catch (e) {
+        console.warn('⚠️ No se pudo configurar SignConfig:', e.message);
+    }
+
     const opts = {
         processInitialData: false,
         enableExtendedGiftInfo: true,
