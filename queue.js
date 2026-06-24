@@ -1186,8 +1186,44 @@
     }
 
     // --- Data & API Logic ---
-    const songDataCache = {}; // Key: "Artist - Song", Value: { artworkUrl, durationMs, correctTitle, correctArtist }
-    let isFetching = false;
+    function generateDynamicFallback(title, artist) {
+      const cleanTitle = String(title || 'Song').trim();
+      const cleanArtist = String(artist || 'Artist').trim();
+      
+      let initials = '';
+      const cleanTitleOnly = cleanTitle.replace(/[^\w\s]/g, '').trim();
+      const titleWords = cleanTitleOnly.split(/\s+/).filter(w => w.length > 0);
+      if (titleWords.length > 0) {
+          initials += titleWords[0].charAt(0).toUpperCase();
+          if (titleWords.length > 1) {
+              initials += titleWords[1].charAt(0).toUpperCase();
+          }
+      }
+      if (!initials) initials = '🎵';
+
+      const str = `${cleanTitle} ${cleanArtist}`;
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+          hash = str.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      
+      const gradients = [
+          { from: '#4f46e5', to: '#7c3aed' }, // Indigo to Violet
+          { from: '#ec4899', to: '#f43f5e' }, // Pink to Rose
+          { from: '#06b6d4', to: '#3b82f6' }, // Cyan to Blue
+          { from: '#10b981', to: '#059669' }, // Emerald to Green
+          { from: '#f59e0b', to: '#d97706' }, // Amber to Orange
+          { from: '#8b5cf6', to: '#ec4899' }, // Purple to Pink
+          { from: '#6366f1', to: '#a855f7' }  // Indigo to Purple
+      ];
+      
+      const index = Math.abs(hash) % gradients.length;
+      const grad = gradients[index];
+      
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><defs><linearGradient id="g_${index}" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${grad.from}" /><stop offset="100%" stop-color="${grad.to}" /></linearGradient></defs><rect width="100" height="100" fill="url(#g_${index})" /><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="'Outfit', 'Inter', 'Segoe UI', sans-serif" font-weight="bold" font-size="36" opacity="0.9">${initials}</text></svg>`;
+      
+      return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg.trim());
+    }
 
     function normalizeText(input) {
       return String(input || '')
@@ -2110,7 +2146,7 @@
              // Priorizar la carátula de Firestore (req.cover)
              const dbCover = String(req.cover || req.coverUrl || '').trim();
              const hasDbCover = dbCover && (dbCover.startsWith('http://') || dbCover.startsWith('https://'));
-             const fallbackArtwork = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMxZTFiNGIiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMzMTEwNDIiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0idXJsKCNnKSIvPjxwYXRoIGQ9Ik00NyA3MGMwIDUuNS00LjUgMTAtMTAgMTBzLTEwLTQuNS0xMC0xMCA0LjUtMTAgMTAtMTAgMTAgNC41IDEwIDEwek03NSA2MGMwIDUuNS00LjUgMTAtMTAgMTBzLTEwLTQuNS0xMC0xMCA0LjUtMTAgMTAtMTAgMTAgNC41IDEwIDEwek03MCAyNWwtMzAgOGMzLjk5OCAxLjMzMiAxMCAzLjMzMyAxMCAxMHYzMmgtMlYzNHMzLTAuMTY3LTgtMS41TjcwIDI1eiIgZmlsbD0iI2Y0M2Y1ZSIgb3BhY2l0eT0iMC44Ii8+PC9zdmc+';
+             const fallbackArtwork = generateDynamicFallback(song, artist);
 
              if (hasDbCover && settings.showAlbumArt) {
                  if (artEl) {
