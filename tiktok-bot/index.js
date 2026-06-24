@@ -872,6 +872,12 @@ async function flushCiderQueue() {
                 });
                 ciderSocket.emit('playback:queue:add-next', { id: String(appleMusicId) });
                 pushSrEvent({ source: it.source || 'ciderFlush', user: it.user, userId: it.userId, query: it.query, accepted: true, queueSaved: !!it.queueSaved, ciderSent: true, ciderQueued: false });
+                
+                // Actualizar Firestore con ciderSent = true si tenemos docId
+                if (it.docId) {
+                    updateDocFn(docFn(db, 'solicitudes', it.docId), { ciderSent: true }).catch(() => {});
+                }
+                
                 pendingCiderQueue.splice(i, 1);
             } catch (e) {
                 it.tries = tries + 1;
@@ -1889,6 +1895,17 @@ function startBot() {
       console.log("❌ Desconectado de Cider");
     });
 
+    ciderSocket.on("API:Playback", (event) => {
+      try {
+        const { data, type } = event || {};
+        if (type === "playbackStatus.nowPlayingItemDidChange" || type === "playbackStatus.nowPlayingItemDidChangeV2") {
+            const name = data?.name || data?.title || 'Sin título';
+            const artist = data?.artistName || data?.artist || 'Desconocido';
+            console.log(`🎵 [Cider Link] Cambió la canción actual a: "${name}" - "${artist}"`);
+        }
+      } catch (_) {}
+    });
+
     // Inicializar conexión TikTok
     console.log(`🔌 Configurando conexión para @${TIKTOK_USERNAME}...`);
     
@@ -1967,6 +1984,112 @@ function setupNotificationListener() {
     }, (error) => {
         console.error("❌ Error en listener de notificaciones:", error);
     });
+
+    // --- LISTENER DE SOLICITUDES EN FIRESTORE ---
+    // Escucha nuevas peticiones para resolver metadatos y enviarlas a la cola de Cider
+    try {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
+        const solicitudesQuery = query(
+            collection(db, 'solicitudes'),
+            where('ts', '>=', startOfToday)
+        );
+
+        onSnapshot(solicitudesQuery, (snapshot) => {
+            snapshot.docChanges().forEach(async (change) => {
+                if (change.type === "added") {
+                    const docId = change.doc.id;
+                    const data = change.doc.data();
+                    
+                    const isPending = data.status === 'pending';
+                    const alreadySent = data.ciderSent === true;
+
+                    if (isPending && !alreadySent) {
+                        let appleMusicId = data.appleMusicId ? String(data.appleMusicId).trim() : '';
+                        let songName = data.cancion ? String(data.cancion).trim() : '';
+                        let artistName = data.artista ? String(data.artista).trim() : '';
+                        let artworkUrl = data.cover ? String(data.cover).trim() : '';
+                        let trackViewUrl = data.link ? String(data.link).trim() : '';
+
+                        console.log(`📥 [Firestore Link] Nueva solicitud detectada: "${songName}" - "${artistName}" (ID Doc: ${docId})`);
+
+                        // 1. Si no tiene ID de Apple Music, lo buscamos en iTunes
+                        if (!appleMusicId) {
+                            try {
+                                const resolved = await resolveTrackFromQuery(`${songName} ${artistName}`.trim());
+                                if (resolved && resolved.appleMusicId) {
+                                    appleMusicId = resolved.appleMusicId;
+                                    songName = resolved.songName || songName;
+                                    artistName = resolved.artistName || artistName;
+                                    artworkUrl = resolved.artworkUrl || artworkUrl;
+                                    trackViewUrl = resolved.trackViewUrl || trackViewUrl;
+
+                                    // Actualizar el documento en Firestore
+                                    await updateDocFn(docFn(db, 'solicitudes', docId), {
+                                        appleMusicId: appleMusicId,
+                                        cover: artworkUrl,
+                                        cancion: songName,
+                                        artista: artistName
+                                    });
+                                    console.log(`✅ Metadatos e ID de Apple Music resueltos para "${songName}"`);
+                                }
+                            } catch (err) {
+                                console.error(`❌ Error buscando en iTunes para "${songName}":`, err.message);
+                            }
+                        }
+
+                        // 2. Si tenemos ID y Cider está conectado, enviar a la cola
+                        if (appleMusicId) {
+                            if (ciderSocket && ciderSocket.connected) {
+                                try {
+                                    ciderSocket.emit('safe_pre_add_queue', {
+                                        artwork: { url: artworkUrl },
+                                        name: songName,
+                                        artistName: artistName,
+                                        requester: data.displayName || data.usuario || 'Web Request',
+                                        requesterId: data.userId || '',
+                                        playParams: { id: String(appleMusicId) },
+                                        url: trackViewUrl,
+                                        next: true
+                                    });
+                                    ciderSocket.emit('playback:queue:add-next', { id: String(appleMusicId) });
+                                    
+                                    // Marcar como enviado en Firestore
+                                    await updateDocFn(docFn(db, 'solicitudes', docId), {
+                                        ciderSent: true
+                                    });
+                                    console.log(`🎧 Canción "${songName}" agregada exitosamente a la cola de Cider.`);
+                                } catch (err) {
+                                    console.error("❌ Error enviando canción a Cider:", err.message);
+                                }
+                            } else {
+                                // Si Cider no está conectado, encolar localmente para reintento
+                                enqueueCider({
+                                    source: data.source || 'firestoreListener',
+                                    user: data.usuario,
+                                    userId: data.userId,
+                                    query: `${songName} ${artistName}`,
+                                    songName,
+                                    artistName,
+                                    artworkUrl,
+                                    appleMusicId,
+                                    trackViewUrl,
+                                    queueSaved: true,
+                                    docId: docId
+                                });
+                                console.warn(`⚠️ Cider desconectado. Encolando "${songName}" localmente.`);
+                            }
+                        }
+                    }
+                }
+            });
+        }, (err) => {
+            console.warn("⚠️ Error en listener de solicitudes en tiempo real:", err.message);
+        });
+    } catch(e) {
+        console.warn("⚠️ Error configurando listener de solicitudes:", e.message);
+    }
 }
 
 startBot();
@@ -3533,13 +3656,18 @@ async function handleSongRequest(user, query, options = {}) {
                         ciderSocket.emit('playback:queue:add-next', { id: String(appleMusicId) });
                         ciderSent = true;
                         console.log(`🎧 Enviada orden a Cider (ID: ${appleMusicId})`);
+                        
+                        // Actualizar Firestore con ciderSent = true
+                        if (queueDocId) {
+                            updateDocFn(docFn(db, 'solicitudes', queueDocId), { ciderSent: true }).catch(() => {});
+                        }
                     } catch (e) {
                         console.warn(`⚠️ Error enviando a Cider. Pedido se mantiene en lista.`, e && e.message ? e.message : String(e));
                     }
                 }
             } else {
                 ciderQueued = true;
-                enqueueCider({ source: source || 'request', user, userId, query, songName, artistName, artworkUrl, appleMusicId, trackViewUrl, queueSaved });
+                enqueueCider({ source: source || 'request', user, userId, query, songName, artistName, artworkUrl, appleMusicId, trackViewUrl, queueSaved, docId: queueDocId });
                 console.warn(`⚠️ Cider no conectado. Pedido en cola para reintento.`);
             }
         }
