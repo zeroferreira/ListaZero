@@ -1222,7 +1222,7 @@
       
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><defs><linearGradient id="g_${index}" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${grad.from}" /><stop offset="100%" stop-color="${grad.to}" /></linearGradient></defs><rect width="100" height="100" fill="url(#g_${index})" /><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="'Outfit', 'Inter', 'Segoe UI', sans-serif" font-weight="bold" font-size="36" opacity="0.9">${initials}</text></svg>`;
       
-      return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg.trim());
+      return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg.trim())));
     }
 
     function normalizeText(input) {
@@ -2124,96 +2124,119 @@
       let accumulatedMs = getCurrentPlaybackRemainingMsSafe();
       const now = Date.now();
 
+      // 1. Pre-pass sincrónico: aplicar textos básicos, portadas de Firestore o fallbacks de gradiente inmediatamente
       for (const req of items) {
-         if (!req) continue;
-         const songId = generateSongId(req);
-         const el = elBySongId.get(songId);
-         if (!el) continue;
+          if (!req) continue;
+          const songId = generateSongId(req);
+          const el = elBySongId.get(songId);
+          if (!el) continue;
 
-         const songEl = el.querySelector('.item-song');
-         const artistEl = el.querySelector('.item-artist');
-         const artEl = el.querySelector('.item-art');
-         const waitEl = el.querySelector('.item-wait');
+          const songEl = el.querySelector('.item-song');
+          const artistEl = el.querySelector('.item-artist');
+          const artEl = el.querySelector('.item-art');
 
-         // Check Cache or Fetch
-         if (settings.autocorrect || settings.showAlbumArt || settings.showWaitTime) {
-             const artist = String(req.artista || req.artistName || req.artist || '').trim();
-             const song = String(req.cancion || req.songName || req.song || req.name || '').trim();
+          if (settings.autocorrect || settings.showAlbumArt || settings.showWaitTime) {
+              const artist = String(req.artista || req.artistName || req.artist || '').trim();
+              const song = String(req.cancion || req.songName || req.song || req.name || '').trim();
 
-             if (songEl) songEl.innerText = song;
-             if (artistEl) artistEl.innerText = artist;
+              if (songEl) songEl.innerText = song;
+              if (artistEl) artistEl.innerText = artist;
 
-             // Priorizar la carátula de Firestore (req.cover)
-             const dbCover = String(req.cover || req.coverUrl || '').trim();
-             const hasDbCover = dbCover && (dbCover.startsWith('http://') || dbCover.startsWith('https://'));
-             const fallbackArtwork = generateDynamicFallback(song, artist);
+              if (settings.showAlbumArt) {
+                  const dbCover = String(req.cover || req.coverUrl || '').trim();
+                  const hasDbCover = dbCover && (dbCover.startsWith('http://') || dbCover.startsWith('https://'));
+                  const fallbackArtwork = generateDynamicFallback(song, artist);
 
-             if (hasDbCover && settings.showAlbumArt) {
-                 if (artEl) {
-                     artEl.src = dbCover;
-                     artEl.style.display = 'block';
-                 }
-             }
+                  if (artEl) {
+                      artEl.src = hasDbCover ? dbCover : fallbackArtwork;
+                      artEl.style.display = 'block';
+                  }
+              }
+          }
+      }
 
-             // Solo consultamos iTunes si necesitamos autocorrect, waitTime o si no tenemos portada en Firestore
-             const data = (settings.autocorrect || settings.showWaitTime || (settings.showAlbumArt && !hasDbCover))
-                 ? await fetchSongData(artist, song)
-                 : null;
-             
-             if (data) {
-                 if (settings.autocorrect) {
-                     if (shouldAutocorrectText(artist, song, data.correctArtist, data.correctTitle)) {
-                       if (songEl) songEl.innerText = data.correctTitle;
-                       if (artistEl) artistEl.innerText = data.correctArtist;
-                     }
-                 }
-                 
-                 if (settings.showAlbumArt && !hasDbCover) {
-                     if (artEl) {
-                         artEl.src = data.artworkUrl || fallbackArtwork;
-                         artEl.style.display = 'block';
-                     }
-                 } else if (!settings.showAlbumArt && artEl) {
-                     artEl.style.display = 'none';
-                 }
+      // 2. Bucle asíncrono secuencial: obtener datos de iTunes (tiempos, autocorrección y carátulas actualizadas)
+      for (const req of items) {
+          if (!req) continue;
+          const songId = generateSongId(req);
+          const el = elBySongId.get(songId);
+          if (!el) continue;
 
-                 if (settings.showWaitTime && data.durationMs) {
-                     waitEl.style.display = 'block';
-                     waitEl.dataset.durationMs = String(data.durationMs);
-                     if (liveCountdown) {
-                       waitEl.dataset.waitMsBase = String(Math.max(0, accumulatedMs));
-                       waitEl.dataset.waitMsUpdatedAt = String(now);
-                       waitEl.innerText = formatWaitCountdownMs(accumulatedMs);
-                       accumulatedMs += data.durationMs;
-                     } else {
-                       waitEl.innerText = formatWaitTime(accumulatedTime);
-                       accumulatedTime += (data.durationMs / 60000);
-                     }
-                 }
-             } else {
-                 if (settings.showAlbumArt && !hasDbCover) {
-                     if (artEl) {
-                         artEl.src = fallbackArtwork;
-                         artEl.style.display = 'block';
-                     }
-                 }
+          const songEl = el.querySelector('.item-song');
+          const artistEl = el.querySelector('.item-artist');
+          const artEl = el.querySelector('.item-art');
+          const waitEl = el.querySelector('.item-wait');
 
-                 // Fallback for wait time if no data found (assume 3:30 min)
-                 if (settings.showWaitTime) {
-                     waitEl.style.display = 'block';
-                     waitEl.dataset.durationMs = String(210000);
-                     if (liveCountdown) {
-                       waitEl.dataset.waitMsBase = String(Math.max(0, accumulatedMs));
-                       waitEl.dataset.waitMsUpdatedAt = String(now);
-                       waitEl.innerText = formatWaitCountdownMs(accumulatedMs);
-                       accumulatedMs += 210000;
-                     } else {
-                       waitEl.innerText = formatWaitTime(accumulatedTime);
-                       accumulatedTime += 3.5; 
-                     }
-                 }
-             }
-         }
+          if (settings.autocorrect || settings.showAlbumArt || settings.showWaitTime) {
+              const artist = String(req.artista || req.artistName || req.artist || '').trim();
+              const song = String(req.cancion || req.songName || req.song || req.name || '').trim();
+
+              const dbCover = String(req.cover || req.coverUrl || '').trim();
+              const hasDbCover = dbCover && (dbCover.startsWith('http://') || dbCover.startsWith('https://'));
+              const fallbackArtwork = generateDynamicFallback(song, artist);
+
+              // Solo consultamos iTunes si necesitamos autocorrect, waitTime o si no tenemos portada en Firestore
+              const data = (settings.autocorrect || settings.showWaitTime || (settings.showAlbumArt && !hasDbCover))
+                  ? await fetchSongData(artist, song)
+                  : null;
+              
+              // Si el elemento ya no está en el DOM tras la espera, continuar
+              if (el && !el.parentNode) continue;
+
+              if (data) {
+                  if (settings.autocorrect) {
+                      if (shouldAutocorrectText(artist, song, data.correctArtist, data.correctTitle)) {
+                        if (songEl) songEl.innerText = data.correctTitle;
+                        if (artistEl) artistEl.innerText = data.correctArtist;
+                      }
+                  }
+                  
+                  if (settings.showAlbumArt && !hasDbCover) {
+                      if (artEl) {
+                          artEl.src = data.artworkUrl || fallbackArtwork;
+                          artEl.style.display = 'block';
+                      }
+                  } else if (!settings.showAlbumArt && artEl) {
+                      artEl.style.display = 'none';
+                  }
+
+                  if (settings.showWaitTime && data.durationMs) {
+                      waitEl.style.display = 'block';
+                      waitEl.dataset.durationMs = String(data.durationMs);
+                      if (liveCountdown) {
+                        waitEl.dataset.waitMsBase = String(Math.max(0, accumulatedMs));
+                        waitEl.dataset.waitMsUpdatedAt = String(now);
+                        waitEl.innerText = formatWaitCountdownMs(accumulatedMs);
+                        accumulatedMs += data.durationMs;
+                      } else {
+                        waitEl.innerText = formatWaitTime(accumulatedTime);
+                        accumulatedTime += (data.durationMs / 60000);
+                      }
+                  }
+              } else {
+                  if (settings.showAlbumArt && !hasDbCover) {
+                      if (artEl) {
+                          artEl.src = fallbackArtwork;
+                          artEl.style.display = 'block';
+                      }
+                  }
+
+                  // Fallback for wait time if no data found (assume 3:30 min)
+                  if (settings.showWaitTime) {
+                      waitEl.style.display = 'block';
+                      waitEl.dataset.durationMs = String(210000);
+                      if (liveCountdown) {
+                        waitEl.dataset.waitMsBase = String(Math.max(0, accumulatedMs));
+                        waitEl.dataset.waitMsUpdatedAt = String(now);
+                        waitEl.innerText = formatWaitCountdownMs(accumulatedMs);
+                        accumulatedMs += 210000;
+                      } else {
+                        waitEl.innerText = formatWaitTime(accumulatedTime);
+                        accumulatedTime += 3.5; 
+                      }
+                  }
+              }
+          }
       }
       if (liveCountdown) {
         ensureWaitCountdownTimerRunning();
