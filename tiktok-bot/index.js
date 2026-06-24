@@ -265,6 +265,7 @@ function isDuplicate(msgId) {
 }
 
 function buildTikTokConnectionOptions() {
+    console.log("🔍 DEBUG CONFIG:", { eulerApiKey: config.eulerApiKey, keys: Object.keys(config), __dirname });
     const sessionId = String(config.sessionId || '').trim();
     const ttTargetIdc = String(config.ttTargetIdc || '').trim();
 
