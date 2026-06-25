@@ -3870,7 +3870,7 @@ function App() {
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCD0 Dimensiones y Tama\xF1os (Estilo Tikfinity)")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCD0 Dimensiones y Tama\xF1os")), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: '15px'
     }
