@@ -76,6 +76,10 @@ function App() {
     likeShowCard: true,
     likeFontFamily: 'Outfit',
     likeTextShadow: '3d-retro',
+    likeHeartSize: 190,
+    likeUsernameSize: 35,
+    likeMessageSize: 20,
+    likeWrapperHeight: 290,
     // Gifts Alert Specific Config
     giftOpacity: 0.85,
     giftRadius: 22,
@@ -3620,7 +3624,7 @@ function App() {
     })
   })), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
-  }, /*#__PURE__*/React.createElement("label", null, "Tama\xF1o Letra: ", overlays.likeFontSize, "px"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, "Tama\xF1o Letra Base: ", overlays.likeFontSize, "px"), /*#__PURE__*/React.createElement("input", {
     type: "range",
     min: "10",
     max: "24",
@@ -3629,6 +3633,65 @@ function App() {
     onChange: e => setOverlays({
       ...overlays,
       likeFontSize: parseInt(e.target.value)
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: '25px',
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      paddingBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginBottom: '15px',
+      color: '#a855f7'
+    }
+  }, "\uD83D\uDCD0 Dimensiones y Tama\xF1os (Estilo Tikfinity)"), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Tama\xF1o del Coraz\xF3n: ", overlays.likeHeartSize || 190, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "100",
+    max: "300",
+    step: "5",
+    value: overlays.likeHeartSize || 190,
+    onChange: e => setOverlays({
+      ...overlays,
+      likeHeartSize: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Tama\xF1o Letra Usuario: ", overlays.likeUsernameSize || 35, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "16",
+    max: "60",
+    step: "1",
+    value: overlays.likeUsernameSize || 35,
+    onChange: e => setOverlays({
+      ...overlays,
+      likeUsernameSize: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Tama\xF1o Letra Mensaje: ", overlays.likeMessageSize || 20, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "12",
+    max: "36",
+    step: "1",
+    value: overlays.likeMessageSize || 20,
+    onChange: e => setOverlays({
+      ...overlays,
+      likeMessageSize: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Alto del Contenedor (Overlay): ", overlays.likeWrapperHeight || 290, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "200",
+    max: "450",
+    step: "10",
+    value: overlays.likeWrapperHeight || 290,
+    onChange: e => setOverlays({
+      ...overlays,
+      likeWrapperHeight: parseInt(e.target.value)
     })
   }))), /*#__PURE__*/React.createElement("div", {
     style: {

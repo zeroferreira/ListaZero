@@ -1061,6 +1061,10 @@ function startBot() {
         });
     });
 
+    app.get('/api/tts/logs', (req, res) => {
+        res.json({ logs: ttsLogs });
+    });
+
     app.post('/api/tiktok/session', async (req, res) => {
         try {
             const body = req.body || {};
@@ -1756,7 +1760,7 @@ function startBot() {
                     uniqueId: 'superliker',
                     profilePic: avatarUrl,
                     likes: likesCount,
-                    message: likesMsg.replace(/{user}/g, 'SuperLiker').replace(/{likes}/g, likesCount.toLocaleString()),
+                    message: likesMsg.replace(/{user}/g, 'SuperLiker').replace(/{likes}/g, likesCount.toLocaleString()).replace(/{total}/g, (likesCount + 1250).toLocaleString()),
                     timestamp: serverTimestampFn()
                 };
             } else if (type === 'gift_rose') {
@@ -1768,7 +1772,7 @@ function startBot() {
                     giftName: 'TikTok Rose',
                     coins: 1,
                     repeatCount: 1,
-                    message: giftsMsg.replace(/{user}/g, 'GifterRookie').replace(/{giftName}/g, 'TikTok Rose').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '1'),
+                    message: giftsMsg.replace(/{user}/g, 'GifterRookie').replace(/{giftName}/g, 'TikTok Rose').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '1').replace(/{total}/g, '10').replace(/{totalCoins}/g, '10'),
                     timestamp: serverTimestampFn()
                 };
             } else if (type === 'gift_lion') {
@@ -1780,7 +1784,7 @@ function startBot() {
                     giftName: 'TikTok León',
                     coins: 2999,
                     repeatCount: 1,
-                    message: giftsMsg.replace(/{user}/g, 'VIP_Sponsor').replace(/{giftName}/g, 'TikTok León').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '2999'),
+                    message: giftsMsg.replace(/{user}/g, 'VIP_Sponsor').replace(/{giftName}/g, 'TikTok León').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '2999').replace(/{total}/g, '5000').replace(/{totalCoins}/g, '5000'),
                     timestamp: serverTimestampFn()
                 };
             } else if (type === 'subscribe') {
@@ -1808,6 +1812,27 @@ function startBot() {
                     uniqueId: 'zerofm_bot',
                     profilePic: '',
                     message: formattedMsg,
+                    timestamp: serverTimestampFn()
+                };
+            } else if (type === 'chat') {
+                const customMsg = req.body.customText || "¡Hola! Este es un mensaje de prueba leído por el lector de chat.";
+                mockData = {
+                    type: 'chat',
+                    user: 'TesterChat',
+                    uniqueId: 'testerchat',
+                    message: customMsg,
+                    voiceOverride: null,
+                    speedOverride: null,
+                    pitchOverride: null,
+                    timestamp: serverTimestampFn()
+                };
+            } else if (type === 'join') {
+                mockData = {
+                    type: 'join',
+                    user: 'Seguidor Pro 🔥',
+                    uniqueId: 'seguidorpro',
+                    profilePic: `https://i.pravatar.cc/100?img=${Math.floor(Math.random() * 70) + 1}`,
+                    message: overlayConfig.welcomeOverlayGreetingTemplate || '¡Acaba de entrar al Live! 👋',
                     timestamp: serverTimestampFn()
                 };
             } else {
@@ -2237,11 +2262,54 @@ function setupListeners() {
 
     // CHAT
     // ─── PRESENCIA: registrar entrada de usuarios al live (evento 'member') ────
-    tiktokLiveConnection.on('member', (data) => {
+    tiktokLiveConnection.on('member', async (data) => {
         const uid = data && data.uniqueId ? String(data.uniqueId).trim() : '';
         if (uid) {
             markUserPresent(uid);
             // console.log(`👤 @${uid} entró al live.`);
+
+            if (db && typeof addDoc === 'function' && typeof collection === 'function' && overlayAlertsConfig && overlayAlertsConfig.welcomeOverlayEnabled === true) {
+                const isSubscriber = data.isSubscriber;
+                const isModerator = data.isModerator;
+                const isFollower = data.isFollower || (data.followInfo && (data.followInfo.followStatus === 1 || data.followInfo.followStatus === 2));
+                const isStreamer = uid.toLowerCase() === TIKTOK_USERNAME.toLowerCase();
+
+                let allowed = false;
+                if (overlayAlertsConfig.welcomeOverlayAllowAll === true) {
+                    allowed = true;
+                } else {
+                    if (overlayAlertsConfig.welcomeOverlayAllowFollowers === true && isFollower) {
+                        allowed = true;
+                    }
+                    if (overlayAlertsConfig.welcomeOverlayAllowSubscribers === true && isSubscriber) {
+                        allowed = true;
+                    }
+                    if (overlayAlertsConfig.welcomeOverlayAllowModerators === true && isModerator) {
+                        allowed = true;
+                    }
+                    if (isStreamer) {
+                        allowed = true;
+                    }
+                }
+
+                if (allowed) {
+                    try {
+                        const avatarUrl = data.profilePictureUrl || `https://i.pravatar.cc/100?img=${Math.floor(Math.random() * 70) + 1}`;
+                        const nickname = data.nickname || uid;
+                        
+                        await addDoc(collection(db, 'notifications'), {
+                            type: 'join',
+                            user: nickname,
+                            uniqueId: uid,
+                            profilePic: avatarUrl,
+                            message: '¡Entró al Live!',
+                            timestamp: serverTimestamp()
+                        });
+                    } catch (e) {
+                        console.error('⚠️ Error enviando notificación de bienvenida a Firestore:', e);
+                    }
+                }
+            }
         }
     });
 
@@ -2278,12 +2346,216 @@ function setupListeners() {
         const isModerator = data.isModerator && config.allowModerators;
         const isSuperFanRaw = (data.isSubscriber === true) || (Number(data.memberLevel || 0) > 0);
         const isSuperFan = isSuperFanRaw && config.allowSuperFans;
+        const isFollower = data.isFollower || (data.followInfo && (data.followInfo.followStatus === 1 || data.followInfo.followStatus === 2));
         
         // FIX: Comparación de usuario insensible a mayúsculas para el streamer
         const isStreamer = userId.toLowerCase() === TIKTOK_USERNAME.toLowerCase();
         
         const isVip = isSubscriber || isModerator || isSuperFan || isStreamer || tempVipUsers.has(userId);
         const requireVip = config.requireVipForSr === true; // Strict check
+
+        // ── TEXT TO SPEECH (TTS) PARA COMENTARIOS DE CHAT ──
+        if (overlayAlertsConfig.chatTtsEnabled === true) {
+            // 1. Verificar Special Users
+            const specialUsers = overlayAlertsConfig.chatTtsSpecialUsers || [];
+            const specialUser = specialUsers.find(u => {
+                const cleanUser = String(u.username || '').toLowerCase().replace(/^@/, '');
+                return cleanUser === userId.toLowerCase();
+            });
+
+            let userAllowed = false;
+            let voiceOverride = null;
+            let speedOverride = null;
+            let pitchOverride = null;
+
+            if (specialUser) {
+                if (specialUser.allowed === false) {
+                    console.log(`🗣️ [TTS] @${displayName} está bloqueado en la lista de Special Users`);
+                    userAllowed = false; // Blocked entirely!
+                } else {
+                    userAllowed = true; // Bypassed range checks!
+                    voiceOverride = specialUser.voice;
+                    speedOverride = specialUser.speed;
+                    pitchOverride = specialUser.pitch;
+                }
+            } else {
+                // General allowed checks
+                if (overlayAlertsConfig.chatTtsAllowAll === true) {
+                    userAllowed = true;
+                } else {
+                    if (overlayAlertsConfig.chatTtsAllowFollowers === true && isFollower) {
+                        userAllowed = true;
+                    }
+                    if (overlayAlertsConfig.chatTtsAllowSubscribers === true && isSubscriber) {
+                        userAllowed = true;
+                    }
+                    if (overlayAlertsConfig.chatTtsAllowModerators === true && isModerator) {
+                        userAllowed = true;
+                    }
+                    if (overlayAlertsConfig.chatTtsAllowTeam === true && isSuperFanRaw) {
+                        userAllowed = true;
+                    }
+                    if (overlayAlertsConfig.chatTtsAllowTopGifters === true && tempVipUsers.has(userId)) {
+                        userAllowed = true;
+                    }
+                    if (isStreamer) {
+                        userAllowed = true;
+                    }
+                }
+            }
+
+            // Si es un special user bloqueado, salimos. Si no está permitido, salimos.
+            if (specialUser && specialUser.allowed === false) {
+                // Ya logueado y controlado
+            } else if (userAllowed) {
+                let commentQualifies = false;
+                const filterType = overlayAlertsConfig.chatTtsType || 'any'; // 'any', 'dot', 'slash', 'command'
+                const ttsCommand = String(overlayAlertsConfig.chatTtsCommand || '!tts').toLowerCase();
+
+                if (filterType === 'any') {
+                    if (!msg.startsWith('!')) {
+                        commentQualifies = true;
+                    }
+                } else if (filterType === 'dot' && msg.startsWith('.')) {
+                    commentQualifies = true;
+                } else if (filterType === 'slash' && msg.startsWith('/')) {
+                    commentQualifies = true;
+                } else if (filterType === 'command' && lowerMsg.startsWith(ttsCommand)) {
+                    commentQualifies = true;
+                }
+
+                if (commentQualifies && db) {
+                    let cleanedMsg = msg;
+                    if (filterType === 'command') {
+                        cleanedMsg = msg.substring(ttsCommand.length).trim();
+                    } else if (filterType === 'dot' || filterType === 'slash') {
+                        cleanedMsg = msg.substring(1).trim();
+                    }
+
+                    // SPAM PROTECTION: Filter letter spam
+                    if (overlayAlertsConfig.chatTtsFilterLetterSpam !== false) {
+                        cleanedMsg = cleanedMsg.replace(/(.)\1{2,}/gi, '$1$1');
+                    }
+
+                    // SPAM PROTECTION: Filter @mentions
+                    if (overlayAlertsConfig.chatTtsFilterMentions === true) {
+                        cleanedMsg = cleanedMsg.replace(/@\w+/g, '').trim();
+                    }
+
+                    // SPAM PROTECTION: Filter !commands
+                    if (overlayAlertsConfig.chatTtsFilterCommands === true) {
+                        cleanedMsg = cleanedMsg.replace(/!\w+/g, '').trim();
+                    }
+
+                    // SPAM PROTECTION: Max comment length
+                    const maxCommentLength = Number(overlayAlertsConfig.chatTtsMaxCommentLength) || 300;
+                    if (cleanedMsg.length > maxCommentLength) {
+                        cleanedMsg = cleanedMsg.substring(0, maxCommentLength).trim();
+                    }
+
+                    if (cleanedMsg.length > 0) {
+                        let canRead = true;
+
+                        // SPAM PROTECTION: User cooldown
+                        const now = Date.now();
+                        const lastTime = ttsCooldowns.get(userId) || 0;
+                        const cooldownSec = Number(overlayAlertsConfig.chatTtsUserCooldown) || 0;
+                        if (cooldownSec > 0 && (now - lastTime < cooldownSec * 1000) && !isStreamer) {
+                            console.log(`🗣️ [TTS] @${displayName} en cooldown (${Math.ceil((cooldownSec * 1000 - (now - lastTime)) / 1000)}s restantes)`);
+                            canRead = false;
+                        }
+
+                        // SPAM PROTECTION: Max queue length (using in-memory sliding queue check)
+                        if (canRead && !isStreamer) {
+                            activeTtsQueue = activeTtsQueue.filter(item => now - item.timestamp < 15000);
+                            const maxQueueLength = Number(overlayAlertsConfig.chatTtsMaxQueueLength) || 5;
+                            if (activeTtsQueue.length >= maxQueueLength) {
+                                console.log(`🗣️ [TTS] Cola llena (${activeTtsQueue.length} >= ${maxQueueLength})`);
+                                canRead = false;
+                            }
+                        }
+
+                        // Validar cobro de puntos (los special users y el streamer no pagan!)
+                        if (canRead && overlayAlertsConfig.chatTtsChargePoints === true && !specialUser && !isStreamer) {
+                            const cost = Number(overlayAlertsConfig.chatTtsCost) || 5;
+                            try {
+                                const resolved = await getCanonicalUserKey(userId, displayName);
+                                const userKey = resolved.userKey || userId;
+                                const userRef = doc(db, 'userStats', userKey);
+                                const userSnap = await getDoc(userRef);
+                                let points = 0;
+                                if (userSnap.exists()) {
+                                    points = Number(userSnap.data().totalPoints) || 0;
+                                }
+                                if (points < cost) {
+                                    console.log(`🗣️ [TTS] @${displayName} no tiene suficientes puntos (${points} < ${cost})`);
+                                    canRead = false;
+                                } else {
+                                    // Descontar puntos
+                                    await setDoc(userRef, {
+                                        totalPoints: increment(-cost),
+                                        lastActiveAt: serverTimestamp()
+                                    }, { merge: true });
+                                    console.log(`🗣️ [TTS] Descontados ${cost} puntos a @${displayName}`);
+                                    
+                                    await addDoc(collection(db, 'notifications'), {
+                                        type: 'points_tts',
+                                        user: displayName,
+                                        points: -cost,
+                                        message: `-${cost} puntos por usar TTS 🗣️`,
+                                        timestamp: serverTimestamp()
+                                    });
+                                }
+                            } catch (e) {
+                                console.error('Error descontando puntos para TTS:', e);
+                                canRead = false;
+                            }
+                        }
+
+                        if (canRead) {
+                            // Resolve message template
+                            let speechText = String(overlayAlertsConfig.chatTtsMessageTemplate || "{comment}");
+                            speechText = speechText
+                                .replace(/{nickname}/g, displayName)
+                                .replace(/{username}/g, userId)
+                                .replace(/{comment}/g, cleanedMsg);
+
+                            try {
+                                await addDoc(collection(db, 'notifications'), {
+                                    type: 'chat',
+                                    user: displayName,
+                                    uniqueId: userId,
+                                    message: speechText,
+                                    voiceOverride: voiceOverride,
+                                    speedOverride: speedOverride !== null && speedOverride !== undefined ? Number(speedOverride) : null,
+                                    pitchOverride: pitchOverride !== null && pitchOverride !== undefined ? Number(pitchOverride) : null,
+                                    timestamp: serverTimestamp()
+                                });
+
+                                // Registrar en la cola en memoria
+                                if (!isStreamer) {
+                                    activeTtsQueue.push({ userId, timestamp: now });
+                                }
+                                ttsCooldowns.set(userId, now);
+
+                                // Guardar en el log global para el dashboard
+                                const logTime = new Date().toLocaleTimeString('en-US', { hour12: true });
+                                ttsLogs.push({
+                                    timestamp: logTime,
+                                    user: displayName,
+                                    message: speechText
+                                });
+                                if (ttsLogs.length > 50) ttsLogs.shift();
+
+                                console.log(`🗣️ TTS Chat agregado para @${displayName}: "${speechText}"`);
+                            } catch (err) {
+                                console.error('Error guardando TTS de chat en Firestore:', err);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         if (isSuperFanRaw) {
             try {
@@ -2586,7 +2858,9 @@ function setupListeners() {
                         .replace(/{giftName}/g, giftName)
                         .replace(/{repeatCount}/g, actualCount)
                         .replace(/{repeatcount}/g, actualCount)
-                        .replace(/{coins}/g, totalCoins);
+                        .replace(/{coins}/g, totalCoins)
+                        .replace(/{total}/g, (sessionDonations.get(uid) || totalCoins).toLocaleString())
+                        .replace(/{totalCoins}/g, (sessionDonations.get(uid) || totalCoins).toLocaleString());
 
                     await addDoc(collection(db, 'notifications'), {
                         type: 'gift',
@@ -3262,6 +3536,11 @@ async function connectToLive() {
 
 // Lista de usuarios temporales
 const tempVipUsers = new Set();
+
+// Variables globales para Lector Chat (TTS)
+const ttsLogs = [];
+const ttsCooldowns = new Map();
+let activeTtsQueue = [];
 
 // Manejar pedido de canción
 async function resolveTrackFromQuery(query) {

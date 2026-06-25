@@ -1,4 +1,25 @@
 // --- Apple Music / Cider Variables (Global) ---
+    // Safe safeLocalStorage fallback wrapper for sandboxed iframes or file:// protocol restrictions
+    const safeLocalStorage = (function() {
+      try {
+        const testKey = '__storage_test__';
+        window.localStorage.setItem(testKey, testKey);
+        window.localStorage.removeItem(testKey);
+        return window.localStorage;
+      } catch (e) {
+        console.warn("safeLocalStorage is not accessible, using in-memory fallback:", e);
+        const mockStorage = {};
+        return {
+          getItem: function(key) { return key in mockStorage ? mockStorage[key] : null; },
+          setItem: function(key, value) { mockStorage[key] = String(value); },
+          removeItem: function(key) { delete mockStorage[key]; },
+          clear: function() { for (let k in mockStorage) delete mockStorage[k]; },
+          key: function(i) { return Object.keys(mockStorage)[i] || null; },
+          get length() { return Object.keys(mockStorage).length; }
+        };
+      }
+    })();
+
     let ciderSocket = null;
     let lastAutoMarkedSong = ""; 
 
@@ -110,7 +131,7 @@
       const mode = getEquivalentManualQueueMode();
       try {
         window.__QUEUE_MODE__ = mode;
-        localStorage.setItem('queueMode', mode);
+        safeLocalStorage.setItem('queueMode', mode);
       } catch (_) {}
       if (!db || !firebase?.firestore?.FieldValue) return;
       try {
@@ -124,7 +145,7 @@
 
     async function persistManualOrder(orderArr) {
       currentManualOrder = Array.isArray(orderArr) ? orderArr : [];
-      try { localStorage.setItem(`manualOrder:${currentDay}`, JSON.stringify(currentManualOrder)); } catch (_) {}
+      try { safeLocalStorage.setItem(`manualOrder:${currentDay}`, JSON.stringify(currentManualOrder)); } catch (_) {}
       if (!db || !firebase?.firestore?.FieldValue) return;
       try {
         await db.collection('manualOrders').doc(currentDay).set({
@@ -454,7 +475,7 @@
      window.appliedSettings = { ...defaultSettings };
 
     function loadSettings() {
-      const saved = localStorage.getItem('queue_overlay_settings');
+      const saved = safeLocalStorage.getItem('queue_overlay_settings');
       // Merge saved with default to ensure new keys exist
       const settings = saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
       
@@ -465,56 +486,58 @@
       applySettings(settings);
       
       // Update Inputs
-      document.getElementById('inp-width').value = settings.width;
-      document.getElementById('inp-minHeight').value = settings.minHeight;
-      document.getElementById('inp-spacing').value = settings.spacing !== undefined ? settings.spacing : 15;
-      document.getElementById('inp-padding').value = settings.padding !== undefined ? settings.padding : 15;
-      document.getElementById('inp-textGap').value = settings.textGap !== undefined ? settings.textGap : 4;
-      document.getElementById('inp-borderRadius').value = settings.borderRadius;
-      
-      document.getElementById('inp-showHeader').checked = settings.showHeader !== undefined ? settings.showHeader : true;
-      document.getElementById('inp-showArtist').checked = settings.showArtist !== undefined ? settings.showArtist : true;
-      document.getElementById('inp-showUser').checked = settings.showUser !== undefined ? settings.showUser : true;
-      document.getElementById('inp-showEmpty').checked = settings.showEmpty !== undefined ? settings.showEmpty : true;
+      if (document.getElementById('inp-width')) {
+        document.getElementById('inp-width').value = settings.width;
+        document.getElementById('inp-minHeight').value = settings.minHeight;
+        document.getElementById('inp-spacing').value = settings.spacing !== undefined ? settings.spacing : 15;
+        document.getElementById('inp-padding').value = settings.padding !== undefined ? settings.padding : 15;
+        document.getElementById('inp-textGap').value = settings.textGap !== undefined ? settings.textGap : 4;
+        document.getElementById('inp-borderRadius').value = settings.borderRadius;
+        
+        document.getElementById('inp-showHeader').checked = settings.showHeader !== undefined ? settings.showHeader : true;
+        document.getElementById('inp-showArtist').checked = settings.showArtist !== undefined ? settings.showArtist : true;
+        document.getElementById('inp-showUser').checked = settings.showUser !== undefined ? settings.showUser : true;
+        document.getElementById('inp-showEmpty').checked = settings.showEmpty !== undefined ? settings.showEmpty : true;
 
-      document.getElementById('inp-animEntry').value = settings.animEntry;
-      document.getElementById('inp-animExit').value = settings.animExit;
-      
-      document.getElementById('inp-font').value = settings.font;
-      document.getElementById('inp-fontSize').value = settings.fontSize;
-      document.getElementById('inp-accent').value = settings.accent;
-      document.getElementById('inp-bg').value = settings.bg;
-      
-      const primaryOpacityVal = settings.primaryOpacity !== undefined ? settings.primaryOpacity : 100;
-      document.getElementById('inp-primaryOpacity').value = primaryOpacityVal;
-      document.getElementById('primary-opacity-val').innerText = primaryOpacityVal + '%';
+        document.getElementById('inp-animEntry').value = settings.animEntry;
+        document.getElementById('inp-animExit').value = settings.animExit;
+        
+        document.getElementById('inp-font').value = settings.font;
+        document.getElementById('inp-fontSize').value = settings.fontSize;
+        document.getElementById('inp-accent').value = settings.accent;
+        document.getElementById('inp-bg').value = settings.bg;
+        
+        const primaryOpacityVal = settings.primaryOpacity !== undefined ? settings.primaryOpacity : 100;
+        document.getElementById('inp-primaryOpacity').value = primaryOpacityVal;
+        document.getElementById('primary-opacity-val').innerText = primaryOpacityVal + '%';
 
-      const opacityVal = settings.secondaryOpacity !== undefined ? settings.secondaryOpacity : 60;
-      document.getElementById('inp-secondaryOpacity').value = opacityVal;
-      document.getElementById('opacity-val').innerText = opacityVal + '%';
+        const opacityVal = settings.secondaryOpacity !== undefined ? settings.secondaryOpacity : 60;
+        document.getElementById('inp-secondaryOpacity').value = opacityVal;
+        document.getElementById('opacity-val').innerText = opacityVal + '%';
 
-      const maxCardsVal = settings.maxCards !== undefined ? settings.maxCards : 3;
-      document.getElementById('inp-maxCards').value = maxCardsVal;
-      document.getElementById('max-cards-val').innerText = maxCardsVal;
+        const maxCardsVal = settings.maxCards !== undefined ? settings.maxCards : 3;
+        document.getElementById('inp-maxCards').value = maxCardsVal;
+        document.getElementById('max-cards-val').innerText = maxCardsVal;
 
-      const widthScaleVal = settings.widthScale !== undefined ? settings.widthScale : 1.0;
-       document.getElementById('inp-widthScale').value = widthScaleVal;
-       document.getElementById('width-scale-val').innerText = widthScaleVal + 'x';
+        const widthScaleVal = settings.widthScale !== undefined ? settings.widthScale : 1.0;
+         document.getElementById('inp-widthScale').value = widthScaleVal;
+         document.getElementById('width-scale-val').innerText = widthScaleVal + 'x';
 
-       const heightScaleVal = settings.heightScale !== undefined ? settings.heightScale : 1.0;
-       document.getElementById('inp-heightScale').value = heightScaleVal;
-       document.getElementById('height-scale-val').innerText = heightScaleVal + 'x';
- 
-       document.getElementById('inp-text').value = settings.text;
-      
-      // New Inputs
-      document.getElementById('inp-autocorrect').checked = settings.autocorrect !== undefined ? settings.autocorrect : false;
-      document.getElementById('inp-showAlbumArt').checked = settings.showAlbumArt !== undefined ? settings.showAlbumArt : false;
-      document.getElementById('inp-showWaitTime').checked = settings.showWaitTime !== undefined ? settings.showWaitTime : false;
-      document.getElementById('inp-showTotalDuration').checked = settings.showTotalDuration !== undefined ? settings.showTotalDuration : false;
-      document.getElementById('inp-syncAppleMusic').checked = settings.syncAppleMusic !== undefined ? settings.syncAppleMusic : false;
-      if (document.getElementById('inp-theme')) {
-        document.getElementById('inp-theme').value = settings.theme || 'classic';
+         const heightScaleVal = settings.heightScale !== undefined ? settings.heightScale : 1.0;
+         document.getElementById('inp-heightScale').value = heightScaleVal;
+         document.getElementById('height-scale-val').innerText = heightScaleVal + 'x';
+    
+         document.getElementById('inp-text').value = settings.text;
+        
+        // New Inputs
+        document.getElementById('inp-autocorrect').checked = settings.autocorrect !== undefined ? settings.autocorrect : false;
+        document.getElementById('inp-showAlbumArt').checked = settings.showAlbumArt !== undefined ? settings.showAlbumArt : false;
+        document.getElementById('inp-showWaitTime').checked = settings.showWaitTime !== undefined ? settings.showWaitTime : false;
+        document.getElementById('inp-showTotalDuration').checked = settings.showTotalDuration !== undefined ? settings.showTotalDuration : false;
+        document.getElementById('inp-syncAppleMusic').checked = settings.syncAppleMusic !== undefined ? settings.syncAppleMusic : false;
+        if (document.getElementById('inp-theme')) {
+          document.getElementById('inp-theme').value = settings.theme || 'classic';
+        }
       }
 
       // Visual Customizations (Borders & Shadows)
@@ -565,6 +588,34 @@
         if (window.queueShadowBlurOverride !== undefined) s.shadowBlur = window.queueShadowBlurOverride;
         if (window.queueShadowOpacityOverride !== undefined) s.shadowOpacity = window.queueShadowOpacityOverride;
         if (window.queueShowSweepBorderOverride !== undefined) s.showSweepBorder = window.queueShowSweepBorderOverride;
+
+        // Nuevos overrides específicos agregados del dashboard
+        if (window.queueThemeOverride !== undefined) s.theme = window.queueThemeOverride;
+        if (window.queueWidthOverride !== undefined) s.width = window.queueWidthOverride;
+        if (window.queueMinHeightOverride !== undefined) s.minHeight = window.queueMinHeightOverride;
+        if (window.queueSpacingOverride !== undefined) s.spacing = window.queueSpacingOverride;
+        if (window.queuePaddingOverride !== undefined) s.padding = window.queuePaddingOverride;
+        if (window.queueTextGapOverride !== undefined) s.textGap = window.queueTextGapOverride;
+        if (window.queueShowHeaderOverride !== undefined) s.showHeader = window.queueShowHeaderOverride;
+        if (window.queueShowArtistOverride !== undefined) s.showArtist = window.queueShowArtistOverride;
+        if (window.queueShowUserOverride !== undefined) s.showUser = window.queueShowUserOverride;
+        if (window.queueShowEmptyOverride !== undefined) s.showEmpty = window.queueShowEmptyOverride;
+        if (window.queueFontOverride !== undefined) s.font = window.queueFontOverride;
+        if (window.queueAccentColorOverride !== undefined) s.accent = window.queueAccentColorOverride;
+        if (window.queueBgColorOverride !== undefined) s.bg = window.queueBgColorOverride;
+        if (window.queueTextColorOverride !== undefined) s.text = window.queueTextColorOverride;
+        if (window.queuePrimaryOpacityOverride !== undefined) s.primaryOpacity = window.queuePrimaryOpacityOverride;
+        if (window.queueSecondaryOpacityOverride !== undefined) s.secondaryOpacity = window.queueSecondaryOpacityOverride;
+        if (window.queueMaxCardsOverride !== undefined) s.maxCards = window.queueMaxCardsOverride;
+        if (window.queueWidthScaleOverride !== undefined) s.widthScale = window.queueWidthScaleOverride;
+        if (window.queueHeightScaleOverride !== undefined) s.heightScale = window.queueHeightScaleOverride;
+        if (window.queueAnimEntryOverride !== undefined) s.animEntry = window.queueAnimEntryOverride;
+        if (window.queueAnimExitOverride !== undefined) s.animExit = window.queueAnimExitOverride;
+        if (window.queueAutocorrectOverride !== undefined) s.autocorrect = window.queueAutocorrectOverride;
+        if (window.queueShowAlbumArtOverride !== undefined) s.showAlbumArt = window.queueShowAlbumArtOverride;
+        if (window.queueShowWaitTimeOverride !== undefined) s.showWaitTime = window.queueShowWaitTimeOverride;
+        if (window.queueShowTotalDurationOverride !== undefined) s.showTotalDuration = window.queueShowTotalDurationOverride;
+        if (window.queueSyncAppleMusicOverride !== undefined) s.syncAppleMusic = window.queueSyncAppleMusicOverride;
       }
 
       window.appliedSettings = s;
@@ -902,7 +953,7 @@
 
     function saveSettings() {
       const settings = getSettingsFromInputs();
-      localStorage.setItem('queue_overlay_settings', JSON.stringify(settings));
+      safeLocalStorage.setItem('queue_overlay_settings', JSON.stringify(settings));
       applySettings(settings);
 
       // Sync to Firestore
@@ -939,7 +990,7 @@
     function resetSettings() {
       if(confirm('¿Restablecer valores por defecto?')) {
         applySettings(defaultSettings);
-        localStorage.removeItem('queue_overlay_settings');
+        safeLocalStorage.removeItem('queue_overlay_settings');
         loadSettings(); // reload inputs
         toggleSettings();
       }
@@ -982,7 +1033,7 @@
             const settings = { ...defaultSettings, ...remoteSettings };
             
             // Guardar localmente y aplicar
-            localStorage.setItem('queue_overlay_settings', JSON.stringify(settings));
+            safeLocalStorage.setItem('queue_overlay_settings', JSON.stringify(settings));
             applySettings(settings);
             
             // Actualizar inputs si existen
@@ -1043,6 +1094,34 @@
             if (data.queueShadowBlur !== undefined) window.queueShadowBlurOverride = data.queueShadowBlur;
             if (data.queueShadowOpacity !== undefined) window.queueShadowOpacityOverride = data.queueShadowOpacity;
             if (data.queueShowSweepBorder !== undefined) window.queueShowSweepBorderOverride = data.queueShowSweepBorder;
+            
+            // Nuevos mapeos específicos
+            if (data.queueTheme !== undefined) window.queueThemeOverride = data.queueTheme;
+            if (data.queueWidth !== undefined) window.queueWidthOverride = Number(data.queueWidth);
+            if (data.queueMinHeight !== undefined) window.queueMinHeightOverride = Number(data.queueMinHeight);
+            if (data.queueSpacing !== undefined) window.queueSpacingOverride = Number(data.queueSpacing);
+            if (data.queuePadding !== undefined) window.queuePaddingOverride = Number(data.queuePadding);
+            if (data.queueTextGap !== undefined) window.queueTextGapOverride = Number(data.queueTextGap);
+            if (data.queueShowHeader !== undefined) window.queueShowHeaderOverride = data.queueShowHeader;
+            if (data.queueShowArtist !== undefined) window.queueShowArtistOverride = data.queueShowArtist;
+            if (data.queueShowUser !== undefined) window.queueShowUserOverride = data.queueShowUser;
+            if (data.queueShowEmpty !== undefined) window.queueShowEmptyOverride = data.queueShowEmpty;
+            if (data.queueFont !== undefined) window.queueFontOverride = data.queueFont;
+            if (data.queueAccentColor !== undefined) window.queueAccentColorOverride = data.queueAccentColor;
+            if (data.queueBgColor !== undefined) window.queueBgColorOverride = data.queueBgColor;
+            if (data.queueTextColor !== undefined) window.queueTextColorOverride = data.queueTextColor;
+            if (data.queuePrimaryOpacity !== undefined) window.queuePrimaryOpacityOverride = Number(data.queuePrimaryOpacity);
+            if (data.queueSecondaryOpacity !== undefined) window.queueSecondaryOpacityOverride = Number(data.queueSecondaryOpacity);
+            if (data.queueMaxCards !== undefined) window.queueMaxCardsOverride = Number(data.queueMaxCards);
+            if (data.queueWidthScale !== undefined) window.queueWidthScaleOverride = Number(data.queueWidthScale);
+            if (data.queueHeightScale !== undefined) window.queueHeightScaleOverride = Number(data.queueHeightScale);
+            if (data.queueAnimEntry !== undefined) window.queueAnimEntryOverride = data.queueAnimEntry;
+            if (data.queueAnimExit !== undefined) window.queueAnimExitOverride = data.queueAnimExit;
+            if (data.queueAutocorrect !== undefined) window.queueAutocorrectOverride = data.queueAutocorrect;
+            if (data.queueShowAlbumArt !== undefined) window.queueShowAlbumArtOverride = data.queueShowAlbumArt;
+            if (data.queueShowWaitTime !== undefined) window.queueShowWaitTimeOverride = data.queueShowWaitTime;
+            if (data.queueShowTotalDuration !== undefined) window.queueShowTotalDurationOverride = data.queueShowTotalDuration;
+            if (data.queueSyncAppleMusic !== undefined) window.queueSyncAppleMusicOverride = data.queueSyncAppleMusic;
             
             // Re-aplicar configuración
             if (window.appliedSettings) {
@@ -1133,11 +1212,11 @@
     }
 
     function getLocalSkippedMap() {
-      try { return JSON.parse(localStorage.getItem('skippedSongs') || '{}'); } catch (_) { return {}; }
+      try { return JSON.parse(safeLocalStorage.getItem('skippedSongs') || '{}'); } catch (_) { return {}; }
     }
 
     function setLocalSkippedMap(map) {
-      try { localStorage.setItem('skippedSongs', JSON.stringify(map || {})); } catch (_) {}
+      try { safeLocalStorage.setItem('skippedSongs', JSON.stringify(map || {})); } catch (_) {}
     }
 
     // Orden manual: aplicar
@@ -1604,7 +1683,7 @@
         const mode = String(data.queueMode || '').trim();
         if (mode) {
           window.__QUEUE_MODE__ = mode;
-          try { localStorage.setItem('queueMode', mode); } catch (_) {}
+          try { safeLocalStorage.setItem('queueMode', mode); } catch (_) {}
           renderQueue();
         }
       } catch (_) {}
@@ -1716,7 +1795,7 @@
     }
 
     function getQueueMode() {
-      try { return String(window.__QUEUE_MODE__ || localStorage.getItem('queueMode') || 'default').trim() || 'default'; } catch (_) { return String(window.__QUEUE_MODE__ || 'default').trim() || 'default'; }
+      try { return String(window.__QUEUE_MODE__ || safeLocalStorage.getItem('queueMode') || 'default').trim() || 'default'; } catch (_) { return String(window.__QUEUE_MODE__ || 'default').trim() || 'default'; }
     }
 
     function badgeRankForOrdering(badge) {
@@ -2435,7 +2514,7 @@
         if (fromQuery) return fromQuery;
       } catch (_) {}
       try {
-        const fromLocal = String(localStorage.getItem('ciderUrl') || '').trim();
+        const fromLocal = String(safeLocalStorage.getItem('ciderUrl') || '').trim();
         if (fromLocal) return fromLocal;
       } catch (_) {}
       return "http://localhost:10767/";
@@ -2566,7 +2645,7 @@
     }
 
     const currentDay = getLocalDateKey();
-    try { window.__QUEUE_MODE__ = window.__QUEUE_MODE__ || localStorage.getItem('queueMode') || 'default'; } catch (_) { window.__QUEUE_MODE__ = window.__QUEUE_MODE__ || 'default'; }
+    try { window.__QUEUE_MODE__ = window.__QUEUE_MODE__ || safeLocalStorage.getItem('queueMode') || 'default'; } catch (_) { window.__QUEUE_MODE__ = window.__QUEUE_MODE__ || 'default'; }
     console.log("Queue Overlay v2.2 - Fix Empty Match. Listening for day:", currentDay);
 
     if (db) {
@@ -2717,7 +2796,7 @@
             if (mode && mode !== window.__QUEUE_MODE__) {
               console.log("🔄 Cambio de modo detectado:", mode);
               window.__QUEUE_MODE__ = mode;
-              try { localStorage.setItem('queueMode', mode); } catch (_) {}
+              try { safeLocalStorage.setItem('queueMode', mode); } catch (_) {}
               renderQueue();
             }
           }
@@ -2919,6 +2998,40 @@
     
     // --- Drag & Drop Logic for Settings Button ---
     const settingsBtn = document.getElementById('settings-btn');
+    
+    let isIframe = false;
+    try {
+        isIframe = window.self !== window.top;
+    } catch (e) {
+        isIframe = true;
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    const isPreview = urlParams.get('preview') === 'true' || urlParams.get('dashboard') === 'true';
+    if (isIframe || isPreview) {
+        if (settingsBtn) {
+            settingsBtn.style.display = 'none';
+        }
+        const settingsPanel = document.getElementById('settings-panel');
+        if (settingsPanel) {
+            settingsPanel.style.display = 'none';
+            settingsPanel.classList.remove('active');
+        }
+        const debugControls = document.getElementById('debug-controls');
+        if (debugControls) {
+            debugControls.style.display = 'none';
+        }
+        const markPanel = document.getElementById('mark-panel');
+        if (markPanel) {
+            markPanel.style.display = 'none';
+            markPanel.hidden = true;
+        }
+        const widgetMover = document.getElementById('widget-mover');
+        if (widgetMover) {
+            widgetMover.style.display = 'none';
+            widgetMover.hidden = true;
+        }
+    }
+
     const settingsBtnPosKey = `widget_btn_pos:${location.pathname}:settings-btn`;
     let isDragging = false;
     let dragOffsetX = 0;
@@ -3038,28 +3151,30 @@
         }
     }
 
-    try {
-      const saved = localStorage.getItem(settingsBtnPosKey);
-      if (saved) {
-        const pos = JSON.parse(saved);
-        if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
-          settingsBtn.style.left = `${pos.left}px`;
-          settingsBtn.style.top = `${pos.top}px`;
+    if (settingsBtn) {
+      try {
+        const saved = safeLocalStorage.getItem(settingsBtnPosKey);
+        if (saved) {
+          const pos = JSON.parse(saved);
+          if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
+            settingsBtn.style.left = `${pos.left}px`;
+            settingsBtn.style.top = `${pos.top}px`;
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
 
-    settingsBtn.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        hasMoved = false;
-        const rect = settingsBtn.getBoundingClientRect();
-        dragOffsetX = e.clientX - rect.left;
-        dragOffsetY = e.clientY - rect.top;
-        settingsBtn.style.cursor = 'grabbing';
-        
-        // Disable transitions during drag for responsiveness
-        settingsBtn.style.transition = 'none';
-    });
+      settingsBtn.addEventListener('mousedown', (e) => {
+          isDragging = true;
+          hasMoved = false;
+          const rect = settingsBtn.getBoundingClientRect();
+          dragOffsetX = e.clientX - rect.left;
+          dragOffsetY = e.clientY - rect.top;
+          settingsBtn.style.cursor = 'grabbing';
+          
+          // Disable transitions during drag for responsiveness
+          settingsBtn.style.transition = 'none';
+      });
+    }
 
     document.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
@@ -3070,35 +3185,111 @@
         const x = e.clientX - dragOffsetX;
         const y = e.clientY - dragOffsetY;
         
-        settingsBtn.style.left = `${x}px`;
-        settingsBtn.style.top = `${y}px`;
+        if (settingsBtn) {
+          settingsBtn.style.left = `${x}px`;
+          settingsBtn.style.top = `${y}px`;
+        }
     });
 
     document.addEventListener('mouseup', (e) => {
         if (!isDragging) return;
         
         isDragging = false;
-        settingsBtn.style.cursor = 'grab';
-        
-        // Restore transitions
-        settingsBtn.style.transition = 'background 0.3s ease, transform 0.3s ease, opacity 0.3s ease';
+        if (settingsBtn) {
+          settingsBtn.style.cursor = 'grab';
+          
+          // Restore transitions
+          settingsBtn.style.transition = 'background 0.3s ease, transform 0.3s ease, opacity 0.3s ease';
 
-        if (hasMoved) {
-          const rect = settingsBtn.getBoundingClientRect();
-          const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
-          const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
-          settingsBtn.style.left = `${left}px`;
-          settingsBtn.style.top = `${top}px`;
-          try {
-            localStorage.setItem(settingsBtnPosKey, JSON.stringify({ left, top }));
-          } catch (_) {}
+          if (hasMoved) {
+            const rect = settingsBtn.getBoundingClientRect();
+            const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
+            const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
+            settingsBtn.style.left = `${left}px`;
+            settingsBtn.style.top = `${top}px`;
+            try {
+              safeLocalStorage.setItem(settingsBtnPosKey, JSON.stringify({ left, top }));
+            } catch (_) {}
+          }
         }
     });
     
     // Handle click manually to avoid triggering when dragging
-    settingsBtn.addEventListener('click', (e) => {
-        if (!hasMoved) {
-            toggleSettings();
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', (e) => {
+          if (!hasMoved) {
+              toggleSettings();
+          }
+      });
+    }
+
+    // Receptor de eventos de mensajería (postMessage) para actualización en tiempo real desde el Dashboard
+    window.addEventListener('message', function(event) {
+        if (!event.data) return;
+        if (event.data.action === 'updateConfig') {
+            const data = event.data.payload || {};
+            
+            // Mapear overrides locales en tiempo real
+            if (data.queueOpacity !== undefined) window.queueOpacityOverride = data.queueOpacity;
+            if (data.queueRadius !== undefined) window.queueRadiusOverride = data.queueRadius;
+            if (data.queueFontSize !== undefined) window.queueFontSizeOverride = data.queueFontSize;
+            
+            if (data.queueShowCardBg !== undefined) window.queueShowCardBgOverride = data.queueShowCardBg;
+            if (data.queueBorderWidth !== undefined) window.queueBorderWidthOverride = data.queueBorderWidth;
+            if (data.queueBorderColor !== undefined) window.queueBorderColorOverride = data.queueBorderColor;
+            if (data.queueBorderOpacity !== undefined) window.queueBorderOpacityOverride = data.queueBorderOpacity;
+            if (data.queueBorderStyle !== undefined) window.queueBorderStyleOverride = data.queueBorderStyle;
+            if (data.queueShowAccentBorder !== undefined) window.queueShowAccentBorderOverride = data.queueShowAccentBorder;
+            if (data.queueAccentBorderWidth !== undefined) window.queueAccentBorderWidthOverride = data.queueAccentBorderWidth;
+            if (data.queueShowShadow !== undefined) window.queueShowShadowOverride = data.queueShowShadow;
+            if (data.queueShadowColor !== undefined) window.queueShadowColorOverride = data.queueShadowColor;
+            if (data.queueShadowBlur !== undefined) window.queueShadowBlurOverride = data.queueShadowBlur;
+            if (data.queueShadowOpacity !== undefined) window.queueShadowOpacityOverride = data.queueShadowOpacity;
+            if (data.queueShowSweepBorder !== undefined) window.queueShowSweepBorderOverride = data.queueShowSweepBorder;
+
+            if (data.queueTheme !== undefined) window.queueThemeOverride = data.queueTheme;
+            if (data.queueWidth !== undefined) window.queueWidthOverride = Number(data.queueWidth);
+            if (data.queueMinHeight !== undefined) window.queueMinHeightOverride = Number(data.queueMinHeight);
+            if (data.queueSpacing !== undefined) window.queueSpacingOverride = Number(data.queueSpacing);
+            if (data.queuePadding !== undefined) window.queuePaddingOverride = Number(data.queuePadding);
+            if (data.queueTextGap !== undefined) window.queueTextGapOverride = Number(data.queueTextGap);
+            if (data.queueShowHeader !== undefined) window.queueShowHeaderOverride = data.queueShowHeader;
+            if (data.queueShowArtist !== undefined) window.queueShowArtistOverride = data.queueShowArtist;
+            if (data.queueShowUser !== undefined) window.queueShowUserOverride = data.queueShowUser;
+            if (data.queueShowEmpty !== undefined) window.queueShowEmptyOverride = data.queueShowEmpty;
+            if (data.queueFont !== undefined) window.queueFontOverride = data.queueFont;
+            if (data.queueAccentColor !== undefined) window.queueAccentColorOverride = data.queueAccentColor;
+            if (data.queueBgColor !== undefined) window.queueBgColorOverride = data.queueBgColor;
+            if (data.queueTextColor !== undefined) window.queueTextColorOverride = data.queueTextColor;
+            if (data.queuePrimaryOpacity !== undefined) window.queuePrimaryOpacityOverride = Number(data.queuePrimaryOpacity);
+            if (data.queueSecondaryOpacity !== undefined) window.queueSecondaryOpacityOverride = Number(data.queueSecondaryOpacity);
+            if (data.queueMaxCards !== undefined) window.queueMaxCardsOverride = Number(data.queueMaxCards);
+            if (data.queueWidthScale !== undefined) window.queueWidthScaleOverride = Number(data.queueWidthScale);
+            if (data.queueHeightScale !== undefined) window.queueHeightScaleOverride = Number(data.queueHeightScale);
+            if (data.queueAnimEntry !== undefined) window.queueAnimEntryOverride = data.queueAnimEntry;
+            if (data.queueAnimExit !== undefined) window.queueAnimExitOverride = data.queueAnimExit;
+            if (data.queueAutocorrect !== undefined) window.queueAutocorrectOverride = data.queueAutocorrect;
+            if (data.queueShowAlbumArt !== undefined) window.queueShowAlbumArtOverride = data.queueShowAlbumArt;
+            if (data.queueShowWaitTime !== undefined) window.queueShowWaitTimeOverride = data.queueShowWaitTime;
+            if (data.queueShowTotalDuration !== undefined) window.queueShowTotalDurationOverride = data.queueShowTotalDuration;
+            if (data.queueSyncAppleMusic !== undefined) window.queueSyncAppleMusicOverride = data.queueSyncAppleMusic;
+
+            // Forzar actualización inmediata
+            if (window.appliedSettings) {
+                applySettings({ ...window.appliedSettings });
+            } else {
+                applySettings({ ...defaultSettings });
+            }
+        } else if (event.data.action === 'simulateRequest') {
+            simulateQueueRequest();
+        } else if (event.data.action === 'triggerSkip') {
+            markFirstPending(true);
+        } else if (event.data.action === 'triggerPlayed') {
+            markFirstPending(false);
+        } else if (event.data.action === 'toggleBorders') {
+            toggleDebugBorders();
+        } else if (event.data.action === 'toggleMover') {
+            toggleWidgetMover();
         }
     });
 

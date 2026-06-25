@@ -10,7 +10,7 @@ const firebaseConfig = {
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    const localStorage = {
+    const safeStorage = {
       getItem: (key) => {
         try { return window.localStorage.getItem(key); } catch(e) { return null; }
       },

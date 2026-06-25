@@ -112,7 +112,7 @@ async function run() {
     }
 
     // Replace the Babel block with standard script call
-    let optimizedHtml = htmlContent.substring(0, startIndex) + '<script src="dashboard.js"></script>' + htmlContent.substring(endIndex + endTag.length);
+    let optimizedHtml = htmlContent.substring(0, startIndex) + '<script src="dashboard.js?v=' + Date.now() + '"></script>' + htmlContent.substring(endIndex + endTag.length);
 
     // Remove the Babel Standalone CDN script tag if exists
     optimizedHtml = optimizedHtml.replace(/<script\s+src="https:\/\/unpkg\.com\/babel-standalone@[^/]+\/babel\.min\.js"[^>]*><\/script>/gi, '');

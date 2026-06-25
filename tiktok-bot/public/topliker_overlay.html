@@ -15,6 +15,8 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <!-- Configuración compartida de Firebase -->
+    <script src="firebase-config.js"></script>
 
     <style>
         /* =============================================
@@ -236,13 +238,14 @@
 
         /* =============================================
            CROWN — Hat style above avatar circle
-           avatar-wrap is 48px wide → left:50% = 24px;
-           translateX(-50%) centers the crown above the circle.
+           NOTE: avatar-wrap is position:relative + 44px wide,
+           so left:50% = 22px from left edge of avatar. Crown
+           centers itself above the circle with translateX(-50%).
         ============================================= */
         .crown1 {
             display: none;
             position: absolute;
-            top: -22px;
+            top: -20px;
             left: 50%;
             transform: translateX(-50%) rotate(-6deg);
             height: 26px;
@@ -483,7 +486,7 @@
             <div class="rankId">1.</div>
             <div class="avatar-wrap">
                 <img class="crown1" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 16'%3E%3Cpolygon points='12,0 20,10 24,4 24,16 0,16 0,4 4,10' fill='%23FF5E7E' stroke='%23FF3366' stroke-width='0.8'/%3E%3Ccircle cx='12' cy='1.5' r='2' fill='%23FF1744'/%3E%3Ccircle cx='0' cy='5' r='1.8' fill='%23FF1744'/%3E%3Ccircle cx='24' cy='5' r='1.8' fill='%23FF1744'/%3E%3C/svg%3E" alt="👑" />
-                <img class="profilePicture" src="" onerror="this.src='https://via.placeholder.com/42'" />
+                <img class="profilePicture" src="" onerror="this.src=NOTHUMB" />
             </div>
             <div class="user-info">
                 <div class="username">Usuario</div>
@@ -511,7 +514,7 @@
         // =============================================
         //  CONFIG — edita aquí si no usas TikFinity
         // =============================================
-        var NOTHUMB = "https://via.placeholder.com/42/2a1015/ffffff?text=?";
+        var NOTHUMB = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='42' height='42'%3E%3Crect width='42' height='42' rx='21' fill='%232a1015'/%3E%3Ctext x='50%25' y='55%25' text-anchor='middle' dominant-baseline='middle' fill='%23ffffff' font-size='16' font-family='sans-serif'%3E%3F%3C/text%3E%3C/svg%3E";
 
         // Parámetros de URL
         var params    = new URLSearchParams(document.location.search);
@@ -655,13 +658,14 @@
         // =============================================
         //  FIREBASE FIRESTORE (Conexión al Bot)
         // =============================================
-        const firebaseConfig = {
-            apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-            authDomain: "zero-strom-web.firebaseapp.com",
-            projectId: "zero-strom-web",
-            storageBucket: "zero-strom-web.firebasestorage.app",
+        // Configuración de Firebase (centralizada en firebase-config.js, con fallback local robusto)
+        const localFirebaseConfig = window.ZERO_FM_FIREBASE || {
+            apiKey:            "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+            authDomain:        "zero-strom-web.firebaseapp.com",
+            projectId:         "zero-strom-web",
+            storageBucket:     "zero-strom-web.firebasestorage.app",
             messagingSenderId: "758369466349",
-            appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+            appId:             "1:758369466349:web:f2ced362a5a049c70b59e4"
         };
 
         let db = null;
@@ -669,7 +673,9 @@
 
         try {
             if (typeof firebase !== 'undefined') {
-                firebase.initializeApp(firebaseConfig);
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(localFirebaseConfig);
+                }
                 db = firebase.firestore();
                 console.log("[Firebase] Conectado exitosamente en TopLiker ✓");
                 
@@ -796,7 +802,7 @@
 
                 // Rank number
                 const $rankId = card.find(".rankId");
-                $rankId.text(rank); // circular badge — no dot needed
+                $rankId.text(rank);
                 $rankId.toggle(settings.topliker_showRank !== false);
 
                 // Reset custom styling classes
