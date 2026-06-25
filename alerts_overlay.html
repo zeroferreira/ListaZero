@@ -621,10 +621,9 @@
             width: 100% !important;
         }
 
-        /* Caja de alerta centrada dentro del corazón, conteniendo el usuario y mensaje abajo */
         .type-like .alert-box {
             position: absolute !important;
-            top: 165px !important; /* Desplazado más hacia abajo para evitar colisión con el avatar y centrarse mejor */
+            top: calc(var(--like-avatar-offset, 0px) + (var(--like-heart-size, 190px) * 0.5)) !important; /* Centrado dinámico respecto al corazón */
             left: 50% !important;
             transform: translate(-50%, -50%) !important;
             width: 320px !important;
@@ -654,36 +653,46 @@
         }
 
         .type-like .media-container {
-            position: absolute !important;
+            position: relative !important;
             top: 0 !important;
             left: 50% !important;
             transform: translateX(-50%) !important;
-            width: 260px !important;
-            height: 260px !important;
+            width: 100% !important;
+            height: auto !important;
             margin-bottom: 0 !important;
             z-index: 2 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            overflow: visible !important;
         }
 
         /* Escalar tamaño del corazón SVG */
         .type-like .main-heart-container {
+            position: relative !important;
+            margin: 0 auto !important;
             width: var(--like-heart-size, 190px) !important;
             height: var(--like-heart-size, 190px) !important;
+            z-index: 5 !important;
+            overflow: visible !important;
         }
 
-        /* Foto de perfil en la parte superior del corazón (cleft) - Se adapta al tamaño del corazón */
+        /* Foto de perfil colocada arriba del corazón */
         .type-like .user-avatar {
-            position: absolute !important;
-            width: calc(var(--like-heart-size, 190px) * 0.4) !important;
-            height: calc(var(--like-heart-size, 190px) * 0.4) !important;
+            position: relative !important;
+            width: var(--like-avatar-size, 75px) !important;
+            height: var(--like-avatar-size, 75px) !important;
             border-radius: 50% !important;
-            border: 3.5px solid #fff !important;
-            top: calc(50% - var(--like-heart-size, 190px) * 0.46) !important; /* Posicionado un poco más arriba en la hendidura superior */
-            left: 50% !important;
-            transform: translate(-50%, -50%) !important;
-            z-index: 1 !important; /* Apilamiento interno bajo */
+            border: var(--like-avatar-border-width, 3px) solid var(--like-avatar-border-color, #ffffff) !important;
+            top: auto !important;
+            left: auto !important;
+            transform: none !important;
+            z-index: 12 !important;
             animation: avatarSyncPulse 0.8s infinite ease-in-out !important;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
-            margin: 0 !important;
+            margin: 0 0 8px 0 !important; /* Separación con el corazón de abajo */
+            display: inline-block !important;
         }
 
         /* Nombre de perfil grande en el centro del corazón */
@@ -1058,6 +1067,22 @@
                     root.style.setProperty('--like-username-size', usernameSize + 'px');
                     root.style.setProperty('--like-message-size', messageSize + 'px');
                     root.style.setProperty('--like-wrapper-height', wrapperHeight + 'px');
+
+                    const heartColorStart = data.likeHeartColorStart || '#ff0844';
+                    const heartColorEnd = data.likeHeartColorEnd || '#ffb199';
+                    const heartBorderColor = data.likeHeartBorderColor || '#000000';
+                    const heartBorderWidth = data.likeHeartBorderWidth !== undefined ? data.likeHeartBorderWidth : 0;
+                    const avatarSize = data.likeAvatarSize !== undefined ? data.likeAvatarSize : 75;
+                    const avatarBorderColor = data.likeAvatarBorderColor || '#ffffff';
+                    const avatarBorderWidth = data.likeAvatarBorderWidth !== undefined ? data.likeAvatarBorderWidth : 3;
+
+                    root.style.setProperty('--like-heart-color-start', heartColorStart);
+                    root.style.setProperty('--like-heart-color-end', heartColorEnd);
+                    root.style.setProperty('--like-heart-border-color', heartBorderColor);
+                    root.style.setProperty('--like-heart-border-width', heartBorderWidth + 'px');
+                    root.style.setProperty('--like-avatar-size', avatarSize + 'px');
+                    root.style.setProperty('--like-avatar-border-color', avatarBorderColor);
+                    root.style.setProperty('--like-avatar-border-width', avatarBorderWidth + 'px');
                 } else if (urlType === 'gift') {
                     opacity = data.giftOpacity !== undefined ? data.giftOpacity : 0.76;
                     radius = data.giftRadius !== undefined ? data.giftRadius : 28;
@@ -1394,18 +1419,27 @@
                         <svg class="main-heart-svg" viewBox="0 0 24 24" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
                             <defs>
                                 <linearGradient id="heartGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" stop-color="#ff0844" />
-                                    <stop offset="100%" stop-color="#ffb199" />
+                                    <stop offset="0%" stop-color="var(--like-heart-color-start, #ff0844)" />
+                                    <stop offset="100%" stop-color="var(--like-heart-color-end, #ffb199)" />
                                 </linearGradient>
                             </defs>
-                            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="url(#heartGrad)" />
+                            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" 
+                                  fill="url(#heartGrad)" 
+                                  stroke="var(--like-heart-border-color, transparent)" 
+                                  stroke-width="var(--like-heart-border-width, 0px)"
+                                  style="vector-effect: non-scaling-stroke;" />
                         </svg>
                     `);
                     $mediaContainer.append($heartContainer);
 
-                    // 2. Si hay avatar de usuario, se centra dentro del corazón con pulso sincronizado
+                    // 2. Si hay avatar de usuario, se muestra arriba del corazón con offset dinámico
+                    const documentRoot = document.documentElement;
                     if (data.profilePic) {
                         $userAvatar.attr("src", data.profilePic).addClass("avatar-sync-pulse").show();
+                        documentRoot.style.setProperty('--like-avatar-offset', `calc(var(--like-avatar-size, 75px) + 8px)`);
+                    } else {
+                        $userAvatar.hide();
+                        documentRoot.style.setProperty('--like-avatar-offset', '0px');
                     }
 
                     // 3. Crear contenedor de corazones flotantes si no existe

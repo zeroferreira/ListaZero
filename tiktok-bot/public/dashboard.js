@@ -82,6 +82,13 @@ function App() {
     likeUsernameSize: 35,
     likeMessageSize: 20,
     likeWrapperHeight: 290,
+    likeHeartColorStart: '#ff0844',
+    likeHeartColorEnd: '#ffb199',
+    likeHeartBorderColor: '#000000',
+    likeHeartBorderWidth: 0,
+    likeAvatarSize: 75,
+    likeAvatarBorderColor: '#ffffff',
+    likeAvatarBorderWidth: 3,
     // Gifts Alert Specific Config
     giftOpacity: 0.85,
     giftRadius: 22,
@@ -3916,6 +3923,163 @@ function App() {
       likeWrapperHeight: parseInt(e.target.value)
     })
   })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
+    style: {
+      marginBottom: '25px',
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      paddingBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
+    style: {
+      cursor: 'pointer',
+      marginBottom: '15px',
+      color: '#a855f7'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\u2764\uFE0F Personalizaci\xF3n del Coraz\xF3n y Avatar")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.01)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.04)',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#a855f7',
+      fontSize: '0.85rem'
+    }
+  }, "Personalizar Coraz\xF3n (SVG)"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color Inicio (Degradado)"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.likeHeartColorStart || '#ff0844',
+    onChange: e => setOverlays({
+      ...overlays,
+      likeHeartColorStart: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color Fin (Degradado)"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.likeHeartColorEnd || '#ffb199',
+    onChange: e => setOverlays({
+      ...overlays,
+      likeHeartColorEnd: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.likeHeartBorderColor || '#000000',
+    onChange: e => setOverlays({
+      ...overlays,
+      likeHeartBorderColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor Contorno: ", overlays.likeHeartBorderWidth !== undefined ? overlays.likeHeartBorderWidth : 0, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "0.5",
+    value: overlays.likeHeartBorderWidth !== undefined ? overlays.likeHeartBorderWidth : 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      likeHeartBorderWidth: parseFloat(e.target.value)
+    })
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(255,255,255,0.01)',
+      padding: '12px',
+      borderRadius: '10px',
+      border: '1px solid rgba(255,255,255,0.04)'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: 'bold',
+      color: '#a855f7',
+      fontSize: '0.85rem'
+    }
+  }, "Personalizar Avatar (Foto de Perfil)"), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      marginTop: '8px'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Tama\xF1o de la Foto: ", overlays.likeAvatarSize || 75, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "40",
+    max: "150",
+    step: "5",
+    value: overlays.likeAvatarSize || 75,
+    onChange: e => setOverlays({
+      ...overlays,
+      likeAvatarSize: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Borde"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.likeAvatarBorderColor || '#ffffff',
+    onChange: e => setOverlays({
+      ...overlays,
+      likeAvatarBorderColor: e.target.value
+    }),
+    style: {
+      width: '100%',
+      height: '36px',
+      cursor: 'pointer',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Grosor de Borde: ", overlays.likeAvatarBorderWidth !== undefined ? overlays.likeAvatarBorderWidth : 3, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "0.5",
+    value: overlays.likeAvatarBorderWidth !== undefined ? overlays.likeAvatarBorderWidth : 3,
+    onChange: e => setOverlays({
+      ...overlays,
+      likeAvatarBorderWidth: parseFloat(e.target.value)
+    })
+  })))))), /*#__PURE__*/React.createElement("details", {
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
