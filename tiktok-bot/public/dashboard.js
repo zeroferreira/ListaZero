@@ -108,6 +108,42 @@ function App() {
     subscribeShowCard: true,
     subscribeFontFamily: 'Outfit',
     subscribeTextShadow: '3d-retro',
+    // Welcome Overlay Config
+    welcomeOverlayEnabled: true,
+    welcomeOverlayDuration: 5,
+    welcomeOverlayGreetingTemplate: "¡Acaba de entrar al Live! 👋",
+    welcomeOverlayColor: "#a855f7",
+    welcomeOverlaySoundEnabled: true,
+    welcomeOverlaySoundVolume: 40,
+    welcomeOverlayAllowAll: true,
+    welcomeOverlayAllowFollowers: false,
+    welcomeOverlayAllowSubscribers: false,
+    welcomeOverlayAllowModerators: false,
+    // Chat TTS Config
+    chatTtsEnabled: false,
+    chatTtsLanguage: "es-MX",
+    chatTtsSpeed: 50,
+    chatTtsPitch: 50,
+    chatTtsVolume: 80,
+    chatTtsRandomVoice: false,
+    chatTtsVoice: "Default Voice",
+    chatTtsAllowAll: true,
+    chatTtsAllowFollowers: false,
+    chatTtsAllowSubscribers: false,
+    chatTtsAllowModerators: false,
+    chatTtsAllowTeam: false,
+    chatTtsAllowTopGifters: false,
+    chatTtsType: "any",
+    chatTtsCommand: "!tts",
+    chatTtsFilterLetterSpam: true,
+    chatTtsFilterMentions: true,
+    chatTtsFilterCommands: true,
+    chatTtsMaxCommentLength: 300,
+    chatTtsUserCooldown: 0,
+    chatTtsMaxQueueLength: 5,
+    chatTtsChargePoints: false,
+    chatTtsCost: 5,
+    chatTtsMessageTemplate: "{comment}",
     topgifter_show_crown: true,
     topgifter_show_coin_symbol: true,
     topgifter_max: 10,
@@ -228,6 +264,19 @@ function App() {
     tickerFontSize: 14
   });
   const [dirtyKeys, setDirtyKeys] = React.useState({});
+  const [availableVoices, setAvailableVoices] = React.useState([]);
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        setAvailableVoices(voices);
+      };
+      loadVoices();
+      if (window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+      }
+    }
+  }, []);
   const setOverlays = React.useCallback(val => {
     if (typeof val === 'function') {
       _setOverlays(prev => {
@@ -829,6 +878,8 @@ function App() {
         sendConfigToIframe('iframe-timer', timer);
       } else if (activeSub === 'lastevents') {
         sendConfigToIframe('iframe-lastevents', lastevents);
+      } else if (activeSub === 'welcome') {
+        sendConfigToIframe('iframe-welcome', overlays);
       }
     }, 80);
     return () => clearTimeout(timerId);
@@ -1919,6 +1970,22 @@ function App() {
     className: `overlays-menu-item ${activeSub === 'lastevents' ? 'active' : ''}`,
     onClick: () => setActiveSub('lastevents')
   }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCCB \xDAltimos Eventos"), /*#__PURE__*/React.createElement("span", {
+    className: "menu-badge",
+    style: {
+      color: '#06b6d4'
+    }
+  }, "Nuevo")), /*#__PURE__*/React.createElement("button", {
+    className: `overlays-menu-item ${activeSub === 'welcome' ? 'active' : ''}`,
+    onClick: () => setActiveSub('welcome')
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDC4B Alerta Bienvenida"), /*#__PURE__*/React.createElement("span", {
+    className: "menu-badge",
+    style: {
+      color: '#06b6d4'
+    }
+  }, "Nuevo")), /*#__PURE__*/React.createElement("button", {
+    className: `overlays-menu-item ${activeSub === 'tts' ? 'active' : ''}`,
+    onClick: () => setActiveSub('tts')
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDDE3\uFE0F Lector de Voz (TTS)"), /*#__PURE__*/React.createElement("span", {
     className: "menu-badge",
     style: {
       color: '#06b6d4'
@@ -7533,7 +7600,758 @@ function App() {
   }, renderIcon('save'), " Guardar Dise\xF1o & Filtros"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-green",
     onClick: triggerShareEvent
-  }, "\uD83E\uDDEA Simular Evento Share"))))), activeTab === 'prueba' && /*#__PURE__*/React.createElement("div", {
+  }, "\uD83E\uDDEA Simular Evento Share"))), activeSub === 'welcome' && /*#__PURE__*/React.createElement("div", {
+    className: "glass-card"
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      marginBottom: '10px'
+    }
+  }, "\uD83D\uDC4B Alerta de Bienvenida (Join Alert)"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.88rem',
+      marginBottom: '20px'
+    }
+  }, "Muestra un saludo en pantalla con el avatar y nombre del usuario cuando entra al Live."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      marginBottom: '20px',
+      paddingBottom: '20px'
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginBottom: '15px'
+    }
+  }, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno / Brillo"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.welcomeOverlayColor || '#a855f7',
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayColor: e.target.value
+    }),
+    style: {
+      height: '40px',
+      padding: '2px',
+      border: '1px solid rgba(255,255,255,0.1)'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Duraci\xF3n (segundos): ", overlays.welcomeOverlayDuration || 5, "s"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "2",
+    max: "15",
+    step: "1",
+    value: overlays.welcomeOverlayDuration || 5,
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayDuration: parseInt(e.target.value)
+    })
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "preview-panel"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "preview-header"
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCFA Vista Previa en Vivo"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '5px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "preview-live-dot"
+  }), " Join Alert Overlay")), /*#__PURE__*/React.createElement("iframe", {
+    id: "iframe-welcome",
+    src: `./welcome_overlay.html`,
+    className: "preview-iframe",
+    style: {
+      height: '350px',
+      background: 'transparent'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      marginTop: '20px'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Enlace de OBS (Browser Source \u2014 600 \xD7 300 px)"), /*#__PURE__*/React.createElement("div", {
+    className: "copy-url-row"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    className: "copy-url-input",
+    readOnly: true,
+    value: `${currentOrigin}/welcome_overlay.html`,
+    onClick: e => e.target.select()
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary",
+    onClick: () => handleCopyUrl(`${currentOrigin}/welcome_overlay.html`)
+  }, "Copiar URL"))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Activar Alerta de Bienvenida"), /*#__PURE__*/React.createElement("select", {
+    value: String(overlays.welcomeOverlayEnabled),
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayEnabled: e.target.value === 'true'
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "true"
+  }, "\u2705 Activar"), /*#__PURE__*/React.createElement("option", {
+    value: "false"
+  }, "\u274C Desactivar"))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Plantilla de Saludo (usa ", "{user}", " o ", "{nickname}", ")"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: overlays.welcomeOverlayGreetingTemplate || '',
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayGreetingTemplate: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Efecto de Sonido"), /*#__PURE__*/React.createElement("select", {
+    value: String(overlays.welcomeOverlaySoundEnabled),
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlaySoundEnabled: e.target.value === 'true'
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "true"
+  }, "\uD83D\uDD0A Habilitar Sonido"), /*#__PURE__*/React.createElement("option", {
+    value: "false"
+  }, "\uD83D\uDD07 Deshabilitar Sonido"))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Volumen del Sonido: ", overlays.welcomeOverlaySoundVolume || 40, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.welcomeOverlaySoundVolume || 40,
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlaySoundVolume: parseInt(e.target.value)
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '10px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "\xBFQui\xE9n activa esta alerta al entrar?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '15px',
+      padding: '12px 16px',
+      background: 'rgba(0,0,0,0.2)',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '4px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.welcomeOverlayAllowAll,
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayAllowAll: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Todos"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '4px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.welcomeOverlayAllowFollowers,
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayAllowFollowers: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Seguidores"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '4px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.welcomeOverlayAllowSubscribers,
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayAllowSubscribers: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Suscriptores"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '4px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.welcomeOverlayAllowModerators,
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayAllowModerators: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Moderadores"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: '10px',
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => handleSaveOverlaysConfigOnly('Bienvenida')
+  }, renderIcon('save'), " Guardar Configuraci\xF3n"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-green",
+    onClick: () => {
+      const iframe = document.getElementById('iframe-welcome');
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({
+          action: 'triggerTestAlert',
+          payload: {
+            type: 'join',
+            uniqueId: 'zero_fm',
+            user: 'Zero FM',
+            profilePic: 'https://p16-sign-va.tiktokcdn.com/tos-maliva-avt-0068/7343292376918818822~tplv-tiktok-shrink:100x100.webp'
+          }
+        }, '*');
+      }
+    }
+  }, renderIcon('play'), " Simular Entrada"))), activeSub === 'tts' && /*#__PURE__*/React.createElement("div", {
+    className: "glass-card"
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      marginBottom: '10px'
+    }
+  }, "\uD83D\uDDE3\uFE0F Lector de Voz en Chat (TTS)"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.88rem',
+      marginBottom: '20px'
+    }
+  }, "Lee en voz alta los comentarios del chat en tiempo real. Configura filtros de audiencia, volumen, velocidad y coste."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      marginBottom: '20px',
+      paddingBottom: '20px'
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginBottom: '15px'
+    }
+  }, "\uD83D\uDD0A Configuraci\xF3n del Habla (Voz & Tono)"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Idioma Voces"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.chatTtsLanguage || 'es-MX',
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsLanguage: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "es-MX"
+  }, "Espa\xF1ol (M\xE9xico) \uD83C\uDDF2\uD83C\uDDFD"), /*#__PURE__*/React.createElement("option", {
+    value: "es-ES"
+  }, "Espa\xF1ol (Espa\xF1a) \uD83C\uDDEA\uD83C\uDDF8"), /*#__PURE__*/React.createElement("option", {
+    value: "es-US"
+  }, "Espa\xF1ol (Estados Unidos) \uD83C\uDDFA\uD83C\uDDF8"), /*#__PURE__*/React.createElement("option", {
+    value: "en-US"
+  }, "Ingl\xE9s (EE.UU.) \uD83C\uDDFA\uD83C\uDDF8"), /*#__PURE__*/React.createElement("option", {
+    value: "pt-BR"
+  }, "Portugu\xE9s (Brasil) \uD83C\uDDE7\uD83C\uDDF7"))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Voz del Lector"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.chatTtsVoice || 'Default Voice',
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsVoice: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "Default Voice"
+  }, "Default Voice"), availableVoices.filter(v => v.lang.startsWith((overlays.chatTtsLanguage || 'es-MX').split('-')[0])).map((voice, idx) => /*#__PURE__*/React.createElement("option", {
+    key: idx,
+    value: voice.name
+  }, voice.name)))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      display: 'flex',
+      alignItems: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      cursor: 'pointer',
+      margin: 0,
+      marginTop: '20px',
+      gap: '6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.chatTtsRandomVoice,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsRandomVoice: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Voz Aleatoria (por idioma)"))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-3",
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Volumen del TTS: ", overlays.chatTtsVolume || 80, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.chatTtsVolume || 80,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsVolume: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Velocidad: ", overlays.chatTtsSpeed || 50, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "10",
+    max: "150",
+    step: "5",
+    value: overlays.chatTtsSpeed || 50,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsSpeed: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Tono (Pitch): ", overlays.chatTtsPitch || 50, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "10",
+    max: "150",
+    step: "5",
+    value: overlays.chatTtsPitch || 50,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsPitch: parseInt(e.target.value)
+    })
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      marginBottom: '20px',
+      paddingBottom: '20px'
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginBottom: '15px'
+    }
+  }, "\uD83D\uDEE1\uFE0F Filtros de Contenido & Cooldowns"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Longitud M\xE1xima de Comentario"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "10",
+    max: "1000",
+    value: overlays.chatTtsMaxCommentLength || 300,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsMaxCommentLength: parseInt(e.target.value) || 300
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Cooldown por Usuario (segundos)"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "0",
+    max: "300",
+    value: overlays.chatTtsUserCooldown || 0,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsUserCooldown: parseInt(e.target.value) || 0
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "L\xEDmite Cola de Espera"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "1",
+    max: "20",
+    value: overlays.chatTtsMaxQueueLength || 5,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsMaxQueueLength: parseInt(e.target.value) || 5
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '10px',
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '15px',
+      padding: '12px 16px',
+      background: 'rgba(0,0,0,0.2)',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.chatTtsFilterLetterSpam,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsFilterLetterSpam: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Filtrar Spam de Letras"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.chatTtsFilterMentions,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsFilterMentions: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Omitir mencione (@usuario)"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.chatTtsFilterCommands,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsFilterCommands: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Omitir comandos (!bot, etc)"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      marginBottom: '20px',
+      paddingBottom: '20px'
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginBottom: '15px'
+    }
+  }, "\uD83E\uDE99 Costo & Activaci\xF3n del TTS"), /*#__PURE__*/React.createElement("div", {
+    className: "grid-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Activar Lector (TTS)"), /*#__PURE__*/React.createElement("select", {
+    value: String(overlays.chatTtsEnabled),
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsEnabled: e.target.value === 'true'
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "true"
+  }, "\u2705 Activar"), /*#__PURE__*/React.createElement("option", {
+    value: "false"
+  }, "\u274C Desactivar"))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Filtro de Comentarios"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.chatTtsType || 'any',
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsType: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "any"
+  }, "Cualquier Comentario (Todo)"), /*#__PURE__*/React.createElement("option", {
+    value: "dot"
+  }, "Comentarios con punto inicial (.)"), /*#__PURE__*/React.createElement("option", {
+    value: "slash"
+  }, "Comentarios con barra inicial (/)"), /*#__PURE__*/React.createElement("option", {
+    value: "command"
+  }, "Comando espec\xEDfico de chat"))), overlays.chatTtsType === 'command' && /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Comando espec\xEDfico"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: overlays.chatTtsCommand || '!tts',
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsCommand: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      display: 'flex',
+      alignItems: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      cursor: 'pointer',
+      margin: 0,
+      marginTop: '20px',
+      gap: '6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.chatTtsChargePoints,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsChargePoints: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Cobrar Puntos del Canal por TTS")), overlays.chatTtsChargePoints && /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Costo en Puntos"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "1",
+    value: overlays.chatTtsCost || 5,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsCost: parseInt(e.target.value) || 5
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Plantilla de Lectura (usa ", "{comment}", " o ", "{nickname}", ")"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: overlays.chatTtsMessageTemplate || '{comment}',
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsMessageTemplate: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '10px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "\xBFQui\xE9n puede usar el Lector de Voz (TTS)?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '15px',
+      padding: '12px 16px',
+      background: 'rgba(0,0,0,0.2)',
+      border: '1px solid var(--border-glass)',
+      borderRadius: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.chatTtsAllowAll,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsAllowAll: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Todos"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.chatTtsAllowFollowers,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsAllowFollowers: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Seguidores"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.chatTtsAllowSubscribers,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsAllowSubscribers: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Suscriptores"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.chatTtsAllowModerators,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsAllowModerators: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Moderadores"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.chatTtsAllowTeam,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsAllowTeam: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " Team (Superfans)"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'inline-flex',
+      cursor: 'pointer',
+      margin: 0,
+      alignItems: 'center',
+      gap: '6px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!overlays.chatTtsAllowTopGifters,
+    onChange: e => setOverlays({
+      ...overlays,
+      chatTtsAllowTopGifters: e.target.checked
+    }),
+    style: {
+      width: 'auto',
+      margin: 0
+    }
+  }), " VIPs (Top Gifters)"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: '10px',
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => handleSaveOverlaysConfigOnly('Lector TTS')
+  }, renderIcon('save'), " Guardar Configuraci\xF3n"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-green",
+    onClick: () => {
+      if ('speechSynthesis' in window) {
+        const text = (overlays.chatTtsMessageTemplate || '{comment}').replace(/{comment}/g, "Hola Streamer, este es un mensaje de prueba para verificar que el lector de voz funciona correctamente.").replace(/{nickname}/g, "Zero FM").replace(/{username}/g, "zero_fm");
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = overlays.chatTtsLanguage || 'es-MX';
+        utterance.rate = (overlays.chatTtsSpeed || 50) / 50;
+        utterance.pitch = (overlays.chatTtsPitch || 50) / 50;
+        utterance.volume = (overlays.chatTtsVolume || 80) / 100;
+        if (overlays.chatTtsVoice && overlays.chatTtsVoice !== 'Default Voice') {
+          const voice = availableVoices.find(v => v.name === overlays.chatTtsVoice);
+          if (voice) utterance.voice = voice;
+        }
+        window.speechSynthesis.speak(utterance);
+      } else {
+        alert("Lector de voz no soportado en este navegador.");
+      }
+    }
+  }, renderIcon('play'), " Probar TTS Local"))))), activeTab === 'prueba' && /*#__PURE__*/React.createElement("div", {
     className: "grid-3"
   }, /*#__PURE__*/React.createElement("div", {
     className: "glass-card"
