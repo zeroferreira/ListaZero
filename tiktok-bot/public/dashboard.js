@@ -8104,12 +8104,13 @@ function App() {
       chatTtsVolume: parseInt(e.target.value)
     })
   })))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
     style: {
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       marginBottom: '25px',
       paddingBottom: '25px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", {
     style: {
       marginBottom: '15px',
       color: 'var(--accent-primary)',
@@ -8120,9 +8121,9 @@ function App() {
   }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDC65 Usuarios Generales Permitidos")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
-      flexWrap: 'wrap',
-      gap: '15px',
-      padding: '12px 16px',
+      flexDirection: 'column',
+      gap: '12px',
+      padding: '16px 20px',
       background: 'rgba(0,0,0,0.2)',
       border: '1px solid var(--border-glass)',
       borderRadius: '10px'
@@ -8130,6 +8131,7 @@ function App() {
   }, /*#__PURE__*/React.createElement("label", {
     style: {
       display: 'inline-flex',
+      alignItems: 'center',
       cursor: 'pointer',
       margin: 0
     }
@@ -8142,11 +8144,12 @@ function App() {
     }),
     style: {
       width: 'auto',
-      marginRight: '8px'
+      marginRight: '10px'
     }
   }), "Cualquiera (Todos)"), /*#__PURE__*/React.createElement("label", {
     style: {
       display: 'inline-flex',
+      alignItems: 'center',
       cursor: 'pointer',
       margin: 0,
       opacity: overlays.chatTtsAllowAll ? 0.5 : 1
@@ -8161,11 +8164,12 @@ function App() {
     }),
     style: {
       width: 'auto',
-      marginRight: '8px'
+      marginRight: '10px'
     }
   }), "Suscriptores \u2B50"), /*#__PURE__*/React.createElement("label", {
     style: {
       display: 'inline-flex',
+      alignItems: 'center',
       cursor: 'pointer',
       margin: 0,
       opacity: overlays.chatTtsAllowAll ? 0.5 : 1
@@ -8180,11 +8184,12 @@ function App() {
     }),
     style: {
       width: 'auto',
-      marginRight: '8px'
+      marginRight: '10px'
     }
   }), "Moderadores \uD83D\uDEE1\uFE0F"), /*#__PURE__*/React.createElement("label", {
     style: {
       display: 'inline-flex',
+      alignItems: 'center',
       cursor: 'pointer',
       margin: 0,
       opacity: overlays.chatTtsAllowAll ? 0.5 : 1
@@ -8199,11 +8204,12 @@ function App() {
     }),
     style: {
       width: 'auto',
-      marginRight: '8px'
+      marginRight: '10px'
     }
   }), "Miembros de Equipo/Super Fans \uD83D\uDC65"), /*#__PURE__*/React.createElement("label", {
     style: {
       display: 'inline-flex',
+      alignItems: 'center',
       cursor: 'pointer',
       margin: 0,
       opacity: overlays.chatTtsAllowAll ? 0.5 : 1
@@ -8218,7 +8224,7 @@ function App() {
     }),
     style: {
       width: 'auto',
-      marginRight: '8px'
+      marginRight: '10px'
     }
   }), "Top Gifters (Ranking) \uD83C\uDFC6")), /*#__PURE__*/React.createElement("p", {
     style: {
@@ -8227,6 +8233,89 @@ function App() {
       marginTop: '10px'
     }
   }, "\uD83D\uDCA1 Nota: El Streamer/Creador siempre tiene permiso para usar el lector de chat sin importar estos filtros.")), /*#__PURE__*/React.createElement("div", {
+    className: "glass-card",
+    style: {
+      background: 'rgba(0,0,0,0.15)',
+      border: '1px solid rgba(255,255,255,0.05)',
+      padding: '20px',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between',
+      height: '100%'
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      color: 'var(--accent-primary)',
+      marginBottom: '10px'
+    }
+  }, "\uD83D\uDD0A Probar Voz / TTS"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px',
+      flex: 1,
+      justifyContent: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: testerText,
+    onChange: e => setTesterText(e.target.value),
+    placeholder: "Escribe un mensaje de prueba...",
+    style: {
+      width: '100%',
+      height: '38px',
+      fontSize: '0.88rem'
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: '10px',
+      marginTop: '5px'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary",
+    style: {
+      flex: 1,
+      height: '38px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '5px'
+    },
+    onClick: () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(testerText);
+        utterance.lang = overlays.chatTtsLanguage;
+        utterance.rate = overlays.chatTtsSpeed / 50;
+        utterance.pitch = overlays.chatTtsPitch / 50;
+        utterance.volume = overlays.chatTtsVolume / 100;
+        if (!overlays.chatTtsRandomVoice) {
+          const selectedVoice = voices.find(v => v.name === overlays.chatTtsVoice);
+          if (selectedVoice) utterance.voice = selectedVoice;
+        } else {
+          const filtered = voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage));
+          if (filtered.length > 0) {
+            utterance.voice = filtered[Math.floor(Math.random() * filtered.length)];
+          }
+        }
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+  }, "\uD83D\uDD0A Probar Voz Local"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary",
+    style: {
+      flex: 1,
+      height: '38px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '5px',
+      color: '#a855f7',
+      borderColor: '#a855f7'
+    },
+    onClick: () => triggerOverlayTest('chat', testerText.trim() || undefined)
+  }, "\uD83E\uDDEA Probar TTS en Overlay"))))), /*#__PURE__*/React.createElement("div", {
     className: "grid-2",
     style: {
       borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -8452,96 +8541,14 @@ function App() {
       color: 'var(--text-secondary)'
     }
   }, "No Special Users defined")))))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '15px'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "glass-card",
-    style: {
-      background: 'rgba(0,0,0,0.15)',
-      border: '1px solid rgba(255,255,255,0.05)',
-      padding: '20px'
-    }
-  }, /*#__PURE__*/React.createElement("h4", {
-    style: {
-      color: 'var(--accent-primary)',
-      marginBottom: '10px'
-    }
-  }, "\uD83D\uDD0A Probar Voz / TTS"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '10px'
-    }
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "text",
-    value: testerText,
-    onChange: e => setTesterText(e.target.value),
-    placeholder: "Escribe un mensaje de prueba...",
-    style: {
-      flex: 1,
-      height: '38px',
-      fontSize: '0.88rem'
-    }
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: '10px'
-    }
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "btn btn-secondary",
-    style: {
-      flex: 1,
-      height: '38px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: '5px'
-    },
-    onClick: () => {
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(testerText);
-        utterance.lang = overlays.chatTtsLanguage;
-        utterance.rate = overlays.chatTtsSpeed / 50;
-        utterance.pitch = overlays.chatTtsPitch / 50;
-        utterance.volume = overlays.chatTtsVolume / 100;
-        if (!overlays.chatTtsRandomVoice) {
-          const selectedVoice = voices.find(v => v.name === overlays.chatTtsVoice);
-          if (selectedVoice) utterance.voice = selectedVoice;
-        } else {
-          const filtered = voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage));
-          if (filtered.length > 0) {
-            utterance.voice = filtered[Math.floor(Math.random() * filtered.length)];
-          }
-        }
-        window.speechSynthesis.speak(utterance);
-      }
-    }
-  }, "\uD83D\uDD0A Probar Voz Local"), /*#__PURE__*/React.createElement("button", {
-    className: "btn btn-secondary",
-    style: {
-      flex: 1,
-      height: '38px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: '5px',
-      color: '#a855f7',
-      borderColor: '#a855f7'
-    },
-    onClick: () => triggerOverlayTest('chat', testerText.trim() || undefined)
-  }, "\uD83E\uDDEA Probar TTS en Overlay")))), /*#__PURE__*/React.createElement("div", {
     className: "glass-card",
     style: {
       background: 'rgba(0,0,0,0.15)',
       border: '1px solid rgba(255,255,255,0.05)',
       padding: '20px',
-      flex: 1,
       display: 'flex',
-      flexDirection: 'column'
+      flexDirection: 'column',
+      height: '100%'
     }
   }, /*#__PURE__*/React.createElement("h4", {
     style: {
@@ -8557,7 +8564,8 @@ function App() {
       padding: '10px',
       fontFamily: 'monospace',
       fontSize: '0.8rem',
-      maxHeight: '160px',
+      minHeight: '260px',
+      maxHeight: '360px',
       overflowY: 'auto',
       color: 'var(--text-secondary)',
       display: 'flex',
@@ -8585,7 +8593,7 @@ function App() {
       padding: '20px',
       fontStyle: 'italic'
     }
-  }, "No hay logs de TTS recientes"))))), /*#__PURE__*/React.createElement("div", {
+  }, "No hay logs de TTS recientes")))), /*#__PURE__*/React.createElement("div", {
     className: "grid-2",
     style: {
       borderBottom: '1px solid rgba(255,255,255,0.06)',
