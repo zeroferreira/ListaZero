@@ -1146,7 +1146,7 @@ function App() {
   };
 
   // Event simulation triggers
-  const triggerOverlayTest = async type => {
+  const triggerOverlayTest = async (type, customText) => {
     // Petición al bot en segundo plano (para que OBS también lo capte si está online)
     try {
       fetch('/api/overlays/test', {
@@ -1155,7 +1155,8 @@ function App() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          type
+          type,
+          customText
         })
       }).catch(() => {});
     } catch (e) {}
@@ -1216,6 +1217,11 @@ function App() {
             user: 'YouTube Link',
             message: overlays.likesLockAlertMsg || '🔒 Enlaces bloqueados: Faltan {faltan} likes en el Live (llevamos {llevamos}/{meta}) ❤️',
             profilePic: ''
+          },
+          chat: {
+            type: 'chat',
+            user: 'TesterChat',
+            message: customText || '¡Hola! Este es un mensaje de prueba leído por el lector de chat.'
           }
         };
         const payload = payloads[type];
@@ -8463,27 +8469,35 @@ function App() {
       color: 'var(--accent-primary)',
       marginBottom: '10px'
     }
-  }, "Voice Tester"), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83D\uDD0A Probar Voz / TTS"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
+      flexDirection: 'column',
       gap: '10px'
     }
   }, /*#__PURE__*/React.createElement("input", {
     type: "text",
     value: testerText,
     onChange: e => setTesterText(e.target.value),
-    placeholder: "Escribe algo...",
+    placeholder: "Escribe un mensaje de prueba...",
     style: {
       flex: 1,
       height: '38px',
       fontSize: '0.88rem'
     }
-  }), /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
     style: {
+      flex: 1,
       height: '38px',
       display: 'flex',
       alignItems: 'center',
+      justifyContent: 'center',
       gap: '5px'
     },
     onClick: () => {
@@ -8506,7 +8520,20 @@ function App() {
         window.speechSynthesis.speak(utterance);
       }
     }
-  }, "\u25B6\uFE0F Play"))), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83D\uDD0A Probar Voz Local"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary",
+    style: {
+      flex: 1,
+      height: '38px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '5px',
+      color: '#a855f7',
+      borderColor: '#a855f7'
+    },
+    onClick: () => triggerOverlayTest('chat', testerText.trim() || undefined)
+  }, "\uD83E\uDDEA Probar TTS en Overlay")))), /*#__PURE__*/React.createElement("div", {
     className: "glass-card",
     style: {
       background: 'rgba(0,0,0,0.15)',

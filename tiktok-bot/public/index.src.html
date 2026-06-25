@@ -1951,13 +1951,13 @@
             };
 
             // Event simulation triggers
-            const triggerOverlayTest = async (type) => {
+            const triggerOverlayTest = async (type, customText) => {
                 // Petición al bot en segundo plano (para que OBS también lo capte si está online)
                 try {
                     fetch('/api/overlays/test', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ type })
+                        body: JSON.stringify({ type, customText })
                     }).catch(() => {});
                 } catch (e) {}
 
@@ -1988,7 +1988,8 @@
                             gift_rose: { type: 'gift', user: 'PruebaRegalo', giftName: 'Rosa', coins: 1, repeatCount: 1, message: (overlays.giftsAlertMsg || '¡Gracias por {repeatCount}x {giftName}! 🎁').replace('{giftName}', 'Rosa').replace('{repeatCount}', '1'), profilePic: 'https://i.pravatar.cc/100?img=12' },
                             gift_lion: { type: 'gift', user: 'PruebaRegalo', giftName: 'León', coins: 2999, repeatCount: 1, message: (overlays.giftsAlertMsg || '¡Gracias por {repeatCount}x {giftName}! 🎁').replace('{giftName}', 'León').replace('{repeatCount}', '1'), profilePic: 'https://i.pravatar.cc/100?img=12' },
                             subscribe: { type: 'subscribe', user: 'PruebaSubs', message: overlays.subsAlertMsg || '¡gracias por suscribirte al canal! ⭐', profilePic: 'https://i.pravatar.cc/100?img=33' },
-                            like_lock_blocked: { type: 'like', user: 'YouTube Link', message: overlays.likesLockAlertMsg || '🔒 Enlaces bloqueados: Faltan {faltan} likes en el Live (llevamos {llevamos}/{meta}) ❤️', profilePic: '' }
+                            like_lock_blocked: { type: 'like', user: 'YouTube Link', message: overlays.likesLockAlertMsg || '🔒 Enlaces bloqueados: Faltan {faltan} likes en el Live (llevamos {llevamos}/{meta}) ❤️', profilePic: '' },
+                            chat: { type: 'chat', user: 'TesterChat', message: customText || '¡Hola! Este es un mensaje de prueba leído por el lector de chat.' }
                         };
                         const payload = payloads[type];
                         if (payload) {
@@ -5632,42 +5633,51 @@
                                                 
                                                 {/* Voice Tester */}
                                                 <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px' }}>
-                                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: '10px' }}>Voice Tester</h4>
-                                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: '10px' }}>🔊 Probar Voz / TTS</h4>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                         <input 
                                                             type="text" 
                                                             value={testerText} 
                                                             onChange={(e) => setTesterText(e.target.value)} 
-                                                            placeholder="Escribe algo..."
+                                                            placeholder="Escribe un mensaje de prueba..."
                                                             style={{ flex: 1, height: '38px', fontSize: '0.88rem' }}
                                                         />
-                                                        <button 
-                                                            className="btn btn-secondary" 
-                                                            style={{ height: '38px', display: 'flex', alignItems: 'center', gap: '5px' }}
-                                                            onClick={() => {
-                                                                if (typeof window !== 'undefined' && window.speechSynthesis) {
-                                                                    window.speechSynthesis.cancel();
-                                                                    const utterance = new SpeechSynthesisUtterance(testerText);
-                                                                    utterance.lang = overlays.chatTtsLanguage;
-                                                                    utterance.rate = overlays.chatTtsSpeed / 50;
-                                                                    utterance.pitch = overlays.chatTtsPitch / 50;
-                                                                    utterance.volume = overlays.chatTtsVolume / 100;
-                                                                    
-                                                                    if (!overlays.chatTtsRandomVoice) {
-                                                                        const selectedVoice = voices.find(v => v.name === overlays.chatTtsVoice);
-                                                                        if (selectedVoice) utterance.voice = selectedVoice;
-                                                                    } else {
-                                                                        const filtered = voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage));
-                                                                        if (filtered.length > 0) {
-                                                                            utterance.voice = filtered[Math.floor(Math.random() * filtered.length)];
+                                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                                            <button 
+                                                                className="btn btn-secondary" 
+                                                                style={{ flex: 1, height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
+                                                                onClick={() => {
+                                                                    if (typeof window !== 'undefined' && window.speechSynthesis) {
+                                                                        window.speechSynthesis.cancel();
+                                                                        const utterance = new SpeechSynthesisUtterance(testerText);
+                                                                        utterance.lang = overlays.chatTtsLanguage;
+                                                                        utterance.rate = overlays.chatTtsSpeed / 50;
+                                                                        utterance.pitch = overlays.chatTtsPitch / 50;
+                                                                        utterance.volume = overlays.chatTtsVolume / 100;
+                                                                        
+                                                                        if (!overlays.chatTtsRandomVoice) {
+                                                                            const selectedVoice = voices.find(v => v.name === overlays.chatTtsVoice);
+                                                                            if (selectedVoice) utterance.voice = selectedVoice;
+                                                                        } else {
+                                                                            const filtered = voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage));
+                                                                            if (filtered.length > 0) {
+                                                                                utterance.voice = filtered[Math.floor(Math.random() * filtered.length)];
+                                                                            }
                                                                         }
+                                                                        window.speechSynthesis.speak(utterance);
                                                                     }
-                                                                    window.speechSynthesis.speak(utterance);
-                                                                }
-                                                            }}
-                                                        >
-                                                            ▶️ Play
-                                                        </button>
+                                                                }}
+                                                            >
+                                                                🔊 Probar Voz Local
+                                                            </button>
+                                                            <button 
+                                                                className="btn btn-secondary" 
+                                                                style={{ flex: 1, height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', color: '#a855f7', borderColor: '#a855f7' }}
+                                                                onClick={() => triggerOverlayTest('chat', testerText.trim() || undefined)}
+                                                            >
+                                                                🧪 Probar TTS en Overlay
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
 
