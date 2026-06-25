@@ -58,6 +58,7 @@ function App() {
     followFontSize: 14,
     followShowLottie: true,
     followPlayAudio: true,
+    followAudioVolume: 50,
     followTtsEnabled: false,
     followRainbowText: false,
     followBounceText: true,
@@ -70,6 +71,7 @@ function App() {
     likeFontSize: 14,
     likeShowLottie: true,
     likePlayAudio: true,
+    likeAudioVolume: 50,
     likeTtsEnabled: false,
     likeRainbowText: false,
     likeBounceText: true,
@@ -86,6 +88,7 @@ function App() {
     giftFontSize: 14,
     giftShowLottie: true,
     giftPlayAudio: true,
+    giftAudioVolume: 50,
     giftTtsEnabled: true,
     giftRainbowText: true,
     giftBounceText: true,
@@ -98,6 +101,7 @@ function App() {
     subscribeFontSize: 14,
     subscribeShowLottie: true,
     subscribePlayAudio: true,
+    subscribeAudioVolume: 50,
     subscribeTtsEnabled: true,
     subscribeRainbowText: true,
     subscribeBounceText: true,
@@ -3410,7 +3414,24 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
-  }))), /*#__PURE__*/React.createElement("div", {
+  }))), overlays.followPlayAudio && /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      paddingLeft: '15px',
+      marginTop: '5px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Volumen del Sonido: ", overlays.followAudioVolume !== undefined ? overlays.followAudioVolume : 50, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.followAudioVolume !== undefined ? overlays.followAudioVolume : 50,
+    onChange: e => setOverlays({
+      ...overlays,
+      followAudioVolume: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
     style: {
       padding: '8px 0',
@@ -3996,7 +4017,24 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
-  }))), /*#__PURE__*/React.createElement("div", {
+  }))), overlays.likePlayAudio && /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      paddingLeft: '15px',
+      marginTop: '5px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Volumen del Sonido: ", overlays.likeAudioVolume !== undefined ? overlays.likeAudioVolume : 50, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.likeAudioVolume !== undefined ? overlays.likeAudioVolume : 50,
+    onChange: e => setOverlays({
+      ...overlays,
+      likeAudioVolume: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
     style: {
       padding: '8px 0',
@@ -4526,7 +4564,24 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
-  }))), /*#__PURE__*/React.createElement("div", {
+  }))), overlays.giftPlayAudio && /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      paddingLeft: '15px',
+      marginTop: '5px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Volumen del Sonido: ", overlays.giftAudioVolume !== undefined ? overlays.giftAudioVolume : 50, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.giftAudioVolume !== undefined ? overlays.giftAudioVolume : 50,
+    onChange: e => setOverlays({
+      ...overlays,
+      giftAudioVolume: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
     style: {
       padding: '8px 0',
@@ -5032,7 +5087,24 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
-  }))), /*#__PURE__*/React.createElement("div", {
+  }))), overlays.subscribePlayAudio && /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      paddingLeft: '15px',
+      marginTop: '5px',
+      marginBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Volumen del Sonido: ", overlays.subscribeAudioVolume !== undefined ? overlays.subscribeAudioVolume : 50, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.subscribeAudioVolume !== undefined ? overlays.subscribeAudioVolume : 50,
+    onChange: e => setOverlays({
+      ...overlays,
+      subscribeAudioVolume: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
     style: {
       padding: '8px 0',
