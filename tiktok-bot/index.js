@@ -2966,9 +2966,13 @@ function setupListeners() {
         const current = likeBuffer.get(uniqueId) || {
             userId: uniqueId,
             displayName: nickname,
+            profilePic: data.profilePictureUrl || '',
             likes: 0
         };
         current.displayName = nickname || current.displayName || uniqueId;
+        if (data.profilePictureUrl) {
+            current.profilePic = data.profilePictureUrl;
+        }
         current.likes += delta;
         likeBuffer.set(uniqueId, current);
 
@@ -3345,6 +3349,7 @@ setInterval(async () => {
                         sessionTotal: sessionTotal,
                         milestone: currentMilestone,
                         message: customMsg,
+                        profilePic: data.profilePic || '',
                         timestamp: serverTimestamp()
                     });
                     console.log(`📣 Alerta de hito: @${finalName} alcanzó ${currentMilestone} likes (total sesión: ${sessionTotal})`);

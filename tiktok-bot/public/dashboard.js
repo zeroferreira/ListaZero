@@ -1098,12 +1098,14 @@ function App() {
           follow: {
             type: 'follow',
             user: 'PruebaSeguidor',
-            message: overlays.followsAlertMsg || '¡gracias por seguir el canal! 👤'
+            message: overlays.followsAlertMsg || '¡gracias por seguir el canal! 👤',
+            profilePic: 'https://i.pravatar.cc/100?img=21'
           },
           like: {
             type: 'like',
             user: 'PruebaLikes',
-            message: (overlays.likesAlertMsg || '¡Envió {likes} likes! ❤️').replace('{likes}', '150')
+            message: (overlays.likesAlertMsg || '¡Envió {likes} likes! ❤️').replace('{likes}', '150'),
+            profilePic: 'https://i.pravatar.cc/100?img=47'
           },
           gift_rose: {
             type: 'gift',
@@ -1111,7 +1113,8 @@ function App() {
             giftName: 'Rosa',
             coins: 1,
             repeatCount: 1,
-            message: (overlays.giftsAlertMsg || '¡Gracias por {repeatCount}x {giftName}! 🎁').replace('{giftName}', 'Rosa').replace('{repeatCount}', '1')
+            message: (overlays.giftsAlertMsg || '¡Gracias por {repeatCount}x {giftName}! 🎁').replace('{giftName}', 'Rosa').replace('{repeatCount}', '1'),
+            profilePic: 'https://i.pravatar.cc/100?img=12'
           },
           gift_lion: {
             type: 'gift',
@@ -1119,17 +1122,20 @@ function App() {
             giftName: 'León',
             coins: 2999,
             repeatCount: 1,
-            message: (overlays.giftsAlertMsg || '¡Gracias por {repeatCount}x {giftName}! 🎁').replace('{giftName}', 'León').replace('{repeatCount}', '1')
+            message: (overlays.giftsAlertMsg || '¡Gracias por {repeatCount}x {giftName}! 🎁').replace('{giftName}', 'León').replace('{repeatCount}', '1'),
+            profilePic: 'https://i.pravatar.cc/100?img=12'
           },
           subscribe: {
             type: 'subscribe',
             user: 'PruebaSubs',
-            message: overlays.subsAlertMsg || '¡gracias por suscribirte al canal! ⭐'
+            message: overlays.subsAlertMsg || '¡gracias por suscribirte al canal! ⭐',
+            profilePic: 'https://i.pravatar.cc/100?img=33'
           },
           like_lock_blocked: {
             type: 'like',
             user: 'YouTube Link',
-            message: overlays.likesLockAlertMsg || '🔒 Enlaces bloqueados: Faltan {faltan} likes en el Live (llevamos {llevamos}/{meta}) ❤️'
+            message: overlays.likesLockAlertMsg || '🔒 Enlaces bloqueados: Faltan {faltan} likes en el Live (llevamos {llevamos}/{meta}) ❤️',
+            profilePic: ''
           }
         };
         const payload = payloads[type];
