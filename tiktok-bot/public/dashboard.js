@@ -3244,18 +3244,25 @@ function App() {
     onClick: () => setShowFollowPersonalize(false)
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Opacidad: ", Math.round(overlays.followOpacity * 100), "%"), /*#__PURE__*/React.createElement("input", {
     type: "range",
@@ -3291,18 +3298,25 @@ function App() {
       ...overlays,
       followFontSize: parseInt(e.target.value)
     })
-  }))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\u2728 Ajustes de Contenedor y Tipograf\xEDa"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2728 Ajustes de Contenedor y Tipograf\xEDa")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Fondo de Cristal (Tarjeta)"), /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
@@ -3469,18 +3483,25 @@ function App() {
     value: "neon-glow"
   }, "Brillo de Ne\xF3n (Resplandor)"), /*#__PURE__*/React.createElement("option", {
     value: "thick-stroke"
-  }, "Delineado Grueso (Outline)")))), /*#__PURE__*/React.createElement("div", {
+  }, "Delineado Grueso (Outline)"))))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\uD83D\uDCAC Contenido de Alerta"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCAC Contenido de Alerta")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Mensaje (", `{user}`, ")"), /*#__PURE__*/React.createElement("input", {
     type: "text",
@@ -3490,16 +3511,23 @@ function App() {
       followsAlertMsg: e.target.value
     }),
     placeholder: "\xA1gracias por seguir el canal! \uD83D\uDC64"
-  }))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\u2699\uFE0F Efectos Habilitados"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2699\uFE0F Efectos Habilitados")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       flexDirection: 'column',
@@ -3607,7 +3635,7 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
-  }))))), /*#__PURE__*/React.createElement("button", {
+  })))))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
     onClick: () => {
       handleSaveOverlaysConfigOnly('Seguidores');
@@ -3767,18 +3795,25 @@ function App() {
     onClick: () => setShowLikesPersonalize(false)
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Opacidad: ", Math.round(overlays.likeOpacity * 100), "%"), /*#__PURE__*/React.createElement("input", {
     type: "range",
@@ -3814,18 +3849,25 @@ function App() {
       ...overlays,
       likeFontSize: parseInt(e.target.value)
     })
-  }))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\uD83D\uDCD0 Dimensiones y Tama\xF1os (Estilo Tikfinity)"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCD0 Dimensiones y Tama\xF1os (Estilo Tikfinity)")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Tama\xF1o del Coraz\xF3n: ", overlays.likeHeartSize || 190, "px"), /*#__PURE__*/React.createElement("input", {
     type: "range",
@@ -3873,18 +3915,25 @@ function App() {
       ...overlays,
       likeWrapperHeight: parseInt(e.target.value)
     })
-  }))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\u2728 Ajustes de Contenedor y Tipograf\xEDa"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2728 Ajustes de Contenedor y Tipograf\xEDa")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Fondo de Cristal (Tarjeta)"), /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
@@ -4051,18 +4100,25 @@ function App() {
     value: "neon-glow"
   }, "Brillo de Ne\xF3n (Resplandor)"), /*#__PURE__*/React.createElement("option", {
     value: "thick-stroke"
-  }, "Delineado Grueso (Outline)")))), /*#__PURE__*/React.createElement("div", {
+  }, "Delineado Grueso (Outline)"))))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\uD83D\uDCAC Contenido de Alerta"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCAC Contenido de Alerta")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Mensaje \u2014 Variables: ", /*#__PURE__*/React.createElement("code", {
     style: {
@@ -4093,16 +4149,23 @@ function App() {
       ...overlays,
       minLikesAlert: parseInt(e.target.value) || 100
     })
-  }))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\u2699\uFE0F Efectos Habilitados"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2699\uFE0F Efectos Habilitados")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       flexDirection: 'column',
@@ -4210,7 +4273,7 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
-  }))))), /*#__PURE__*/React.createElement("button", {
+  })))))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
     onClick: () => {
       handleSaveOverlaysConfigOnly('Likes');
@@ -4385,18 +4448,25 @@ function App() {
     onClick: () => setShowGiftPersonalize(false)
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Opacidad: ", Math.round(overlays.giftOpacity * 100), "%"), /*#__PURE__*/React.createElement("input", {
     type: "range",
@@ -4432,18 +4502,25 @@ function App() {
       ...overlays,
       giftFontSize: parseInt(e.target.value)
     })
-  }))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\u2728 Ajustes de Contenedor y Tipograf\xEDa"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2728 Ajustes de Contenedor y Tipograf\xEDa")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Fondo de Cristal (Tarjeta)"), /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
@@ -4610,18 +4687,25 @@ function App() {
     value: "neon-glow"
   }, "Brillo de Ne\xF3n (Resplandor)"), /*#__PURE__*/React.createElement("option", {
     value: "thick-stroke"
-  }, "Delineado Grueso (Outline)")))), /*#__PURE__*/React.createElement("div", {
+  }, "Delineado Grueso (Outline)"))))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\uD83D\uDCAC Contenido de Alerta"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCAC Contenido de Alerta")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Mensaje (", `{giftName}`, ", `", `{repeatCount}`, ", `", `{coins}`, ")"), /*#__PURE__*/React.createElement("input", {
     type: "text",
@@ -4640,16 +4724,23 @@ function App() {
       ...overlays,
       minCoinsAlert: parseInt(e.target.value) || 1
     })
-  }))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\u2699\uFE0F Efectos Habilitados"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2699\uFE0F Efectos Habilitados")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       flexDirection: 'column',
@@ -4757,7 +4848,7 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
-  }))))), /*#__PURE__*/React.createElement("button", {
+  })))))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
     onClick: () => {
       handleSaveOverlaysConfigOnly('Regalos');
@@ -4917,18 +5008,25 @@ function App() {
     onClick: () => setShowSubscribePersonalize(false)
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Opacidad: ", Math.round(overlays.subscribeOpacity * 100), "%"), /*#__PURE__*/React.createElement("input", {
     type: "range",
@@ -4964,18 +5062,25 @@ function App() {
       ...overlays,
       subscribeFontSize: parseInt(e.target.value)
     })
-  }))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\u2728 Ajustes de Contenedor y Tipograf\xEDa"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2728 Ajustes de Contenedor y Tipograf\xEDa")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Fondo de Cristal (Tarjeta)"), /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
@@ -5142,18 +5247,25 @@ function App() {
     value: "neon-glow"
   }, "Brillo de Ne\xF3n (Resplandor)"), /*#__PURE__*/React.createElement("option", {
     value: "thick-stroke"
-  }, "Delineado Grueso (Outline)")))), /*#__PURE__*/React.createElement("div", {
+  }, "Delineado Grueso (Outline)"))))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\uD83D\uDCAC Contenido de Alerta"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCAC Contenido de Alerta")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Mensaje (", `{user}`, ")"), /*#__PURE__*/React.createElement("input", {
     type: "text",
@@ -5163,16 +5275,23 @@ function App() {
       subsAlertMsg: e.target.value
     }),
     placeholder: "\xA1gracias por suscribirte al canal! \u2B50"
-  }))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\u2699\uFE0F Efectos Habilitados"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2699\uFE0F Efectos Habilitados")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       flexDirection: 'column',
@@ -5280,7 +5399,7 @@ function App() {
     })
   }), /*#__PURE__*/React.createElement("span", {
     className: "slider"
-  }))))), /*#__PURE__*/React.createElement("button", {
+  })))))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
     onClick: () => {
       handleSaveOverlaysConfigOnly('Suscriptores');
@@ -5398,18 +5517,25 @@ function App() {
     onClick: () => setShowTopgifterPersonalize(false)
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Opacidad: ", Math.round(overlays.topgifterOpacity * 100), "%"), /*#__PURE__*/React.createElement("input", {
     type: "range",
@@ -5445,18 +5571,25 @@ function App() {
       ...overlays,
       topgifterFontSize: parseInt(e.target.value)
     })
-  }))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\u2728 Dise\xF1o y Estructura de Tarjeta"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2728 Dise\xF1o y Estructura de Tarjeta")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Fondo de Cristal (Tarjeta)"), /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
@@ -5698,16 +5831,23 @@ function App() {
       ...overlays,
       topgifterShadowOpacity: parseInt(e.target.value)
     })
-  }))))), /*#__PURE__*/React.createElement("div", {
+  })))))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#a855f7'
     }
-  }, "\u2699\uFE0F Opciones de Tabla"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2699\uFE0F Opciones de Tabla")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
     style: {
       padding: '8px 0',
@@ -5944,7 +6084,7 @@ function App() {
       ...overlays,
       topgifter_max: parseInt(e.target.value) || 10
     })
-  }))), /*#__PURE__*/React.createElement("button", {
+  })))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
     onClick: () => {
       handleSaveOverlaysConfigOnly('Top Gifter');
@@ -6059,18 +6199,25 @@ function App() {
     onClick: () => setShowToplikerPersonalize(false)
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#ff5e7e'
     }
-  }, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Opacidad: ", Math.round(overlays.toplikerOpacity * 100), "%"), /*#__PURE__*/React.createElement("input", {
     type: "range",
@@ -6106,18 +6253,25 @@ function App() {
       ...overlays,
       toplikerFontSize: parseInt(e.target.value)
     })
-  }))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       paddingBottom: '15px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#ff5e7e'
     }
-  }, "\u2728 Dise\xF1o y Estructura de Tarjeta"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2728 Dise\xF1o y Estructura de Tarjeta")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Fondo de Cristal (Tarjeta)"), /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
@@ -6359,16 +6513,23 @@ function App() {
       ...overlays,
       toplikerShadowOpacity: parseInt(e.target.value)
     })
-  }))))), /*#__PURE__*/React.createElement("div", {
+  })))))), /*#__PURE__*/React.createElement("details", {
+    className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("summary", {
+    className: "collapsible-config-summary",
     style: {
+      cursor: 'pointer',
       marginBottom: '15px',
       color: '#ff5e7e'
     }
-  }, "\u2699\uFE0F Opciones de Tabla"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u2699\uFE0F Opciones de Tabla")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     className: "toggle-row",
     style: {
       padding: '8px 0',
@@ -6634,7 +6795,7 @@ function App() {
       ...overlays,
       topliker_max: parseInt(e.target.value) || 10
     })
-  }))), /*#__PURE__*/React.createElement("button", {
+  })))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
     onClick: () => {
       handleSaveOverlaysConfigOnly('Top Liker');
@@ -7122,18 +7283,25 @@ function App() {
         padding: '20px',
         overflowY: 'auto'
       }
-    }, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("details", {
+      className: "collapsible-config-details",
       style: {
         marginBottom: '25px',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
         paddingBottom: '15px'
       }
-    }, /*#__PURE__*/React.createElement("h4", {
+    }, /*#__PURE__*/React.createElement("summary", {
+      className: "collapsible-config-summary",
       style: {
+        cursor: 'pointer',
         marginBottom: '15px',
         color: t.color
       }
-    }, "\uD83C\uDFA8 Estilo Visual"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDFA8 Estilo Visual")), /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: '15px'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
       className: "form-group"
     }, /*#__PURE__*/React.createElement("label", null, "Color Primario (Barra/Destello)"), /*#__PURE__*/React.createElement("div", {
       style: {
@@ -7220,7 +7388,7 @@ function App() {
         };
         setGoals(updated);
       }
-    }))), /*#__PURE__*/React.createElement("button", {
+    })))), /*#__PURE__*/React.createElement("button", {
       className: "btn btn-secondary",
       onClick: () => {
         handleSaveGoalsConfig(t.key);
