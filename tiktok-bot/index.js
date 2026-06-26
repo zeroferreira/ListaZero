@@ -1054,6 +1054,15 @@ function startBot() {
     });
 
     app.get('/api/status', (req, res) => {
+        const nets = os.networkInterfaces();
+        const localIps = [];
+        for (const iface of Object.values(nets)) {
+            for (const net of iface) {
+                if (net.family === 'IPv4' && !net.internal) {
+                    localIps.push(net.address);
+                }
+            }
+        }
         res.json({
             tiktokUsername: TIKTOK_USERNAME,
             tiktokState: (tiktokLiveConnection && tiktokLiveConnection.isConnected) ? 'connected' : 'disconnected',
@@ -1063,7 +1072,9 @@ function startBot() {
             ciderConnected: !!(ciderSocket && ciderSocket.connected),
             pendingCider: pendingCiderQueue.length,
             mockCiderActive: !!mockCiderIo,
-            mockCiderPort: mockCiderPort || null
+            mockCiderPort: mockCiderPort || null,
+            localIps: localIps,
+            dashboardPort: PORT
         });
     });
 

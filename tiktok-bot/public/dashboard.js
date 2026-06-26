@@ -422,7 +422,9 @@ function App() {
     lastConnectionError: '',
     mockCiderActive: false,
     mockCiderPort: 10767,
-    queueLength: 0
+    queueLength: 0,
+    localIps: [],
+    dashboardPort: 3000
   });
   const [timerDisplay, setTimerDisplay] = React.useState('Cargando...');
 
@@ -845,7 +847,9 @@ function App() {
           lastConnectionError: data.lastConnectionError || '',
           mockCiderActive: !!data.mockCiderActive,
           mockCiderPort: data.mockCiderPort || 10767,
-          queueLength: queueLen
+          queueLength: queueLen,
+          localIps: data.localIps || [],
+          dashboardPort: data.dashboardPort || 3000
         });
       } catch (_) {}
     };
@@ -1168,6 +1172,15 @@ function App() {
   const handleCopyUrl = url => {
     navigator.clipboard.writeText(url).then(() => {
       alert('¡Enlace de OBS copiado al portapapeles! 📋');
+    }).catch(() => {
+      alert('No se pudo copiar, por favor hazlo manualmente.');
+    });
+  };
+
+  // Copy Bot/Dashboard URL to clipboard
+  const handleCopyBotUrl = url => {
+    navigator.clipboard.writeText(url).then(() => {
+      alert('¡Dirección del bot copiada al portapapeles! 📋');
     }).catch(() => {
       alert('No se pudo copiar, por favor hazlo manualmente.');
     });
@@ -2083,7 +2096,81 @@ function App() {
       width: '100%',
       justifyContent: 'center'
     }
-  }, renderIcon('power'), " Apagar Servidor"))))))), activeTab === 'overlays' && /*#__PURE__*/React.createElement("div", {
+  }, renderIcon('power'), " Apagar Servidor")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '20px',
+      padding: '16px',
+      background: 'rgba(255, 255, 255, 0.02)',
+      border: '1px solid rgba(255, 255, 255, 0.08)',
+      borderRadius: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginTop: 0,
+      marginBottom: '10px',
+      fontSize: '0.95rem',
+      fontWeight: '700',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      color: 'var(--text-primary)'
+    }
+  }, renderIcon('globe', 16, '#60a5fa'), " Acceso desde tu Mac (Red Local)"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.82rem',
+      marginBottom: '15px',
+      lineHeight: 1.4
+    }
+  }, "Para abrir el dashboard, el reproductor o las alertas en tu Mac, aseg\xFArate de que ambos equipos est\xE9n en la misma red Wi-Fi/Ethernet y usa cualquiera de las siguientes direcciones:"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px'
+    }
+  }, status.localIps && status.localIps.length > 0 ? status.localIps.map(ip => {
+    const url = `http://${ip}:${status.dashboardPort || 3000}/`;
+    return /*#__PURE__*/React.createElement("div", {
+      key: ip,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        background: 'rgba(0, 0, 0, 0.2)',
+        padding: '8px 12px',
+        borderRadius: '6px',
+        border: '1px solid rgba(255, 255, 255, 0.05)'
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontFamily: 'monospace',
+        fontSize: '0.9rem',
+        color: '#60a5fa',
+        wordBreak: 'break-all'
+      }
+    }, url), /*#__PURE__*/React.createElement("button", {
+      className: "btn",
+      onClick: () => handleCopyBotUrl(url),
+      style: {
+        padding: '4px 8px',
+        fontSize: '0.75rem',
+        background: 'rgba(255, 255, 255, 0.05)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        borderRadius: '4px',
+        color: 'var(--text-primary)',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px'
+      }
+    }, renderIcon('copy', 12), " Copiar"));
+  }) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.82rem',
+      fontStyle: 'italic'
+    }
+  }, "No se detectaron direcciones IP locales activas. Aseg\xFArate de que tu PC de streaming est\xE9 conectada a la red local.")))))), activeTab === 'overlays' && /*#__PURE__*/React.createElement("div", {
     className: "overlays-layout"
   }, /*#__PURE__*/React.createElement("div", {
     className: "overlays-sidebar"
