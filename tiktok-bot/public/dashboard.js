@@ -3252,6 +3252,7 @@ function App() {
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
   }, /*#__PURE__*/React.createElement("details", {
+    name: "follow-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -3306,6 +3307,7 @@ function App() {
       followFontSize: parseInt(e.target.value)
     })
   })))), /*#__PURE__*/React.createElement("details", {
+    name: "follow-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -3491,6 +3493,7 @@ function App() {
   }, "Brillo de Ne\xF3n (Resplandor)"), /*#__PURE__*/React.createElement("option", {
     value: "thick-stroke"
   }, "Delineado Grueso (Outline)"))))), /*#__PURE__*/React.createElement("details", {
+    name: "follow-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -3519,6 +3522,7 @@ function App() {
     }),
     placeholder: "\xA1gracias por seguir el canal! \uD83D\uDC64"
   })))), /*#__PURE__*/React.createElement("details", {
+    name: "follow-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
@@ -3803,6 +3807,7 @@ function App() {
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
   }, /*#__PURE__*/React.createElement("details", {
+    name: "like-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -3857,6 +3862,7 @@ function App() {
       likeFontSize: parseInt(e.target.value)
     })
   })))), /*#__PURE__*/React.createElement("details", {
+    name: "like-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -3923,6 +3929,7 @@ function App() {
       likeWrapperHeight: parseInt(e.target.value)
     })
   })))), /*#__PURE__*/React.createElement("details", {
+    name: "like-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -4080,6 +4087,7 @@ function App() {
       likeAvatarBorderWidth: parseFloat(e.target.value)
     })
   })))))), /*#__PURE__*/React.createElement("details", {
+    name: "like-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -4265,6 +4273,7 @@ function App() {
   }, "Brillo de Ne\xF3n (Resplandor)"), /*#__PURE__*/React.createElement("option", {
     value: "thick-stroke"
   }, "Delineado Grueso (Outline)"))))), /*#__PURE__*/React.createElement("details", {
+    name: "like-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -4314,6 +4323,7 @@ function App() {
       minLikesAlert: parseInt(e.target.value) || 100
     })
   })))), /*#__PURE__*/React.createElement("details", {
+    name: "like-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
@@ -4613,6 +4623,7 @@ function App() {
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
   }, /*#__PURE__*/React.createElement("details", {
+    name: "gift-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -4667,6 +4678,7 @@ function App() {
       giftFontSize: parseInt(e.target.value)
     })
   })))), /*#__PURE__*/React.createElement("details", {
+    name: "gift-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -4852,6 +4864,7 @@ function App() {
   }, "Brillo de Ne\xF3n (Resplandor)"), /*#__PURE__*/React.createElement("option", {
     value: "thick-stroke"
   }, "Delineado Grueso (Outline)"))))), /*#__PURE__*/React.createElement("details", {
+    name: "gift-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -4889,6 +4902,7 @@ function App() {
       minCoinsAlert: parseInt(e.target.value) || 1
     })
   })))), /*#__PURE__*/React.createElement("details", {
+    name: "gift-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
@@ -5173,6 +5187,7 @@ function App() {
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
   }, /*#__PURE__*/React.createElement("details", {
+    name: "subscribe-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -5227,6 +5242,7 @@ function App() {
       subscribeFontSize: parseInt(e.target.value)
     })
   })))), /*#__PURE__*/React.createElement("details", {
+    name: "subscribe-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -5412,6 +5428,7 @@ function App() {
   }, "Brillo de Ne\xF3n (Resplandor)"), /*#__PURE__*/React.createElement("option", {
     value: "thick-stroke"
   }, "Delineado Grueso (Outline)"))))), /*#__PURE__*/React.createElement("details", {
+    name: "subscribe-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -5440,6 +5457,7 @@ function App() {
     }),
     placeholder: "\xA1gracias por suscribirte al canal! \u2B50"
   })))), /*#__PURE__*/React.createElement("details", {
+    name: "subscribe-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
@@ -5682,6 +5700,7 @@ function App() {
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
   }, /*#__PURE__*/React.createElement("details", {
+    name: "topgifter-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -5736,6 +5755,7 @@ function App() {
       topgifterFontSize: parseInt(e.target.value)
     })
   })))), /*#__PURE__*/React.createElement("details", {
+    name: "topgifter-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -5996,6 +6016,7 @@ function App() {
       topgifterShadowOpacity: parseInt(e.target.value)
     })
   })))))), /*#__PURE__*/React.createElement("details", {
+    name: "topgifter-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
@@ -6364,6 +6385,7 @@ function App() {
   }, "\xD7")), /*#__PURE__*/React.createElement("div", {
     className: "personalize-modal-body"
   }, /*#__PURE__*/React.createElement("details", {
+    name: "topliker-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -6418,6 +6440,7 @@ function App() {
       toplikerFontSize: parseInt(e.target.value)
     })
   })))), /*#__PURE__*/React.createElement("details", {
+    name: "topliker-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px',
@@ -6678,6 +6701,7 @@ function App() {
       toplikerShadowOpacity: parseInt(e.target.value)
     })
   })))))), /*#__PURE__*/React.createElement("details", {
+    name: "topliker-config-group",
     className: "collapsible-config-details",
     style: {
       marginBottom: '25px'
@@ -7448,6 +7472,7 @@ function App() {
         overflowY: 'auto'
       }
     }, /*#__PURE__*/React.createElement("details", {
+      name: "goal-config-group",
       className: "collapsible-config-details",
       style: {
         marginBottom: '25px',

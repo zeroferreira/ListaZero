@@ -1318,3 +1318,34 @@
     setupDraggable('settings-btn', () => {
         toggleSettings();
     });
+
+    // Receptor de eventos de mensajería (postMessage) para actualización en tiempo real desde el Dashboard
+    window.addEventListener('message', function(event) {
+        if (!event.data) return;
+        if (event.data.action === 'updateConfig') {
+            const data = event.data.payload || {};
+            if (data.playerOpacity !== undefined) window.playerOpacityOverride = data.playerOpacity;
+            if (data.playerRadius !== undefined) window.playerRadiusOverride = data.playerRadius;
+            if (data.playerFontSize !== undefined) window.playerFontSizeOverride = data.playerFontSize;
+            if (data.playerColor !== undefined) window.playerColorOverride = data.playerColor;
+            
+            if (data.playerShowCardBg !== undefined) window.playerShowCardBgOverride = data.playerShowCardBg;
+            if (data.playerBorderWidth !== undefined) window.playerBorderWidthOverride = data.playerBorderWidth;
+            if (data.playerBorderColor !== undefined) window.playerBorderColorOverride = data.playerBorderColor;
+            if (data.playerBorderOpacity !== undefined) window.playerBorderOpacityOverride = data.playerBorderOpacity;
+            if (data.playerBorderStyle !== undefined) window.playerBorderStyleOverride = data.playerBorderStyle;
+            if (data.playerShowAccentBorder !== undefined) window.playerShowAccentBorderOverride = data.playerShowAccentBorder;
+            if (data.playerAccentBorderWidth !== undefined) window.playerAccentBorderWidthOverride = data.playerAccentBorderWidth;
+            if (data.playerShowShadow !== undefined) window.playerShowShadowOverride = data.playerShowShadow;
+            if (data.playerShadowColor !== undefined) window.playerShadowColorOverride = data.playerShadowColor;
+            if (data.playerShadowBlur !== undefined) window.playerShadowBlurOverride = data.playerShadowBlur;
+            if (data.playerShadowOpacity !== undefined) window.playerShadowOpacityOverride = data.playerShadowOpacity;
+
+            if (window.appliedOverlaySettings) {
+                applySettings({ ...window.appliedOverlaySettings });
+            } else {
+                applySettings({ ...defaultSettings });
+            }
+        }
+    });
+

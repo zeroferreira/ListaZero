@@ -1725,3 +1725,48 @@ const firebaseConfig = {
     loadWheelState();
     setSourceTab('list');
 
+    // Receptor de eventos de mensajería (postMessage) para actualización en tiempo real desde el Dashboard
+    window.addEventListener('message', function(event) {
+        if (!event.data) return;
+        if (event.data.action === 'updateConfig') {
+            const data = event.data.payload || {};
+            const root = document.documentElement;
+            
+            const showBg = data.rouletteShowCardBg !== undefined ? data.rouletteShowCardBg : true;
+            const op = data.rouletteOpacity !== undefined ? data.rouletteOpacity : 0.2;
+            const rad = data.rouletteRadius !== undefined ? data.rouletteRadius : 40;
+            const bWidth = data.rouletteBorderWidth !== undefined ? data.rouletteBorderWidth : 1;
+            const bColor = data.rouletteBorderColor || '#ffffff';
+            const bOpacity = data.rouletteBorderOpacity !== undefined ? data.rouletteBorderOpacity : 20;
+            const bStyle = data.rouletteBorderStyle || 'solid';
+            const showShadow = data.rouletteShowShadow !== undefined ? data.rouletteShowShadow : true;
+            
+            const br = parseInt(bColor.substr(1,2), 16) || 255;
+            const bgVal = parseInt(bColor.substr(3,2), 16) || 255;
+            const bb = parseInt(bColor.substr(5,2), 16) || 255;
+            const bOp = bOpacity / 100;
+            
+            root.style.setProperty('--roulette-bg-opacity', op);
+            root.style.setProperty('--roulette-border-radius', rad + 'px');
+            root.style.setProperty('--roulette-border-width', bWidth + 'px');
+            root.style.setProperty('--roulette-border-style', bStyle);
+            root.style.setProperty('--roulette-border-color', `rgba(${br},${bgVal},${bb},${bOp})`);
+            
+            if (!showShadow) {
+              root.style.setProperty('--roulette-box-shadow', 'none');
+            } else {
+              root.style.setProperty('--roulette-box-shadow', '0 0 100px rgba(var(--roulette-accent-rgb, 0, 229, 255), 0.4), inset 0 0 40px rgba(255,255,255,0.05)');
+            }
+            
+            const winnerOverlay = document.getElementById('winner-overlay');
+            if (winnerOverlay) {
+              if (!showBg) {
+                winnerOverlay.classList.add('no-card-bg');
+              } else {
+                winnerOverlay.classList.remove('no-card-bg');
+              }
+            }
+        }
+    });
+
+

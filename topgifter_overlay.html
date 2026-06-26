@@ -56,7 +56,7 @@
             display: flex;
             flex-direction: column;
             gap: var(--topgifter-gap);
-            padding: 4px 2px;
+            padding: 22px 2px 4px; /* top clearance for crown on 1st card */
             width: var(--topgifter-width);
             max-height: 100vh;
             overflow: hidden;
@@ -102,6 +102,7 @@
             background: rgba(20, 15, 5, var(--topgifter-opacity));
             border-color: var(--topgifter-first-border-color, rgba(255, 195, 0, 0.35));
             box-shadow: var(--topgifter-first-box-shadow, 0 4px 24px rgba(255, 185, 0, 0.18), 0 0 0 1px rgba(255, 185, 0, 0.12), inset 0 1px 0 rgba(255, 220, 80, 0.10));
+            padding-top: 18px; /* extra room so crown doesn't clip */
         }
 
         .rankUser.second-place {
@@ -153,28 +154,28 @@
         }
 
         .profilePicture {
-            height: 42px;
-            width: 42px;
+            height: 48px;
+            width: 48px;
             border-radius: 50%;
             object-fit: cover;
             display: block;
-            border: 2.5px solid rgba(255,255,255,0.12);
-            transition: border-color 0.3s;
+            border: 3px solid rgba(255, 255, 255, 0.18);
+            transition: border-color 0.3s, box-shadow 0.3s;
         }
 
         .first-place .profilePicture {
-            border-color: rgb(246, 183, 56);
-            box-shadow: 0 0 10px rgba(246,183,56,0.5);
+            border: 3.5px solid rgb(246, 183, 56);
+            box-shadow: 0 0 14px rgba(246,183,56,0.6), 0 0 0 1px rgba(246,183,56,0.25);
         }
 
         .second-place .profilePicture {
-            border-color: rgb(192,192,192);
-            box-shadow: 0 0 8px rgba(192,192,192,0.35);
+            border: 3.5px solid rgb(185, 200, 218);
+            box-shadow: 0 0 10px rgba(185, 200, 218, 0.4);
         }
 
         .third-place .profilePicture {
-            border-color: rgb(205,127,50);
-            box-shadow: 0 0 8px rgba(205,127,50,0.35);
+            border: 3.5px solid rgb(251, 146, 60);
+            box-shadow: 0 0 10px rgba(251, 146, 60, 0.4);
         }
 
         /* Crown badge */
@@ -183,16 +184,32 @@
             position: absolute;
             top: -20px;
             left: 50%;
-            transform: translateX(-50%);
-            height: 22px;
+            transform: translateX(-50%) rotate(-6deg);
+            height: 26px;
             width: auto;
-            filter: drop-shadow(0 2px 6px rgba(255, 200, 0, 0.7));
-            animation: crownFloat 2.5s ease-in-out infinite;
+            filter:
+                drop-shadow(0 0 6px rgba(255, 185, 0, 0.9))
+                drop-shadow(0 0 14px rgba(255, 195, 0, 0.55));
+            animation: crownFloat 2.8s ease-in-out infinite, crownShine 1.8s ease-in-out infinite;
         }
 
         @keyframes crownFloat {
-            0%, 100% { transform: translateX(-50%) translateY(0px); }
-            50%       { transform: translateX(-50%) translateY(-3px); }
+            0%, 100% { transform: translateX(-50%) rotate(-6deg) translateY(0px); }
+            50%       { transform: translateX(-50%) rotate(-4deg) translateY(-3px); }
+        }
+
+        @keyframes crownShine {
+            0%, 100% {
+                filter:
+                    drop-shadow(0 0 5px rgba(255, 185, 0, 0.8))
+                    drop-shadow(0 0 12px rgba(255, 195, 0, 0.45));
+            }
+            50% {
+                filter:
+                    drop-shadow(0 0 10px rgba(255, 220, 80, 1))
+                    drop-shadow(0 0 24px rgba(255, 195, 0, 0.75))
+                    drop-shadow(0 0 40px rgba(255, 150, 0, 0.35));
+            }
         }
 
         /* =============================================
@@ -211,10 +228,12 @@
             font-size: 0.92em;
             color: #ffffff;
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            overflow: visible;
+            text-overflow: clip;
             line-height: 1.2;
             letter-spacing: 0.01em;
+            padding-top: 8px;
+            margin-top: -8px;
         }
 
         .first-place .username {
@@ -668,7 +687,7 @@
         //  FIREBASE FIRESTORE (Conexión al Bot)
         // =============================================
         // Configuración de Firebase (centralizada en firebase-config.js, con fallback local robusto)
-        const firebaseConfig = window.ZERO_FM_FIREBASE || {
+        const localFirebaseConfig = window.ZERO_FM_FIREBASE || {
             apiKey:            "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
             authDomain:        "zero-strom-web.firebaseapp.com",
             projectId:         "zero-strom-web",
@@ -683,7 +702,7 @@
         try {
             if (typeof firebase !== 'undefined') {
                 if (!firebase.apps.length) {
-                    firebase.initializeApp(firebaseConfig);
+                    firebase.initializeApp(localFirebaseConfig);
                 }
                 db = firebase.firestore();
                 console.log("[Firebase] Conectado exitosamente en TopGifter ✓");
@@ -695,7 +714,10 @@
                         if (data && Array.isArray(data.list)) {
                             console.log("[Firebase] Ranking Top Gifters actualizado ✓");
                             hasFirebaseData = true;
-                            updateRanking(data.list);
+                            window.lastRealRanking = data.list;
+                            if (!window.isTestActive) {
+                                updateRanking(data.list);
+                            }
                         }
                     }
                 }, err => {
@@ -735,8 +757,11 @@
                     io.emit("joinWidget", { cid: CID, widget: "topgifter" });
                 });
                 io.on("updateTopGifter", function(userList) {
+                    window.lastRealRanking = userList;
                     if (!hasFirebaseData) { // Priorizar datos de Firebase
-                        updateRanking(userList);
+                        if (!window.isTestActive) {
+                            updateRanking(userList);
+                        }
                     }
                 });
                 io.on("settingsUpdate", function(newSettings) {
@@ -994,6 +1019,32 @@
             }, 1500);
         });
 
+        window.isTestActive = false;
+        let testTimeout = null;
+
+        function runTemporaryTest() {
+            window.isTestActive = true;
+            if (testTimeout) clearTimeout(testTimeout);
+            
+            // Generar y mostrar datos de prueba inmediatamente
+            window.preview(); 
+            
+            // Regresar al estado real después de 10 segundos
+            testTimeout = setTimeout(() => {
+                window.isTestActive = false;
+                if (previewInterval) {
+                    clearInterval(previewInterval);
+                    previewInterval = null;
+                }
+                console.log("[topgifter_overlay] Prueba finalizada. Restableciendo ranking real...");
+                if (window.lastRealRanking) {
+                    updateRanking(window.lastRealRanking);
+                } else {
+                    updateRanking([]);
+                }
+            }, 10000);
+        }
+
         let previewInterval = null;
         window.preview = function() {
             if (previewInterval) clearInterval(previewInterval);
@@ -1056,7 +1107,7 @@
             
             if (event.data.action === 'triggerTestTopGifters' || event.data.action === 'triggerTestAlert') {
                 console.log("[topgifter_overlay] Alerta de prueba local recibida. Generando datos de prueba aleatorios...");
-                window.preview();
+                runTemporaryTest();
             } else if (event.data.action === 'updateLiveConfig' || event.data.action === 'updateConfig') {
                 console.log("[topgifter_overlay] Configuración en tiempo real recibida:", event.data.config || event.data.payload);
                 const data = event.data.config || event.data.payload || {};

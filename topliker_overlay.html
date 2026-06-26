@@ -291,10 +291,12 @@
             font-size: 0.92em;
             color: #ffffff;
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            overflow: visible;
+            text-overflow: clip;
             line-height: 1.2;
             letter-spacing: 0.01em;
+            padding-top: 8px;
+            margin-top: -8px;
         }
 
         .first-place .username {
@@ -659,7 +661,7 @@
         //  FIREBASE FIRESTORE (Conexión al Bot)
         // =============================================
         // Configuración de Firebase (centralizada en firebase-config.js, con fallback local robusto)
-        const firebaseConfig = window.ZERO_FM_FIREBASE || {
+        const localFirebaseConfig = window.ZERO_FM_FIREBASE || {
             apiKey:            "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
             authDomain:        "zero-strom-web.firebaseapp.com",
             projectId:         "zero-strom-web",
@@ -674,7 +676,7 @@
         try {
             if (typeof firebase !== 'undefined') {
                 if (!firebase.apps.length) {
-                    firebase.initializeApp(firebaseConfig);
+                    firebase.initializeApp(localFirebaseConfig);
                 }
                 db = firebase.firestore();
                 console.log("[Firebase] Conectado exitosamente en TopLiker ✓");
@@ -686,7 +688,10 @@
                         if (data && Array.isArray(data.list)) {
                             console.log("[Firebase] Ranking Top Likers actualizado ✓");
                             hasFirebaseData = true;
-                            updateRanking(data.list);
+                            window.lastRealRanking = data.list;
+                            if (!window.isTestActive) {
+                                updateRanking(data.list);
+                            }
                         }
                     }
                 }, err => {
@@ -994,6 +999,32 @@
             }, 10000);
         });
 
+        window.isTestActive = false;
+        let testTimeout = null;
+
+        function runTemporaryTest() {
+            window.isTestActive = true;
+            if (testTimeout) clearTimeout(testTimeout);
+            
+            // Generar y mostrar datos de prueba inmediatamente
+            window.preview(); 
+            
+            // Regresar al estado real después de 10 segundos
+            testTimeout = setTimeout(() => {
+                window.isTestActive = false;
+                if (previewInterval) {
+                    clearInterval(previewInterval);
+                    previewInterval = null;
+                }
+                console.log("[topliker_overlay] Prueba finalizada. Restableciendo ranking real...");
+                if (window.lastRealRanking) {
+                    updateRanking(window.lastRealRanking);
+                } else {
+                    updateRanking([]);
+                }
+            }, 10000);
+        }
+
         let previewInterval = null;
         window.preview = function() {
             if (previewInterval) clearInterval(previewInterval);
@@ -1059,7 +1090,7 @@
             
             if (event.data.action === 'triggerTestTopGifters' || event.data.action === 'triggerTestAlert' || event.data.action === 'triggerTestTopLikers') {
                 console.log("[topliker_overlay] Alerta de prueba local recibida. Generando datos de prueba aleatorios...");
-                window.preview();
+                runTemporaryTest();
             } else if (event.data.action === 'updateLiveConfig' || event.data.action === 'updateConfig') {
                 console.log("[topliker_overlay] Configuración en tiempo real recibida:", event.data.config || event.data.payload);
                 const data = event.data.config || event.data.payload || {};
