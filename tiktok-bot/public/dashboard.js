@@ -8533,6 +8533,46 @@ function App() {
       marginBottom: '20px'
     }
   }, "Configura la lectura autom\xE1tica en voz alta de los comentarios de tu chat en vivo de TikTok, similar a Tikfinity."), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      marginBottom: '20px',
+      background: 'rgba(255,255,255,0.02)',
+      padding: '15px',
+      border: '1px dashed var(--border-glass)',
+      borderRadius: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: '600',
+      color: 'var(--accent-primary)',
+      display: 'block',
+      marginBottom: '8px'
+    }
+  }, "\uD83D\uDD17 Enlace del Widget para OBS (Fuente de Navegador)"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.78rem',
+      marginBottom: '10px'
+    }
+  }, "Agrega este enlace en OBS como una ", /*#__PURE__*/React.createElement("strong", null, "Fuente de Navegador"), ". Al ser de tipo TTS, no mostrar\xE1 nada en pantalla (es invisible) pero reproducir\xE1 la voz de los comentarios de forma automatizada."), /*#__PURE__*/React.createElement("div", {
+    className: "copy-url-row",
+    style: {
+      display: 'flex',
+      gap: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    className: "copy-url-input",
+    readOnly: true,
+    value: `${currentOrigin}/alerts_overlay.html?type=chat`,
+    onClick: e => e.target.select(),
+    style: {
+      flex: 1
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary",
+    onClick: () => handleCopyUrl(`${currentOrigin}/alerts_overlay.html?type=chat`)
+  }, "Copiar URL"))), /*#__PURE__*/React.createElement("div", {
     style: {
       borderBottom: '1px solid rgba(255,255,255,0.06)',
       marginBottom: '25px',
