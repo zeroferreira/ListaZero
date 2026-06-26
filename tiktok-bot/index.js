@@ -206,7 +206,13 @@ let overlayAlertsConfig = {
     enableFollowAlert: true,
     followsAlertMsg: "¡gracias por seguir el canal! 👤",
     enableSubscribeAlert: true,
-    subsAlertMsg: "¡gracias por suscribirte al canal! ⭐"
+    subsAlertMsg: "¡gracias por suscribirte al canal! ⭐",
+    welcomeOverlayEnabled: true,
+    welcomeOverlayGreetingTemplate: "¡Acaba de entrar al Live! 👋",
+    welcomeOverlayAllowAll: true,
+    welcomeOverlayAllowFollowers: false,
+    welcomeOverlayAllowSubscribers: false,
+    welcomeOverlayAllowModerators: false
 };
 
 try {
@@ -2268,7 +2274,7 @@ function setupListeners() {
             markUserPresent(uid);
             // console.log(`👤 @${uid} entró al live.`);
 
-            if (db && typeof addDoc === 'function' && typeof collection === 'function' && overlayAlertsConfig && overlayAlertsConfig.welcomeOverlayEnabled === true) {
+            if (db && typeof addDoc === 'function' && typeof collection === 'function' && overlayAlertsConfig && overlayAlertsConfig.welcomeOverlayEnabled !== false) {
                 const isSubscriber = data.isSubscriber;
                 const isModerator = data.isModerator;
                 const isFollower = data.isFollower || (data.followInfo && (data.followInfo.followStatus === 1 || data.followInfo.followStatus === 2));
