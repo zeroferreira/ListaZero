@@ -306,6 +306,170 @@ function App() {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
   }, []);
+  const [localAudioUnlocked, setLocalAudioUnlocked] = React.useState(false);
+  const overlaysRef = React.useRef(overlays);
+  const voicesRef = React.useRef(voices);
+  const ttsQueueRef = React.useRef([]);
+  const ttsPlayingRef = React.useRef(false);
+  React.useEffect(() => {
+    overlaysRef.current = overlays;
+  }, [overlays]);
+  React.useEffect(() => {
+    voicesRef.current = voices;
+  }, [voices]);
+  React.useEffect(() => {
+    const autoUnlock = () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance('');
+          u.volume = 0;
+          window.speechSynthesis.speak(u);
+          setLocalAudioUnlocked(true);
+          console.log("🔊 Local SpeechSynthesis unlocked via user interaction.");
+        } catch (err) {
+          console.warn("SpeechSynthesis auto-unlock failed:", err);
+        }
+      }
+      window.removeEventListener('click', autoUnlock);
+    };
+    window.addEventListener('click', autoUnlock);
+    return () => {
+      window.removeEventListener('click', autoUnlock);
+    };
+  }, []);
+  const unlockLocalAudio = React.useCallback(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance('');
+        u.volume = 0;
+        window.speechSynthesis.speak(u);
+        setLocalAudioUnlocked(true);
+        alert("🔊 Sonido local activado con éxito.");
+      } catch (err) {
+        console.error("Local SpeechSynthesis unlock failed:", err);
+        alert("Error al activar sonido: " + err.message);
+      }
+    }
+  }, []);
+  const processLocalTtsQueue = React.useCallback(() => {
+    if (ttsPlayingRef.current || ttsQueueRef.current.length === 0) return;
+    const config = overlaysRef.current;
+    if (!config.chatTtsEnabled) {
+      // Limpiar cola si se desactiva
+      ttsQueueRef.current = [];
+      return;
+    }
+    ttsPlayingRef.current = true;
+    const data = ttsQueueRef.current.shift();
+    const text = data.message || "";
+    if (!text.trim()) {
+      ttsPlayingRef.current = false;
+      setTimeout(processLocalTtsQueue, 50);
+      return;
+    }
+    try {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = config.chatTtsLanguage || 'es-MX';
+      const speed = data.speedOverride !== undefined && data.speedOverride !== null ? data.speedOverride : config.chatTtsSpeed !== undefined ? config.chatTtsSpeed : 50;
+      const pitch = data.pitchOverride !== undefined && data.pitchOverride !== null ? data.pitchOverride : config.chatTtsPitch !== undefined ? config.chatTtsPitch : 50;
+      const volume = config.chatTtsVolume !== undefined ? config.chatTtsVolume : 80;
+      utterance.rate = speed / 50;
+      utterance.pitch = pitch / 50;
+      utterance.volume = volume / 100;
+      const currentVoices = voicesRef.current;
+      if (data.voiceOverride && data.voiceOverride !== 'Default Voice' && data.voiceOverride !== '') {
+        const customVoice = currentVoices.find(v => v.name === data.voiceOverride);
+        if (customVoice) {
+          utterance.voice = customVoice;
+        } else {
+          const esVoice = currentVoices.find(v => v.lang.toLowerCase().includes('es'));
+          if (esVoice) utterance.voice = esVoice;
+        }
+      } else if (config.chatTtsRandomVoice === true) {
+        let filtered = currentVoices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith(utterance.lang.toLowerCase()));
+        if (filtered.length === 0) {
+          const mainLang = utterance.lang.split('-')[0].toLowerCase();
+          filtered = currentVoices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith(mainLang));
+        }
+        if (filtered.length > 0) {
+          utterance.voice = filtered[Math.floor(Math.random() * filtered.length)];
+        }
+      } else if (config.chatTtsVoice && config.chatTtsVoice !== 'Default Voice') {
+        const customVoice = currentVoices.find(v => v.name === config.chatTtsVoice);
+        if (customVoice) {
+          utterance.voice = customVoice;
+        } else {
+          const esVoice = currentVoices.find(v => v.lang.toLowerCase().includes('es'));
+          if (esVoice) utterance.voice = esVoice;
+        }
+      } else {
+        const esVoice = currentVoices.find(v => v.lang.includes('es') || v.lang.includes('ES') || v.lang.toLowerCase().includes('es'));
+        if (esVoice) utterance.voice = esVoice;
+      }
+      let calledEnd = false;
+      const done = () => {
+        if (calledEnd) return;
+        calledEnd = true;
+        ttsPlayingRef.current = false;
+        setTimeout(processLocalTtsQueue, 100);
+      };
+      utterance.onend = done;
+      utterance.onerror = e => {
+        console.error("Local SpeechSynthesis error:", e);
+        done();
+      };
+
+      // Fallback para evitar atascos nativos de SpeechSynthesis en Chrome
+      const charCount = text.length;
+      const estDuration = charCount * 80 + 1500;
+      setTimeout(done, Math.max(2000, Math.min(12000, estDuration)));
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.error("Failed to speak local TTS:", err);
+      ttsPlayingRef.current = false;
+      setTimeout(processLocalTtsQueue, 100);
+    }
+  }, []);
+  const enqueueLocalTts = React.useCallback(data => {
+    ttsQueueRef.current.push(data);
+    processLocalTtsQueue();
+  }, [processLocalTtsQueue]);
+  React.useEffect(() => {
+    let unsubscribe = null;
+    if (typeof window !== 'undefined' && window.firebase && window.ZERO_FM_FIREBASE) {
+      try {
+        const app = window.firebase.apps.length === 0 ? window.firebase.initializeApp(window.ZERO_FM_FIREBASE) : window.firebase.app();
+        const db = app.firestore();
+        const startTimestamp = new Date(Date.now() - 30 * 1000); // 30s tolerados
+        let isInitialLoad = true;
+        unsubscribe = db.collection('notifications').where('timestamp', '>', startTimestamp).onSnapshot(snap => {
+          if (isInitialLoad) {
+            isInitialLoad = false;
+            console.log("[Firebase Dashboard] Carga inicial de notificaciones de chat ignorada.");
+            return;
+          }
+          snap.docChanges().forEach(change => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              if (data.type === 'chat') {
+                console.log("🗣️ Comentario TTS recibido localmente:", data.message);
+                enqueueLocalTts(data);
+              }
+            }
+          });
+        }, err => {
+          console.error("Firestore listener error in local TTS:", err);
+        });
+      } catch (e) {
+        console.error("Error setting up local TTS Firestore listener:", e);
+      }
+    }
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [enqueueLocalTts]);
   const setOverlays = React.useCallback(val => {
     if (typeof val === 'function') {
       _setOverlays(prev => {
@@ -8701,6 +8865,33 @@ function App() {
       marginBottom: '20px'
     }
   }, "Configura la lectura autom\xE1tica en voz alta de los comentarios de tu chat en vivo de TikTok, similar a Tikfinity."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '12px 18px',
+      background: localAudioUnlocked ? 'rgba(34, 197, 94, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+      border: `1px solid ${localAudioUnlocked ? 'rgba(34, 197, 94, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+      borderRadius: '8px',
+      marginBottom: '20px'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: '0.88rem',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      color: localAudioUnlocked ? '#4ade80' : '#fbbf24'
+    }
+  }, localAudioUnlocked ? '🟢' : '⚠️', /*#__PURE__*/React.createElement("strong", null, localAudioUnlocked ? 'Sonido local activo (El TTS se reproducirá en esta pestaña)' : 'El sonido local requiere una interacción para activarse')), !localAudioUnlocked && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm",
+    onClick: unlockLocalAudio,
+    style: {
+      padding: '4px 10px',
+      fontSize: '0.78rem',
+      height: 'auto'
+    }
+  }, "Activar Sonido")), /*#__PURE__*/React.createElement("div", {
     className: "form-group",
     style: {
       marginBottom: '20px',
