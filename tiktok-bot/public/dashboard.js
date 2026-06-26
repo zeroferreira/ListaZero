@@ -1170,7 +1170,7 @@ function App() {
 
     // Enviar al iframe correspondiente para pruebas offline instantáneas
     let iframeId = 'iframe-alerts';
-    if (type === 'follow') iframeId = 'iframe-alerts-follow';else if (type === 'like') iframeId = 'iframe-alerts-like';else if (type === 'gift_rose' || type === 'gift_lion') iframeId = 'iframe-alerts-gift';else if (type === 'subscribe') iframeId = 'iframe-alerts-subscribe';else if (type === 'like_lock_blocked') iframeId = 'iframe-alerts-like';else if (type === 'topgifters') iframeId = 'iframe-topgifters';else if (type === 'toplikers') iframeId = 'iframe-toplikers';
+    if (type === 'follow') iframeId = 'iframe-alerts-follow';else if (type === 'like') iframeId = 'iframe-alerts-like';else if (type === 'gift_rose' || type === 'gift_lion') iframeId = 'iframe-alerts-gift';else if (type === 'subscribe') iframeId = 'iframe-alerts-subscribe';else if (type === 'like_lock_blocked') iframeId = 'iframe-alerts-like';else if (type === 'topgifters') iframeId = 'iframe-topgifters';else if (type === 'toplikers') iframeId = 'iframe-toplikers';else if (type === 'join') iframeId = 'iframe-welcome';
     const iframe = document.getElementById(iframeId);
     if (iframe && iframe.contentWindow) {
       if (type === 'topgifters') {
@@ -1229,6 +1229,12 @@ function App() {
             type: 'chat',
             user: 'TesterChat',
             message: customText || '¡Hola! Este es un mensaje de prueba leído por el lector de chat.'
+          },
+          join: {
+            type: 'join',
+            uniqueId: 'zero_fm',
+            user: 'Zero FM',
+            profilePic: 'https://p16-sign-va.tiktokcdn.com/tos-maliva-avt-0068/7343292376918818822~tplv-tiktok-shrink:100x100.webp'
           }
         };
         const payload = payloads[type];
@@ -8286,20 +8292,7 @@ function App() {
     onClick: () => handleSaveOverlaysConfigOnly('Bienvenida')
   }, renderIcon('save'), " Guardar Configuraci\xF3n"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-green",
-    onClick: () => {
-      const iframe = document.getElementById('iframe-welcome');
-      if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage({
-          action: 'triggerTestAlert',
-          payload: {
-            type: 'join',
-            uniqueId: 'zero_fm',
-            user: 'Zero FM',
-            profilePic: 'https://p16-sign-va.tiktokcdn.com/tos-maliva-avt-0068/7343292376918818822~tplv-tiktok-shrink:100x100.webp'
-          }
-        }, '*');
-      }
-    }
+    onClick: () => triggerOverlayTest('join')
   }, renderIcon('play'), " Simular Entrada"))), activeSub === 'tts' && /*#__PURE__*/React.createElement("div", {
     className: "glass-card animate-fade-in"
   }, /*#__PURE__*/React.createElement("h3", {

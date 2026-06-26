@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bienvenida Overlay - Zero FM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <!-- Firebase Config -->
+    <script src="firebase-config.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            background: transparent;
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            display: flex;
+            align-items: flex-end; /* Alinear abajo */
+            justify-content: flex-start; /* Alinear a la izquierda */
+            padding: 40px;
+            perspective: 1000px;
+        }
+
+        /* Contenedor del Widget */
+        #welcome-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            opacity: 0;
+            transform: translateX(-150px) rotateY(15deg);
+            transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+        }
+
+        #welcome-container.active {
+            opacity: 1;
+            transform: translateX(0) rotateY(0deg);
+        }
+
+        #welcome-container.exit {
+            opacity: 0;
+            transform: translateX(-50px) translateY(-30px) scale(0.9) rotateY(-10deg);
+            filter: blur(5px);
+            transition: all 0.5s cubic-bezier(0.6, -0.28, 0.735, 0.045);
+        }
+
+        /* Tarjeta Glassmorphic Premium */
+        .welcome-card {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            background: rgba(10, 8, 20, 0.78);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            padding: 16px 28px 16px 18px;
+            border-radius: 60px; /* Bordes super redondeados pill-style */
+            box-shadow: 
+                0 20px 50px rgba(0, 0, 0, 0.3),
+                0 0 30px rgba(168, 85, 247, 0.15),
+                inset 0 1px 2px rgba(255, 255, 255, 0.15);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Borde animado brillante en la tarjeta */
+        .welcome-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -150%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.12),
+                transparent
+            );
+            transform: skewX(-25deg);
+            transition: 0.75s;
+        }
+
+        #welcome-container.active .welcome-card::before {
+            animation: shine 2s infinite ease-in-out;
+            animation-delay: 0.5s;
+        }
+
+        @keyframes shine {
+            100% {
+                left: 200%;
+            }
+        }
+
+        /* Contenedor del Avatar con un aro de luz RGB */
+        .avatar-wrapper {
+            width: 62px;
+            height: 62px;
+            border-radius: 50%;
+            position: relative;
+            padding: 3px;
+            background: linear-gradient(135deg, #a855f7, #ec4899);
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .avatar-img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #0f0a1c;
+            background: #2a1015;
+        }
+
+        /* Badge pequeño sobre el avatar */
+        .badge {
+            position: absolute;
+            bottom: -3px;
+            right: -3px;
+            background: #22c55e;
+            border: 1.5px solid #0f0a1c;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            color: white;
+            box-shadow: 0 2px 6px rgba(34, 197, 94, 0.4);
+            animation: pulse-badge 2s infinite;
+        }
+
+        @keyframes pulse-badge {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+        }
+
+        /* Información del Usuario */
+        .text-info {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .title {
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.45);
+            margin-bottom: 2px;
+        }
+
+        .username {
+            font-size: 1.35rem;
+            font-weight: 800;
+            background: linear-gradient(120deg, #ffffff 30%, #e9d5ff 70%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .welcome-msg {
+            font-size: 0.95rem;
+            color: #d8b4fe;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        /* Onda de pulso de fondo */
+        .pulse-wave {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            transform: translate(-50%, -50%);
+            border-radius: 60px;
+            border: 2px solid #a855f7;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #welcome-container.active .pulse-wave {
+            animation: wave 2.2s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+            animation-delay: 0.3s;
+        }
+
+        @keyframes wave {
+            0% {
+                width: 95%;
+                height: 90%;
+                opacity: 0.6;
+            }
+            100% {
+                width: 125%;
+                height: 140%;
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="welcome-container">
+        <!-- Onda de pulso neon -->
+        <div class="pulse-wave"></div>
+        
+        <div class="welcome-card">
+            <!-- Avatar -->
+            <div class="avatar-wrapper" id="avatar-glow">
+                <img id="user-avatar" class="avatar-img" src="" alt="Avatar">
+                <div class="badge">👋</div>
+            </div>
+            
+            <!-- Textos -->
+            <div class="text-info">
+                <div class="title" id="welcome-title">Bienvenido</div>
+                <div class="username" id="user-display">Usuario</div>
+                <div class="welcome-msg" id="msg-text">¡Acaba de entrar al Live!</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sonido Soft Premium opcional -->
+    <audio id="welcome-sound" src="https://assets.mixkit.co/active_storage/sfx/2017/2017-84.wav" preload="auto"></audio>
+
+    <script>
+        // Configuración de Firebase
+        const configFirebase = window.ZERO_FM_FIREBASE || {
+            apiKey:            "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+            authDomain:        "zero-strom-web.firebaseapp.com",
+            projectId:         "zero-strom-web",
+            storageBucket:     "zero-strom-web.firebasestorage.app",
+            messagingSenderId: "758369466349",
+            appId:             "1:758369466349:web:f2ced362a5a049c70b59e4"
+        };
+
+        // Estados y Colas
+        let db = null;
+        let welcomeQueue = [];
+        let isCardPlaying = false;
+        let playTimeout = null;
+        let config = {
+            welcomeOverlayEnabled: true,
+            welcomeOverlayDuration: 5,
+            welcomeOverlayGreetingTemplate: "¡Acaba de entrar al Live!",
+            welcomeOverlayColor: "#a855f7",
+            welcomeOverlaySoundEnabled: true,
+            welcomeOverlaySoundVolume: 40
+        };
+        const startedAt = new Date();
+
+        // Elementos del DOM
+        const container = document.getElementById('welcome-container');
+        const userAvatar = document.getElementById('user-avatar');
+        const userDisplay = document.getElementById('user-display');
+        const msgText = document.getElementById('msg-text');
+        const welcomeTitle = document.getElementById('welcome-title');
+        const avatarGlow = document.getElementById('avatar-glow');
+        const audio = document.getElementById('welcome-sound');
+
+        // Inicializar Firebase
+        try {
+            if (typeof firebase !== 'undefined') {
+                firebase.initializeApp(configFirebase);
+                db = firebase.firestore();
+                console.log("[Firebase] Bienvenidas conectadas correctamente ✓");
+
+                // 1. Escuchar configuraciones en tiempo real
+                db.collection('systemConfig').doc('overlayAlertsConfig')
+                    .onSnapshot(doc => {
+                        if (doc.exists) {
+                            const data = doc.data();
+                            // Mapear configuraciones si existen
+                            if (data.welcomeOverlayEnabled !== undefined) config.welcomeOverlayEnabled = data.welcomeOverlayEnabled;
+                            if (data.welcomeOverlayDuration !== undefined) config.welcomeOverlayDuration = Number(data.welcomeOverlayDuration) || 5;
+                            if (data.welcomeOverlayGreetingTemplate !== undefined) config.welcomeOverlayGreetingTemplate = data.welcomeOverlayGreetingTemplate;
+                            if (data.welcomeOverlayColor !== undefined) config.welcomeOverlayColor = data.welcomeOverlayColor;
+                            if (data.welcomeOverlaySoundEnabled !== undefined) config.welcomeOverlaySoundEnabled = data.welcomeOverlaySoundEnabled;
+                            if (data.welcomeOverlaySoundVolume !== undefined) config.welcomeOverlaySoundVolume = Number(data.welcomeOverlaySoundVolume) || 40;
+                            
+                            // Aplicar estilos dinámicos (color de borde / brillo)
+                            applyStyles();
+                        }
+                    });
+
+                // 2. Escuchar la colección de notificaciones del Bot
+                db.collection('notifications')
+                    .where('timestamp', '>', startedAt)
+                    .onSnapshot(snap => {
+                        snap.docChanges().forEach(change => {
+                            if (change.type === 'added') {
+                                const data = change.doc.data();
+                                // Capturar eventos de tipo join (entrada)
+                                if (data.type === 'join' && config.welcomeOverlayEnabled) {
+                                    console.log("👤 Nuevo usuario en cola para saludar:", data.uniqueId);
+                                    addWelcome(data);
+                                }
+                            }
+                        });
+                    }, err => {
+                        console.error("[Firebase] Error en listener de bienvenidas:", err);
+                    });
+            }
+        } catch (e) {
+            console.error("Error inicializando Firebase:", e);
+        }
+
+        // Manejar estilos dinámicos
+        function applyStyles() {
+            if (avatarGlow && config.welcomeOverlayColor) {
+                avatarGlow.style.background = `linear-gradient(135deg, ${config.welcomeOverlayColor}, #ec4899)`;
+                avatarGlow.style.boxShadow = `0 0 20px ${config.welcomeOverlayColor}cc`;
+            }
+        }
+
+        // Agregar bienvenida a la cola
+        function addWelcome(data) {
+            welcomeQueue.push(data);
+            processQueue();
+        }
+
+        // Procesar la cola
+        function processQueue() {
+            if (isCardPlaying || welcomeQueue.length === 0) return;
+            isCardPlaying = true;
+
+            const next = welcomeQueue.shift();
+
+            // Rellenar datos en la tarjeta
+            userAvatar.src = next.profilePic || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%232a1015'/%3E%3C/svg%3E";
+            userDisplay.textContent = next.user || next.uniqueId;
+            
+            // Reemplazar campos de la plantilla si es necesario
+            let welcomeMsg = config.welcomeOverlayGreetingTemplate || "¡Entró al Live! 👋";
+            welcomeMsg = welcomeMsg
+                .replace(/{nickname}/g, next.user || next.uniqueId)
+                .replace(/{user}/g, next.uniqueId)
+                .replace(/{username}/g, next.uniqueId);
+            
+            msgText.textContent = welcomeMsg;
+
+            // Reproducir sonido si está habilitado
+            if (config.welcomeOverlaySoundEnabled) {
+                audio.volume = config.welcomeOverlaySoundVolume / 100;
+                audio.currentTime = 0;
+                audio.play().catch(e => console.log("Audio block:", e));
+            }
+
+            // Mostrar tarjeta (animación de entrada)
+            container.className = 'active';
+
+            // Tiempo de espera antes de ocultar
+            const durationMs = (config.welcomeOverlayDuration || 5) * 1000;
+            
+            playTimeout = setTimeout(() => {
+                // Iniciar animación de salida
+                container.className = 'exit';
+                
+                // Esperar a que acabe la animación de salida para liberar
+                setTimeout(() => {
+                    container.className = '';
+                    isCardPlaying = false;
+                    // Llamar recursivamente para el siguiente en cola
+                    processQueue();
+                }, 600); // Duración de la animación exit css
+            }, durationMs);
+        }
+
+        // Soporte para pruebas instantáneas y actualización de config desde el dashboard
+        window.addEventListener('message', function (event) {
+            if (!event.data) return;
+            if (event.data.action === 'updateConfig') {
+                const data = event.data.payload;
+                if (data.welcomeOverlayEnabled !== undefined) config.welcomeOverlayEnabled = data.welcomeOverlayEnabled;
+                if (data.welcomeOverlayDuration !== undefined) config.welcomeOverlayDuration = Number(data.welcomeOverlayDuration) || 5;
+                if (data.welcomeOverlayGreetingTemplate !== undefined) config.welcomeOverlayGreetingTemplate = data.welcomeOverlayGreetingTemplate;
+                if (data.welcomeOverlayColor !== undefined) config.welcomeOverlayColor = data.welcomeOverlayColor;
+                if (data.welcomeOverlaySoundEnabled !== undefined) config.welcomeOverlaySoundEnabled = data.welcomeOverlaySoundEnabled;
+                if (data.welcomeOverlaySoundVolume !== undefined) config.welcomeOverlaySoundVolume = Number(data.welcomeOverlaySoundVolume) || 40;
+                applyStyles();
+            } else if (event.data.action === 'triggerTestAlert' && event.data.payload && event.data.payload.type === 'join') {
+                console.log("🧪 Test Join recibido por postMessage:", event.data.payload);
+                addWelcome(event.data.payload);
+            }
+        });
+    </script>
+</body>
+</html>
