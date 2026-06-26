@@ -8067,12 +8067,31 @@ function App() {
       marginBottom: '20px',
       paddingBottom: '20px'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("details", {
+    name: "welcome-config-group",
+    className: "collapsible-config-details",
     style: {
-      marginBottom: '15px'
+      marginBottom: '25px',
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      paddingBottom: '15px'
     }
-  }, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente"), /*#__PURE__*/React.createElement("div", {
-    className: "grid-2"
+  }, /*#__PURE__*/React.createElement("summary", {
+    style: {
+      cursor: 'pointer',
+      fontWeight: 600,
+      fontSize: '0.95rem',
+      color: 'var(--accent-primary)',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDFA8 Personalizaci\xF3n Visual Independiente"), /*#__PURE__*/React.createElement("span", {
+    className: "details-icon"
+  }, "\u25BC")), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '15px'
+    }
   }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", null, "Color de Contorno / Brillo"), /*#__PURE__*/React.createElement("input", {
@@ -8099,7 +8118,215 @@ function App() {
       ...overlays,
       welcomeOverlayDuration: parseInt(e.target.value)
     })
-  })))), /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Escala de Tarjeta: ", overlays.welcomeOverlayCardScale || 1.0, "x"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0.5",
+    max: "2.0",
+    step: "0.05",
+    value: overlays.welcomeOverlayCardScale || 1.0,
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayCardScale: parseFloat(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }))), /*#__PURE__*/React.createElement("details", {
+    name: "welcome-config-group",
+    className: "collapsible-config-details",
+    style: {
+      marginBottom: '25px',
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      paddingBottom: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("summary", {
+    style: {
+      cursor: 'pointer',
+      fontWeight: 600,
+      fontSize: '0.95rem',
+      color: 'var(--accent-primary)',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\u2728 Ajustes de Contenedor y Tipograf\xEDa"), /*#__PURE__*/React.createElement("span", {
+    className: "details-icon"
+  }, "\u25BC")), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Fondo de Tarjeta"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.welcomeOverlayBgColor || '#0a0814',
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayBgColor: e.target.value
+    }),
+    style: {
+      height: '40px',
+      padding: '2px',
+      border: '1px solid rgba(255,255,255,0.1)'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad de Fondo: ", overlays.welcomeOverlayBgOpacity !== undefined ? overlays.welcomeOverlayBgOpacity : 78, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.welcomeOverlayBgOpacity !== undefined ? overlays.welcomeOverlayBgOpacity : 78,
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayBgOpacity: parseInt(e.target.value)
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Color de Borde"), /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: overlays.welcomeOverlayBorderColor || '#ffffff',
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayBorderColor: e.target.value
+    }),
+    style: {
+      height: '40px',
+      padding: '2px',
+      border: '1px solid rgba(255,255,255,0.1)'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Opacidad de Borde: ", overlays.welcomeOverlayBorderOpacity !== undefined ? overlays.welcomeOverlayBorderOpacity : 8, "%"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.welcomeOverlayBorderOpacity !== undefined ? overlays.welcomeOverlayBorderOpacity : 8,
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayBorderOpacity: parseInt(e.target.value)
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Ancho de Borde: ", overlays.welcomeOverlayBorderWidth !== undefined ? overlays.welcomeOverlayBorderWidth : 1, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "10",
+    step: "1",
+    value: overlays.welcomeOverlayBorderWidth !== undefined ? overlays.welcomeOverlayBorderWidth : 1,
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayBorderWidth: parseInt(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Radio de Borde: ", overlays.welcomeOverlayRadius !== undefined ? overlays.welcomeOverlayRadius : 60, "px"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    step: "5",
+    value: overlays.welcomeOverlayRadius !== undefined ? overlays.welcomeOverlayRadius : 60,
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayRadius: parseInt(e.target.value)
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Familia de Fuente"), /*#__PURE__*/React.createElement("select", {
+    value: overlays.welcomeOverlayFontFamily || 'Outfit',
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayFontFamily: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "Outfit"
+  }, "Outfit (Moderna/Gaming)"), /*#__PURE__*/React.createElement("option", {
+    value: "Inter"
+  }, "Inter (Limpia)"), /*#__PURE__*/React.createElement("option", {
+    value: "Roboto"
+  }, "Roboto (Cl\xE1sica)"), /*#__PURE__*/React.createElement("option", {
+    value: "Montserrat"
+  }, "Montserrat (Geom\xE9trica)"), /*#__PURE__*/React.createElement("option", {
+    value: "Poppins"
+  }, "Poppins (Redondeada)"), /*#__PURE__*/React.createElement("option", {
+    value: "Luckiest Guy"
+  }, "Luckiest Guy (Divertida/Cartoons)"), /*#__PURE__*/React.createElement("option", {
+    value: "Impact"
+  }, "Impact (Fuerte/Stream)"), /*#__PURE__*/React.createElement("option", {
+    value: "Arial"
+  }, "Arial (Por defecto)"))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }))), /*#__PURE__*/React.createElement("details", {
+    name: "welcome-config-group",
+    className: "collapsible-config-details",
+    style: {
+      marginBottom: '25px'
+    }
+  }, /*#__PURE__*/React.createElement("summary", {
+    style: {
+      cursor: 'pointer',
+      fontWeight: 600,
+      fontSize: '0.95rem',
+      color: 'var(--accent-primary)',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\u2699\uFE0F Efectos y Visibilidad"), /*#__PURE__*/React.createElement("span", {
+    className: "details-icon"
+  }, "\u25BC")), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      marginTop: '15px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Mostrar Imagen de Perfil"), /*#__PURE__*/React.createElement("select", {
+    value: String(overlays.welcomeOverlayShowAvatar !== false),
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayShowAvatar: e.target.value === 'true'
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "true"
+  }, "\u2705 S\xED, mostrar avatar"), /*#__PURE__*/React.createElement("option", {
+    value: "false"
+  }, "\u274C No, ocultar avatar"))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", null, "Mostrar Onda de Pulso Ne\xF3n"), /*#__PURE__*/React.createElement("select", {
+    value: String(overlays.welcomeOverlayShowPulseWave !== false),
+    onChange: e => setOverlays({
+      ...overlays,
+      welcomeOverlayShowPulseWave: e.target.value === 'true'
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "true"
+  }, "\u2705 S\xED, animar onda"), /*#__PURE__*/React.createElement("option", {
+    value: "false"
+  }, "\u274C No, desactivar onda")))))), /*#__PURE__*/React.createElement("div", {
     className: "preview-panel"
   }, /*#__PURE__*/React.createElement("div", {
     className: "preview-header"
