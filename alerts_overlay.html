@@ -929,7 +929,7 @@
         let isAlertPlaying = false;
         let activeAlertTimeout = null;
         let activeAlertExitTimeout = null;
-        const overlayStartedAt = new Date(); // Para jugar solo alertas nuevas
+        const overlayStartedAt = new Date(Date.now() - 5 * 60 * 1000); // 5 minutos para tolerar desfase de reloj
         let likeStormInterval = null;
         const HEART_COLORS = ['#ff3366', '#ff66b2', '#b366ff', '#33ccff', '#ffcc33', '#ff9933'];
 
@@ -960,9 +960,15 @@
                     });
 
                 // Escuchar la colección de notificaciones del Bot
+                let isInitialLoad = true;
                 db.collection('notifications')
                     .where('timestamp', '>', overlayStartedAt)
                     .onSnapshot(snap => {
+                        if (isInitialLoad) {
+                            isInitialLoad = false;
+                            console.log("[Firebase] Carga inicial de alertas ignorada para evitar reproducir alertas viejas.");
+                            return;
+                        }
                         snap.docChanges().forEach(change => {
                             if (change.type === 'added') {
                                 const data = change.doc.data();
@@ -977,7 +983,7 @@
                             }
                         });
                     }, err => {
-                        console.error("[Firebase] Error en listener de alertas:", err);
+                        console.warn("[Firebase] Error al listener de notificaciones:", err);
                     });
             }
         } catch (e) {
