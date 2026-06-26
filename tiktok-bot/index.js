@@ -1186,6 +1186,19 @@ function startBot() {
         }
     });
 
+    app.post('/api/server/restart', (req, res) => {
+        try {
+            res.json({ ok: true, message: 'Servidor reiniciándose...' });
+            console.log('🔄 Reiniciando el bot por solicitud del usuario...');
+            setTimeout(() => {
+                process.exit(0);
+            }, 1000);
+        } catch (err) {
+            console.error('Error al reiniciar el servidor:', err);
+            res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
     app.get('/api/events', (req, res) => {
         const limit = Math.max(1, Math.min(100, Number(req.query.limit || 30) || 30));
         const out = recentSrEvents.slice(-limit).reverse();

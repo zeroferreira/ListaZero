@@ -1057,6 +1057,27 @@ function App() {
       }
     }
   };
+  const handleRestartServer = async () => {
+    if (confirm('¿Estás seguro de que quieres reiniciar el bot?\n\nEl bot se apagará y se volverá a iniciar de forma automática en 5 segundos. Esta página se recargará automáticamente.')) {
+      try {
+        const res = await fetch('/api/server/restart', {
+          method: 'POST'
+        });
+        const d = await res.json();
+        if (d.ok) {
+          alert('El bot se está reiniciando. La página se recargará automáticamente en 8 segundos.');
+          setTimeout(() => {
+            window.location.reload();
+          }, 8000);
+        }
+      } catch (e) {
+        alert('El bot se está reiniciando. La página se recargará automáticamente en 8 segundos.');
+        setTimeout(() => {
+          window.location.reload();
+        }, 8000);
+      }
+    }
+  };
   const triggerSaveBadge = msg => {
     setSaveStatus(msg);
     setTimeout(() => setSaveStatus(''), 3000);
@@ -1965,28 +1986,86 @@ function App() {
       marginBottom: '20px'
     }
   }, "Administraci\xF3n del sistema Node.js ejecut\xE1ndose localmente en tu PC."), /*#__PURE__*/React.createElement("div", {
+    className: "grid-2",
+    style: {
+      gap: '20px',
+      alignItems: 'stretch'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       padding: '16px',
-      background: 'rgba(239, 68, 68, 0.05)',
-      border: '1px solid rgba(239, 68, 68, 0.15)',
-      borderRadius: '10px'
+      background: 'rgba(59, 130, 246, 0.05)',
+      border: '1px solid rgba(59, 130, 246, 0.15)',
+      borderRadius: '10px',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between'
     }
-  }, /*#__PURE__*/React.createElement("h4", {
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", {
     style: {
-      color: 'var(--error)',
+      color: '#60a5fa',
       marginTop: 0,
       marginBottom: '8px',
       fontSize: '0.95rem',
-      fontWeight: '700'
+      fontWeight: '700',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px'
     }
-  }, "\u26A0\uFE0F Apagar Servidor"), /*#__PURE__*/React.createElement("p", {
+  }, renderIcon('refresh-cw', 16, '#60a5fa'), " Reiniciar Bot"), /*#__PURE__*/React.createElement("p", {
     style: {
       color: 'var(--text-secondary)',
       fontSize: '0.82rem',
       marginBottom: '15px',
       lineHeight: 1.4
     }
-  }, "Detiene el programa por completo. Deber\xE1s volver a ejecutar el archivo de inicio (EJECUTAR_SILENCIOSO.vbs o INICIAR_BOT.bat) en tu PC de streaming para encenderlo de nuevo."), /*#__PURE__*/React.createElement("button", {
+  }, "Reinicia el proceso del bot para aplicar cambios (por ejemplo, despu\xE9s de ejecutar ", /*#__PURE__*/React.createElement("code", null, "ACTUALIZAR.bat"), "). El proceso se apagar\xE1 y volver\xE1 a encender autom\xE1ticamente en 5 segundos.")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-blue",
+    onClick: handleRestartServer,
+    style: {
+      background: 'rgba(59, 130, 246, 0.15)',
+      border: '1px solid rgba(59, 130, 246, 0.3)',
+      color: '#60a5fa',
+      fontWeight: 'bold',
+      padding: '10px 18px',
+      cursor: 'pointer',
+      borderRadius: '6px',
+      transition: 'all 0.2s ease',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '6px',
+      width: '100%',
+      justifyContent: 'center'
+    }
+  }, renderIcon('refresh-cw'), " Reiniciar Bot"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '16px',
+      background: 'rgba(239, 68, 68, 0.05)',
+      border: '1px solid rgba(239, 68, 68, 0.15)',
+      borderRadius: '10px',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between'
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      color: 'var(--error)',
+      marginTop: 0,
+      marginBottom: '8px',
+      fontSize: '0.95rem',
+      fontWeight: '700',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px'
+    }
+  }, renderIcon('power', 16, 'var(--error)'), " Apagar Servidor"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.82rem',
+      marginBottom: '15px',
+      lineHeight: 1.4
+    }
+  }, "Detiene el programa por completo. Deber\xE1s volver a ejecutar el archivo de inicio (EJECUTAR_SILENCIOSO.vbs o INICIAR_BOT.bat) en tu PC de streaming para encenderlo de nuevo.")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
     className: "btn",
     onClick: handleShutdownServer,
     style: {
@@ -2000,9 +2079,11 @@ function App() {
       transition: 'all 0.2s ease',
       display: 'inline-flex',
       alignItems: 'center',
-      gap: '6px'
+      gap: '6px',
+      width: '100%',
+      justifyContent: 'center'
     }
-  }, renderIcon('power'), " Apagar Servidor del Bot"))))), activeTab === 'overlays' && /*#__PURE__*/React.createElement("div", {
+  }, renderIcon('power'), " Apagar Servidor"))))))), activeTab === 'overlays' && /*#__PURE__*/React.createElement("div", {
     className: "overlays-layout"
   }, /*#__PURE__*/React.createElement("div", {
     className: "overlays-sidebar"
