@@ -1784,22 +1784,36 @@
                     
                     if (data.voiceOverride && data.voiceOverride !== 'Default Voice' && data.voiceOverride !== '') {
                         const customVoice = _cachedVoices.find(v => v.name === data.voiceOverride);
-                        if (customVoice) utterance.voice = customVoice;
+                        if (customVoice) {
+                            utterance.voice = customVoice;
+                        } else {
+                            const esVoice = _cachedVoices.find(v => v.lang.toLowerCase().includes('es'));
+                            if (esVoice) utterance.voice = esVoice;
+                        }
                     } else if (config.chatTtsRandomVoice === true) {
-                        const filtered = _cachedVoices.filter(v => v.lang.startsWith(utterance.lang));
+                        let filtered = _cachedVoices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith(utterance.lang.toLowerCase()));
+                        if (filtered.length === 0) {
+                            const mainLang = utterance.lang.split('-')[0].toLowerCase();
+                            filtered = _cachedVoices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith(mainLang));
+                        }
                         if (filtered.length > 0) {
                             utterance.voice = filtered[Math.floor(Math.random() * filtered.length)];
                         }
                     } else if (config.chatTtsVoice && config.chatTtsVoice !== 'Default Voice') {
                         const customVoice = _cachedVoices.find(v => v.name === config.chatTtsVoice);
-                        if (customVoice) utterance.voice = customVoice;
+                        if (customVoice) {
+                            utterance.voice = customVoice;
+                        } else {
+                            const esVoice = _cachedVoices.find(v => v.lang.toLowerCase().includes('es'));
+                            if (esVoice) utterance.voice = esVoice;
+                        }
                     } else {
-                        const esVoice = _cachedVoices.find(v => v.lang.includes('es') || v.lang.includes('ES'));
+                        const esVoice = _cachedVoices.find(v => v.lang.includes('es') || v.lang.includes('ES') || v.lang.toLowerCase().includes('es'));
                         if (esVoice) utterance.voice = esVoice;
                     }
                 } else {
                     utterance.lang = 'es-MX';
-                    const esVoice = _cachedVoices.find(v => v.lang.includes('es') || v.lang.includes('ES'));
+                    const esVoice = _cachedVoices.find(v => v.lang.includes('es') || v.lang.includes('ES') || v.lang.toLowerCase().includes('es'));
                     if (esVoice) utterance.voice = esVoice;
                     utterance.rate = 1.0;
                     utterance.volume = 0.85;
@@ -1813,7 +1827,11 @@
                 };
                 
                 utterance.onend = done;
-                utterance.onerror = done;
+                utterance.onerror = (e) => {
+                    console.error("[TTS] SpeechSynthesis error:", e);
+                    alert("Error en TTS del Overlay: " + (e.error || "Desconocido") + "\nTexto: " + text);
+                    done();
+                };
                 
                 // Fallback timeout
                 const charCount = text.length;

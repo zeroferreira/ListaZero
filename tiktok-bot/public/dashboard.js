@@ -9070,21 +9070,39 @@ function App() {
     onClick: () => {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(testerText);
-        utterance.lang = overlays.chatTtsLanguage;
-        utterance.rate = overlays.chatTtsSpeed / 50;
-        utterance.pitch = overlays.chatTtsPitch / 50;
-        utterance.volume = overlays.chatTtsVolume / 100;
+        const utterance = new SpeechSynthesisUtterance(testerText || "Hola, probando sonido local.");
+        utterance.lang = overlays.chatTtsLanguage || 'es-MX';
+        utterance.rate = (overlays.chatTtsSpeed || 50) / 50;
+        utterance.pitch = (overlays.chatTtsPitch || 50) / 50;
+        utterance.volume = (overlays.chatTtsVolume || 80) / 100;
+        utterance.onerror = e => {
+          console.error("Local SpeechSynthesis Error:", e);
+          alert("Error de voz local: " + (e.error || "Desconocido"));
+        };
         if (!overlays.chatTtsRandomVoice) {
           const selectedVoice = voices.find(v => v.name === overlays.chatTtsVoice);
-          if (selectedVoice) utterance.voice = selectedVoice;
+          if (selectedVoice) {
+            utterance.voice = selectedVoice;
+          } else {
+            const mainLang = (overlays.chatTtsLanguage || 'es-MX').split('-')[0].toLowerCase();
+            const sameLangVoices = voices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith(mainLang));
+            if (sameLangVoices.length > 0) {
+              utterance.voice = sameLangVoices[0];
+            }
+          }
         } else {
-          const filtered = voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage));
+          let filtered = voices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith((overlays.chatTtsLanguage || 'es-MX').toLowerCase()));
+          if (filtered.length === 0) {
+            const mainLang = (overlays.chatTtsLanguage || 'es-MX').split('-')[0].toLowerCase();
+            filtered = voices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith(mainLang));
+          }
           if (filtered.length > 0) {
             utterance.voice = filtered[Math.floor(Math.random() * filtered.length)];
           }
         }
         window.speechSynthesis.speak(utterance);
+      } else {
+        alert("SpeechSynthesis no es soportado en este navegador.");
       }
     }
   }, "\uD83D\uDD0A Probar Voz Local"), /*#__PURE__*/React.createElement("button", {
