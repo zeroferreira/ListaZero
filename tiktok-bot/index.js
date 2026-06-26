@@ -2416,10 +2416,10 @@ function setupListeners() {
                     if (overlayAlertsConfig.chatTtsAllowFollowers === true && isFollower) {
                         userAllowed = true;
                     }
-                    if (overlayAlertsConfig.chatTtsAllowSubscribers === true && isSubscriber) {
+                    if (overlayAlertsConfig.chatTtsAllowSubscribers === true && data.isSubscriber === true) {
                         userAllowed = true;
                     }
-                    if (overlayAlertsConfig.chatTtsAllowModerators === true && isModerator) {
+                    if (overlayAlertsConfig.chatTtsAllowModerators === true && data.isModerator === true) {
                         userAllowed = true;
                     }
                     if (overlayAlertsConfig.chatTtsAllowTeam === true && isSuperFanRaw) {
