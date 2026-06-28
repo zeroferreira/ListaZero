@@ -980,8 +980,20 @@
       background: rgba(255, 255, 255, 0.2);
     }
 
+    /* ── Score update bump animation (no DOM rebuild) ── */
+    @keyframes scoreBump {
+      0%   { transform: scale(1);    filter: brightness(1); }
+      40%  { transform: scale(1.18); filter: brightness(1.6); }
+      70%  { transform: scale(0.96); filter: brightness(1.2); }
+      100% { transform: scale(1);    filter: brightness(1); }
+    }
+    .score-bump {
+      animation: scoreBump 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
     /* Responsive adjustments */
     @media(max-width: 768px) {
+
       .podium {
         grid-template-columns: 1fr;
         gap: 32px;
@@ -1358,7 +1370,32 @@
       const top3 = list.slice(0,3);
       const rest = list.slice(3,20);
 
-      /* Podium order: 2nd | 1st | 3rd */
+      /* ── Smart reconciliation: compare user-key signature ── */
+      const newSig = list.slice(0,20).map(u => u.username||u.uniqueId||'').join('|');
+      const prevSig = body.dataset.sig || '';
+      const alreadyRendered = !body.hidden && body.innerHTML !== '' && prevSig === newSig;
+
+      if(alreadyRendered) {
+        /* Same users in same order — ONLY update numbers, no DOM rebuild */
+        list.slice(0,20).forEach(u => {
+          const uid  = u.username || u.uniqueId || '';
+          const amt  = u.totalAmount != null ? u.totalAmount : 0;
+          const fmtAmt = fmt(amt);
+          /* Try podium score el */
+          let scoreEl = body.querySelector(`.pitem[data-uid="${uid}"] .pscore-compact`);
+          /* Try rest list score el */
+          if(!scoreEl) scoreEl = body.querySelector(`.rcard[data-uid="${uid}"] .rscore`);
+          if(scoreEl && scoreEl.getAttribute('data-val') !== String(amt)) {
+            scoreEl.setAttribute('data-val', amt);
+            scoreEl.innerHTML = ico + ' ' + fmtAmt;
+            scoreEl.classList.add('score-bump');
+            setTimeout(() => scoreEl.classList.remove('score-bump'), 600);
+          }
+        });
+        setUbar(new Date());
+        return; /* skip full rebuild */
+      }
+
       const pod = [];
       if(top3[1]) pod.push({u:top3[1],r:2,c:'p2'});
       if(top3[0]) pod.push({u:top3[0],r:1,c:'p1'});
@@ -1374,12 +1411,12 @@
           const uname = u.username||u.uniqueId||'';
           const amt   = u.totalAmount!=null?u.totalAmount:0;
           const crown = r===1?'<span class="pcrown">👑</span>':'';
-          html+=`<div class="pitem ${c}">
+          html+=`<div class="pitem ${c}" data-uid="${uname}">
             <div class="pmed-ribbon r-${r}"><span class="pmed-num">${r}</span></div>
             <div class="pawrap">${crown}${avImg(u.profilePictureUrl,nick,'pav')}</div>
             <div class="pdetails">
               <span class="pname" title="${nick}">${nick}</span>
-              <span class="pscore-compact ${sc}">${ico} ${fmt(amt)}</span>
+              <span class="pscore-compact ${sc}" data-val="${amt}">${ico} ${fmt(amt)}</span>
             </div>
           </div>`;
         });
@@ -1394,14 +1431,14 @@
           const nick  = u.nickname||u.uniqueId||u.username||'Anónimo';
           const uname = u.username||u.uniqueId||'';
           const amt   = u.totalAmount!=null?u.totalAmount:0;
-          html+=`<div class="rcard">
+          html+=`<div class="rcard" data-uid="${uname}">
             <span class="rnum">#${rank}</span>
             ${avImg(u.profilePictureUrl,nick,'rav')}
             <div class="rinfo">
               <span class="rnick" title="${nick}">${nick}</span>
               ${uname?`<span class="ruser">@${uname}</span>`:''}
             </div>
-            <span class="rscore ${sc}">${ico} ${fmt(amt)}</span>
+            <span class="rscore ${sc}" data-val="${amt}">${ico} ${fmt(amt)}</span>
             <i data-lucide="more-vertical" style="color: var(--text-muted); opacity: 0.4; width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; margin-left: 8px;"></i>
           </div>`;
         });
@@ -1409,6 +1446,7 @@
       }
 
       body.innerHTML = html;
+      body.dataset.sig = newSig;
       body.hidden = false;
       if (typeof lucide !== 'undefined') lucide.createIcons();
       if (typeof animatePanelEntry === 'function') animatePanelEntry(bodyId);
