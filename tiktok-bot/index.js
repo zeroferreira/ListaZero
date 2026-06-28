@@ -3150,8 +3150,6 @@ function setupListeners() {
 
     // SEGUIDORES (FOLLOW)
     tiktokLiveConnection.on('follow', async (data) => {
-        if (overlayAlertsConfig.enableFollowAlert === false) return;
-
         const displayName = data.nickname;
         const uid = data.uniqueId;
         const profilePic = data.profilePictureUrl;
@@ -3163,7 +3161,9 @@ function setupListeners() {
         sessionFollows.set(uid, (sessionFollows.get(uid) || 0) + 1);
         syncSessionCountersToFirestore();
         
-        console.log(`👤 @${uid} comenzó a seguirte!`);
+        console.log(`👤 @${uid} (${displayName}) comenzó a seguirte! — enableFollowAlert: ${overlayAlertsConfig.enableFollowAlert}`);
+
+        // Siempre escribir en Firestore — el overlay decide si mostrar según su propia config
         if (db) {
             try {
                 let msgTemplate = String(overlayAlertsConfig.followsAlertMsg || "¡gracias por seguir el canal! 👤");
@@ -3177,11 +3177,13 @@ function setupListeners() {
                     message: customMsg,
                     timestamp: serverTimestamp()
                 });
+                console.log(`✅ Notificación de follow guardada para @${uid}`);
             } catch (e) {
                 console.error('Error guardando notificación de follow en Firestore:', e);
             }
         }
     });
+
 
     // SUSCRIPTORES (SUBSCRIBE)
     tiktokLiveConnection.on('subscribe', async (data) => {
