@@ -1661,7 +1661,6 @@
           const list = [];
           snap.forEach(doc => {
             const data = doc.data();
-            // Filtrar usuarios que hayan donado al menos 1 moneda
             if ((data.totalCoinsDonated || 0) > 0) {
               list.push({
                 username: data.tiktokId || doc.id,
@@ -1681,37 +1680,81 @@
           showErr('gifters-body','gifters-loading','gifters-empty','gifters-error');
         });
 
-      /* Top Quiéreme — ordenado por cantidad de regalos enviados */
-      db.collection('userStats')
-        .orderBy('quiereCount', 'desc')
-        .limit(20)
-        .onSnapshot(snap=>{
-          console.log('[Tops] snapshot userStats (Quiéreme) — size:', snap.size);
-          const list = [];
-          snap.forEach(doc => {
-            const data = doc.data();
-            if ((data.quiereCount || 0) > 0) {
-              list.push({
-                username: data.tiktokId || doc.id,
-                nickname: data.displayName || doc.id,
-                profilePictureUrl: data.profilePic || '',
-                totalAmount: data.quiereCount || 0,
-                totalCoins: data.totalQuiereCoins || 0,
-                isSubscriber: data.isSubscriber || false,
-                memberLevel: data.memberLevel || 0
-              });
+      /* Top Quiéreme — lee directamente de 'notifications' y agrupa por usuario filtrando por nombre del regalo */
+      (function setupQuiereTop() {
+        const QUIERE_KEYS = ['quiereme','heartme','loveme','querme','amame'];
+        function isQuiereGift(name) {
+          if (!name) return false;
+          const key = String(name).toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+            .replace(/[^a-z0-9]+/g,'');
+          return QUIERE_KEYS.some(k => key === k || key.indexOf(k) !== -1);
+        }
+
+        const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        db.collection('notifications')
+          .where('type', '==', 'gift')
+          .where('timestamp', '>', since24h)
+          .onSnapshot(snap => {
+            console.log('[Tops] Quiéreme notifications — size:', snap.size);
+            const byUser = {};
+            snap.forEach(doc => {
+              const d = doc.data();
+              if (!isQuiereGift(d.giftName)) return;
+              const uid = d.uniqueId || d.user || 'desconocido';
+              if (!byUser[uid]) {
+                byUser[uid] = {
+                  username: uid,
+                  nickname: d.user || uid,
+                  profilePictureUrl: d.profilePic || '',
+                  totalAmount: 0,
+                  isSubscriber: false,
+                  memberLevel: 0
+                };
+              }
+              byUser[uid].totalAmount += (d.repeatCount || 1);
+              if (d.profilePic) byUser[uid].profilePictureUrl = d.profilePic;
+            });
+
+            const list = Object.values(byUser)
+              .filter(u => u.totalAmount > 0)
+              .sort((a,b) => b.totalAmount - a.totalAmount)
+              .slice(0, 20);
+
+            if (list.length === 0) {
+              // Fallback a userStats si aún no hay nada en notifications
+              db.collection('userStats').orderBy('quiereCount','desc').limit(20).get()
+                .then(snap2 => {
+                  const list2 = [];
+                  snap2.forEach(doc => {
+                    const d = doc.data();
+                    if ((d.quiereCount || 0) > 0) {
+                      list2.push({
+                        username: d.tiktokId || doc.id,
+                        nickname: d.displayName || doc.id,
+                        profilePictureUrl: d.profilePic || '',
+                        totalAmount: d.quiereCount || 0,
+                        isSubscriber: d.isSubscriber || false,
+                        memberLevel: d.memberLevel || 0
+                      });
+                    }
+                  });
+                  renderPanel('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error',list2,'quiereme');
+                })
+                .catch(() => renderPanel('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error',[],'quiereme'));
+            } else {
+              renderPanel('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error',list,'quiereme');
             }
+            setUbar(new Date());
+          }, err => {
+            console.error('[Tops] Quiéreme err:', err.code, err.message);
+            showErr('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error');
           });
+      })();
 
-          renderPanel('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error',list,'quiereme');
-          setUbar(new Date());
-        },err=>{
-          console.error('[Tops] Quiéreme err:',err.code, err.message);
-          showErr('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error');
-        });
-
-      /* Top Miembros — consulta y ordenación en memoria por nivel de TikTok (priorizando el nivel de donador) */
+      /* Top Miembros — consulta y ordenación en memoria por gifterLevel (nivel por donar en TikTok) */
       db.collection('userStats')
+        .where('isSubscriber', '==', true)
         .onSnapshot(snap=>{
           console.log('[Tops] snapshot userStats (Miembros) — size:', snap.size);
           const list = [];
@@ -1720,37 +1763,30 @@
             const gLvl = Number(data.gifterLevel || 0);
             const mLvl = Number(data.memberLevel || 0);
             const maxLvl = Math.max(gLvl, mLvl);
-
-            if (maxLvl > 0 || data.isSubscriber === true) {
-              list.push({
-                username: data.tiktokId || doc.id,
-                nickname: data.displayName || doc.id,
-                profilePictureUrl: data.profilePic || '',
-                totalAmount: maxLvl || 1,
-                memberLevel: mLvl,
-                gifterLevel: gLvl,
-                isSubscriber: data.isSubscriber || false
-              });
-            }
+            list.push({
+              username: data.tiktokId || doc.id,
+              nickname: data.displayName || doc.id,
+              profilePictureUrl: data.profilePic || '',
+              totalAmount: maxLvl || 1,
+              memberLevel: mLvl,
+              gifterLevel: gLvl,
+              isSubscriber: true
+            });
           });
 
-          // Ordenar en memoria descendentemente por el nivel más alto
           list.sort((a, b) => {
-            if (b.totalAmount !== a.totalAmount) {
-              return b.totalAmount - a.totalAmount;
-            }
+            if (b.totalAmount !== a.totalAmount) return b.totalAmount - a.totalAmount;
             return (a.nickname || '').localeCompare(b.nickname || '');
           });
 
-          // Tomar los top 20
-          const top20 = list.slice(0, 20);
-
-          renderPanel('members-body','members-loading','members-empty','members-error',top20,'member');
+          renderPanel('members-body','members-loading','members-empty','members-error',list.slice(0,20),'member');
           setUbar(new Date());
         },err=>{
           console.error('[Tops] Miembros err:',err.code, err.message);
           showErr('members-body','members-loading','members-empty','members-error');
         });
+
+
 
 
 

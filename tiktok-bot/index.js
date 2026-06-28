@@ -2955,7 +2955,9 @@ function setupListeners() {
             profilePictureUrl: profilePic || ''
         });
         
-        console.log(`🎁 ${displayName} donó ${coins} (Total: ${sessionDonations.get(uid)})`);
+        const giftId = data.giftId || data.gift?.id || data.gift?.giftId || '';
+        console.log(`🎁 REGALO: "${giftName}" (ID: ${giftId}, key: "${giftKey}") de ${displayName} — ${coins} diamantes`);
+
         try {
             const totalCoins = Number(sessionDonations.get(uid) || 0);
             const minVip = Number(config.minCoinsForVip) || 0;
