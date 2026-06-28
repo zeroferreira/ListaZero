@@ -624,6 +624,7 @@ function App() {
     resultText: ''
   });
   const [currentOrigin, setCurrentOrigin] = React.useState('http://localhost:3000');
+  const [ytPlayerFullscreen, setYtPlayerFullscreen] = React.useState(false);
 
   // MODAL STATES FOR PERSONALIZATION OVERLAYS
   const [showFollowPersonalize, setShowFollowPersonalize] = React.useState(false);
