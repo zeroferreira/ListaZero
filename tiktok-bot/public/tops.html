@@ -1758,18 +1758,46 @@
           });
       })();
 
-      /* Top Miembros — consulta y ordenación en memoria por gifterLevel (nivel por donar en TikTok) */
+      /* Top Miembros — consulta y ordenación en memoria combinando suscriptores y niveles altos de TikTok */
+      let subList = [];
+      let gifterList = [];
+
+      function combineAndRenderMembers() {
+        const uniqueUsers = {};
+        
+        // Agregar suscriptores
+        subList.forEach(u => {
+          uniqueUsers[u.username] = u;
+        });
+        
+        // Agregar donadores de nivel alto
+        gifterList.forEach(u => {
+          if (!uniqueUsers[u.username] || u.totalAmount > uniqueUsers[u.username].totalAmount) {
+            uniqueUsers[u.username] = u;
+          }
+        });
+        
+        const list = Object.values(uniqueUsers);
+        list.sort((a, b) => {
+          if (b.totalAmount !== a.totalAmount) return b.totalAmount - a.totalAmount;
+          return (a.nickname || '').localeCompare(b.nickname || '');
+        });
+        
+        renderPanel('members-body','members-loading','members-empty','members-error',list.slice(0,20),'member');
+        setUbar(new Date());
+      }
+
+      // Query 1: Suscriptores
       db.collection('userStats')
         .where('isSubscriber', '==', true)
-        .onSnapshot(snap=>{
-          console.log('[Tops] snapshot userStats (Miembros) — size:', snap.size);
-          const list = [];
+        .onSnapshot(snap => {
+          subList = [];
           snap.forEach(doc => {
             const data = doc.data();
             const gLvl = Number(data.gifterLevel || 0);
             const mLvl = Number(data.memberLevel || 0);
             const maxLvl = Math.max(gLvl, mLvl);
-            list.push({
+            subList.push({
               username: data.tiktokId || doc.id,
               nickname: data.displayName || doc.id,
               profilePictureUrl: data.profilePic || '',
@@ -1779,17 +1807,38 @@
               isSubscriber: true
             });
           });
-
-          list.sort((a, b) => {
-            if (b.totalAmount !== a.totalAmount) return b.totalAmount - a.totalAmount;
-            return (a.nickname || '').localeCompare(b.nickname || '');
-          });
-
-          renderPanel('members-body','members-loading','members-empty','members-error',list.slice(0,20),'member');
-          setUbar(new Date());
-        },err=>{
-          console.error('[Tops] Miembros err:',err.code, err.message);
+          combineAndRenderMembers();
+        }, err => {
+          console.error('[Tops] Miembros Sub err:', err.code, err.message);
           showErr('members-body','members-loading','members-empty','members-error');
+        });
+
+      // Query 2: Usuarios con nivel de donador alto (simple orderBy en single-field, no requiere índice compuesto)
+      db.collection('userStats')
+        .orderBy('gifterLevel', 'desc')
+        .limit(50)
+        .onSnapshot(snap => {
+          gifterList = [];
+          snap.forEach(doc => {
+            const data = doc.data();
+            const gLvl = Number(data.gifterLevel || 0);
+            const mLvl = Number(data.memberLevel || 0);
+            const maxLvl = Math.max(gLvl, mLvl);
+            if (maxLvl > 0) {
+              gifterList.push({
+                username: data.tiktokId || doc.id,
+                nickname: data.displayName || doc.id,
+                profilePictureUrl: data.profilePic || '',
+                totalAmount: maxLvl,
+                memberLevel: mLvl,
+                gifterLevel: gLvl,
+                isSubscriber: data.isSubscriber === true
+              });
+            }
+          });
+          combineAndRenderMembers();
+        }, err => {
+          console.error('[Tops] Miembros Gifter err:', err.code, err.message);
         });
 
 
