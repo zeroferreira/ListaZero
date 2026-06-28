@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>YouTube Player & Controller Overlay - Zero FM</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <!-- Firebase Shared Config -->
+  <script src="firebase-config.js"></script>
+
+  <style>
+    :root {
+      --accent: #ff0055;
+      --bg: rgba(10, 10, 12, 0.85);
+      --card-bg: rgba(255, 255, 255, 0.03);
+      --card-hover: rgba(255, 255, 255, 0.08);
+      --text: #ffffff;
+      --text-muted: #8e8e93;
+      --border-color: rgba(255, 255, 255, 0.12);
+      --radius: 20px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: transparent;
+      color: var(--text);
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    /* Contenedor Principal Split (Lista Izquierda / Player Derecha) */
+    #main-layout {
+      display: flex;
+      width: 95vw;
+      height: 90vh;
+      max-width: 1200px;
+      background: var(--bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 
+                  inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      overflow: hidden;
+      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Listado de Solicitudes Pendientes */
+    .sidebar-list {
+      width: 380px;
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      background: rgba(0, 0, 0, 0.25);
+    }
+
+    .list-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .list-header h2 {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .list-header .badge {
+      background: rgba(255, 0, 85, 0.15);
+      color: var(--accent);
+      padding: 4px 10px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 800;
+      border: 1px solid rgba(255, 0, 85, 0.25);
+    }
+
+    .requests-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Scrollbar Styling */
+    .requests-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .requests-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .requests-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+    }
+
+    /* Tarjeta de Solicitud Individual */
+    .req-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: var(--card-bg);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .req-card:hover {
+      background: var(--card-hover);
+      border-color: rgba(255, 255, 255, 0.12);
+      transform: translateX(4px);
+    }
+
+    .req-thumbnail {
+      width: 68px;
+      aspect-ratio: 16/9;
+      background: #111;
+      border-radius: 6px;
+      object-fit: cover;
+      border: 1px solid rgba(255,255,255,0.08);
+      flex-shrink: 0;
+    }
+
+    .req-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .req-title {
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .req-artist {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .req-user {
+      font-size: 11px;
+      color: var(--accent);
+      font-weight: 700;
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Botón de reproducción dentro de la tarjeta */
+    .play-btn-overlay {
+      opacity: 0;
+      position: absolute;
+      right: 14px;
+      background: var(--accent);
+      border: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(255, 0, 85, 0.4);
+      transition: all 0.2s ease;
+    }
+
+    .req-card:hover .play-btn-overlay {
+      opacity: 1;
+    }
+
+    /* Reproductor (Mitad Derecha / OBS Display) */
+    .player-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #000;
+      position: relative;
+    }
+
+    .video-container {
+      flex: 1;
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #050508;
+    }
+
+    #yt-player {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+
+    /* Barra Inferior del Video */
+    .player-info-bar {
+      height: 80px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 100%);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      z-index: 10;
+    }
+
+    .info-details {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      max-width: 70%;
+    }
+
+    .info-title {
+      font-size: 18px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    }
+
+    .info-artist {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .info-requester {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 0, 85, 0.12);
+      padding: 6px 14px;
+      border-radius: 99px;
+      border: 1px solid rgba(255, 0, 85, 0.25);
+      font-size: 12px;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    /* Estado Idle (Espera) */
+    .idle-view {
+      position: absolute;
+      inset: 0;
+      background: #0b0b0e;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      z-index: 5;
+      padding: 20px;
+    }
+
+    .idle-logo {
+      font-size: 64px;
+      margin-bottom: 20px;
+      animation: float 4s ease-in-out infinite;
+      filter: drop-shadow(0 8px 16px rgba(255, 0, 85, 0.3));
+    }
+
+    .idle-title {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .idle-text {
+      font-size: 13px;
+      color: var(--text-muted);
+      max-width: 320px;
+      line-height: 1.4;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0) rotate(0); }
+      50% { transform: translateY(-10px) rotate(2deg); }
+    }
+
+    /* --- MODO OBS (Puro/Filtro Fullscreen) --- */
+    body.obs-mode #main-layout {
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      border-radius: 0;
+      border: none;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    body.obs-mode .sidebar-list {
+      display: none; /* Esconder lista en OBS */
+    }
+
+    body.obs-mode.fullscreen-mode .player-info-bar {
+      display: none; /* Esconder barra de info si está en pantalla completa pura */
+    }
+
+    body.obs-mode .idle-view {
+      background: transparent; /* Transparente para OBS */
+    }
+  </style>
+</head>
+<body>
+
+  <div id="main-layout">
+    <!-- Listado Lateral de Enlaces de YouTube -->
+    <div class="sidebar-list">
+      <div class="list-header">
+        <h2>Enlaces de YouTube</h2>
+        <span id="pending-count" class="badge">0 Pedidos</span>
+      </div>
+      <div id="requests-container" class="requests-scroll">
+        <!-- Solicitudes se inyectarán aquí -->
+        <div style="text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 40px; padding: 20px;">
+          Esperando solicitudes con link de YouTube...
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel del Reproductor -->
+    <div class="player-area">
+      <!-- Vista de espera -->
+      <div id="idle-screen" class="idle-view">
+        <div class="idle-logo">🎬</div>
+        <div class="idle-title">YouTube Player</div>
+        <div id="idle-desc" class="idle-text">Selecciona un video de la lista o espera a que se reproduzca en el Live.</div>
+      </div>
+
+      <!-- IFrame del reproductor de YouTube -->
+      <div class="video-container">
+        <div id="yt-player"></div>
+      </div>
+
+      <!-- Barra de información inferior -->
+      <div id="player-bar" class="player-info-bar" style="display: none;">
+        <div class="info-details">
+          <div id="active-title" class="info-title">Video de YouTube</div>
+          <div id="active-artist" class="info-artist">YouTube Creator</div>
+        </div>
+        <div class="info-requester">
+          👤 Pedida por: <span id="active-requester">N/A</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  
+  <script>
+    // --- Estado General ---
+    let ytPlayer = null;
+    let db = null;
+    let currentDay = "";
+    let isYtApiReady = false;
+    let pendingVideoId = null;
+    
+    let allRequests = [];
+    let playedSongIds = new Set();
+
+    // Elementos del DOM
+    const requestsContainer = document.getElementById('requests-container');
+    const pendingCountEl = document.getElementById('pending-count');
+    const idleScreen = document.getElementById('idle-screen');
+    const playerBar = document.getElementById('player-bar');
+    const activeTitleEl = document.getElementById('active-title');
+    const activeArtistEl = document.getElementById('active-artist');
+    const activeRequesterEl = document.getElementById('active-requester');
+
+    // Inicializar fecha
+    function getLocalDateKey() {
+      const d = new Date();
+      const yr = d.getFullYear();
+      const mo = String(d.getMonth() + 1).padStart(2, '0');
+      const dy = String(d.getDate()).padStart(2, '0');
+      return `${yr}-${mo}-${dy}`;
+    }
+    currentDay = getLocalDateKey();
+
+    // Leer query params
+    const params = new URLSearchParams(window.location.search);
+    const isObs = params.get('obs') === 'true' || window.location.search.includes('obs');
+    const isFullscreen = params.get('fullscreen') === 'true';
+    const forceVolume = params.get('volume') ? parseInt(params.get('volume')) : 80;
+
+    if (isObs) {
+      document.body.classList.add('obs-mode');
+      if (isFullscreen) {
+        document.body.classList.add('fullscreen-mode');
+      }
+      // Ocultar pantalla de espera por defecto en OBS
+      idleScreen.style.display = 'none';
+    }
+
+    // --- Firebase Initialization ---
+    const fbConfig = window.ZERO_FM_FIREBASE || window.firebaseConfig;
+    if (typeof firebase !== 'undefined' && fbConfig) {
+      firebase.initializeApp(fbConfig);
+      db = firebase.firestore();
+      console.log("🔥 Firestore unificado cargado");
+      initListeners();
+    } else {
+      console.error("❌ Error: Firebase SDK o firebase-config.js no cargados.");
+    }
+
+    // --- Inicializar Listeners de Base de Datos ---
+    function initListeners() {
+      if (!db) return;
+
+      // 1. Escuchar canciones ya reproducidas del día actual
+      db.collection('playedSongs').doc(currentDay)
+        .onSnapshot((doc) => {
+          playedSongIds.clear();
+          if (doc.exists) {
+            const data = doc.data();
+            if (Array.isArray(data.songs)) {
+              data.songs.forEach(id => playedSongIds.add(String(id).toLowerCase().replace(/[^a-zA-Z0-9-]/g, '')));
+            }
+          }
+          console.log(`✅ Sincronizadas ${playedSongIds.size} canciones reproducidas en base de datos`);
+          renderList();
+        }, (err) => console.error("Error leyendo canciones reproducidas:", err));
+
+      // 2. Escuchar todas las solicitudes del día actual
+      db.collection('solicitudes')
+        .where('day', '==', currentDay)
+        .onSnapshot((snapshot) => {
+          allRequests = [];
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            allRequests.push({ docId: doc.id, ...data });
+          });
+          console.log(`📋 Sincronizadas ${allRequests.length} solicitudes del día`);
+          renderList();
+        }, (err) => console.error("Error leyendo solicitudes:", err));
+
+      // 3. Escuchar el video de YouTube que está reproduciéndose en tiempo real (para OBS)
+      db.collection('systemConfig').doc('activeYoutubeVideo')
+        .onSnapshot((doc) => {
+          if (doc.exists) {
+            const data = doc.data();
+            // Comprobar si el timestamp es reciente (tolerancia 2 horas por si se quedó pegado)
+            const now = Date.now();
+            const ts = data.timestamp || 0;
+            if (now - ts < 120 * 60 * 1000) {
+              console.log("🔊 Video activo en Firestore cambió:", data.title);
+              activeTitleEl.innerText = data.title || "Video de YouTube";
+              activeArtistEl.innerText = data.artist || "YouTube Creator";
+              activeRequesterEl.innerText = data.requester || "N/A";
+              loadVideo(data.videoId);
+            }
+          }
+        }, (err) => console.error("Error leyendo video activo:", err));
+    }
+
+    // --- Auxiliares de YouTube ---
+    function getYoutubeVideoId(url) {
+      if (!url) return null;
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
+      const match = url.match(regExp);
+      return (match && match[2].length === 11) ? match[2] : null;
+    }
+
+    function getYoutubeThumbnail(url) {
+      const id = getYoutubeVideoId(url);
+      return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : '';
+    }
+
+    // --- Renderizar Lista de YouTube (Vista Creador/Interactiva) ---
+    function renderList() {
+      if (isObs) return; // En OBS no necesitamos renderizar la lista
+
+      // Filtrar solicitudes que tienen link de YouTube válido y NO han sido reproducidas
+      const ytPending = allRequests.filter(req => {
+        if (!req.link) return false;
+        const videoId = getYoutubeVideoId(req.link);
+        if (!videoId) return false;
+
+        // Limpieza de ID
+        const docId = String(req.docId || req.id || '').toLowerCase().replace(/[^a-zA-Z0-9-]/g, '');
+        return !playedSongIds.has(docId);
+      });
+
+      // Ordenar por fecha de creación (los más viejos arriba)
+      ytPending.sort((a, b) => {
+        const t1 = a.ts && typeof a.ts.toDate === 'function' ? a.ts.toDate().getTime() : 0;
+        const t2 = b.ts && typeof b.ts.toDate === 'function' ? b.ts.toDate().getTime() : 0;
+        return t1 - t2;
+      });
+
+      pendingCountEl.innerText = `${ytPending.length} Pedidos`;
+
+      if (ytPending.length === 0) {
+        requestsContainer.innerHTML = `
+          <div style="text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 40px; padding: 20px;">
+            🎉 ¡No hay videos pendientes en la cola!
+          </div>
+        `;
+        return;
+      }
+
+      requestsContainer.innerHTML = "";
+      ytPending.forEach((req) => {
+        const videoId = getYoutubeVideoId(req.link);
+        const card = document.createElement('div');
+        card.className = "req-card";
+        
+        // Al hacer click en la tarjeta, reproduce el video localmente o lo selecciona
+        card.onclick = () => playYoutubeRequest(req);
+
+        card.innerHTML = `
+          <img class="req-thumbnail" src="${getYoutubeThumbnail(req.link)}" alt="Preview">
+          <div class="req-info">
+            <span class="req-title" title="${req.cancion}">${req.cancion}</span>
+            <span class="req-artist" title="${req.artista}">${req.artista}</span>
+            <span class="req-user">👤 ${req.displayName || req.usuario}</span>
+          </div>
+          <button class="play-btn-overlay" title="Reproducir y marcar como lista">▶️</button>
+        `;
+        requestsContainer.appendChild(card);
+      });
+    }
+
+    // --- Reproducir y actualizar en Firestore ---
+    async function playYoutubeRequest(req) {
+      const videoId = getYoutubeVideoId(req.link);
+      if (!videoId) return;
+
+      console.log(`🎬 Reproduciendo solicitud: ${req.cancion} (${videoId})`);
+      
+      const docId = String(req.docId || req.id || '').trim();
+
+      // 1. Marcar como reproducida en la colección global `playedSongs`
+      if (docId && db) {
+        const cleanId = docId.toLowerCase().replace(/[^a-zA-Z0-9-]/g, '');
+        try {
+          await db.collection('playedSongs').doc(currentDay).set({
+            songs: firebase.firestore.FieldValue.arrayUnion(cleanId),
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          console.log(`✅ Marcada como reproducida en Firestore: ${cleanId}`);
+        } catch(e) {
+          console.error("Error al marcar como reproducida:", e);
+        }
+      }
+
+      // 2. Establecer este video como el ACTIVO en la nube (para que la pantalla de OBS del stream se actualice)
+      if (db) {
+        try {
+          await db.collection('systemConfig').doc('activeYoutubeVideo').set({
+            videoId: videoId,
+            title: req.cancion,
+            artist: req.artista,
+            requester: req.displayName || req.usuario,
+            timestamp: Date.now()
+          });
+          console.log("✅ Actualizada configuración de video activo en Firestore");
+        } catch(e) {
+          console.error("Error actualizando video activo:", e);
+        }
+      }
+    }
+
+    // --- YouTube API Player control ---
+    function onYouTubeIframeAPIReady() {
+      isYtApiReady = true;
+      console.log("🎥 YouTube Player API lista");
+      if (pendingVideoId) {
+        loadVideo(pendingVideoId);
+        pendingVideoId = null;
+      }
+    }
+
+    function loadVideo(videoId) {
+      if (!isYtApiReady) {
+        pendingVideoId = videoId;
+        return;
+      }
+
+      idleScreen.style.opacity = 0;
+      setTimeout(() => {
+        idleScreen.style.display = 'none';
+        playerBar.style.display = 'flex';
+      }, 300);
+
+      if (ytPlayer) {
+        try {
+          ytPlayer.loadVideoById(videoId);
+          ytPlayer.playVideo();
+        } catch(e) {
+          console.warn("Re-creando iframe debido a error:", e);
+          createPlayer(videoId);
+        }
+      } else {
+        createPlayer(videoId);
+      }
+    }
+
+    function createPlayer(videoId) {
+      ytPlayer = new YT.Player('yt-player', {
+        host: 'https://www.youtube-nocookie.com',
+        height: '100%',
+        width: '100%',
+        videoId: videoId,
+        playerVars: {
+          autoplay: 1,
+          controls: 1,
+          rel: 0,
+          showinfo: 0,
+          modestbranding: 1,
+          iv_load_policy: 3,
+          enablejsapi: 1,
+          origin: window.location.origin
+        },
+        events: {
+          'onReady': (event) => {
+            event.target.setVolume(forceVolume);
+            event.target.playVideo();
+          },
+          'onStateChange': (event) => {
+            if (event.data === YT.PlayerState.ENDED) {
+              console.log("🏁 Video finalizado");
+              showIdle();
+            }
+          }
+        }
+      });
+    }
+
+    function showIdle() {
+      if (ytPlayer) {
+        try { ytPlayer.stopVideo(); } catch(_) {}
+      }
+      playerBar.style.display = 'none';
+      if (isObs) {
+        idleScreen.style.display = 'none';
+      } else {
+        idleScreen.style.display = 'flex';
+        setTimeout(() => {
+          idleScreen.style.opacity = 1;
+        }, 50);
+      }
+    }
+
+    // --- Escuchar Mensajes (para pruebas y simulación desde el Dashboard) ---
+    window.addEventListener('message', (event) => {
+      const msg = event.data || {};
+      if (msg.action === 'triggerTestAlert' && msg.payload) {
+        const payload = msg.payload;
+        if (payload.type === 'playbackStatus.nowPlayingItemDidChange' && payload.data) {
+          const track = payload.data;
+          console.log("🧪 Test Alert Recibida en YouTube Player:", track.name);
+          activeTitleEl.innerText = track.name || "Video de Prueba";
+          activeArtistEl.innerText = track.artistName || "YouTube Creator";
+          activeRequesterEl.innerText = track.requester || "PruebaYouTube";
+          
+          // Usar video de prueba
+          loadVideo('M7lc1UVf-VE');
+        }
+      }
+    });
+
+    // --- Carga Asíncrona de la API de YouTube ---
+    // Esto garantiza que la función global onYouTubeIframeAPIReady ya esté declarada cuando el script se cargue.
+    var tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    var firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+  </script>
+</body>
+</html>

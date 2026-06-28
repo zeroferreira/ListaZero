@@ -853,20 +853,20 @@
       if (!db || overlayRealtimeStarted) return;
       overlayRealtimeStarted = true;
 
-      // Escuchar el Top Liker global
+      // Escuchar el Top Liker global (versión de sesión para el directo)
       db.collection('globalStats').doc('general').onSnapshot(doc => {
           if(doc.exists) {
               const data = doc.data();
-              if(data.topLiker && data.topLikerCount) {
+              if(data.sessionTopLiker && data.sessionTopLikerCount) {
                   // FIX: Mostrar solo los PUNTOS ganados por likes, no los likes totales.
                   // Asumimos 300 likes = 1 punto.
                   const likesPerPoint = 300; // Valor fijo visual o leer de configuración
-                  const points = Math.floor(Number(data.topLikerCount) / likesPerPoint);
+                  const points = Math.floor(Number(data.sessionTopLikerCount) / likesPerPoint);
                   
                   // Si tiene menos de 300 likes, mostrar 0 puntos (o mostrar likes si prefieres)
                   // El usuario pidió "Top Puntos", así que mostramos puntos.
-                  globalTopLikerOverlay = { name: data.topLiker, count: points };
-                  console.log(`[Overlay] Top Liker actualizado: ${data.topLiker} (${points} pts)`);
+                  globalTopLikerOverlay = { name: data.sessionTopLiker, count: points };
+                  console.log(`[Overlay] Top Liker de sesión actualizado: ${data.sessionTopLiker} (${points} pts)`);
               }
           }
       }, err => console.warn('Overlay: error leyendo globalStats:', err));
@@ -1322,7 +1322,9 @@
     // Receptor de eventos de mensajería (postMessage) para actualización en tiempo real desde el Dashboard
     window.addEventListener('message', function(event) {
         if (!event.data) return;
-        if (event.data.action === 'updateConfig') {
+        if (event.data.action === 'simulateRequest') {
+            simulateRequest();
+        } else if (event.data.action === 'updateConfig') {
             const data = event.data.payload || {};
             if (data.playerOpacity !== undefined) window.playerOpacityOverride = data.playerOpacity;
             if (data.playerRadius !== undefined) window.playerRadiusOverride = data.playerRadius;

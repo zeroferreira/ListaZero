@@ -824,6 +824,43 @@ const firebaseConfig = {
               }
             }
 
+            if (data.rouletteSpinDurationMs !== undefined) {
+              config.spinDurationMs = parseInt(data.rouletteSpinDurationMs, 10);
+              const inpDuration = document.getElementById('inp-duration');
+              const valDuration = document.getElementById('val-duration');
+              if (inpDuration) inpDuration.value = config.spinDurationMs;
+              if (valDuration) valDuration.textContent = String(config.spinDurationMs);
+            }
+            if (data.rouletteSpinIntensity !== undefined) {
+              config.spinIntensity = parseInt(data.rouletteSpinIntensity, 10);
+              const inpIntensity = document.getElementById('inp-intensity');
+              const valIntensity = document.getElementById('val-intensity');
+              if (inpIntensity) inpIntensity.value = config.spinIntensity;
+              if (valIntensity) valIntensity.textContent = String(config.spinIntensity);
+            }
+            if (data.rouletteSpinAgainEnabled !== undefined) {
+              config.spinAgainEnabled = !!data.rouletteSpinAgainEnabled;
+              const inpSpinAgain = document.getElementById('inp-spinAgain');
+              if (inpSpinAgain) inpSpinAgain.checked = config.spinAgainEnabled;
+            }
+            if (data.rouletteAllowDuplicates !== undefined) {
+              config.allowDuplicates = !!data.rouletteAllowDuplicates;
+              const inpAllowDuplicates = document.getElementById('inp-allowDuplicates');
+              if (inpAllowDuplicates) inpAllowDuplicates.checked = config.allowDuplicates;
+            }
+            if (data.rouletteRemoveWinnerEnabled !== undefined) {
+              config.removeWinnerEnabled = !!data.rouletteRemoveWinnerEnabled;
+              const inpRemoveWinner = document.getElementById('inp-removeWinner');
+              if (inpRemoveWinner) inpRemoveWinner.checked = config.removeWinnerEnabled;
+            }
+            if (data.rouletteThemeKey !== undefined) {
+              const inpTheme = document.getElementById('inp-theme');
+              if (inpTheme) inpTheme.value = data.rouletteThemeKey;
+              applyTheme(data.rouletteThemeKey, { broadcast: false });
+            }
+            recomputeParticipants();
+            drawWheel();
+
             if (data.rouletteOverlayEnabled !== undefined) {
               applyOverlayEnabled(data.rouletteOverlayEnabled !== false, { broadcast: false });
             }
@@ -1784,6 +1821,43 @@ const firebaseConfig = {
                 winnerOverlay.classList.remove('no-card-bg');
               }
             }
+
+            if (data.rouletteSpinDurationMs !== undefined) {
+              config.spinDurationMs = parseInt(data.rouletteSpinDurationMs, 10);
+              const inpDuration = document.getElementById('inp-duration');
+              const valDuration = document.getElementById('val-duration');
+              if (inpDuration) inpDuration.value = config.spinDurationMs;
+              if (valDuration) valDuration.textContent = String(config.spinDurationMs);
+            }
+            if (data.rouletteSpinIntensity !== undefined) {
+              config.spinIntensity = parseInt(data.rouletteSpinIntensity, 10);
+              const inpIntensity = document.getElementById('inp-intensity');
+              const valIntensity = document.getElementById('val-intensity');
+              if (inpIntensity) inpIntensity.value = config.spinIntensity;
+              if (valIntensity) valIntensity.textContent = String(config.spinIntensity);
+            }
+            if (data.rouletteSpinAgainEnabled !== undefined) {
+              config.spinAgainEnabled = !!data.rouletteSpinAgainEnabled;
+              const inpSpinAgain = document.getElementById('inp-spinAgain');
+              if (inpSpinAgain) inpSpinAgain.checked = config.spinAgainEnabled;
+            }
+            if (data.rouletteAllowDuplicates !== undefined) {
+              config.allowDuplicates = !!data.rouletteAllowDuplicates;
+              const inpAllowDuplicates = document.getElementById('inp-allowDuplicates');
+              if (inpAllowDuplicates) inpAllowDuplicates.checked = config.allowDuplicates;
+            }
+            if (data.rouletteRemoveWinnerEnabled !== undefined) {
+              config.removeWinnerEnabled = !!data.rouletteRemoveWinnerEnabled;
+              const inpRemoveWinner = document.getElementById('inp-removeWinner');
+              if (inpRemoveWinner) inpRemoveWinner.checked = config.removeWinnerEnabled;
+            }
+            if (data.rouletteThemeKey !== undefined) {
+              const inpTheme = document.getElementById('inp-theme');
+              if (inpTheme) inpTheme.value = data.rouletteThemeKey;
+              applyTheme(data.rouletteThemeKey, { broadcast: false });
+            }
+            recomputeParticipants();
+            drawWheel();
         }
     });
 

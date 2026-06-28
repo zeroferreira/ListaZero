@@ -9926,7 +9926,171 @@ function App() {
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn",
     onClick: () => handleSaveOverlaysConfigOnly('Chat TTS')
-  }, renderIcon('save'), " Guardar Configuraci\xF3n"))))), activeTab === 'prueba' && /*#__PURE__*/React.createElement("div", {
+  }, renderIcon('save'), " Guardar Configuraci\xF3n"))), activeSub === 'ytplayer' && /*#__PURE__*/React.createElement("div", {
+    className: "glass-card animate-fade-in"
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      marginBottom: '10px'
+    }
+  }, "\uD83C\uDFA5 Reproductor de Videos de YouTube"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.88rem',
+      marginBottom: '20px'
+    }
+  }, "Reproduce autom\xE1ticamente en tu stream los videos de YouTube solicitados por tus espectadores a trav\xE9s del chat o del formulario."), /*#__PURE__*/React.createElement("div", {
+    className: "preview-panel"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "preview-header"
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCFA Vista Previa del Reproductor"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '5px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "preview-live-dot"
+  }), " Live YT Player")), /*#__PURE__*/React.createElement("iframe", {
+    id: "iframe-ytplayer",
+    src: "./youtube_player_overlay.html?v=3",
+    className: "preview-iframe",
+    style: {
+      height: '380px',
+      width: '100%',
+      border: 'none',
+      borderRadius: '8px'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      marginTop: '20px',
+      background: 'rgba(255,255,255,0.02)',
+      padding: '15px',
+      border: '1px dashed var(--border-glass)',
+      borderRadius: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontWeight: '600',
+      color: 'var(--accent-primary)',
+      display: 'block',
+      marginBottom: '8px'
+    }
+  }, "\uD83D\uDD17 Enlace del Widget para OBS (Fuente de Navegador)"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: 'var(--text-secondary)',
+      fontSize: '0.78rem',
+      marginBottom: '10px'
+    }
+  }, "Agrega este enlace en OBS como ", /*#__PURE__*/React.createElement("strong", null, "Fuente de Navegador"), ". Ajusta el tama\xF1o a 850 \xD7 550 px o ponlo en pantalla completa agregando ", /*#__PURE__*/React.createElement("code", null, "?fullscreen=true"), " al final."), /*#__PURE__*/React.createElement("div", {
+    className: "copy-url-row",
+    style: {
+      display: 'flex',
+      gap: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    className: "copy-url-input",
+    readOnly: true,
+    value: `${currentOrigin}/youtube_player_overlay.html${ytPlayerFullscreen ? '?obs=true' : ''}`,
+    onClick: e => e.target.select(),
+    style: {
+      flex: 1
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary",
+    onClick: () => handleCopyUrl(`${currentOrigin}/youtube_player_overlay.html${ytPlayerFullscreen ? '?obs=true' : ''}`)
+  }, "Copiar URL")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '10px'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "toggle-switch-label",
+    style: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      cursor: 'pointer'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    onChange: e => setYtPlayerFullscreen(e.target.checked),
+    checked: ytPlayerFullscreen,
+    style: {
+      width: 'auto',
+      marginRight: '8px'
+    }
+  }), "Versi\xF3n Pantalla Completa (Sin barra inferior)"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: '12px',
+      marginTop: '20px'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary",
+    onClick: () => {
+      const iframe = document.getElementById('iframe-ytplayer');
+      if (iframe && iframe.contentWindow) {
+        // Simular una canción de YouTube enviando un postMessage de prueba
+        iframe.contentWindow.postMessage({
+          action: 'triggerTestAlert',
+          payload: {
+            type: 'playbackStatus.nowPlayingItemDidChange',
+            data: {
+              name: 'Video de YouTube de Prueba',
+              artistName: 'YouTube Creator',
+              requester: 'PruebaYouTube'
+            }
+          }
+        }, '*');
+      }
+      const apiBase = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+      // Test API endpoint
+      fetch(`${apiBase}/api/test/sr`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user: 'PruebaYouTube',
+          songName: 'Video de YouTube de Prueba',
+          artistName: 'YouTube Creator',
+          artworkUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/4b/c9/7e/4bc97e7b-c3df-f126-df06-e7e7a57a1b55/196362164478.jpg/100x100bb.jpg',
+          link: 'https://www.youtube.com/watch?v=M7lc1UVf-VE',
+          // YouTube Test Video (Google Developers)
+          sendToQueue: true
+        })
+      }).catch(() => {});
+    },
+    style: {
+      flex: 1,
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: '8px',
+      color: '#ec4899',
+      borderColor: '#ec4899'
+    }
+  }, "\uD83E\uDDEA Simular Pedido con YouTube Link (M7lc1UVf-VE)"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary",
+    onClick: () => {
+      const apiBase = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+      fetch(`${apiBase}/api/test/clear`, {
+        method: 'POST'
+      }).then(res => res.json()).then(data => {
+        alert('🧹 Pedidos de prueba eliminados de la base de datos: ' + (data.deletedCount || 0));
+      }).catch(e => {
+        alert('Error al limpiar: ' + e);
+      });
+    },
+    style: {
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: '8px',
+      color: '#ef4444',
+      borderColor: '#ef4444'
+    }
+  }, "\uD83E\uDDF9 Limpiar Pruebas"))))), activeTab === 'prueba' && /*#__PURE__*/React.createElement("div", {
     className: "grid-3"
   }, /*#__PURE__*/React.createElement("div", {
     className: "glass-card"

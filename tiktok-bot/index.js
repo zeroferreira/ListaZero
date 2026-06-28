@@ -1309,6 +1309,7 @@ function startBot() {
             const songName = body.songName ? String(body.songName).trim() : '';
             const artistName = body.artistName ? String(body.artistName).trim() : '';
             const artworkUrl = body.artworkUrl ? String(body.artworkUrl).trim() : '';
+            const link = body.link ? String(body.link).trim() : '';
 
             const rawMessage = body.message ? String(body.message).trim() : '';
             let query = body.query ? String(body.query).trim() : '';
@@ -1318,9 +1319,13 @@ function startBot() {
                 const parsed = parseSrCommand(rawMessage, aliases);
                 query = parsed ? parsed.query : rawMessage;
             }
+            // Si no hay query de texto pero hay un link, usar el link como query
+            if (!query && link) {
+                query = link;
+            }
             query = query.replace(/\s+-\s+/g, ' ').trim();
             if (!query && !appleMusicId && !(songName && artistName)) {
-                res.status(400).json({ ok: false, error: 'Falta query (búsqueda) o artista+canción' });
+                res.status(400).json({ ok: false, error: 'Falta query (búsqueda), link o artista+canción' });
                 return;
             }
 
@@ -1332,12 +1337,38 @@ function startBot() {
                 appleMusicId,
                 songName,
                 artistName,
-                artworkUrl
+                artworkUrl,
+                link
             });
 
             res.json({ ok: true, result });
         } catch (e) {
             console.error('Error en /api/test/sr:', e);
+            res.status(500).json({ ok: false, error: e.message || String(e) });
+        }
+    });
+
+    app.post('/api/test/clear', async (req, res) => {
+        try {
+            const today = getLocalDateKey();
+            const snap = await getDocsFn(query(
+                collection(db, 'solicitudes'),
+                where('day', '==', today)
+            ));
+            
+            let deletedCount = 0;
+            for (const doc of snap.docs) {
+                const data = doc.data();
+                const user = String(data.usuario || '').toLowerCase();
+                if (data.isSimulation || data.isTest || data.isSimulation === true || user.includes('prueba')) {
+                    await deleteDoc(docFn(db, 'solicitudes', doc.id));
+                    deletedCount++;
+                }
+            }
+            console.log(`🧹 Eliminadas ${deletedCount} solicitudes de prueba de la base de datos.`);
+            res.json({ ok: true, deletedCount });
+        } catch (e) {
+            console.error('Error en /api/test/clear:', e);
             res.status(500).json({ ok: false, error: e.message || String(e) });
         }
     });
@@ -1369,6 +1400,15 @@ function startBot() {
                 await setDoc(docFn(db, 'system', 'status'), {
                     rouletteOverlayEnabled: newConfig.rouletteOverlayEnabled,
                     lastUpdate: serverTimestamp()
+                }, { merge: true });
+
+                const overlayToggleToken = `overlay_${newConfig.rouletteOverlayEnabled ? 'on' : 'off'}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+                await setDoc(docFn(db, 'sessionData', 'rouletteLive'), {
+                    type: 'overlay_toggle',
+                    overlayEnabled: newConfig.rouletteOverlayEnabled,
+                    overlayToggleToken,
+                    updatedBy: 'dashboard-server',
+                    updatedAt: serverTimestamp()
                 }, { merge: true });
             }
 
@@ -2281,11 +2321,25 @@ function setupListeners() {
     tiktokLiveConnection.on('streamEnd', async () => {
         console.log('🏁 El stream ha terminado.');
         activeLiveRoomId = null;
-        resetLikeTracking({ resetSession: true, resetTopLiker: true, isNewRoom: true });
-        resetDonationTracking();
-        await recalculateLikerRanks();
-        syncSessionCountersToFirestore(true);
-        updateGlobalTopLiker('N/D', 0).catch(() => {});
+        
+        // Limpiar en memoria pero NO vaciar la base de datos, para que la web siga mostrando los tops del último stream.
+        try {
+            sessionDonations.clear();
+            sessionGifterDetails.clear();
+            sessionLikes.clear();
+            sessionLikerDetails.clear();
+            livePresenceMap.clear();
+            likeBuffer.clear();
+            lastLikeAlertMilestone.clear();
+            lastLikeCountMap.clear();
+            lastLikeTimeMap.clear();
+            lastKnownTotalLikeCount = 0;
+            streamTotalLikesCounter = 0;
+            currentTopLiker = { name: 'N/D', count: 0 };
+        } catch (e) {
+            console.error('Error limpiando variables en memoria al terminar stream:', e);
+        }
+        
         stopLiveHeartbeat();
         updateLiveStatus(false); // Asegurar OFFLINE al terminar stream
     });
@@ -3262,8 +3316,8 @@ async function updateGlobalTopLiker(name, count) {
         // FIX: Asegurar que count sea número
         const safeCount = Number(count) || 0;
         await setDoc(doc(db, 'globalStats', 'general'), {
-            topLiker: name,
-            topLikerCount: safeCount,
+            sessionTopLiker: name,
+            sessionTopLikerCount: safeCount,
             lastUpdate: serverTimestamp()
         }, { merge: true });
     } catch (e) {
@@ -3306,9 +3360,10 @@ setInterval(async () => {
             const userSnap = await getDoc(userRef);
             let currentTotalLikes = 0;
             let currentTotalLikesPoints = 0;
+            let userData = {};
             
             if (userSnap.exists()) {
-                const userData = userSnap.data();
+                userData = userSnap.data() || {};
                 currentTotalLikes = userData.totalLikes || 0;
                 currentTotalLikesPoints = userData.totalLikesPoints || 0;
             }
@@ -3328,6 +3383,16 @@ setInterval(async () => {
                 displayName: finalName,
                 likesPerPoint: LIKES_PER_POINT 
             };
+
+            // Guardar likes específicos de la sesión actual
+            const currentRoomId = activeLiveRoomId || 'no_active_room';
+            const userSessionId = userData.sessionId || '';
+            if (userSessionId !== currentRoomId) {
+                updateData.sessionLikes = totalLikesInBatch;
+                updateData.sessionId = currentRoomId;
+            } else {
+                updateData.sessionLikes = increment(totalLikesInBatch);
+            }
 
             // Solo sumar puntos y registrar puntos de likes si ganó nuevos puntos
             if (pointsToAdd > 0) {

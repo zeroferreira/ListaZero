@@ -463,13 +463,14 @@
       tryMount();
     })();
 
+    let lastLivePayload = null;
+
 // --- LIVE STATUS LOGIC ---
     document.addEventListener('DOMContentLoaded', () => {
       const indicator = document.getElementById('live-indicator');
       const text = indicator.querySelector('.live-text');
       const dot = indicator.querySelector('.live-dot');
       const LIVE_STALE_MS = 2 * 60 * 1000;
-      let lastLivePayload = null;
 
       function resolveMillis(ts) {
         try {
@@ -747,7 +748,7 @@
         // 1. Verificar nombre de usuario directo
         if (set.has(unameLc)) return true;
         
-        const map = window.userAliasesMap || {};
+        const map = typeof getUserAliasesCombinedMap === 'function' ? getUserAliasesCombinedMap() : (window.userAliasesMap || {});
         
         // 2. Si el usuario es un handle de TikTok, verificar su usuario Web/YouTube vinculado
         const linkedWebUser = map[unameLc];
@@ -5488,7 +5489,7 @@ function shouldShowStatsTicker() {
           ' • <strong>▶️ Reproducidas:</strong> ' + (ds.played || 0) +
           ' • <strong>👥 Top 3 usuarios:</strong> ' + usersTop3TxtDay +
           ' • <strong>🎤 Top 3 artistas:</strong> ' + top3TxtDay +
-          ' • <strong>❤️ Top Liker:</strong> ' + fmt(g.topLiker) + (g.topLikerCount ? ' (' + g.topLikerCount + ')' : '') +
+          ' • <strong>❤️ Top Liker:</strong> ' + fmt(g.sessionTopLiker) + (g.sessionTopLikerCount ? ' (' + g.sessionTopLikerCount + ')' : '') +
           ' • <strong>📝 Solicitudes:</strong> ' + (ds.total || 0);
       } catch (_) { }
 
@@ -5536,6 +5537,8 @@ function shouldShowStatsTicker() {
           total: data.totalRequests || 0,
           topLiker: (data.topLiker || 'N/D'),
           topLikerCount: (data.topLikerCount || 0),
+          sessionTopLiker: (data.sessionTopLiker || 'N/D'),
+          sessionTopLikerCount: (data.sessionTopLikerCount || 0),
           topGenre: (data.topGenre || 'N/D'),
           topGenreCount: (data.topGenreCount || 0)
         };
@@ -5545,7 +5548,7 @@ function shouldShowStatsTicker() {
         window.__globalTotalSolicitudes = data.totalRequests || 0;
       };
       const setUnavailable = () => {
-        window.__globalStats = { topSong: 'N/D', topSongCount: 0, topArtist: 'N/D', topArtistCount: 0, topArtists3: [], topUsers3: [], topPoints3: [], topLiker: 'N/D', topLikerCount: 0, total: 0 };
+        window.__globalStats = { topSong: 'N/D', topSongCount: 0, topArtist: 'N/D', topArtistCount: 0, topArtists3: [], topUsers3: [], topPoints3: [], topLiker: 'N/D', topLikerCount: 0, sessionTopLiker: 'N/D', sessionTopLikerCount: 0, total: 0 };
         window.__globalGenreTop = 'N/D';
         window.__globalTopPointsUsers = [];
         window.__globalDistinctUsers = 0;
@@ -7078,7 +7081,7 @@ function shouldShowStatsTicker() {
           '</div>',
           '<div class="points-card">',
           '<div class="points-title">🏅 Logros</div>',
-          '<div class="points-desc">Al desbloquear insignias sumas sus puntos. Ejemplo: Insignia “Maestro” +400.</div>',
+          '<div class="points-desc">Al desbloquear insignias sumas sus puntos. Ejemplo: Insignia "Maestro" +400.</div>',
           '</div>',
           '<div class="points-card">',
           '<div class="points-title">🔥 Rachas</div>',
@@ -7089,32 +7092,8 @@ function shouldShowStatsTicker() {
         ].join('');
       }
 
-      // ===== ARCADE MODAL =====
-      const arcadeModal = document.getElementById('arcade-modal');
-      const arcadeOpenBtn = document.getElementById('menu-arcade-open');
-      const arcadeCloseBtn = document.getElementById('close-arcade-modal');
-      const arcadeCloseX = arcadeModal ? arcadeModal.querySelector('.modal-close-btn') : null;
+      // TOPs page is now at tops.html — no modal needed here.
 
-      function openArcadeModal() {
-        if (typeof closeMenu === 'function') closeMenu();
-
-        // Verificar si es "DJ" (Admin Logged In) - Re-check localStorage for safety
-        const isDj = isAdminLoggedIn || localStorage.getItem('isAdminMode') === 'true';
-
-        if (isDj) {
-          window.location.href = 'arcade.html';
-        } else {
-          // Mostrar "Coming Soon" para mortales
-          if (arcadeModal) arcadeModal.hidden = false;
-        }
-      }
-      function closeArcadeModal() {
-        if (arcadeModal) arcadeModal.hidden = true;
-      }
-
-      if (arcadeOpenBtn) arcadeOpenBtn.addEventListener('click', openArcadeModal);
-      if (arcadeCloseBtn) arcadeCloseBtn.addEventListener('click', closeArcadeModal);
-      if (arcadeCloseX) arcadeCloseX.addEventListener('click', closeArcadeModal);
 
       // ===== SISTEMA DE MODAL DE CONFIRMACIÓN =====
       const confirmationModal = document.getElementById('confirmation-modal');
@@ -9842,7 +9821,7 @@ function shouldShowStatsTicker() {
         const startRaw = String(u || '').trim().replace(/^@/, '');
         // Normalización para búsqueda de ALIAS (minúsculas y sin @)
         const start = startRaw.toLowerCase();
-        const map = window.userAliasesMap || {};
+        const map = typeof getUserAliasesCombinedMap === 'function' ? getUserAliasesCombinedMap() : (window.userAliasesMap || {});
         const visited = new Set();
         const queue = [start];
         const results = new Set();
@@ -11985,6 +11964,12 @@ function shouldShowStatsTicker() {
       // Variables globales para Alias
       let USER_ALIASES_MAP = {};
 
+      function getUserAliasesCombinedMap() {
+        const cloudMap = window.userAliasesMap || {};
+        const localConfigMap = (typeof USER_ALIASES_MAP !== 'undefined') ? (USER_ALIASES_MAP || {}) : {};
+        return { ...localConfigMap, ...cloudMap };
+      }
+
       async function loadUserAliases() {
         if (!window.db) return;
         try {
@@ -12005,7 +11990,7 @@ function shouldShowStatsTicker() {
         const key = raw.replace(/^@/, '').toLowerCase();
 
         // 2. Verificar si es un alias conocido
-        const map = (window.userAliasesMap && Object.keys(window.userAliasesMap).length > 0) ? window.userAliasesMap : (USER_ALIASES_MAP || {});
+        const map = getUserAliasesCombinedMap();
         if (map[key]) {
           const aliasTarget = map[key];
           if (aliasTarget.replace(/^@/, '').toLowerCase() === key) {
@@ -12891,8 +12876,8 @@ function shouldShowStatsTicker() {
 
             // Si la nube tiene más puntos, confiar en su nivel/xp también
             if ((cloudGamification.points || 0) > (localData.points || 0) || !isOwner) {
-              mergedData.level = cloudGamification.level;
-              mergedData.xp = cloudGamification.xp;
+              mergedData.level = Number(cloudDataFull.level || cloudGamification.level || 1);
+              mergedData.xp = Number(cloudDataFull.xp || cloudDataFull.totalPoints || cloudGamification.xp || 0);
               mergedData.stats = cloudGamification.stats || mergedData.stats;
             }
           } else {
@@ -12902,7 +12887,8 @@ function shouldShowStatsTicker() {
             // Si no hay gamification en nube y no soy dueño, usar stats básicos de nube si existen, o resetear
             if (!isOwner) {
               mergedData.points = cloudPoints;
-              // Limpiar datos locales que podrían ser basura
+              mergedData.level = Number(cloudDataFull.level || 1);
+              mergedData.xp = Number(cloudDataFull.xp || cloudPoints || 0);
               mergedData.streaks = { current: 0, best: 0, calendar: {} };
             }
           }
@@ -13360,12 +13346,21 @@ function shouldShowStatsTicker() {
 
         // Actualizar barra de progreso
         const progressFillEl = document.getElementById('progress-fill');
-        const currentXpEl = document.getElementById('current-xp');
-        const nextLevelXpEl = document.getElementById('next-level-xp');
+        const progressTextEl = document.querySelector('.level-progress .progress-text');
 
-        if (progressFillEl) progressFillEl.style.width = `${Math.min(progressPercent, 100)}%`;
-        if (currentXpEl) currentXpEl.textContent = data.xp - currentLevel.xpRequired;
-        if (nextLevelXpEl) nextLevelXpEl.textContent = nextLevel.xpRequired - currentLevel.xpRequired;
+        if (progressFillEl) {
+          progressFillEl.style.width = data.level >= 7 ? '100%' : `${Math.min(progressPercent, 100)}%`;
+        }
+
+        if (progressTextEl) {
+          if (data.level >= 7) {
+            progressTextEl.innerHTML = `<span id="current-xp">${data.xp}</span> XP (Nivel Máximo Leyenda 👑)`;
+          } else {
+            const currentLevelXp = currentLevel.xpRequired;
+            const nextLevelXp = nextLevel.xpRequired;
+            progressTextEl.innerHTML = `<span id="current-xp">${data.xp - currentLevelXp}</span> / <span id="next-level-xp">${nextLevelXp - currentLevelXp}</span> XP para el siguiente nivel`;
+          }
+        }
 
         // RE-EVALUAR LOGROS CON DATOS FRESCOS ANTES DE RENDERIZAR
         try {
@@ -13970,25 +13965,44 @@ function shouldShowStatsTicker() {
         try {
           const dbRef = window.db || db;
           const tUser = String(targetUser || '').trim();
+          console.log(`❤️ [Debug Likes] Iniciando para usuario: "${tUser}"`);
           if (tUser) {
             let likesCount = 0;
+            let sessionLikesCount = 0;
             let likesPerPoint = 300;
+            const currentRoomId = (lastLivePayload && lastLivePayload.roomId) || 'no_active_room';
             const fused = typeof getFusedIds === 'function' ? getFusedIds(tUser) : [tUser];
+            console.log(`❤️ [Debug Likes] Cuentas vinculadas (fused):`, fused);
+            
             for (const fid of fused) {
-              const doc = await dbRef.collection('userStats').doc(String(fid).toLowerCase()).get();
+              const docPath = String(fid).toLowerCase();
+              const doc = await dbRef.collection('userStats').doc(docPath).get();
+              console.log(`❤️ [Debug Likes] Consultando doc: "userStats/${docPath}". Existe: ${doc.exists}`);
               if (doc.exists) {
                 const d = doc.data() || {};
+                console.log(`   -> totalLikes: ${d.totalLikes}, sessionLikes: ${d.sessionLikes}`);
                 likesCount += Number(d.totalLikes || 0);
                 if (d.likesPerPoint) likesPerPoint = Number(d.likesPerPoint);
+                
+                // Sumar likes de sesión si corresponden al directo activo actual
+                if (d.sessionId === currentRoomId && d.sessionLikes) {
+                  sessionLikesCount += Number(d.sessionLikes || 0);
+                }
               }
             }
 
             const personalLikesEl = document.getElementById('personal-total-likes');
+            const personalSessionLikesEl = document.getElementById('personal-session-likes');
             const likesProgressFill = document.getElementById('likes-progress-fill');
             const likesProgressText = document.getElementById('likes-progress-text');
 
+            console.log(`❤️ [Debug Likes] Total final calculado: ${likesCount}, Sesión: ${sessionLikesCount}`);
+
             if (personalLikesEl) {
               personalLikesEl.textContent = likesCount.toLocaleString();
+            }
+            if (personalSessionLikesEl) {
+              personalSessionLikesEl.textContent = sessionLikesCount.toLocaleString();
             }
             if (likesProgressFill && likesProgressText) {
               const currentProgress = likesCount % likesPerPoint;
@@ -13998,7 +14012,7 @@ function shouldShowStatsTicker() {
             }
           }
         } catch (e) {
-          console.warn('Error rendering likes stats:', e);
+          console.error('❤️ [Debug Likes] Error en renderizado de likes:', e);
         }
 
         // Renderizar géneros favoritos (simulado)
@@ -14237,7 +14251,7 @@ function shouldShowStatsTicker() {
         if (map[key]) return map[key];
         
         // Buscar en cuentas vinculadas
-        const aliases = window.userAliasesMap || {};
+        const aliases = typeof getUserAliasesCombinedMap === 'function' ? getUserAliasesCombinedMap() : (window.userAliasesMap || {});
         
         // 1. TikTok handle -> Web/YouTube
         const linkedWebUser = aliases[key];
@@ -15065,7 +15079,7 @@ function shouldShowStatsTicker() {
         listEl.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.6;">Cargando vinculaciones...</div>';
         
         try {
-          const map = window.userAliasesMap || {};
+          const map = typeof getUserAliasesCombinedMap === 'function' ? getUserAliasesCombinedMap() : (window.userAliasesMap || {});
           const entries = Object.entries(map);
           if (entries.length === 0) {
             listEl.innerHTML = '<p style="padding:20px; text-align:center; opacity:0.5;">No hay cuentas vinculadas activas.</p>';

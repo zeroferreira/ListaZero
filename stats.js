@@ -183,7 +183,7 @@
           ' • <strong>▶️ Reproducidas:</strong> ' + (ds.played || 0) +
           ' • <strong>👥 Top 3 usuarios:</strong> ' + (ds.topUsers3.join(', ') || 'N/D') +
           ' • <strong>🎤 Top 3 artistas:</strong> ' + (ds.topArtists3.join(', ') || 'N/D') +
-          ' • <strong>❤️ Top Liker:</strong> ' + fmt(escapeHTML(g.topLiker)) + (g.topLikerCount ? ' (' + g.topLikerCount + ')' : '') +
+          ' • <strong>❤️ Top Liker:</strong> ' + fmt(escapeHTML(g.sessionTopLiker)) + (g.sessionTopLikerCount ? ' (' + g.sessionTopLikerCount + ')' : '') +
           ' • <strong>📝 Solicitudes:</strong> ' + (ds.total || 0);
       } catch (_) {}
       
@@ -230,6 +230,8 @@
           total: data.totalRequests || 0,
           topLiker: (data.topLiker || 'N/D'),
           topLikerCount: (data.topLikerCount || 0),
+          sessionTopLiker: (data.sessionTopLiker || 'N/D'),
+          sessionTopLikerCount: (data.sessionTopLikerCount || 0),
           topGenre: (data.topGenre || 'N/D'),
           topGenreCount: (data.topGenreCount || 0)
         };
