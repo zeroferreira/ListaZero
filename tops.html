@@ -1691,15 +1691,21 @@
           return QUIERE_KEYS.some(k => key === k || key.indexOf(k) !== -1);
         }
 
-        const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const since24hMs = Date.now() - 24 * 60 * 60 * 1000;
         db.collection('notifications')
           .where('type', '==', 'gift')
-          .where('timestamp', '>', since24h)
+          .limit(200)
           .onSnapshot(snap => {
             console.log('[Tops] Quiéreme notifications — size:', snap.size);
             const byUser = {};
             snap.forEach(doc => {
               const d = doc.data();
+              // Filtrar por timestamp en el cliente (últimas 24h)
+              let docMs = 0;
+              if (d.timestamp && typeof d.timestamp.toMillis === 'function') docMs = d.timestamp.toMillis();
+              else if (d.timestamp instanceof Date) docMs = d.timestamp.getTime();
+              else if (typeof d.timestamp === 'number') docMs = d.timestamp;
+              if (docMs > 0 && docMs < since24hMs) return;
               if (!isQuiereGift(d.giftName)) return;
               const uid = d.uniqueId || d.user || 'desconocido';
               if (!byUser[uid]) {
