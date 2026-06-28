@@ -994,59 +994,98 @@
         // =============================================
         //  INICIALIZAR FIREBASE
         // =============================================
+        // Tiempo de inicio del overlay — solo mostramos alertas posteriores a este momento
+        const overlayStartMs = Date.now();
+
         try {
             if (typeof firebase !== 'undefined') {
-                firebase.initializeApp(localFirebaseConfig);
+                // Protección anti-doble-inicialización (evita crash al recargar en OBS)
+                let app;
+                if (firebase.apps && firebase.apps.length > 0) {
+                    app = firebase.apps[0];
+                    console.log("[Firebase] Reutilizando instancia existente ✓");
+                } else {
+                    app = firebase.initializeApp(localFirebaseConfig);
+                    console.log("[Firebase] Nueva instancia creada ✓");
+                }
                 db = firebase.firestore();
-                console.log("[Firebase] Alertas conectadas con éxito ✓ [Tipo URL: " + urlType + "]");
+                console.log("[Firebase] Alertas conectadas ✓ [Tipo URL: " + urlType + "]");
 
                 // Escuchar personalización visual de alertas premium
                 db.collection('systemConfig').doc('overlayAlertsConfig')
                     .onSnapshot(doc => {
                         if (doc.exists) {
                             const data = doc.data();
-                            window.overlayAlertsConfig = data; // Guardamos todo en global
+                            window.overlayAlertsConfig = data;
                             
                             if (data.likeslockOpacity !== undefined) window.likeslockOpacityOverride = data.likeslockOpacity;
                             if (data.likeslockRadius !== undefined) window.likeslockRadiusOverride = data.likeslockRadius;
                             
-                            // Aplicar estilos estáticos de carga inicial
                             applyInitialStyles();
                         }
                     }, err => {
-                        console.warn("[Firebase] Error al cargar overlayAlertsConfig para alertas:", err);
+                        console.warn("[Firebase] Error al cargar overlayAlertsConfig:", err);
                     });
 
                 // Escuchar la colección de notificaciones del Bot
-                let isInitialLoad = true;
+                // overlayStartedAt = 2 minutos ANTES del inicio para tolerar desfases de reloj
+                const overlayStartedAt = new Date(overlayStartMs - 2 * 60 * 1000);
+                let initialSnapshotDone = false;
+
                 db.collection('notifications')
                     .where('timestamp', '>', overlayStartedAt)
+                    .orderBy('timestamp', 'asc')
                     .onSnapshot(snap => {
-                        if (isInitialLoad) {
-                            isInitialLoad = false;
-                            console.log("[Firebase] Carga inicial de alertas ignorada para evitar reproducir alertas viejas.");
-                            return;
-                        }
                         snap.docChanges().forEach(change => {
-                            if (change.type === 'added') {
-                                const data = change.doc.data();
-                                // Validar que sea un tipo de alerta soportado
-                                if (['follow', 'subscribe', 'gift', 'like'].includes(data.type)) {
-                                    // Filtrar por tipo si está fijado en la URL
-                                    if (urlType === 'all' || data.type === urlType) {
-                                        console.log(`🔔 Alerta recibida desde bot [${data.type}]:`, data.user);
-                                        addAlert(data);
-                                    }
-                                }
+                            if (change.type !== 'added') return;
+
+                            const data = change.doc.data();
+
+                            // Obtener timestamp del documento (puede ser Firestore Timestamp o Date)
+                            let docMs = 0;
+                            if (data.timestamp && typeof data.timestamp.toMillis === 'function') {
+                                docMs = data.timestamp.toMillis();
+                            } else if (data.timestamp instanceof Date) {
+                                docMs = data.timestamp.getTime();
+                            } else if (typeof data.timestamp === 'number') {
+                                docMs = data.timestamp;
                             }
+
+                            // Si el documento es más viejo que cuando cargó el overlay, ignorar
+                            // (tolerancia de 30 segundos hacia atrás para desfases de reloj)
+                            if (docMs > 0 && docMs < overlayStartMs - 30000) {
+                                return; // Notificación antigua, skip silencioso
+                            }
+
+                            // Validar que sea un tipo de alerta soportado
+                            if (!['follow', 'subscribe', 'gift', 'like'].includes(data.type)) return;
+
+                            // Filtrar por tipo si está fijado en la URL
+                            if (urlType !== 'all' && data.type !== urlType) return;
+
+                            console.log(`🔔 [${data.type}] ${data.user || data.uniqueId || '?'} — mostrando alerta`);
+                            addAlert(data);
                         });
+
+                        if (!initialSnapshotDone) {
+                            initialSnapshotDone = true;
+                            console.log("[Firebase] Listener activo — esperando nuevas alertas ✓");
+                        }
                     }, err => {
-                        console.warn("[Firebase] Error al listener de notificaciones:", err);
+                        console.error("[Firebase] Error listener notificaciones:", err.code, err.message);
+                        // Reintentar en 5 segundos
+                        setTimeout(() => {
+                            console.log("[Firebase] Reintentando conexión...");
+                            location.reload();
+                        }, 5000);
                     });
+            } else {
+                console.error("[Firebase] SDK no disponible. Verifica que los scripts cargaron correctamente.");
             }
         } catch (e) {
             console.error("[Firebase] No se pudo conectar:", e);
         }
+
 
         // Cargador dinámico de Google Fonts
         function loadFontDynamically(fontName) {
@@ -1481,6 +1520,7 @@
             const type = data.type; // 'follow', 'like', 'gift', 'subscribe'
             
             // Determinar si esta alerta específica está habilitada y cuáles son sus efectos
+            // Nota: si urlType es 'all', forzamos enableAlert=true para no bloquear nada
             let enableAlert = true;
             let playAudio = true;
             let showLottie = true;
@@ -1496,7 +1536,8 @@
             let alertVolume = 50;
             
             if (type === 'follow') {
-                enableAlert = config.enableFollowAlert !== undefined ? config.enableFollowAlert : true;
+                // Si la URL es específica para follow, respetar el flag; si es 'all', siempre mostrar
+                enableAlert = urlType === 'all' ? true : (config.enableFollowAlert !== undefined ? config.enableFollowAlert : true);
                 playAudio = config.followPlayAudio !== undefined ? config.followPlayAudio : true;
                 alertVolume = config.followAudioVolume !== undefined ? config.followAudioVolume : 50;
                 showLottie = config.followShowLottie !== undefined ? config.followShowLottie : true;
@@ -1507,7 +1548,7 @@
                 fontFamily = config.followFontFamily !== undefined ? config.followFontFamily : 'Outfit';
                 textShadow = config.followTextShadow !== undefined ? config.followTextShadow : '3d-retro';
             } else if (type === 'like') {
-                enableAlert = config.enableLikeAlert !== undefined ? config.enableLikeAlert : true;
+                enableAlert = urlType === 'all' ? true : (config.enableLikeAlert !== undefined ? config.enableLikeAlert : true);
                 playAudio = config.likePlayAudio !== undefined ? config.likePlayAudio : true;
                 alertVolume = config.likeAudioVolume !== undefined ? config.likeAudioVolume : 50;
                 showLottie = config.likeShowLottie !== undefined ? config.likeShowLottie : true;
@@ -1518,7 +1559,7 @@
                 fontFamily = config.likeFontFamily !== undefined ? config.likeFontFamily : 'Outfit';
                 textShadow = config.likeTextShadow !== undefined ? config.likeTextShadow : '3d-retro';
             } else if (type === 'gift') {
-                enableAlert = config.enableGiftAlert !== undefined ? config.enableGiftAlert : true;
+                enableAlert = urlType === 'all' ? true : (config.enableGiftAlert !== undefined ? config.enableGiftAlert : true);
                 playAudio = config.giftPlayAudio !== undefined ? config.giftPlayAudio : true;
                 alertVolume = config.giftAudioVolume !== undefined ? config.giftAudioVolume : 50;
                 showLottie = config.giftShowLottie !== undefined ? config.giftShowLottie : true;
@@ -1529,7 +1570,7 @@
                 fontFamily = config.giftFontFamily !== undefined ? config.giftFontFamily : 'Outfit';
                 textShadow = config.giftTextShadow !== undefined ? config.giftTextShadow : '3d-retro';
             } else if (type === 'subscribe') {
-                enableAlert = config.enableSubscribeAlert !== undefined ? config.enableSubscribeAlert : true;
+                enableAlert = urlType === 'all' ? true : (config.enableSubscribeAlert !== undefined ? config.enableSubscribeAlert : true);
                 playAudio = config.subscribePlayAudio !== undefined ? config.subscribePlayAudio : true;
                 alertVolume = config.subscribeAudioVolume !== undefined ? config.subscribeAudioVolume : 50;
                 showLottie = config.subscribeShowLottie !== undefined ? config.subscribeShowLottie : true;
@@ -1546,6 +1587,8 @@
                 ttsEnabled = true;
                 showCard = false;
             }
+
+
 
             // Si la alerta está desactivada en la configuración, no la reproducimos
             if (!enableAlert) {
