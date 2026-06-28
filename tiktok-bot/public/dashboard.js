@@ -2421,6 +2421,14 @@ function App() {
     style: {
       color: '#06b6d4'
     }
+  }, "Nuevo")), /*#__PURE__*/React.createElement("button", {
+    className: `overlays-menu-item ${activeSub === 'ytplayer' ? 'active' : ''}`,
+    onClick: () => setActiveSub('ytplayer')
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDFA5 Reproductor YouTube"), /*#__PURE__*/React.createElement("span", {
+    className: "menu-badge",
+    style: {
+      color: '#ec4899'
+    }
   }, "Nuevo"))), /*#__PURE__*/React.createElement("div", {
     className: "overlays-content"
   }, activeSub === 'player' && /*#__PURE__*/React.createElement("div", {
