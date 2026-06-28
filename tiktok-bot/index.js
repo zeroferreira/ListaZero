@@ -2225,7 +2225,7 @@ startBot();
 // Cache para evitar escrituras redundantes de foto de perfil en la misma sesión
 const profilePicCache = new Set();
 
-async function updateUserProfilePic(userId, displayName, url) {
+async function updateUserProfilePic(userId, displayName, url, extraFields = {}) {
     if (!url || !db) return;
     
     // Si ya actualizamos en esta sesión, saltar (ahorro de escrituras)
@@ -2240,7 +2240,8 @@ async function updateUserProfilePic(userId, displayName, url) {
         await setDoc(userRef, {
             profilePic: url,
             lastSeen: serverTimestamp(),
-            displayName: displayName // Aprovechar para refrescar nombre
+            displayName: displayName, // Aprovechar para refrescar nombre
+            ...extraFields
         }, { merge: true });
         
         console.log(`📸 Foto de perfil guardada para ${displayName}`);
@@ -2450,9 +2451,13 @@ function setupListeners() {
         // Marcar presencia activa en el live
         markUserPresent(userId);
         
-        // Actualizar foto de perfil en segundo plano
+        // Actualizar foto de perfil (y datos de membresía) en segundo plano
         if (profilePic) {
-            updateUserProfilePic(userId, displayName, profilePic);
+            const memberFields = {};
+            if (data.isSubscriber === true) memberFields.isSubscriber = true;
+            const lvl = Number(data.memberLevel || 0);
+            if (lvl > 0) memberFields.memberLevel = lvl;
+            updateUserProfilePic(userId, displayName, profilePic, memberFields);
         }
         
         // DEBUG: Ver todos los mensajes para confirmar que llegan
@@ -3007,13 +3012,18 @@ function setupListeners() {
                 const userRef = doc(db, 'userStats', userKey);
                 
                 // Usamos increment para sumar de forma atómica
-                await setDoc(userRef, {
+                const giftUpdateData = {
                     totalPoints: increment(pointsFromGift),
                     totalGiftPoints: increment(pointsFromGift),
                     totalCoinsDonated: increment(coins),
                     lastActiveAt: serverTimestamp(),
                     displayName: displayName // Actualizar nombre por si acaso
-                }, { merge: true });
+                };
+                // Persistir membresía si viene en el evento de regalo
+                if (data.isSubscriber === true) giftUpdateData.isSubscriber = true;
+                const giftMemberLevel = Number(data.memberLevel || 0);
+                if (giftMemberLevel > 0) giftUpdateData.memberLevel = giftMemberLevel;
+                await setDoc(userRef, giftUpdateData, { merge: true });
                 
                 console.log(`💎 Puntos otorgados a ${displayName}: +${pointsFromGift} (por ${coins} monedas)`);
                 
@@ -3159,7 +3169,29 @@ function setupListeners() {
         // Marcar presencia activa en el live
         markUserPresent(uid);
         
-        console.log(`⭐ @${uid} se suscribió!`);
+        const subLevel = Number(data.memberLevel || data.subMonth || 0);
+        console.log(`⭐ @${uid} se suscribió! (nivel: ${subLevel || '—'})`);
+
+        // ── Guardar membresía en userStats ──────────────────────────────────────
+        if (db) {
+            try {
+                const { doc, setDoc, serverTimestamp: sts } = require('firebase/firestore');
+                const resolved = await getCanonicalUserKey(uid, displayName);
+                const userRef = doc(db, 'userStats', resolved.userKey || uid);
+                const memberData = {
+                    isSubscriber: true,
+                    lastSeen: sts(),
+                    displayName
+                };
+                if (subLevel > 0) memberData.memberLevel = subLevel;
+                if (profilePic) memberData.profilePic = profilePic;
+                await setDoc(userRef, memberData, { merge: true });
+                console.log(`💾 Membresía guardada para @${uid}`);
+            } catch (e) {
+                console.error('Error guardando membresía en userStats:', e);
+            }
+        }
+
         if (db) {
             try {
                 let msgTemplate = String(overlayAlertsConfig.subsAlertMsg || "¡gracias por suscribirte al canal! ⭐");
@@ -3171,6 +3203,7 @@ function setupListeners() {
                     uniqueId: uid,
                     profilePic: profilePic || '',
                     message: customMsg,
+                    memberLevel: subLevel || null,
                     timestamp: serverTimestamp()
                 });
             } catch (e) {

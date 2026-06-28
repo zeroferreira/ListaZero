@@ -948,6 +948,40 @@
       box-shadow: 0 0 16px rgba(0, 212, 255, 0.4);
     }
 
+    /* ── Member / Subscriber badge ── */
+    .member-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 800;
+      font-family: var(--font-title);
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+      background: linear-gradient(135deg, rgba(253,187,45,0.18) 0%, rgba(255,77,157,0.18) 100%);
+      border: 1px solid rgba(253,187,45,0.45);
+      color: #fdd76a;
+      box-shadow: 0 0 8px rgba(253,187,45,0.2);
+      animation: memberShimmer 3s ease-in-out infinite;
+    }
+    .member-badge .mb-star {
+      font-size: 10px;
+      line-height: 1;
+    }
+    @keyframes memberShimmer {
+      0%,100% { box-shadow: 0 0 6px rgba(253,187,45,0.2); }
+      50%      { box-shadow: 0 0 14px rgba(253,187,45,0.5); border-color: rgba(253,187,45,0.8); }
+    }
+    /* Smaller version for rcard rows */
+    .rinfo .member-badge {
+      font-size: 9px;
+      padding: 1px 6px;
+      margin-top: 1px;
+      align-self: flex-start;
+    }
+
     /* Update bar & Debug */
     .ubar {
       text-align: center;
@@ -1320,6 +1354,14 @@
       return `<img class="${cls}" src="${s||FB}" alt="${nick.replace(/"/g,'')}" loading="lazy" onerror="this.onerror=null;this.src='${FB}'">`;
     }
 
+    function memberBadgeHtml(isSubscriber, memberLevel) {
+      if (!isSubscriber && !(memberLevel > 0)) return '';
+      const lvl = Number(memberLevel) || 0;
+      const label = lvl > 0 ? `Nv.${lvl}` : 'Miembro';
+      return `<span class="member-badge"><span class="mb-star">⭐</span>${label}</span>`;
+    }
+
+
     /* ─── Tabs ────────────────────────────────── */
     let activeTab = 'likers';
     const btnL = document.getElementById('btn-likers');
@@ -1411,11 +1453,13 @@
           const uname = u.username||u.uniqueId||'';
           const amt   = u.totalAmount!=null?u.totalAmount:0;
           const crown = r===1?'<span class="pcrown">👑</span>':'';
+          const mbadge = memberBadgeHtml(u.isSubscriber, u.memberLevel);
           html+=`<div class="pitem ${c}" data-uid="${uname}">
             <div class="pmed-ribbon r-${r}"><span class="pmed-num">${r}</span></div>
             <div class="pawrap">${crown}${avImg(u.profilePictureUrl,nick,'pav')}</div>
             <div class="pdetails">
               <span class="pname" title="${nick}">${nick}</span>
+              ${mbadge}
               <span class="pscore-compact ${sc}" data-val="${amt}">${ico} ${fmt(amt)}</span>
             </div>
           </div>`;
@@ -1431,12 +1475,14 @@
           const nick  = u.nickname||u.uniqueId||u.username||'Anónimo';
           const uname = u.username||u.uniqueId||'';
           const amt   = u.totalAmount!=null?u.totalAmount:0;
+          const mbadge = memberBadgeHtml(u.isSubscriber, u.memberLevel);
           html+=`<div class="rcard" data-uid="${uname}">
             <span class="rnum">#${rank}</span>
             ${avImg(u.profilePictureUrl,nick,'rav')}
             <div class="rinfo">
               <span class="rnick" title="${nick}">${nick}</span>
               ${uname?`<span class="ruser">@${uname}</span>`:''}
+              ${mbadge}
             </div>
             <span class="rscore ${sc}" data-val="${amt}">${ico} ${fmt(amt)}</span>
             <i data-lucide="more-vertical" style="color: var(--text-muted); opacity: 0.4; width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; margin-left: 8px;"></i>
@@ -1496,7 +1542,9 @@
                 username: data.tiktokId || doc.id,
                 nickname: data.displayName || doc.id,
                 profilePictureUrl: data.profilePic || '',
-                totalAmount: data.totalLikes || 0
+                totalAmount: data.totalLikes || 0,
+                isSubscriber: data.isSubscriber || false,
+                memberLevel: data.memberLevel || 0
               });
             }
           });
@@ -1527,7 +1575,9 @@
                 username: data.tiktokId || doc.id,
                 nickname: data.displayName || doc.id,
                 profilePictureUrl: data.profilePic || '',
-                totalAmount: data.totalCoinsDonated || 0
+                totalAmount: data.totalCoinsDonated || 0,
+                isSubscriber: data.isSubscriber || false,
+                memberLevel: data.memberLevel || 0
               });
             }
           });
