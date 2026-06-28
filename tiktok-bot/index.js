@@ -2964,6 +2964,31 @@ function setupListeners() {
             } catch (e) {
                 console.error('Error otorgando z0-Fan por regalo:', e);
             }
+
+            // ── Acumular en Top Quiéreme ──────────────────────────────────────
+            if (db) {
+                try {
+                    const resolved = await getCanonicalUserKey(uid, displayName);
+                    const userKey = resolved.userKey || uid;
+                    const actualCount = data.repeatCount || 1;
+                    const quiereCoins = coins * actualCount;
+                    const quiereRef = doc(db, 'userStats', userKey);
+                    const quiereData = {
+                        quiereCount: increment(actualCount),
+                        totalQuiereCoins: increment(quiereCoins),
+                        displayName: displayName,
+                        lastActiveAt: serverTimestamp()
+                    };
+                    if (profilePic) quiereData.profilePic = profilePic;
+                    if (data.isSubscriber === true) quiereData.isSubscriber = true;
+                    const ql = Number(data.memberLevel || 0);
+                    if (ql > 0) quiereData.memberLevel = ql;
+                    await setDoc(quiereRef, quiereData, { merge: true });
+                    console.log(`💜 Top Quiéreme: @${displayName} +${actualCount} (${quiereCoins} coins)`);
+                } catch (e) {
+                    console.error('Error acumulando Top Quiéreme:', e);
+                }
+            }
         }
 
         if (isGiftFinal && db) {
