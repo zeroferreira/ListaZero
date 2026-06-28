@@ -987,6 +987,10 @@
                 giftsAlertMsg: "¡Gracias por {repeatCount}x {giftName}! 🎁",
                 followsAlertMsg: "¡gracias por seguir el canal! 👤",
                 subsAlertMsg: "¡gracias por suscribirte al canal! ⭐",
+                followAudioUrl: "",
+                likeAudioUrl: "",
+                giftAudioUrl: "",
+                subscribeAudioUrl: "",
                 
                 rainbowText: true,
                 bounceText: true,
@@ -1606,6 +1610,53 @@
 
             const [currentOrigin, setCurrentOrigin] = React.useState('http://localhost:3000');
             const [ytPlayerFullscreen, setYtPlayerFullscreen] = React.useState(false);
+            const [myinstantsTarget, setMyinstantsTarget] = React.useState(null);
+            const [myinstantsQuery, setMyinstantsQuery] = React.useState('');
+            const [myinstantsResults, setMyinstantsResults] = React.useState([]);
+            const [myinstantsLoading, setMyinstantsLoading] = React.useState(false);
+            const [playingAudioUrl, setPlayingAudioUrl] = React.useState(null);
+            const previewAudioRef = React.useRef(null);
+            
+            const handlePlayPreview = (url) => {
+                if (playingAudioUrl === url) {
+                    if (previewAudioRef.current) {
+                        previewAudioRef.current.pause();
+                        previewAudioRef.current = null;
+                    }
+                    setPlayingAudioUrl(null);
+                } else {
+                    if (previewAudioRef.current) {
+                        previewAudioRef.current.pause();
+                    }
+                    setPlayingAudioUrl(url);
+                    const audio = new Audio(url);
+                    audio.volume = 0.5;
+                    audio.play().catch(e => console.warn(e));
+                    previewAudioRef.current = audio;
+                    audio.onended = () => {
+                        setPlayingAudioUrl(null);
+                        previewAudioRef.current = null;
+                    };
+                }
+            };
+
+            const handleSearchMyInstants = async () => {
+                if (!myinstantsQuery.trim()) return;
+                setMyinstantsLoading(true);
+                setMyinstantsResults([]);
+                try {
+                    const apiBase = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+                    const res = await fetch(`${apiBase}/api/myinstants/search?q=${encodeURIComponent(myinstantsQuery)}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        setMyinstantsResults(data.results);
+                    }
+                } catch (e) {
+                    console.error('Error al buscar sonidos:', e);
+                } finally {
+                    setMyinstantsLoading(false);
+                }
+            };
             const [dialog, setDialog] = React.useState({
                 isOpen: false,
                 type: 'confirm',
@@ -3916,10 +3967,36 @@
                                                                     </label>
                                                                 </div>
                                                                 {overlays.followPlayAudio && (
-                                                                    <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '15px' }}>
-                                                                        <label>Volumen del Sonido: {overlays.followAudioVolume !== undefined ? overlays.followAudioVolume : 50}%</label>
-                                                                        <input type="range" min="0" max="100" step="5" value={overlays.followAudioVolume !== undefined ? overlays.followAudioVolume : 50} onChange={(e) => setOverlays({ ...overlays, followAudioVolume: parseInt(e.target.value) })} />
-                                                                    </div>
+                                                                    <React.Fragment>
+                                                                        <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '10px' }}>
+                                                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Archivo de Sonido (MyInstants)</label>
+                                                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                                                                <input 
+                                                                                    type="text" 
+                                                                                    readOnly 
+                                                                                    value={overlays.followAudioUrl ? "🔊 Sonido de MyInstants Seleccionado" : "🔊 Sonido Predeterminado"} 
+                                                                                    style={{ flex: 1, fontSize: '0.85rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', cursor: 'default' }} 
+                                                                                />
+                                                                                <button className="btn btn-secondary" onClick={() => { setMyinstantsTarget('follow'); setMyinstantsQuery(''); setMyinstantsResults([]); }} style={{ padding: '8px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                                                                                    🔍 Buscar en MyInstants
+                                                                                </button>
+                                                                                {overlays.followAudioUrl && (
+                                                                                    <button className="btn btn-red" onClick={() => { setOverlays({ ...overlays, followAudioUrl: '' }); setIsConfigDirty(true); }} style={{ padding: '8px 12px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }} title="Restaurar Predeterminado">
+                                                                                        🧹
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                            {overlays.followAudioUrl && (
+                                                                                <div style={{ marginTop: '5px', fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', wordBreak: 'break-all' }}>
+                                                                                    URL: {overlays.followAudioUrl}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '15px' }}>
+                                                                            <label>Volumen del Sonido: {overlays.followAudioVolume !== undefined ? overlays.followAudioVolume : 50}%</label>
+                                                                            <input type="range" min="0" max="100" step="5" value={overlays.followAudioVolume !== undefined ? overlays.followAudioVolume : 50} onChange={(e) => setOverlays({ ...overlays, followAudioVolume: parseInt(e.target.value) })} />
+                                                                        </div>
+                                                                    </React.Fragment>
                                                                 )}
                                                                 <div className="toggle-row" style={{ padding: '8px 0', borderBottom: 'none' }}>
                                                                     <span>Lector de Voz (TTS Español)</span>
@@ -4220,10 +4297,36 @@
                                                                     </label>
                                                                 </div>
                                                                 {overlays.likePlayAudio && (
-                                                                    <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '15px' }}>
-                                                                        <label>Volumen del Sonido: {overlays.likeAudioVolume !== undefined ? overlays.likeAudioVolume : 50}%</label>
-                                                                        <input type="range" min="0" max="100" step="5" value={overlays.likeAudioVolume !== undefined ? overlays.likeAudioVolume : 50} onChange={(e) => setOverlays({ ...overlays, likeAudioVolume: parseInt(e.target.value) })} />
-                                                                    </div>
+                                                                    <React.Fragment>
+                                                                        <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '10px' }}>
+                                                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Archivo de Sonido (MyInstants)</label>
+                                                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                                                                <input 
+                                                                                    type="text" 
+                                                                                    readOnly 
+                                                                                    value={overlays.likeAudioUrl ? "🔊 Sonido de MyInstants Seleccionado" : "🔊 Sonido Predeterminado"} 
+                                                                                    style={{ flex: 1, fontSize: '0.85rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', cursor: 'default' }} 
+                                                                                />
+                                                                                <button className="btn btn-secondary" onClick={() => { setMyinstantsTarget('like'); setMyinstantsQuery(''); setMyinstantsResults([]); }} style={{ padding: '8px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                                                                                    🔍 Buscar en MyInstants
+                                                                                </button>
+                                                                                {overlays.likeAudioUrl && (
+                                                                                    <button className="btn btn-red" onClick={() => { setOverlays({ ...overlays, likeAudioUrl: '' }); setIsConfigDirty(true); }} style={{ padding: '8px 12px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }} title="Restaurar Predeterminado">
+                                                                                        🧹
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                            {overlays.likeAudioUrl && (
+                                                                                <div style={{ marginTop: '5px', fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', wordBreak: 'break-all' }}>
+                                                                                    URL: {overlays.likeAudioUrl}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '15px' }}>
+                                                                            <label>Volumen del Sonido: {overlays.likeAudioVolume !== undefined ? overlays.likeAudioVolume : 50}%</label>
+                                                                            <input type="range" min="0" max="100" step="5" value={overlays.likeAudioVolume !== undefined ? overlays.likeAudioVolume : 50} onChange={(e) => setOverlays({ ...overlays, likeAudioVolume: parseInt(e.target.value) })} />
+                                                                        </div>
+                                                                    </React.Fragment>
                                                                 )}
                                                                 <div className="toggle-row" style={{ padding: '8px 0', borderBottom: 'none' }}>
                                                                     <span>Lector de Voz (TTS Español)</span>
@@ -4458,10 +4561,36 @@
                                                                     </label>
                                                                 </div>
                                                                 {overlays.giftPlayAudio && (
-                                                                    <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '15px' }}>
-                                                                        <label>Volumen del Sonido: {overlays.giftAudioVolume !== undefined ? overlays.giftAudioVolume : 50}%</label>
-                                                                        <input type="range" min="0" max="100" step="5" value={overlays.giftAudioVolume !== undefined ? overlays.giftAudioVolume : 50} onChange={(e) => setOverlays({ ...overlays, giftAudioVolume: parseInt(e.target.value) })} />
-                                                                    </div>
+                                                                    <React.Fragment>
+                                                                        <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '10px' }}>
+                                                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Archivo de Sonido (MyInstants)</label>
+                                                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                                                                <input 
+                                                                                    type="text" 
+                                                                                    readOnly 
+                                                                                    value={overlays.giftAudioUrl ? "🔊 Sonido de MyInstants Seleccionado" : "🔊 Sonido Predeterminado"} 
+                                                                                    style={{ flex: 1, fontSize: '0.85rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', cursor: 'default' }} 
+                                                                                />
+                                                                                <button className="btn btn-secondary" onClick={() => { setMyinstantsTarget('gift'); setMyinstantsQuery(''); setMyinstantsResults([]); }} style={{ padding: '8px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                                                                                    🔍 Buscar en MyInstants
+                                                                                </button>
+                                                                                {overlays.giftAudioUrl && (
+                                                                                    <button className="btn btn-red" onClick={() => { setOverlays({ ...overlays, giftAudioUrl: '' }); setIsConfigDirty(true); }} style={{ padding: '8px 12px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }} title="Restaurar Predeterminado">
+                                                                                        🧹
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                            {overlays.giftAudioUrl && (
+                                                                                <div style={{ marginTop: '5px', fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', wordBreak: 'break-all' }}>
+                                                                                    URL: {overlays.giftAudioUrl}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '15px' }}>
+                                                                            <label>Volumen del Sonido: {overlays.giftAudioVolume !== undefined ? overlays.giftAudioVolume : 50}%</label>
+                                                                            <input type="range" min="0" max="100" step="5" value={overlays.giftAudioVolume !== undefined ? overlays.giftAudioVolume : 50} onChange={(e) => setOverlays({ ...overlays, giftAudioVolume: parseInt(e.target.value) })} />
+                                                                        </div>
+                                                                    </React.Fragment>
                                                                 )}
                                                                 <div className="toggle-row" style={{ padding: '8px 0', borderBottom: 'none' }}>
                                                                     <span>Lector de Voz (TTS Español)</span>
@@ -4688,10 +4817,36 @@
                                                                     </label>
                                                                 </div>
                                                                 {overlays.subscribePlayAudio && (
-                                                                    <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '15px' }}>
-                                                                        <label>Volumen del Sonido: {overlays.subscribeAudioVolume !== undefined ? overlays.subscribeAudioVolume : 50}%</label>
-                                                                        <input type="range" min="0" max="100" step="5" value={overlays.subscribeAudioVolume !== undefined ? overlays.subscribeAudioVolume : 50} onChange={(e) => setOverlays({ ...overlays, subscribeAudioVolume: parseInt(e.target.value) })} />
-                                                                    </div>
+                                                                    <React.Fragment>
+                                                                        <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '10px' }}>
+                                                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Archivo de Sonido (MyInstants)</label>
+                                                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                                                                <input 
+                                                                                    type="text" 
+                                                                                    readOnly 
+                                                                                    value={overlays.subscribeAudioUrl ? "🔊 Sonido de MyInstants Seleccionado" : "🔊 Sonido Predeterminado"} 
+                                                                                    style={{ flex: 1, fontSize: '0.85rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', cursor: 'default' }} 
+                                                                                />
+                                                                                <button className="btn btn-secondary" onClick={() => { setMyinstantsTarget('subscribe'); setMyinstantsQuery(''); setMyinstantsResults([]); }} style={{ padding: '8px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                                                                                    🔍 Buscar en MyInstants
+                                                                                </button>
+                                                                                {overlays.subscribeAudioUrl && (
+                                                                                    <button className="btn btn-red" onClick={() => { setOverlays({ ...overlays, subscribeAudioUrl: '' }); setIsConfigDirty(true); }} style={{ padding: '8px 12px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }} title="Restaurar Predeterminado">
+                                                                                        🧹
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                            {overlays.subscribeAudioUrl && (
+                                                                                <div style={{ marginTop: '5px', fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', wordBreak: 'break-all' }}>
+                                                                                    URL: {overlays.subscribeAudioUrl}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="form-group" style={{ paddingLeft: '15px', marginTop: '5px', marginBottom: '15px' }}>
+                                                                            <label>Volumen del Sonido: {overlays.subscribeAudioVolume !== undefined ? overlays.subscribeAudioVolume : 50}%</label>
+                                                                            <input type="range" min="0" max="100" step="5" value={overlays.subscribeAudioVolume !== undefined ? overlays.subscribeAudioVolume : 50} onChange={(e) => setOverlays({ ...overlays, subscribeAudioVolume: parseInt(e.target.value) })} />
+                                                                        </div>
+                                                                    </React.Fragment>
                                                                 )}
                                                                 <div className="toggle-row" style={{ padding: '8px 0', borderBottom: 'none' }}>
                                                                     <span>Lector de Voz (TTS Español)</span>
@@ -6932,6 +7087,133 @@
                             </div>
                         )}
                     </div>
+
+                    {/* MyInstants Sound Library Search Modal */}
+                    {myinstantsTarget && (
+                        <div style={{
+                            position: 'fixed',
+                            inset: 0,
+                            backgroundColor: 'rgba(5, 3, 10, 0.72)',
+                            backdropFilter: 'blur(12px)',
+                            WebkitBackdropFilter: 'blur(12px)',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            zIndex: 99999,
+                            animation: 'fadeIn 0.25s ease-out'
+                        }}>
+                            <div className="glass-card" style={{
+                                width: '520px',
+                                maxWidth: '95%',
+                                padding: '24px',
+                                borderRadius: '16px',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5), 0 0 40px rgba(139, 92, 246, 0.1)',
+                                background: 'linear-gradient(135deg, rgba(20, 16, 35, 0.95) 0%, rgba(10, 8, 18, 0.98) 100%)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '16px',
+                                maxHeight: '85vh',
+                                animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '1.25rem' }}>🎵</span>
+                                        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', color: '#fff' }}>
+                                            Biblioteca de Sonidos (MyInstants)
+                                        </h3>
+                                    </div>
+                                    <button onClick={() => {
+                                        if (previewAudioRef.current) {
+                                            previewAudioRef.current.pause();
+                                            previewAudioRef.current = null;
+                                        }
+                                        setPlayingAudioUrl(null);
+                                        setMyinstantsTarget(null);
+                                    }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', fontSize: '1.5rem', cursor: 'pointer', outline: 'none' }}>
+                                        &times;
+                                    </button>
+                                </div>
+                                
+                                <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.5)' }}>
+                                    Busca miles de botones de sonidos y memes en MyInstants para utilizarlos en tus alertas de <strong>{myinstantsTarget === 'follow' ? 'Seguidores' : myinstantsTarget === 'like' ? 'Likes' : myinstantsTarget === 'gift' ? 'Regalos' : 'Suscripciones'}</strong>.
+                                </p>
+                                
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Ej: vine boom, apple pay, anime wow..." 
+                                        value={myinstantsQuery} 
+                                        onChange={(e) => setMyinstantsQuery(e.target.value)} 
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleSearchMyInstants(); }}
+                                        style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'rgba(0,0,0,0.3)', color: '#fff', fontSize: '0.9rem', outline: 'none' }}
+                                    />
+                                    <button className="btn" onClick={handleSearchMyInstants} style={{ padding: '10px 20px', background: 'var(--accent-primary)', border: 'none', color: '#fff', fontSize: '0.9rem', fontWeight: '600' }}>
+                                        {myinstantsLoading ? 'Buscando...' : 'Buscar'}
+                                    </button>
+                                </div>
+
+                                <div style={{
+                                    flex: 1,
+                                    overflowY: 'auto',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px',
+                                    maxHeight: '40vh',
+                                    paddingRight: '4px'
+                                }}>
+                                    {myinstantsLoading && (
+                                        <div style={{ textAlign: 'center', padding: '30px 0', color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem' }}>
+                                            ⏳ Buscando sonidos en MyInstants...
+                                        </div>
+                                    )}
+                                    
+                                    {!myinstantsLoading && myinstantsResults.length === 0 && (
+                                        <div style={{ textAlign: 'center', padding: '30px 0', color: 'rgba(255,255,255,0.3)', fontSize: '0.9rem' }}>
+                                            {myinstantsQuery ? 'No se encontraron resultados.' : 'Introduce un término para buscar.'}
+                                        </div>
+                                    )}
+                                    
+                                    {!myinstantsLoading && myinstantsResults.map((sound, idx) => (
+                                        <div key={idx} style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            padding: '10px 12px',
+                                            borderRadius: '8px',
+                                            background: 'rgba(255,255,255,0.02)',
+                                            border: '1px solid rgba(255,255,255,0.04)',
+                                            gap: '12px'
+                                        }}>
+                                            <span style={{ fontSize: '0.88rem', fontWeight: '600', color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                                                {sound.name}
+                                            </span>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button className="btn btn-secondary" onClick={() => handlePlayPreview(sound.audio)} style={{ padding: '6px 12px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    {playingAudioUrl === sound.audio ? '⏸️ Parar' : '▶️ Probar'}
+                                                </button>
+                                                <button className="btn" onClick={() => {
+                                                    if (previewAudioRef.current) {
+                                                        previewAudioRef.current.pause();
+                                                        previewAudioRef.current = null;
+                                                    }
+                                                    setPlayingAudioUrl(null);
+                                                    setOverlays(prev => ({
+                                                        ...prev,
+                                                        [myinstantsTarget + 'AudioUrl']: sound.audio
+                                                    }));
+                                                    setIsConfigDirty(true);
+                                                    setMyinstantsTarget(null);
+                                                }} style={{ padding: '6px 12px', fontSize: '0.75rem', background: '#22c55e', border: 'none', color: '#fff', fontWeight: '600' }}>
+                                                    ✅ Aplicar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Styled Confirmation / Alert Custom Dialog Modal */}
                     {dialog.isOpen && (

@@ -1078,6 +1078,39 @@ function startBot() {
         });
     });
 
+    app.get('/api/myinstants/search', (req, res) => {
+        const query = req.query.q || '';
+        if (!query.trim()) {
+            return res.json({ success: true, results: [] });
+        }
+        
+        const https = require('https');
+        const searchUrl = `https://www.myinstants.com/en/search/?name=${encodeURIComponent(query)}`;
+        
+        https.get(searchUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        }, (clientRes) => {
+            let body = '';
+            clientRes.on('data', (chunk) => { body += chunk; });
+            clientRes.on('end', () => {
+                const regex = /class="instant">[\s\S]*?onclick="play\('([^']*)'[\s\S]*?class="instant-link[^"]*">([^<]*)/g;
+                let match;
+                const results = [];
+                while ((match = regex.exec(body)) !== null) {
+                    results.push({
+                        name: match[2].trim(),
+                        audio: 'https://www.myinstants.com' + match[1]
+                    });
+                }
+                res.json({ success: true, results });
+            });
+        }).on('error', (e) => {
+            res.status(500).json({ success: false, error: e.message });
+        });
+    });
+
     app.get('/api/tts/logs', (req, res) => {
         res.json({ logs: ttsLogs });
     });
