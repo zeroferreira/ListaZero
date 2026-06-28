@@ -2457,8 +2457,11 @@ function setupListeners() {
             if (data.isSubscriber === true) memberFields.isSubscriber = true;
             const lvl = Number(data.memberLevel || 0);
             if (lvl > 0) memberFields.memberLevel = lvl;
+            const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
+            if (gLvl > 0) memberFields.gifterLevel = gLvl;
             updateUserProfilePic(userId, displayName, profilePic, memberFields);
         }
+
         
         // DEBUG: Ver todos los mensajes para confirmar que llegan
         // console.log(`[CHAT] ${user}: ${msg}`); 
@@ -2932,7 +2935,13 @@ function setupListeners() {
         
         // Actualizar foto de perfil
         if (profilePic) {
-            updateUserProfilePic(uid, displayName, profilePic);
+            const extra = {};
+            const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
+            if (gLvl > 0) extra.gifterLevel = gLvl;
+            if (data.isSubscriber === true) extra.isSubscriber = true;
+            const lvl = Number(data.memberLevel || 0);
+            if (lvl > 0) extra.memberLevel = lvl;
+            updateUserProfilePic(uid, displayName, profilePic, extra);
         }
 
         // Marcar presencia activa en el live
@@ -2958,7 +2967,9 @@ function setupListeners() {
         } catch (_) {}
 
         const isGiftFinal = (data.repeatEnd === undefined) ? true : (data.repeatEnd === true);
-        if (isGiftFinal && giftKey === 'quiereme') {
+        const isQuiereme = (giftKey === 'quiereme' || giftKey === 'loveme' || giftKey.indexOf('quiereme') !== -1 || giftKey.indexOf('loveme') !== -1);
+        
+        if (isGiftFinal && isQuiereme) {
             try {
                 await grantZ0FanFromTikTok(uid, displayName);
             } catch (e) {
@@ -2983,6 +2994,8 @@ function setupListeners() {
                     if (data.isSubscriber === true) quiereData.isSubscriber = true;
                     const ql = Number(data.memberLevel || 0);
                     if (ql > 0) quiereData.memberLevel = ql;
+                    const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
+                    if (gLvl > 0) quiereData.gifterLevel = gLvl;
                     await setDoc(quiereRef, quiereData, { merge: true });
                     console.log(`💜 Top Quiéreme: @${displayName} +${actualCount} (${quiereCoins} coins)`);
                 } catch (e) {
@@ -2990,6 +3003,7 @@ function setupListeners() {
                 }
             }
         }
+
 
         if (isGiftFinal && db) {
             const actualCount = data.repeatCount || 1;
@@ -3048,7 +3062,10 @@ function setupListeners() {
                 if (data.isSubscriber === true) giftUpdateData.isSubscriber = true;
                 const giftMemberLevel = Number(data.memberLevel || 0);
                 if (giftMemberLevel > 0) giftUpdateData.memberLevel = giftMemberLevel;
+                const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
+                if (gLvl > 0) giftUpdateData.gifterLevel = gLvl;
                 await setDoc(userRef, giftUpdateData, { merge: true });
+
                 
                 console.log(`💎 Puntos otorgados a ${displayName}: +${pointsFromGift} (por ${coins} monedas)`);
                 
@@ -3211,8 +3228,11 @@ function setupListeners() {
                     displayName
                 };
                 if (subLevel > 0) memberData.memberLevel = subLevel;
+                const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
+                if (gLvl > 0) memberData.gifterLevel = gLvl;
                 if (profilePic) memberData.profilePic = profilePic;
                 await setDoc(userRef, memberData, { merge: true });
+
                 console.log(`💾 Membresía guardada para @${uid}`);
             } catch (e) {
                 console.error('Error guardando membresía en userStats:', e);

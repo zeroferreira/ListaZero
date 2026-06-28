@@ -1710,28 +1710,34 @@
           showErr('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error');
         });
 
-      /* Top Miembros — consulta simple de suscriptores y ordenación en memoria (sin requerir índices compuestos) */
+      /* Top Miembros — consulta y ordenación en memoria por nivel de TikTok (priorizando el nivel de donador) */
       db.collection('userStats')
-        .where('isSubscriber', '==', true)
         .onSnapshot(snap=>{
           console.log('[Tops] snapshot userStats (Miembros) — size:', snap.size);
           const list = [];
           snap.forEach(doc => {
             const data = doc.data();
-            list.push({
-              username: data.tiktokId || doc.id,
-              nickname: data.displayName || doc.id,
-              profilePictureUrl: data.profilePic || '',
-              totalAmount: data.memberLevel || 0,
-              memberLevel: data.memberLevel || 0,
-              isSubscriber: true
-            });
+            const gLvl = Number(data.gifterLevel || 0);
+            const mLvl = Number(data.memberLevel || 0);
+            const maxLvl = Math.max(gLvl, mLvl);
+
+            if (maxLvl > 0 || data.isSubscriber === true) {
+              list.push({
+                username: data.tiktokId || doc.id,
+                nickname: data.displayName || doc.id,
+                profilePictureUrl: data.profilePic || '',
+                totalAmount: maxLvl || 1,
+                memberLevel: mLvl,
+                gifterLevel: gLvl,
+                isSubscriber: data.isSubscriber || false
+              });
+            }
           });
 
-          // Ordenar en memoria descendentemente por nivel de miembro
+          // Ordenar en memoria descendentemente por el nivel más alto
           list.sort((a, b) => {
-            if (b.memberLevel !== a.memberLevel) {
-              return b.memberLevel - a.memberLevel;
+            if (b.totalAmount !== a.totalAmount) {
+              return b.totalAmount - a.totalAmount;
             }
             return (a.nickname || '').localeCompare(b.nickname || '');
           });
@@ -1745,6 +1751,7 @@
           console.error('[Tops] Miembros err:',err.code, err.message);
           showErr('members-body','members-loading','members-empty','members-error');
         });
+
 
 
       /* Live status */
