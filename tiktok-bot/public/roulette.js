@@ -18,24 +18,6 @@ const firebaseConfig = {
         try { window.localStorage.setItem(key, val); } catch(e) {}
       }
     };
-
-    // Escuchar personalización visual de ruleta
-    db.collection('systemConfig').doc('overlayAlertsConfig')
-      .onSnapshot((doc) => {
-        if (doc.exists) {
-          const data = doc.data();
-          const root = document.documentElement;
-          if (data.rouletteOpacity !== undefined) {
-            root.style.setProperty('--roulette-bg-opacity', data.rouletteOpacity);
-          }
-          if (data.rouletteRadius !== undefined) {
-            root.style.setProperty('--roulette-border-radius', data.rouletteRadius + 'px');
-          }
-        }
-      }, (error) => {
-         console.warn("No se pudo sincronizar overlayAlertsConfig para roulette:", error);
-      });
-
     if (firebase.auth) {
       firebase.auth().onAuthStateChanged((user) => {
         if (!user) {
@@ -823,43 +805,6 @@ const firebaseConfig = {
                 winnerOverlay.classList.remove('no-card-bg');
               }
             }
-
-            if (data.rouletteSpinDurationMs !== undefined) {
-              config.spinDurationMs = parseInt(data.rouletteSpinDurationMs, 10);
-              const inpDuration = document.getElementById('inp-duration');
-              const valDuration = document.getElementById('val-duration');
-              if (inpDuration) inpDuration.value = config.spinDurationMs;
-              if (valDuration) valDuration.textContent = String(config.spinDurationMs);
-            }
-            if (data.rouletteSpinIntensity !== undefined) {
-              config.spinIntensity = parseInt(data.rouletteSpinIntensity, 10);
-              const inpIntensity = document.getElementById('inp-intensity');
-              const valIntensity = document.getElementById('val-intensity');
-              if (inpIntensity) inpIntensity.value = config.spinIntensity;
-              if (valIntensity) valIntensity.textContent = String(config.spinIntensity);
-            }
-            if (data.rouletteSpinAgainEnabled !== undefined) {
-              config.spinAgainEnabled = !!data.rouletteSpinAgainEnabled;
-              const inpSpinAgain = document.getElementById('inp-spinAgain');
-              if (inpSpinAgain) inpSpinAgain.checked = config.spinAgainEnabled;
-            }
-            if (data.rouletteAllowDuplicates !== undefined) {
-              config.allowDuplicates = !!data.rouletteAllowDuplicates;
-              const inpAllowDuplicates = document.getElementById('inp-allowDuplicates');
-              if (inpAllowDuplicates) inpAllowDuplicates.checked = config.allowDuplicates;
-            }
-            if (data.rouletteRemoveWinnerEnabled !== undefined) {
-              config.removeWinnerEnabled = !!data.rouletteRemoveWinnerEnabled;
-              const inpRemoveWinner = document.getElementById('inp-removeWinner');
-              if (inpRemoveWinner) inpRemoveWinner.checked = config.removeWinnerEnabled;
-            }
-            if (data.rouletteThemeKey !== undefined) {
-              const inpTheme = document.getElementById('inp-theme');
-              if (inpTheme) inpTheme.value = data.rouletteThemeKey;
-              applyTheme(data.rouletteThemeKey, { broadcast: false });
-            }
-            recomputeParticipants();
-            drawWheel();
 
             if (data.rouletteOverlayEnabled !== undefined) {
               applyOverlayEnabled(data.rouletteOverlayEnabled !== false, { broadcast: false });
@@ -1783,7 +1728,9 @@ const firebaseConfig = {
     // Receptor de eventos de mensajería (postMessage) para actualización en tiempo real desde el Dashboard
     window.addEventListener('message', function(event) {
         if (!event.data) return;
-        if (event.data.action === 'updateConfig') {
+        if (event.data.action === 'triggerTestRoulette') {
+            spinWheel();
+        } else if (event.data.action === 'updateConfig') {
             const data = event.data.payload || {};
             const root = document.documentElement;
             
@@ -1821,43 +1768,6 @@ const firebaseConfig = {
                 winnerOverlay.classList.remove('no-card-bg');
               }
             }
-
-            if (data.rouletteSpinDurationMs !== undefined) {
-              config.spinDurationMs = parseInt(data.rouletteSpinDurationMs, 10);
-              const inpDuration = document.getElementById('inp-duration');
-              const valDuration = document.getElementById('val-duration');
-              if (inpDuration) inpDuration.value = config.spinDurationMs;
-              if (valDuration) valDuration.textContent = String(config.spinDurationMs);
-            }
-            if (data.rouletteSpinIntensity !== undefined) {
-              config.spinIntensity = parseInt(data.rouletteSpinIntensity, 10);
-              const inpIntensity = document.getElementById('inp-intensity');
-              const valIntensity = document.getElementById('val-intensity');
-              if (inpIntensity) inpIntensity.value = config.spinIntensity;
-              if (valIntensity) valIntensity.textContent = String(config.spinIntensity);
-            }
-            if (data.rouletteSpinAgainEnabled !== undefined) {
-              config.spinAgainEnabled = !!data.rouletteSpinAgainEnabled;
-              const inpSpinAgain = document.getElementById('inp-spinAgain');
-              if (inpSpinAgain) inpSpinAgain.checked = config.spinAgainEnabled;
-            }
-            if (data.rouletteAllowDuplicates !== undefined) {
-              config.allowDuplicates = !!data.rouletteAllowDuplicates;
-              const inpAllowDuplicates = document.getElementById('inp-allowDuplicates');
-              if (inpAllowDuplicates) inpAllowDuplicates.checked = config.allowDuplicates;
-            }
-            if (data.rouletteRemoveWinnerEnabled !== undefined) {
-              config.removeWinnerEnabled = !!data.rouletteRemoveWinnerEnabled;
-              const inpRemoveWinner = document.getElementById('inp-removeWinner');
-              if (inpRemoveWinner) inpRemoveWinner.checked = config.removeWinnerEnabled;
-            }
-            if (data.rouletteThemeKey !== undefined) {
-              const inpTheme = document.getElementById('inp-theme');
-              if (inpTheme) inpTheme.value = data.rouletteThemeKey;
-              applyTheme(data.rouletteThemeKey, { broadcast: false });
-            }
-            recomputeParticipants();
-            drawWheel();
         }
     });
 

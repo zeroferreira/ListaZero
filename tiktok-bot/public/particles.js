@@ -11,13 +11,14 @@ function initParticles() {
   var height = 0;
   var dpr = window.devicePixelRatio || 1;
   var particles = [];
-  var particleCount = 900;
+  var particleCount = 600;
   var lastTime = 0;
   var rotationX = 0;
   var rotationY = 0;
   var velocityX = 0.00015;
   var velocityY = 0.00025;
   var lastScrollY = window.scrollY || 0;
+  var cachedListScroll = null;
   var currentShape = localStorage.getItem('selectedShape') || 'orb';
 
   function hexToRgba(hex, alpha) {
@@ -128,7 +129,7 @@ function initParticles() {
     
     // Obtener cantidad de partículas guardada o usar default
     var savedCount = localStorage.getItem('particleCount');
-    var defaultCount = isMobile ? 300 : 800; // Default original
+    var defaultCount = isMobile ? 250 : 600; // Reducido para fluidez en scroll
     var targetCount = savedCount ? parseInt(savedCount) : defaultCount;
     
     if (particles.length !== targetCount) {
@@ -228,7 +229,8 @@ function initParticles() {
     var cosY = Math.cos(rotationY);
     var sinY = Math.sin(rotationY);
     var fov = baseRadius * 2;
-    var projected = [];
+    // ❌ projected array eliminado: sort() era O(n log n) en cada frame
+    // Ahora usamos depth fade por alpha (O(1) por partícula)
     
     // Factor de interpolación para transiciones suaves (lerp)
     var lerpFactor = 0.05;
@@ -251,27 +253,22 @@ function initParticles() {
       var scale = fov / (fov + z2 + baseRadius);
       var px = centerX + x1 * scale;
       var py = centerY + y1 * scale;
-      projected.push({ x: px, y: py, z: z2, color: p.color, size: p.size * scale });
-    }
-    projected.sort(function(a, b) { return a.z - b.z; });
-    for (var j = 0; j < projected.length; j++) {
-      var q = projected[j];
+      // Depth fade por alpha en lugar de sort() — O(1) por partícula
+      var depthAlpha = Math.min(1, Math.max(0.15, (z2 + baseRadius) / (baseRadius * 2)));
+      var sz = p.size * scale;
+      ctx.globalAlpha = depthAlpha;
+      ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.fillStyle = q.color;
-      var s = q.size;
-      ctx.arc(q.x, q.y, s, 0, Math.PI * 2);
+      ctx.arc(px, py, sz, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.globalAlpha = 1;
     window.requestAnimationFrame(renderFrame);
   }
 
   function handleScroll() {
-    const listScroll = document.querySelector('.list-scroll-container');
-    var y = listScroll ? listScroll.scrollTop : (window.scrollY || 0);
-    var delta = y - lastScrollY;
-    lastScrollY = y;
-    velocityY += delta * 0.000002;
-    velocityX += delta * 0.000001;
+    velocityY += 0.0001;
+    velocityX += 0.00005;
   }
 
   function boostRotation() {
@@ -295,9 +292,9 @@ function initParticles() {
   
   // Escuchar scroll tanto en window como en el contenedor de la lista
   window.addEventListener('scroll', handleScroll, { passive: true });
-  const listScroll = document.querySelector('.list-scroll-container');
-  if (listScroll) {
-    listScroll.addEventListener('scroll', handleScroll, { passive: true });
+  cachedListScroll = document.querySelector('.list-scroll-container');
+  if (cachedListScroll) {
+    cachedListScroll.addEventListener('scroll', handleScroll, { passive: true });
   }
   window.requestAnimationFrame(renderFrame);
 }

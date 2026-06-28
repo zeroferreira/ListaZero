@@ -417,7 +417,7 @@
 
     // Leer query params
     const params = new URLSearchParams(window.location.search);
-    const isObs = params.get('obs') === 'true' || window.location.search.includes('obs');
+    const isObs = params.get('obs') === 'true' || window.location.search.includes('obs') || (typeof window.obsstudio !== 'undefined');
     const isFullscreen = params.get('fullscreen') === 'true';
     const forceVolume = params.get('volume') ? parseInt(params.get('volume')) : 80;
 
@@ -477,16 +477,34 @@
         .onSnapshot((doc) => {
           if (doc.exists) {
             const data = doc.data();
-            // Comprobar si el timestamp es reciente (tolerancia 2 horas por si se quedó pegado)
             const now = Date.now();
             const ts = data.timestamp || 0;
             if (now - ts < 120 * 60 * 1000) {
-              console.log("🔊 Video activo en Firestore cambió:", data.title);
+              console.log("🔊 Video activo en Firestore cambió:", data.title, "| Estado:", data.state);
               activeTitleEl.innerText = data.title || "Video de YouTube";
               activeArtistEl.innerText = data.artist || "YouTube Creator";
               activeRequesterEl.innerText = data.requester || "N/A";
-              loadVideo(data.videoId);
+              
+              if (data.state === 'ended' || !data.videoId) {
+                  showIdle();
+              } else {
+                  // Cargar o cambiar de video si es diferente
+                  const currentVideoId = ytPlayer && typeof ytPlayer.getVideoData === 'function' && ytPlayer.getVideoData()
+                      ? ytPlayer.getVideoData().video_id
+                      : null;
+                      
+                  if (data.videoId && data.videoId !== currentVideoId) {
+                      loadVideo(data.videoId);
+                  }
+                  
+                  // Sincronizar estado de reproducción (play/pause/stop)
+                  syncPlaybackState(data.state);
+              }
+            } else {
+              showIdle();
             }
+          } else {
+            showIdle();
           }
         }, (err) => console.error("Error leyendo video activo:", err));
     }
@@ -590,6 +608,7 @@
             title: req.cancion,
             artist: req.artista,
             requester: req.displayName || req.usuario,
+            state: 'playing',
             timestamp: Date.now()
           });
           console.log("✅ Actualizada configuración de video activo en Firestore");
@@ -634,6 +653,55 @@
       }
     }
 
+    async function updatePlaybackState(state) {
+      if (!db) return;
+      try {
+        await db.collection('systemConfig').doc('activeYoutubeVideo').set({
+          state: state,
+          timestamp: Date.now()
+        }, { merge: true });
+        console.log("✅ Estado de reproducción actualizado en Firestore:", state);
+      } catch (e) {
+        console.error("Error actualizando estado de reproducción:", e);
+      }
+    }
+
+    function syncPlaybackState(state) {
+      const mainLayout = document.getElementById('main-layout');
+      
+      // Control de visibilidad en OBS
+      if (isObs) {
+          if (state === 'playing') {
+              mainLayout.style.display = 'flex';
+          } else {
+              mainLayout.style.display = 'none';
+          }
+      }
+      
+      // Control del reproductor
+      if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+          try {
+              const playerState = ytPlayer.getPlayerState();
+              if (state === 'playing') {
+                  if (playerState !== YT.PlayerState.PLAYING) {
+                      ytPlayer.playVideo();
+                  }
+                  playerBar.style.display = 'flex';
+                  idleScreen.style.display = 'none';
+              } else if (state === 'paused') {
+                  if (playerState !== YT.PlayerState.PAUSED) {
+                      ytPlayer.pauseVideo();
+                  }
+              } else if (state === 'ended') {
+                  ytPlayer.stopVideo();
+                  showIdle();
+              }
+          } catch (e) {
+              console.warn("Error en syncPlaybackState:", e);
+          }
+      }
+    }
+
     function createPlayer(videoId) {
       ytPlayer = new YT.Player('yt-player', {
         host: 'https://www.youtube-nocookie.com',
@@ -654,10 +722,16 @@
           'onReady': (event) => {
             event.target.setVolume(forceVolume);
             event.target.playVideo();
+            if (!isObs) updatePlaybackState('playing');
           },
           'onStateChange': (event) => {
-            if (event.data === YT.PlayerState.ENDED) {
+            if (event.data === YT.PlayerState.PLAYING) {
+              if (!isObs) updatePlaybackState('playing');
+            } else if (event.data === YT.PlayerState.PAUSED) {
+              if (!isObs) updatePlaybackState('paused');
+            } else if (event.data === YT.PlayerState.ENDED) {
               console.log("🏁 Video finalizado");
+              if (!isObs) updatePlaybackState('ended');
               showIdle();
             }
           }
@@ -672,6 +746,8 @@
       playerBar.style.display = 'none';
       if (isObs) {
         idleScreen.style.display = 'none';
+        const mainLayout = document.getElementById('main-layout');
+        if (mainLayout) mainLayout.style.display = 'none';
       } else {
         idleScreen.style.display = 'flex';
         setTimeout(() => {
@@ -683,7 +759,10 @@
     // --- Escuchar Mensajes (para pruebas y simulación desde el Dashboard) ---
     window.addEventListener('message', (event) => {
       const msg = event.data || {};
-      if (msg.action === 'triggerTestAlert' && msg.payload) {
+      if (msg.action === 'stopVideo') {
+        console.log("⏹️ Mensaje local: Detener Video");
+        showIdle();
+      } else if (msg.action === 'triggerTestAlert' && msg.payload) {
         const payload = msg.payload;
         if (payload.type === 'playbackStatus.nowPlayingItemDidChange' && payload.data) {
           const track = payload.data;

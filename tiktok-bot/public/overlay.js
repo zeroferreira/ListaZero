@@ -1322,7 +1322,9 @@
     // Receptor de eventos de mensajería (postMessage) para actualización en tiempo real desde el Dashboard
     window.addEventListener('message', function(event) {
         if (!event.data) return;
-        if (event.data.action === 'updateConfig') {
+        if (event.data.action === 'simulateRequest') {
+            simulateRequest();
+        } else if (event.data.action === 'updateConfig') {
             const data = event.data.payload || {};
             if (data.playerOpacity !== undefined) window.playerOpacityOverride = data.playerOpacity;
             if (data.playerRadius !== undefined) window.playerRadiusOverride = data.playerRadius;

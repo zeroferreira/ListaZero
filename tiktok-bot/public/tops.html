@@ -1,0 +1,1871 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0820" />
+  <title>TOPs 🏆 — Zero FM</title>
+  <meta name="description" content="Hall of Fame de Zero FM — Top Likers y Top Donadores del live." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root {
+      --font-title: 'Poppins', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --bg: #05030a;
+      --bg-secondary: #0b0716;
+      --card-bg: rgba(255, 255, 255, 0.03);
+      --card-hover: rgba(255, 255, 255, 0.07);
+      --primary: #ff4d9d;
+      --secondary: #8a5cff;
+      --accent: #fdbb2d;
+      --success: #00e676;
+      --text: #ffffff;
+      --text-muted: #8d8c9e;
+      --border: rgba(255, 255, 255, 0.06);
+      --r: 22px;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bot: env(safe-area-inset-bottom, 0px);
+    }
+    
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow-x: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* BG Orbs & Premium Radial Gradients */
+    .bg {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.18;
+      animation: drift 15s ease-in-out infinite alternate;
+    }
+    .o1 {
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, var(--secondary), transparent 70%);
+      top: -150px;
+      left: -120px;
+      animation-duration: 18s;
+    }
+    .o2 {
+      width: 450px;
+      height: 450px;
+      background: radial-gradient(circle, var(--primary), transparent 70%);
+      bottom: -120px;
+      right: -100px;
+      animation-duration: 14s;
+      animation-delay: -7s;
+    }
+    .o3 {
+      width: 350px;
+      height: 350px;
+      background: radial-gradient(circle, var(--accent), transparent 70%);
+      top: 35%;
+      left: 45%;
+      opacity: 0.12;
+      animation-duration: 20s;
+      animation-delay: -5s;
+    }
+    @keyframes drift {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(40px, 40px) scale(1.15); }
+    }
+
+    /* Noise Texture Overlay */
+    .bg::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0.02;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    }
+
+    /* Layout */
+    .page {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      padding-top: var(--safe-top);
+      padding-bottom: var(--safe-bot);
+      max-width: 1300px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 72px;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(9, 6, 18, 0.7);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .status-indicator-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0, 230, 118, 0.08);
+      border: 1px solid rgba(0, 230, 118, 0.15);
+      color: var(--success);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .status-indicator-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+    }
+    .update-text {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .back {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .back:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+      color: var(--text);
+      transform: translateX(-2px);
+    }
+    .hc {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .htitle {
+      font-family: var(--font-title);
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--text), var(--text-muted));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hsub {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-left: 4px;
+    }
+
+    .live-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 50px;
+      background: rgba(0, 230, 118, 0.1);
+      border: 1px solid rgba(0, 230, 118, 0.2);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--success);
+      transition: all 0.3s ease;
+    }
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: lpulse 1.8s infinite;
+      box-shadow: 0 0 8px var(--success);
+    }
+    @keyframes lpulse {
+      0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 8px var(--success); }
+      50% { opacity: 0.4; transform: scale(0.85); box-shadow: 0 0 2px var(--success); }
+    }
+    .live-badge.off {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: var(--border);
+      color: var(--text-muted);
+    }
+    .live-badge.off .live-dot {
+      background: var(--text-muted);
+      animation: none;
+      box-shadow: none;
+    }
+
+    /* Hero */
+    .hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 24px 16px;
+      gap: 12px;
+      text-align: center;
+    }
+    .trophy-wrapper {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+    .trophy-glow {
+      position: absolute;
+      width: 140px;
+      height: 140px;
+      background: radial-gradient(circle, rgba(253, 187, 45, 0.25) 0%, rgba(253, 187, 45, 0.05) 55%, transparent 75%);
+      border-radius: 50%;
+      filter: blur(12px);
+      z-index: -1;
+      pointer-events: none;
+      animation: trophy-glow-pulse 4s ease-in-out infinite;
+    }
+    @keyframes trophy-glow-pulse {
+      0%, 100% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.25); opacity: 1.1; }
+    }
+    .trophy {
+      font-size: 64px;
+      line-height: 1;
+      animation: tbounce 4s ease-in-out infinite;
+      filter: drop-shadow(0 0 24px rgba(253, 187, 45, 0.4));
+    }
+    @keyframes tbounce {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-8px) scale(1.05); }
+    }
+    .hero h1 {
+      font-family: var(--font-title);
+      font-size: 42px;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--primary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -1.5px;
+    }
+    .hero p {
+      font-size: 14px;
+      color: var(--text-muted);
+      max-width: 400px;
+    }
+
+    /* Tabs Segmented Control */
+    .tabs-wrap {
+      padding: 16px 24px;
+      position: sticky;
+      top: 72px;
+      z-index: 90;
+      background: rgba(9, 6, 18, 0.6);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      margin-bottom: 24px;
+    }
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 5px;
+      max-width: 780px;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      padding: 4px;
+      border-radius: 50px;
+    }
+    .tab {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 9px 10px;
+      border-radius: 50px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-title);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      white-space: nowrap;
+    }
+    .tab:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .tab.al {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: var(--text);
+      border-color: rgba(255, 77, 157, 0.3);
+      box-shadow: 0 4px 16px rgba(255, 77, 157, 0.3);
+    }
+    .tab.ag {
+      background: linear-gradient(135deg, #00d4ff, var(--success));
+      color: var(--text);
+      border-color: rgba(0, 230, 118, 0.3);
+      box-shadow: 0 4px 16px rgba(0, 230, 118, 0.3);
+    }
+    .tab.aq {
+      background: linear-gradient(135deg, #ff1a6e, #ff80c8);
+      color: var(--text);
+      border-color: rgba(255, 26, 110, 0.4);
+      box-shadow: 0 4px 16px rgba(255, 26, 110, 0.4);
+    }
+    .tab.am {
+      background: linear-gradient(135deg, #a855f7, #fbbf24);
+      color: var(--text);
+      border-color: rgba(168, 85, 247, 0.4);
+      box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4);
+    }
+    .uline {
+      height: 3px;
+      background: rgba(255, 255, 255, 0.05);
+      margin: 12px auto 0;
+      border-radius: 10px;
+      max-width: 780px;
+      position: relative;
+    }
+    .uthumb {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      width: 33.33%;
+      border-radius: 10px;
+      background: linear-gradient(90deg, var(--primary), var(--secondary));
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), background 0.35s;
+    }
+    .uthumb.g {
+      transform: translateX(100%);
+      background: linear-gradient(90deg, #00d4ff, var(--success));
+    }
+    .uthumb.q {
+      transform: translateX(200%);
+      background: linear-gradient(90deg, #ff1a6e, #ff80c8);
+    }
+    .uthumb.m {
+      transform: translateX(300%);
+      background: linear-gradient(90deg, #a855f7, #fbbf24);
+    }
+
+    /* Content Area */
+    .content {
+      flex: 1;
+      padding: 0 24px 48px;
+      max-width: 900px;
+      width: 100%;
+      margin: 0 auto;
+      z-index: 5;
+    }
+    .panel {
+      display: none;
+    }
+    .panel.active {
+      display: block;
+    }
+
+    /* States */
+    .st-load {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 80px 24px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    .spin {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 3.5px solid rgba(255, 255, 255, 0.05);
+      border-top-color: var(--primary);
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .st-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 80px 24px;
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.8;
+      text-align: center;
+    }
+    .st-empty .eico {
+      font-size: 56px;
+      margin-bottom: 8px;
+    }
+    .st-empty strong {
+      display: block;
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .st-err {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 60px 24px;
+      color: #ff5252;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    /* Podium Layout */
+    .podium {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr 1fr;
+      gap: 16px;
+      align-items: flex-end;
+      margin-bottom: 32px;
+      padding-top: 24px;
+    }
+    .pitem {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 16px 10px 14px;
+      border-radius: var(--r);
+      /* Glassmorphism base */
+      background: linear-gradient(135deg,
+        rgba(255, 255, 255, 0.06) 0%,
+        rgba(255, 255, 255, 0.02) 50%,
+        rgba(138, 92, 255, 0.04) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(32px) saturate(160%);
+      -webkit-backdrop-filter: blur(32px) saturate(160%);
+      box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+      position: relative;
+      overflow: visible;
+      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .pitem:hover {
+      transform: translateY(-6px) scale(1.02);
+      background: linear-gradient(135deg,
+        rgba(255, 255, 255, 0.1) 0%,
+        rgba(255, 255, 255, 0.04) 50%,
+        rgba(138, 92, 255, 0.08) 100%);
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+    
+    /* 1st – gold glass tint */
+    .p1 {
+      height: 185px;
+      background: linear-gradient(135deg,
+        rgba(253, 187, 45, 0.10) 0%,
+        rgba(255, 255, 255, 0.04) 50%,
+        rgba(253, 187, 45, 0.05) 100%) !important;
+      border-color: rgba(253, 187, 45, 0.35);
+      box-shadow:
+        0 16px 48px rgba(253, 187, 45, 0.15),
+        inset 0 1px 0 rgba(253, 187, 45, 0.25),
+        inset 0 -1px 0 rgba(253, 187, 45, 0.08);
+      z-index: 10;
+      transform: translateY(-20px);
+    }
+    .p1:hover {
+      border-color: rgba(253, 187, 45, 0.7);
+      box-shadow:
+        0 20px 60px rgba(253, 187, 45, 0.3),
+        inset 0 1px 0 rgba(253, 187, 45, 0.4);
+      transform: translateY(-26px) scale(1.02);
+    }
+    /* 2nd – cyan glass tint */
+    .p2 {
+      height: 185px;
+      background: linear-gradient(135deg,
+        rgba(0, 212, 255, 0.08) 0%,
+        rgba(255, 255, 255, 0.03) 50%,
+        rgba(0, 212, 255, 0.04) 100%) !important;
+      border-color: rgba(0, 212, 255, 0.35);
+      box-shadow:
+        0 12px 40px rgba(0, 212, 255, 0.12),
+        inset 0 1px 0 rgba(0, 212, 255, 0.2),
+        inset 0 -1px 0 rgba(0, 212, 255, 0.05);
+    }
+    .p2:hover {
+      border-color: rgba(0, 212, 255, 0.7);
+      box-shadow:
+        0 16px 50px rgba(0, 212, 255, 0.28),
+        inset 0 1px 0 rgba(0, 212, 255, 0.35);
+    }
+    /* 3rd – pink glass tint */
+    .p3 {
+      height: 185px;
+      background: linear-gradient(135deg,
+        rgba(255, 77, 157, 0.08) 0%,
+        rgba(255, 255, 255, 0.03) 50%,
+        rgba(255, 77, 157, 0.04) 100%) !important;
+      border-color: rgba(255, 77, 157, 0.35);
+      box-shadow:
+        0 12px 40px rgba(255, 77, 157, 0.12),
+        inset 0 1px 0 rgba(255, 77, 157, 0.2),
+        inset 0 -1px 0 rgba(255, 77, 157, 0.05);
+    }
+    .p3:hover {
+      border-color: rgba(255, 77, 157, 0.7);
+      box-shadow:
+        0 16px 50px rgba(255, 77, 157, 0.28),
+        inset 0 1px 0 rgba(255, 77, 157, 0.35);
+    }
+
+    /* Hanging Ribbon Medal — tab invisible, only circle + tail show */
+    .pmed-ribbon {
+      position: absolute;
+      top: -28px;          /* sit just above the card border */
+      left: 50%;
+      transform: translateX(-50%);
+      width: 14px;         /* thin tab almost invisible */
+      height: 14px;
+      border-radius: 3px 3px 0 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: none;
+    }
+    /* Circle hangs right below the tiny tab */
+    .pmed-ribbon::before {
+      content: '';
+      position: absolute;
+      top: 8px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      z-index: 2;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.55), inset 0 1px 3px rgba(255, 255, 255, 0.2);
+      border: 2px solid;
+    }
+    .pmed-num {
+      position: absolute;
+      top: 15px;
+      z-index: 5;
+      font-size: 14px;
+      font-weight: 800;
+      font-family: var(--font-title);
+      color: #ffffff;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    }
+    /* Tail sits right below the circle */
+    .pmed-ribbon::after {
+      content: '';
+      position: absolute;
+      top: 38px;           /* circle height (36) + 2px gap */
+      width: 14px;
+      height: 18px;
+      z-index: 1;
+      clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 50% 80%, 0% 100%);
+    }
+
+    /* 1st Place (Gold Medal) */
+    .r-1 {
+      background: linear-gradient(to bottom, #ffe875, #cfa013);
+      border: 1px solid rgba(253, 187, 45, 0.4);
+    }
+    .r-1::before {
+      background: radial-gradient(circle, #fdee60 20%, #fdbb2d 55%, #c8880e 100%);
+      border-color: #ffe875;
+    }
+    .r-1::after {
+      /* Gold tail — same palette as the circle */
+      background: linear-gradient(to bottom, #f5c518, #d4930a);
+    }
+
+    /* 2nd Place (Silver Medal) */
+    .r-2 {
+      background: linear-gradient(to bottom, #ffffff, #8e90a6);
+      border: 1px solid rgba(192, 192, 192, 0.4);
+    }
+    .r-2::before {
+      background: radial-gradient(circle, #b0b3c7 30%, #76788f 100%);
+      border-color: #ffffff;
+    }
+    .r-2::after {
+      background: linear-gradient(to bottom, #00bfff, #00d4ff);
+    }
+
+    /* 3rd Place (Bronze Medal) */
+    .r-3 {
+      background: linear-gradient(to bottom, #f2a679, #9e5b32);
+      border: 1px solid rgba(205, 127, 50, 0.4);
+    }
+    .r-3::before {
+      background: radial-gradient(circle, #cd7f32 30%, #90531c 100%);
+      border-color: #f2a679;
+    }
+    .r-3::after {
+      background: linear-gradient(to bottom, #ff3366, #ff4d9d);
+    }
+
+    .pawrap {
+      position: relative;
+      margin-top: 28px;
+      margin-bottom: 4px;
+    }
+    /* Glassmorphism ring around avatar */
+    .pawrap::before {
+      content: '';
+      position: absolute;
+      inset: -5px;
+      border-radius: 50%;
+      background: linear-gradient(135deg,
+        rgba(255,255,255,0.18) 0%,
+        rgba(255,255,255,0.04) 50%,
+        rgba(255,255,255,0.10) 100%);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 0;
+    }
+    .pav {
+      position: relative;
+      z-index: 1;
+      border-radius: 50%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.3s ease;
+    }
+    /* All podium avatars same size */
+    .p1 .pav {
+      width: 72px;
+      height: 72px;
+      border: 3px solid rgba(253, 187, 45, 0.9);
+      box-shadow:
+        0 0 0 4px rgba(253, 187, 45, 0.15),
+        0 0 24px rgba(253, 187, 45, 0.5),
+        inset 0 1px 0 rgba(255,255,255,0.3);
+    }
+    .pitem:hover .pav {
+      transform: scale(1.06);
+    }
+    .p2 .pav {
+      width: 72px;
+      height: 72px;
+      border: 3px solid rgba(0, 212, 255, 0.9);
+      box-shadow:
+        0 0 0 4px rgba(0, 212, 255, 0.12),
+        0 0 24px rgba(0, 212, 255, 0.45),
+        inset 0 1px 0 rgba(255,255,255,0.25);
+    }
+    .p3 .pav {
+      width: 72px;
+      height: 72px;
+      border: 3px solid rgba(255, 77, 157, 0.9);
+      box-shadow:
+        0 0 0 4px rgba(255, 77, 157, 0.12),
+        0 0 24px rgba(255, 77, 157, 0.45),
+        inset 0 1px 0 rgba(255,255,255,0.25);
+    }
+
+    /* 🌟 Animated rotating border ring for 1st place */
+    .p1 .pawrap {
+      position: relative;
+    }
+    /* Spinning gradient halo ring around p1 avatar */
+    .p1 .pawrap::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      background: conic-gradient(
+        from var(--ring-angle, 0deg),
+        #fdbb2d 0deg,
+        #ffe875 60deg,
+        #ff4d9d 120deg,
+        #8a5cff 180deg,
+        #00d4ff 240deg,
+        #fdbb2d 300deg,
+        #fdbb2d 360deg
+      );
+      z-index: 0;
+      animation: ringRotate 3s linear infinite;
+      pointer-events: none;
+    }
+    /* White mask to make it look like a border (not a filled circle) */
+    .p1 .pawrap::after {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: 50%;
+      background: transparent;
+      z-index: 0;
+      pointer-events: none;
+      box-shadow: 0 0 18px rgba(253,187,45,0.5), 0 0 40px rgba(253,187,45,0.2);
+      animation: ringGlow 3s ease-in-out infinite;
+    }
+    .p1 .pav {
+      position: relative;
+      z-index: 1;
+    }
+    @keyframes ringRotate {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+    @keyframes ringGlow {
+      0%, 100% { box-shadow: 0 0 14px rgba(253,187,45,0.4), 0 0 30px rgba(253,187,45,0.15); }
+      50%       { box-shadow: 0 0 24px rgba(253,187,45,0.7), 0 0 50px rgba(253,187,45,0.30); }
+    }
+
+    .pcrown {
+      position: absolute;
+      top: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 22px;
+      z-index: 15;
+      animation: crownDance 2.8s ease-in-out infinite;
+      filter: drop-shadow(0 0 8px rgba(253, 187, 45, 0.9)) drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+    }
+    @keyframes crownDance {
+      0%   { transform: translateX(-50%) rotate(-8deg) scale(1);    filter: drop-shadow(0 0 6px rgba(253,187,45,0.7))  drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+      25%  { transform: translateX(-50%) rotate(0deg)  scale(1.15); filter: drop-shadow(0 0 14px rgba(253,187,45,1.0)) drop-shadow(0 2px 6px rgba(0,0,0,0.5)); }
+      50%  { transform: translateX(-50%) rotate(8deg)  scale(1);    filter: drop-shadow(0 0 6px rgba(253,187,45,0.7))  drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+      75%  { transform: translateX(-50%) rotate(0deg)  scale(1.10); filter: drop-shadow(0 0 12px rgba(253,187,45,0.9)) drop-shadow(0 2px 5px rgba(0,0,0,0.5)); }
+      100% { transform: translateX(-50%) rotate(-8deg) scale(1);    filter: drop-shadow(0 0 6px rgba(253,187,45,0.7))  drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+    }
+
+    .pdetails {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      width: 100%;
+    }
+    .pname {
+      font-family: var(--font-title);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      width: 100%;
+      padding: 0 4px;
+    }
+    /* ❤️ Score pill badge */
+    .pscore-compact {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 12px 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      font-family: var(--font-title);
+      letter-spacing: 0.3px;
+      transition: all 0.3s ease;
+      margin-top: 2px;
+    }
+    .pscore-compact.lk {
+      color: #fff;
+      background: linear-gradient(135deg, rgba(200, 30, 100, 0.85) 0%, rgba(255, 60, 140, 0.75) 100%);
+      border: 1px solid rgba(255, 100, 160, 0.6);
+      box-shadow: 0 2px 14px rgba(255, 60, 140, 0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+    .pscore-compact.gf {
+      color: #fff;
+      background: linear-gradient(135deg, rgba(0, 120, 180, 0.85) 0%, rgba(0, 200, 255, 0.75) 100%);
+      border: 1px solid rgba(0, 212, 255, 0.5);
+      box-shadow: 0 2px 14px rgba(0, 212, 255, 0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+    .pitem:hover .pscore-compact {
+      transform: scale(1.07);
+      box-shadow: 0 4px 20px rgba(255, 60, 140, 0.55);
+    }
+
+    /* Rank List Table styling */
+    .sec-lbl {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-title);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin: 40px 0 16px;
+    }
+    .sec-lbl::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .rlist {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .rcard {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      height: 78px;
+      padding: 0 20px;
+      border-radius: 18px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+    .rcard:hover {
+      background: var(--card-hover);
+      border-color: rgba(255, 255, 255, 0.12);
+      transform: translateX(6px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+    
+    .rnum {
+      min-width: 36px;
+      font-family: var(--font-title);
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--text-muted);
+      text-align: center;
+      flex-shrink: 0;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      width: 32px;
+      height: 32px;
+      line-height: 30px;
+      border-radius: 50%;
+    }
+    .rcard:hover .rnum {
+      color: var(--text);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .rav {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      display: block;
+      flex-shrink: 0;
+      transition: transform 0.2s ease;
+    }
+    .rcard:hover .rav {
+      transform: scale(1.05);
+    }
+
+    .rinfo {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .rnick {
+      font-family: var(--font-title);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ruser {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .rscore {
+      flex-shrink: 0;
+      padding: 6px 16px;
+      border-radius: 50px;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.3s ease;
+    }
+    .rscore.lk {
+      background: linear-gradient(135deg, rgba(255, 77, 157, 0.12), rgba(138, 92, 255, 0.12));
+      border: 1px solid rgba(255, 77, 157, 0.3);
+      color: #ff80c8;
+    }
+    .rscore.lk:hover {
+      background: linear-gradient(135deg, rgba(255, 77, 157, 0.2), rgba(138, 92, 255, 0.2));
+      box-shadow: 0 0 16px rgba(255, 77, 157, 0.4);
+    }
+    .rscore.gf {
+      background: linear-gradient(135deg, rgba(0, 212, 255, 0.12), rgba(0, 230, 118, 0.12));
+      border: 1px solid rgba(0, 212, 255, 0.3);
+      color: #4ff0c8;
+    }
+    .rscore.gf:hover {
+      background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 230, 118, 0.2));
+      box-shadow: 0 0 16px rgba(0, 212, 255, 0.4);
+    }
+    .rscore.qr {
+      background: linear-gradient(135deg, rgba(255, 26, 110, 0.12), rgba(255, 128, 200, 0.12));
+      border: 1px solid rgba(255, 26, 110, 0.35);
+      color: #ff80c8;
+    }
+    .rscore.qr:hover {
+      background: linear-gradient(135deg, rgba(255, 26, 110, 0.22), rgba(255, 128, 200, 0.22));
+      box-shadow: 0 0 16px rgba(255, 26, 110, 0.45);
+    }
+    .pscore-compact.qr {
+      color: #fff;
+      background: linear-gradient(135deg, rgba(200, 10, 80, 0.85) 0%, rgba(255, 80, 160, 0.75) 100%);
+      border: 1px solid rgba(255, 80, 160, 0.6);
+      box-shadow: 0 2px 14px rgba(255, 26, 110, 0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+    .rscore.mb {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(251, 191, 36, 0.12));
+      border: 1px solid rgba(168, 85, 247, 0.35);
+      color: #c084fc;
+    }
+    .rscore.mb:hover {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.22), rgba(251, 191, 36, 0.22));
+      box-shadow: 0 0 16px rgba(168, 85, 247, 0.45);
+    }
+    .pscore-compact.mb {
+      color: #fff;
+      background: linear-gradient(135deg, rgba(120, 40, 200, 0.85) 0%, rgba(251, 191, 36, 0.75) 100%);
+      border: 1px solid rgba(168, 85, 247, 0.6);
+      box-shadow: 0 2px 14px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+
+    /* ── Member / Subscriber badge ── */
+    .member-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 800;
+      font-family: var(--font-title);
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+      background: linear-gradient(135deg, rgba(253,187,45,0.18) 0%, rgba(255,77,157,0.18) 100%);
+      border: 1px solid rgba(253,187,45,0.45);
+      color: #fdd76a;
+      box-shadow: 0 0 8px rgba(253,187,45,0.2);
+      animation: memberShimmer 3s ease-in-out infinite;
+    }
+    .member-badge .mb-star {
+      font-size: 10px;
+      line-height: 1;
+    }
+    @keyframes memberShimmer {
+      0%,100% { box-shadow: 0 0 6px rgba(253,187,45,0.2); }
+      50%      { box-shadow: 0 0 14px rgba(253,187,45,0.5); border-color: rgba(253,187,45,0.8); }
+    }
+    /* Smaller version for rcard rows */
+    .rinfo .member-badge {
+      font-size: 9px;
+      padding: 1px 6px;
+      margin-top: 1px;
+      align-self: flex-start;
+    }
+
+    /* Update bar & Debug */
+    .ubar {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 16px 24px 8px;
+      opacity: 0.8;
+      font-weight: 500;
+    }
+    #debug-bar {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.25);
+      text-align: center;
+      padding: 4px 24px 24px;
+      font-family: monospace;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* ── Score update bump animation (no DOM rebuild) ── */
+    @keyframes scoreBump {
+      0%   { transform: scale(1);    filter: brightness(1); }
+      40%  { transform: scale(1.18); filter: brightness(1.6); }
+      70%  { transform: scale(0.96); filter: brightness(1.2); }
+      100% { transform: scale(1);    filter: brightness(1); }
+    }
+    .score-bump {
+      animation: scoreBump 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    /* Responsive adjustments */
+    @media(max-width: 768px) {
+
+      .podium {
+        grid-template-columns: 1fr;
+        gap: 32px;
+        align-items: center;
+        padding-top: 24px;
+      }
+      .pitem {
+        height: auto !important;
+        padding: 48px 16px 20px; /* extra top padding makes room for medal circle */
+      }
+      .p1 { order: 1; }
+      .p2 { order: 2; }
+      .p3 { order: 3; }
+
+      /* On mobile: hide the rectangular ribbon tab, keep only the circle */
+      .pmed-ribbon {
+        top: -22px;        /* pull the element up so only the circle peeks above */
+        width: 0;
+        height: 0;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
+      /* Circle sits cleanly centered above the card */
+      .pmed-ribbon::before {
+        top: 0;
+        width: 40px;
+        height: 40px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.6), inset 0 1px 3px rgba(255,255,255,0.25);
+      }
+      .pmed-num {
+        top: 6px;
+        font-size: 15px;
+      }
+      /* Hide the swallowtail ribbon tail on mobile */
+      .pmed-ribbon::after {
+        display: block; /* keep the tail visible */
+      }
+
+      /* Avatars a bit larger on mobile for comfort */
+      .p1 .pav, .p2 .pav, .p3 .pav {
+        width: 80px;
+        height: 80px;
+      }
+      /* Remove the extra top margin since pitem already has top padding */
+      .pawrap {
+        margin-top: 0;
+      }
+
+      .hero h1 {
+        font-size: 32px;
+      }
+      .header {
+        padding: 0 16px;
+      }
+      .header-right .update-text {
+        display: none; /* hide on small screens */
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg" aria-hidden="true">
+    <div class="orb o1"></div>
+    <div class="orb o2"></div>
+    <div class="orb o3"></div>
+    <svg viewBox="0 0 1440 500" preserveAspectRatio="none" fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style="position:absolute;width:100%;height:60%;top:20%;left:0;pointer-events:none;z-index:-1;overflow:visible">
+      <defs>
+        <linearGradient id="neonGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stop-color="#8a5cff"/>
+          <stop offset="50%"  stop-color="#ff4d9d"/>
+          <stop offset="100%" stop-color="#00d4ff"/>
+        </linearGradient>
+        <!-- Trail gradient: transparent tail → bright head -->
+        <linearGradient id="waveTrail" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stop-color="#8a5cff" stop-opacity="0"/>
+          <stop offset="45%"  stop-color="#a855f7" stop-opacity="0.35"/>
+          <stop offset="75%"  stop-color="#ff4d9d" stop-opacity="0.88"/>
+          <stop offset="92%"  stop-color="#f0abfc" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#00d4ff" stop-opacity="1"/>
+        </linearGradient>
+        <!-- Glow: blur + source layered -->
+        <filter id="waveGlow" x="-5%" y="-400%" width="110%" height="900%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+        <!-- Wide halo blur -->
+        <filter id="haloGlow" x="-20%" y="-600%" width="140%" height="1300%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="16"/>
+        </filter>
+        <!-- Sparkle point glow -->
+        <filter id="sparkGlow" x="-300%" y="-300%" width="700%" height="700%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+        </filter>
+      </defs>
+
+      <!--
+        ARCHITECTURE (no conflicts):
+        Layer 1 – Morphing ghost  → animate d ONLY, no dashoffset
+        Layer 2 – Traveling dash  → dashoffset ONLY, static d
+        Layer 3 – Sparkles        → animateMotion on static d
+      -->
+
+      <!-- LAYER 1a: ghost reference curve — morphs slowly, fully opaque-ish -->
+      <path d="M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+        stroke="url(#neonGradient)" stroke-width="1.2" stroke-linecap="round" opacity="0.06">
+        <animate attributeName="d"
+          values="
+            M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240;
+            M-80 370 C 195 195, 445 428, 762 262 C 1002 130, 1258 376, 1520 256;
+            M-80 310 C 175 130, 518 490, 798 296 C 1038 108, 1225 344, 1520 226;
+            M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+          dur="20s" repeatCount="indefinite"
+          calcMode="spline"
+          keySplines="0.45 0 0.55 1; 0.45 0 0.55 1; 0.45 0 0.55 1"/>
+      </path>
+
+      <!-- LAYER 1b: morphing wide halo behind (animate d only, NO dashoffset) -->
+      <path d="M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+        stroke="url(#neonGradient)" stroke-width="36" stroke-linecap="round" opacity="0.04"
+        filter="url(#haloGlow)">
+        <animate attributeName="d"
+          values="
+            M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240;
+            M-80 370 C 195 195, 445 428, 762 262 C 1002 130, 1258 376, 1520 256;
+            M-80 310 C 175 130, 518 490, 798 296 C 1038 108, 1225 344, 1520 226;
+            M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+          dur="20s" repeatCount="indefinite"
+          calcMode="spline"
+          keySplines="0.45 0 0.55 1; 0.45 0 0.55 1; 0.45 0 0.55 1"/>
+      </path>
+
+      <!-- LAYER 2a: sharp traveling line — STATIC path, dashoffset only -->
+      <path stroke-dasharray="440 1800"
+        d="M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+        stroke="url(#waveTrail)" stroke-width="2.5" stroke-linecap="round"
+        filter="url(#waveGlow)">
+        <animate attributeName="stroke-dashoffset"
+          values="1800;-440" dur="6s" repeatCount="indefinite"
+          calcMode="linear"/>
+      </path>
+
+      <!-- LAYER 2b: medium glow — STATIC path, dashoffset only -->
+      <path stroke-dasharray="440 1800"
+        d="M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+        stroke="url(#waveTrail)" stroke-width="10" stroke-linecap="round" opacity="0.32"
+        filter="url(#waveGlow)">
+        <animate attributeName="stroke-dashoffset"
+          values="1800;-440" dur="6s" repeatCount="indefinite"
+          calcMode="linear"/>
+      </path>
+
+      <!-- LAYER 2c: wide diffuse halo — STATIC path, dashoffset only -->
+      <path stroke-dasharray="440 1800"
+        d="M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+        stroke="url(#waveTrail)" stroke-width="36" stroke-linecap="round" opacity="0.08"
+        filter="url(#haloGlow)">
+        <animate attributeName="stroke-dashoffset"
+          values="1800;-440" dur="6s" repeatCount="indefinite"
+          calcMode="linear"/>
+      </path>
+
+      <!-- LAYER 3: sparkles on the same static path -->
+      <!-- Sparkle A — white leading dot -->
+      <circle r="4" fill="#ffffff" opacity="0" filter="url(#sparkGlow)">
+        <animateMotion path="M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+          dur="6s" repeatCount="indefinite" calcMode="linear"/>
+        <animate attributeName="opacity" values="0;0;1;1;0.8;0"   keyTimes="0;0.04;0.1;0.75;0.92;1" dur="6s" repeatCount="indefinite"/>
+        <animate attributeName="r"       values="1;4;7;5;3;1"     keyTimes="0;0.04;0.12;0.65;0.9;1"  dur="6s" repeatCount="indefinite"/>
+      </circle>
+
+      <!-- Sparkle B — magenta (2s behind) -->
+      <circle r="3" fill="#ff4d9d" opacity="0" filter="url(#sparkGlow)">
+        <animateMotion path="M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+          dur="6s" begin="-2s" repeatCount="indefinite" calcMode="linear"/>
+        <animate attributeName="opacity" values="0;0;0.8;0.5;0.15;0" keyTimes="0;0.08;0.18;0.55;0.8;1" dur="6s" begin="-2s" repeatCount="indefinite"/>
+        <animate attributeName="r"       values="1;3;5;3;1.5;0"       keyTimes="0;0.08;0.2;0.55;0.8;1" dur="6s" begin="-2s" repeatCount="indefinite"/>
+      </circle>
+
+      <!-- Sparkle C — violet (4s behind) -->
+      <circle r="2.5" fill="#a855f7" opacity="0" filter="url(#sparkGlow)">
+        <animateMotion path="M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+          dur="6s" begin="-4s" repeatCount="indefinite" calcMode="linear"/>
+        <animate attributeName="opacity" values="0;0;0.6;0.35;0.05;0" keyTimes="0;0.08;0.2;0.55;0.8;1" dur="6s" begin="-4s" repeatCount="indefinite"/>
+      </circle>
+
+      <!-- Sparkle D — cyan tip twinkle -->
+      <circle r="2" fill="#00d4ff" opacity="0">
+        <animateMotion path="M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+          dur="6s" begin="-0.3s" repeatCount="indefinite" calcMode="linear"/>
+        <animate attributeName="opacity" values="0;0.9;0;0.9;0;0" keyTimes="0;0.44;0.48;0.52;0.56;1" dur="6s" begin="-0.3s" repeatCount="indefinite"/>
+        <animate attributeName="r"       values="1;5;1;5;1;1"     keyTimes="0;0.44;0.48;0.52;0.56;1" dur="6s" begin="-0.3s" repeatCount="indefinite"/>
+      </circle>
+
+      <!-- Sparkle E — gold (5s behind) -->
+      <circle r="2" fill="#fdbb2d" opacity="0" filter="url(#sparkGlow)">
+        <animateMotion path="M-80 340 C 160 160, 480 460, 780 280 C 1020 120, 1240 360, 1520 240"
+          dur="6s" begin="-5s" repeatCount="indefinite" calcMode="linear"/>
+        <animate attributeName="opacity" values="0;0;0.7;0.4;0;0" keyTimes="0;0.1;0.22;0.5;0.7;1" dur="6s" begin="-5s" repeatCount="indefinite"/>
+        <animate attributeName="r"       values="1;2;4;2;1;1"     keyTimes="0;0.1;0.25;0.5;0.7;1" dur="6s" begin="-5s" repeatCount="indefinite"/>
+      </circle>
+    </svg>
+
+  
+  </div>
+
+  <div class="page">
+    <!-- HEADER -->
+    <header class="header">
+      <div class="header-left">
+        <a href="lista.html" class="back" aria-label="Volver"><i data-lucide="chevron-left" style="width: 20px; height: 20px;"></i></a>
+        <div class="hc">
+          <span class="htitle"><i data-lucide="trophy" style="width: 18px; height: 18px; color: var(--accent); display: inline-block; vertical-align: middle; margin-top:-3px; margin-right:4px;"></i> Hall of Fame</span>
+          <span class="hsub">ZERO FM</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="status-indicator-pill"><span class="status-indicator-dot"></span> EN LÍNEA</div>
+        <span class="update-text">• Actualizado en tiempo real</span>
+        <div class="live-badge off" id="live-status">
+          <div class="live-dot"></div>
+          <span>Offline</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- HERO -->
+    <div class="hero">
+      <div class="trophy-wrapper">
+        <div class="trophy-glow"></div>
+        <div class="trophy">🏆</div>
+      </div>
+      <h1>Los Mejores del Live</h1>
+      <p>Datos en tiempo real desde el stream de TikTok</p>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs-wrap">
+      <div class="tabs" role="tablist">
+        <button class="tab al" id="btn-likers" role="tab" aria-selected="true" aria-controls="panel-likers">
+          <i data-lucide="heart" style="width: 13px; height: 13px;"></i> Likers
+        </button>
+        <button class="tab" id="btn-gifters" role="tab" aria-selected="false" aria-controls="panel-gifters">
+          <i data-lucide="gem" style="width: 13px; height: 13px;"></i> Donadores
+        </button>
+        <button class="tab" id="btn-quiereme" role="tab" aria-selected="false" aria-controls="panel-quiereme">
+          💙 Quéreme
+        </button>
+        <button class="tab" id="btn-members" role="tab" aria-selected="false" aria-controls="panel-members">
+          ⭐ Miembros
+        </button>
+      </div>
+      <div class="uline"><div class="uthumb" id="uthumb"></div></div>
+    </div>
+
+    <!-- CONTENT -->
+    <main class="content">
+      <!-- Likers Panel -->
+      <div class="panel active" id="panel-likers" role="tabpanel">
+        <div class="st-load" id="likers-loading"><div class="spin"></div><span>Cargando ranking...</span></div>
+        <div id="likers-body" hidden></div>
+        <div class="st-empty" id="likers-empty" hidden><span class="eico"><i data-lucide="heart-off" style="width: 48px; height: 48px; opacity: 0.5;"></i></span><strong>Aún no hay likers</strong>Dale like al live para aparecer aquí</div>
+        <div class="st-err" id="likers-error" hidden><span><i data-lucide="alert-triangle" style="width: 32px; height: 32px; color: #ff5252;"></i></span><p>No se pudo cargar el ranking.</p></div>
+      </div>
+      <!-- Gifters Panel -->
+      <div class="panel" id="panel-gifters" role="tabpanel">
+        <div class="st-load" id="gifters-loading"><div class="spin"></div><span>Cargando ranking...</span></div>
+        <div id="gifters-body" hidden></div>
+        <div class="st-empty" id="gifters-empty" hidden><span class="eico"><i data-lucide="gift" style="width: 48px; height: 48px; opacity: 0.5;"></i></span><strong>Aún no hay donadores</strong>¡Sé el primero en donar!</div>
+        <div class="st-err" id="gifters-error" hidden><span><i data-lucide="alert-triangle" style="width: 32px; height: 32px; color: #ff5252;"></i></span><p>No se pudo cargar el ranking.</p></div>
+      </div>
+      <!-- Quiéreme Panel -->
+      <div class="panel" id="panel-quiereme" role="tabpanel">
+        <div class="st-load" id="quiereme-loading"><div class="spin"></div><span>Cargando ranking...</span></div>
+        <div id="quiereme-body" hidden></div>
+        <div class="st-empty" id="quiereme-empty" hidden><span class="eico">💙</span><strong>Aún no hay regalos Quiéreme</strong>¡Sé el primero en enviar el regalo!</div>
+        <div class="st-err" id="quiereme-error" hidden><span><i data-lucide="alert-triangle" style="width: 32px; height: 32px; color: #ff5252;"></i></span><p>No se pudo cargar el ranking.</p></div>
+      </div>
+      <!-- Miembros Panel -->
+      <div class="panel" id="panel-members" role="tabpanel">
+        <div class="st-load" id="members-loading"><div class="spin"></div><span>Cargando miembros...</span></div>
+        <div id="members-body" hidden></div>
+        <div class="st-empty" id="members-empty" hidden><span class="eico">⭐</span><strong>Aún no hay miembros registrados</strong>Los miembros aparecen aquí cuando interactúan en el live</div>
+        <div class="st-err" id="members-error" hidden><span><i data-lucide="alert-triangle" style="width: 32px; height: 32px; color: #ff5252;"></i></span><p>No se pudo cargar el ranking.</p></div>
+      </div>
+    </main>
+
+    <div class="ubar" id="ubar"></div>
+    <!-- Debug status visible -->
+    <div id="debug-bar" style="font-size:11px;color:rgba(255,255,255,0.35);text-align:center;padding:4px 16px 12px;font-family:monospace"></div>
+
+  </div><!-- /.page -->
+
+  <script>
+    /* ─── Firebase ────────────────────────────── */
+    let db = null;
+
+    // Config con fallback hardcodeado (igual que los overlays que sí funcionan)
+    const FIREBASE_CFG = window.ZERO_FM_FIREBASE || {
+      apiKey:            "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+      authDomain:        "zero-strom-web.firebaseapp.com",
+      projectId:         "zero-strom-web",
+      storageBucket:     "zero-strom-web.firebasestorage.app",
+      messagingSenderId: "758369466349",
+      appId:             "1:758369466349:web:f2ced362a5a049c70b59e4"
+    };
+
+    try {
+      if (typeof firebase !== 'undefined') {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(FIREBASE_CFG);
+        }
+        db = firebase.firestore();
+        console.log('[Tops] ✅ Firebase conectado. Proyecto:', FIREBASE_CFG.projectId);
+      } else {
+        console.error('[Tops] ❌ Firebase SDK no cargó. Revisa la conexión a internet.');
+      }
+    } catch(e) {
+      console.error('[Tops] ❌ Error Firebase:', e);
+    }
+
+    if (!db) {
+      console.warn('[Tops] db es null — mostrando error en ambos paneles');
+    }
+
+
+    /* ─── Helpers ─────────────────────────────── */
+    const FB = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%23ffffff10'/%3E%3Ctext x='50%25' y='55%25' text-anchor='middle' dominant-baseline='middle' font-size='28' fill='%23ffffff40'%3E%F0%9F%91%A4%3C/text%3E%3C/svg%3E";
+
+    function fmt(n){
+      const v=Number(n)||0;
+      if(v>=1e6) return (v/1e6).toFixed(1).replace('.0','')+'M';
+      if(v>=1e3) return (v/1e3).toFixed(1).replace('.0','')+'K';
+      return v.toLocaleString();
+    }
+
+    function avImg(url, nick, cls){
+      const s=(url||'').trim();
+      return `<img class="${cls}" src="${s||FB}" alt="${nick.replace(/"/g,'')}" loading="lazy" onerror="this.onerror=null;this.src='${FB}'">`;
+    }
+
+    function memberBadgeHtml(isSubscriber, memberLevel) {
+      if (!isSubscriber && !(memberLevel > 0)) return '';
+      const lvl = Number(memberLevel) || 0;
+      const label = lvl > 0 ? `Nv.${lvl}` : 'Miembro';
+      return `<span class="member-badge"><span class="mb-star">⭐</span>${label}</span>`;
+    }
+
+
+    /* ─── Tabs ────────────────────────────────── */
+    let activeTab = 'likers';
+    const btnL = document.getElementById('btn-likers');
+    const btnG = document.getElementById('btn-gifters');
+    const btnQ = document.getElementById('btn-quiereme');
+    const btnM = document.getElementById('btn-members');
+    const panL = document.getElementById('panel-likers');
+    const panG = document.getElementById('panel-gifters');
+    const panQ = document.getElementById('panel-quiereme');
+    const panM = document.getElementById('panel-members');
+    const thumb = document.getElementById('uthumb');
+
+    function switchTab(t){
+      activeTab = t;
+      const tabs    = { likers: btnL, gifters: btnG, quiereme: btnQ, members: btnM };
+      const panels  = { likers: panL, gifters: panG, quiereme: panQ, members: panM };
+      const actCls  = { likers: 'al', gifters: 'ag', quiereme: 'aq', members: 'am' };
+      const thmCls  = { likers: '', gifters: ' g', quiereme: ' q', members: ' m' };
+      Object.entries(tabs).forEach(([key, btn]) => {
+        btn.className = 'tab' + (key === t ? ' ' + actCls[key] : '');
+        btn.setAttribute('aria-selected', key === t ? 'true' : 'false');
+      });
+      Object.entries(panels).forEach(([key, pan]) => {
+        pan.classList.toggle('active', key === t);
+      });
+      thumb.className = 'uthumb' + thmCls[t];
+      if (typeof animatePanelEntry === 'function') {
+        animatePanelEntry(t + '-body');
+      }
+    }
+    btnL.onclick = ()=>switchTab('likers');
+    btnG.onclick = ()=>switchTab('gifters');
+    btnQ.onclick = ()=>switchTab('quiereme');
+    btnM.onclick = ()=>switchTab('members');
+
+    /* ─── Render ──────────────────────────────── */
+    const MEDALS = ['🥇','🥈','🥉'];
+
+    function renderPanel(bodyId, loadId, emptyId, errId, list, type){
+      const body  = document.getElementById(bodyId);
+      const load  = document.getElementById(loadId);
+      const empty = document.getElementById(emptyId);
+      const err   = document.getElementById(errId);
+
+      if(load) load.style.display='none';
+      if(!list||list.length===0){
+        if(body){body.hidden=true;body.innerHTML='';}
+        if(empty) empty.hidden=false;
+        return;
+      }
+      if(empty) empty.hidden=true;
+      if(err)   err.hidden=true;
+
+      const sc  = type==='liker' ? 'lk' : type==='quiereme' ? 'qr' : type==='member' ? 'mb' : 'gf';
+      const ico = type==='liker'
+        ? '<i data-lucide="heart" style="width: 13px; height: 13px; stroke-width: 3; display: inline-block; vertical-align: middle; margin-top: -2px;"></i>'
+        : type==='quiereme'
+          ? '<span style="font-size:13px;line-height:1;display:inline-block;vertical-align:middle;margin-top:-2px;">💙</span>'
+          : type==='member'
+            ? '<span style="font-size:13px;line-height:1;display:inline-block;vertical-align:middle;margin-top:-2px;">⭐</span>'
+            : '<i data-lucide="gem" style="width: 13px; height: 13px; stroke-width: 3; display: inline-block; vertical-align: middle; margin-top: -2px;"></i>';
+
+      const top3 = list.slice(0,3);
+      const rest = list.slice(3,20);
+
+      /* ── Smart reconciliation: compare user-key signature ── */
+      const newSig = list.slice(0,20).map(u => u.username||u.uniqueId||'').join('|');
+      const prevSig = body.dataset.sig || '';
+      const alreadyRendered = !body.hidden && body.innerHTML !== '' && prevSig === newSig;
+
+      if(alreadyRendered) {
+        /* Same users in same order — ONLY update numbers, no DOM rebuild */
+        list.slice(0,20).forEach(u => {
+          const uid  = u.username || u.uniqueId || '';
+          const amt  = u.totalAmount != null ? u.totalAmount : 0;
+          const fmtAmt = fmt(amt);
+          /* Try podium score el */
+          let scoreEl = body.querySelector(`.pitem[data-uid="${uid}"] .pscore-compact`);
+          /* Try rest list score el */
+          if(!scoreEl) scoreEl = body.querySelector(`.rcard[data-uid="${uid}"] .rscore`);
+          if(scoreEl && scoreEl.getAttribute('data-val') !== String(amt)) {
+            scoreEl.setAttribute('data-val', amt);
+            scoreEl.innerHTML = ico + ' ' + fmtAmt;
+            scoreEl.classList.add('score-bump');
+            setTimeout(() => scoreEl.classList.remove('score-bump'), 600);
+          }
+        });
+        setUbar(new Date());
+        return; /* skip full rebuild */
+      }
+
+      // Para miembros, mostrar "Nv.X" en vez de número crudo
+      const fmtScore = (amt) => type === 'member'
+        ? (amt > 0 ? `Nv.${amt}` : 'Miembro')
+        : fmt(amt);
+
+      const pod = [];
+
+      if(top3[1]) pod.push({u:top3[1],r:2,c:'p2'});
+      if(top3[0]) pod.push({u:top3[0],r:1,c:'p1'});
+      if(top3[2]) pod.push({u:top3[2],r:3,c:'p3'});
+
+      let html = '';
+
+      if(top3.length>0){
+        html+='<div class="podium">';
+        if(pod.length===1) html+='<div></div>';
+        pod.forEach(({u,r,c})=>{
+          const nick  = u.nickname||u.uniqueId||u.username||'Anónimo';
+          const uname = u.username||u.uniqueId||'';
+          const amt   = u.totalAmount!=null?u.totalAmount:0;
+          const crown = r===1?'<span class="pcrown">👑</span>':'';
+          const mbadge = memberBadgeHtml(u.isSubscriber, u.memberLevel);
+          html+=`<div class="pitem ${c}" data-uid="${uname}">
+            <div class="pmed-ribbon r-${r}"><span class="pmed-num">${r}</span></div>
+            <div class="pawrap">${crown}${avImg(u.profilePictureUrl,nick,'pav')}</div>
+            <div class="pdetails">
+              <span class="pname" title="${nick}">${nick}</span>
+              ${mbadge}
+              <span class="pscore-compact ${sc}" data-val="${amt}">${ico} ${fmtScore(amt)}</span>
+            </div>
+          </div>`;
+        });
+        if(pod.length===1) html+='<div></div>';
+        html+='</div>';
+      }
+
+      if(rest.length>0){
+        html+='<p class="sec-lbl">Resto del top</p><div class="rlist">';
+        rest.forEach((u,i)=>{
+          const rank  = i+4;
+          const nick  = u.nickname||u.uniqueId||u.username||'Anónimo';
+          const uname = u.username||u.uniqueId||'';
+          const amt   = u.totalAmount!=null?u.totalAmount:0;
+          const mbadge = memberBadgeHtml(u.isSubscriber, u.memberLevel);
+          html+=`<div class="rcard" data-uid="${uname}">
+            <span class="rnum">#${rank}</span>
+            ${avImg(u.profilePictureUrl,nick,'rav')}
+            <div class="rinfo">
+              <span class="rnick" title="${nick}">${nick}</span>
+              ${uname?`<span class="ruser">@${uname}</span>`:''}
+              ${mbadge}
+            </div>
+            <span class="rscore ${sc}" data-val="${amt}">${ico} ${fmtScore(amt)}</span>
+            <i data-lucide="more-vertical" style="color: var(--text-muted); opacity: 0.4; width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; margin-left: 8px;"></i>
+          </div>`;
+        });
+        html+='</div>';
+      }
+
+      body.innerHTML = html;
+      body.dataset.sig = newSig;
+      body.hidden = false;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      if (typeof animatePanelEntry === 'function') animatePanelEntry(bodyId);
+    }
+
+    function showErr(bodyId,loadId,emptyId,errId){
+      const b=document.getElementById(bodyId);
+      const l=document.getElementById(loadId);
+      const em=document.getElementById(emptyId);
+      const er=document.getElementById(errId);
+      if(l){l.style.display='none';}
+      if(b){b.hidden=true;b.innerHTML='';}
+      if(em) em.hidden=true;
+      if(er) er.hidden=false;
+    }
+
+    function setUbar(ts){
+      const bar=document.getElementById('ubar');
+      if(!bar||!ts) return;
+      try{
+        const d=ts.toDate?ts.toDate():new Date(ts);
+        bar.textContent='Actualizado: '+d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      }catch(_){}
+    }
+
+    /* ─── Firebase Subscriptions ──────────────── */
+    function setDebug(msg){
+      const el = document.getElementById('debug-bar');
+      if(el) el.textContent = msg;
+    }
+
+    if(db){
+      setDebug('Conectando a base de datos...');
+
+      /* Top Likers - Consultar base de datos real de usuarios (userStats) */
+      db.collection('userStats')
+        .orderBy('totalLikes', 'desc')
+        .limit(20)
+        .onSnapshot(snap=>{
+          console.log('[Tops] snapshot userStats (Likes) — size:', snap.size);
+          const list = [];
+          snap.forEach(doc => {
+            const data = doc.data();
+            // Filtrar usuarios que al menos tengan algún like para evitar vacíos
+            if ((data.totalLikes || 0) > 0) {
+              list.push({
+                username: data.tiktokId || doc.id,
+                nickname: data.displayName || doc.id,
+                profilePictureUrl: data.profilePic || '',
+                totalAmount: data.totalLikes || 0,
+                isSubscriber: data.isSubscriber || false,
+                memberLevel: data.memberLevel || 0
+              });
+            }
+          });
+
+          setDebug(`Likers: ${list.length} usuarios cargados`);
+          renderPanel('likers-body','likers-loading','likers-empty','likers-error',list,'liker');
+          
+          // Usar la hora de actualización del cliente
+          setUbar(new Date());
+        },err=>{
+          console.error('[Tops] Likers err:',err.code, err.message);
+          setDebug('Error Likers: '+err.code+' — '+err.message);
+          showErr('likers-body','likers-loading','likers-empty','likers-error');
+        });
+
+      /* Top Gifters - Consultar base de datos real de usuarios (userStats) */
+      db.collection('userStats')
+        .orderBy('totalCoinsDonated', 'desc')
+        .limit(20)
+        .onSnapshot(snap=>{
+          console.log('[Tops] snapshot userStats (Coins) — size:', snap.size);
+          const list = [];
+          snap.forEach(doc => {
+            const data = doc.data();
+            if ((data.totalCoinsDonated || 0) > 0) {
+              list.push({
+                username: data.tiktokId || doc.id,
+                nickname: data.displayName || doc.id,
+                profilePictureUrl: data.profilePic || '',
+                totalAmount: data.totalCoinsDonated || 0,
+                isSubscriber: data.isSubscriber || false,
+                memberLevel: data.memberLevel || 0
+              });
+            }
+          });
+
+          renderPanel('gifters-body','gifters-loading','gifters-empty','gifters-error',list,'gifter');
+          setUbar(new Date());
+        },err=>{
+          console.error('[Tops] Gifters err:',err.code, err.message);
+          showErr('gifters-body','gifters-loading','gifters-empty','gifters-error');
+        });
+
+      /* Top Quiéreme — lee directamente de 'notifications' y agrupa por usuario filtrando por nombre del regalo */
+      (function setupQuiereTop() {
+        const QUIERE_KEYS = ['quiereme','heartme','loveme','querme','amame'];
+        function isQuiereGift(name) {
+          if (!name) return false;
+          const key = String(name).toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+            .replace(/[^a-z0-9]+/g,'');
+          return QUIERE_KEYS.some(k => key === k || key.indexOf(k) !== -1);
+        }
+
+        const since24hMs = Date.now() - 24 * 60 * 60 * 1000;
+        db.collection('notifications')
+          .where('type', '==', 'gift')
+          .limit(200)
+          .onSnapshot(snap => {
+            console.log('[Tops] Quiéreme notifications — size:', snap.size);
+            const byUser = {};
+            snap.forEach(doc => {
+              const d = doc.data();
+              // Filtrar por timestamp en el cliente (últimas 24h)
+              let docMs = 0;
+              if (d.timestamp && typeof d.timestamp.toMillis === 'function') docMs = d.timestamp.toMillis();
+              else if (d.timestamp instanceof Date) docMs = d.timestamp.getTime();
+              else if (typeof d.timestamp === 'number') docMs = d.timestamp;
+              if (docMs > 0 && docMs < since24hMs) return;
+              if (!isQuiereGift(d.giftName)) return;
+              const uid = d.uniqueId || d.user || 'desconocido';
+              if (!byUser[uid]) {
+                byUser[uid] = {
+                  username: uid,
+                  nickname: d.user || uid,
+                  profilePictureUrl: d.profilePic || '',
+                  totalAmount: 0,
+                  isSubscriber: false,
+                  memberLevel: 0
+                };
+              }
+              byUser[uid].totalAmount += (d.repeatCount || 1);
+              if (d.profilePic) byUser[uid].profilePictureUrl = d.profilePic;
+            });
+
+            const list = Object.values(byUser)
+              .filter(u => u.totalAmount > 0)
+              .sort((a,b) => b.totalAmount - a.totalAmount)
+              .slice(0, 20);
+
+            if (list.length === 0) {
+              // Fallback a userStats si aún no hay nada en notifications
+              db.collection('userStats').orderBy('quiereCount','desc').limit(20).get()
+                .then(snap2 => {
+                  const list2 = [];
+                  snap2.forEach(doc => {
+                    const d = doc.data();
+                    if ((d.quiereCount || 0) > 0) {
+                      list2.push({
+                        username: d.tiktokId || doc.id,
+                        nickname: d.displayName || doc.id,
+                        profilePictureUrl: d.profilePic || '',
+                        totalAmount: d.quiereCount || 0,
+                        isSubscriber: d.isSubscriber || false,
+                        memberLevel: d.memberLevel || 0
+                      });
+                    }
+                  });
+                  renderPanel('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error',list2,'quiereme');
+                })
+                .catch(() => renderPanel('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error',[],'quiereme'));
+            } else {
+              renderPanel('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error',list,'quiereme');
+            }
+            setUbar(new Date());
+          }, err => {
+            console.error('[Tops] Quiéreme err:', err.code, err.message);
+            showErr('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error');
+          });
+      })();
+
+      /* Top Miembros — consulta y ordenación en memoria por gifterLevel (nivel por donar en TikTok) */
+      db.collection('userStats')
+        .where('isSubscriber', '==', true)
+        .onSnapshot(snap=>{
+          console.log('[Tops] snapshot userStats (Miembros) — size:', snap.size);
+          const list = [];
+          snap.forEach(doc => {
+            const data = doc.data();
+            const gLvl = Number(data.gifterLevel || 0);
+            const mLvl = Number(data.memberLevel || 0);
+            const maxLvl = Math.max(gLvl, mLvl);
+            list.push({
+              username: data.tiktokId || doc.id,
+              nickname: data.displayName || doc.id,
+              profilePictureUrl: data.profilePic || '',
+              totalAmount: maxLvl || 1,
+              memberLevel: mLvl,
+              gifterLevel: gLvl,
+              isSubscriber: true
+            });
+          });
+
+          list.sort((a, b) => {
+            if (b.totalAmount !== a.totalAmount) return b.totalAmount - a.totalAmount;
+            return (a.nickname || '').localeCompare(b.nickname || '');
+          });
+
+          renderPanel('members-body','members-loading','members-empty','members-error',list.slice(0,20),'member');
+          setUbar(new Date());
+        },err=>{
+          console.error('[Tops] Miembros err:',err.code, err.message);
+          showErr('members-body','members-loading','members-empty','members-error');
+        });
+
+
+
+
+
+      /* Live status */
+      db.collection('systemConfig').doc('liveStatus').onSnapshot(snap=>{
+        const badge=document.getElementById('live-status');
+        if(!badge) return;
+        const live=snap.exists&&snap.data().isLive===true;
+        badge.className='live-badge'+(live?'':' off');
+        badge.querySelector('span:last-child').textContent=live?'En Vivo':'Offline';
+      },()=>{});
+
+    } else {
+      setDebug('ERROR: Firebase no pudo inicializar. Abre la consola para más info.');
+      ['likers','gifters'].forEach(t=>{
+        document.getElementById(t+'-loading').style.display='none';
+        document.getElementById(t+'-error').hidden=false;
+      });
+    }
+
+    /* ─── Premium Animations (GSAP) ───────────── */
+    function animatePageLoad() {
+      if (typeof gsap !== 'undefined') {
+        gsap.fromTo('.header', { y: -50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: 'power3.out', clearProps: 'all' });
+        gsap.fromTo('.hero .trophy', { scale: 0, rotation: -45, opacity: 0 }, { scale: 1, rotation: 0, opacity: 1, duration: 1, delay: 0.2, ease: 'back.out(1.7)', clearProps: 'all' });
+        gsap.fromTo('.hero h1', { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, delay: 0.4, ease: 'power3.out', clearProps: 'all' });
+        gsap.fromTo('.hero p', { y: 15, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, delay: 0.5, ease: 'power3.out', clearProps: 'all' });
+        gsap.fromTo('.tabs-wrap', { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, delay: 0.6, ease: 'power3.out', clearProps: 'all' });
+      }
+    }
+
+    function animatePanelEntry(panelId) {
+      if (typeof gsap !== 'undefined') {
+        const panel = document.getElementById(panelId);
+        if (!panel) return;
+        
+        // Limpiar tweens activos en este panel
+        gsap.killTweensOf(panel.querySelectorAll('.pitem, .rcard, .sec-lbl'));
+        
+        const items = panel.querySelectorAll('.pitem');
+        const secLbl = panel.querySelectorAll('.sec-lbl');
+        const cards = panel.querySelectorAll('.rcard');
+
+        const tl = gsap.timeline();
+        if (items.length > 0) {
+          tl.fromTo(items, 
+            { y: 30, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.6, stagger: 0.08, ease: 'power3.out', clearProps: 'all' }
+          );
+        }
+        if (secLbl.length > 0) {
+          tl.fromTo(secLbl,
+            { y: 10, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.3, clearProps: 'all' },
+            '-=0.2'
+          );
+        }
+        if (cards.length > 0) {
+          tl.fromTo(cards,
+            { y: 20, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.4, stagger: 0.03, ease: 'power3.out', clearProps: 'all' },
+            '-=0.2'
+          );
+        }
+      }
+    }
+
+    // Inicializar Lucide y animaciones al cargar
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+    animatePageLoad();
+
+  </script>
+</body>
+</html>

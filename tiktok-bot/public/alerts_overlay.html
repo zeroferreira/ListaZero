@@ -157,7 +157,7 @@
             font-weight: 900;
             line-height: 1.1;
             letter-spacing: -0.5px;
-            color: #ffffff;
+            color: #ffffff !important;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -700,6 +700,7 @@
             justify-content: center !important;
             align-items: center !important;
             overflow: visible !important;
+            color: #ffffff !important;
             text-shadow: 
                 -1.5px -1.5px 0 #000,  
                  1.5px -1.5px 0 #000,
@@ -859,7 +860,47 @@
             50% { transform: scale(1.1) rotate(6deg); filter: drop-shadow(0 0 30px rgba(6, 182, 212, 0.85)); }
         }
 
+        /* Contenedor del regalo personalizado (desplazado hacia abajo para no tapar avatar) */
+        .gift-badge-container {
+            position: absolute;
+            top: 88%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 120px;
+            height: 120px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 4; /* Sobre el avatar (z-index 3) */
+            animation: giftFloat 3.2s ease-in-out infinite alternate, badgeEntry 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            filter: drop-shadow(0 6px 15px rgba(0,0,0,0.5));
+        }
 
+        @keyframes giftFloat {
+            0% { transform: translate(-50%, -50%) translateY(0) rotate(-3deg); }
+            100% { transform: translate(-50%, -50%) translateY(-8px) rotate(3deg); }
+        }
+
+        /* Contenedor circular discreto para video Quiéreme */
+        .quiereme-video-container {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            border: 3px solid #db2777;
+            box-shadow: 0 0 25px rgba(219, 39, 119, 0.7);
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            justifyContent: center;
+            alignItems: center;
+            animation: giftBoxWobble 1.4s infinite ease-in-out;
+        }
+
+        /* Asegurar color de letras blanco en todo momento */
+        .username-container span,
+        .bounce-char {
+            color: #ffffff !important;
+        }
     </style>
 </head>
 
@@ -884,13 +925,14 @@
     <audio id="alertAudio" src="" preload="auto"></audio>
 
     <script>
-        // Activar audio con el primer clic en la pantalla (silencioso, sin banner)
+        // Activar audio y TTS con el primer clic en la pantalla (silencioso)
         document.addEventListener('click', () => {
+            // Inicializar speechSynthesis reproduciendo texto silencioso para desbloquearlo
             if ('speechSynthesis' in window) {
                 try {
-                    window.speechSynthesis.cancel();
+                    window.speechSynthesis.cancel(); // Limpiar cola atascada previa
                     const u = new SpeechSynthesisUtterance('a');
-                    u.volume = 0;
+                    u.volume = 0; // Silencioso
                     window.speechSynthesis.speak(u);
                     console.log("🔊 Motor de Voz (TTS) activado con éxito.");
                 } catch (e) {
@@ -952,59 +994,93 @@
         // =============================================
         //  INICIALIZAR FIREBASE
         // =============================================
+        // Tiempo de inicio del overlay — solo mostramos alertas posteriores a este momento
+        const overlayStartMs = Date.now();
+
         try {
             if (typeof firebase !== 'undefined') {
-                firebase.initializeApp(localFirebaseConfig);
+                // Protección anti-doble-inicialización (evita crash al recargar en OBS)
+                let app;
+                if (firebase.apps && firebase.apps.length > 0) {
+                    app = firebase.apps[0];
+                    console.log("[Firebase] Reutilizando instancia existente ✓");
+                } else {
+                    app = firebase.initializeApp(localFirebaseConfig);
+                    console.log("[Firebase] Nueva instancia creada ✓");
+                }
                 db = firebase.firestore();
-                console.log("[Firebase] Alertas conectadas con éxito ✓ [Tipo URL: " + urlType + "]");
+                console.log("[Firebase] Alertas conectadas ✓ [Tipo URL: " + urlType + "]");
 
                 // Escuchar personalización visual de alertas premium
                 db.collection('systemConfig').doc('overlayAlertsConfig')
                     .onSnapshot(doc => {
                         if (doc.exists) {
                             const data = doc.data();
-                            window.overlayAlertsConfig = data; // Guardamos todo en global
+                            window.overlayAlertsConfig = data;
                             
                             if (data.likeslockOpacity !== undefined) window.likeslockOpacityOverride = data.likeslockOpacity;
                             if (data.likeslockRadius !== undefined) window.likeslockRadiusOverride = data.likeslockRadius;
                             
-                            // Aplicar estilos estáticos de carga inicial
                             applyInitialStyles();
                         }
                     }, err => {
-                        console.warn("[Firebase] Error al cargar overlayAlertsConfig para alertas:", err);
+                        console.warn("[Firebase] Error al cargar overlayAlertsConfig:", err);
                     });
 
                 // Escuchar la colección de notificaciones del Bot
-                let isInitialLoad = true;
+                // overlayStartedAt = 2 minutos ANTES del inicio para tolerar desfases de reloj
+                const overlayStartedAt = new Date(overlayStartMs - 2 * 60 * 1000);
+                let initialSnapshotDone = false;
+
                 db.collection('notifications')
                     .where('timestamp', '>', overlayStartedAt)
                     .onSnapshot(snap => {
-                        if (isInitialLoad) {
-                            isInitialLoad = false;
-                            console.log("[Firebase] Carga inicial de alertas ignorada para evitar reproducir alertas viejas.");
-                            return;
-                        }
                         snap.docChanges().forEach(change => {
-                            if (change.type === 'added') {
-                                const data = change.doc.data();
-                                // Validar que sea un tipo de alerta soportado
-                                if (['follow', 'subscribe', 'gift', 'like'].includes(data.type)) {
-                                    // Filtrar por tipo si está fijado en la URL
-                                    if (urlType === 'all' || data.type === urlType) {
-                                        console.log(`🔔 Alerta recibida desde bot [${data.type}]:`, data.user);
-                                        addAlert(data);
-                                    }
-                                }
+                            if (change.type !== 'added') return;
+
+                            const data = change.doc.data();
+
+                            // Obtener timestamp del documento (puede ser Firestore Timestamp o Date)
+                            let docMs = 0;
+                            if (data.timestamp && typeof data.timestamp.toMillis === 'function') {
+                                docMs = data.timestamp.toMillis();
+                            } else if (data.timestamp instanceof Date) {
+                                docMs = data.timestamp.getTime();
+                            } else if (typeof data.timestamp === 'number') {
+                                docMs = data.timestamp;
                             }
+
+                            // Si el documento es más viejo que cuando cargó el overlay, ignorar
+                            // (tolerancia de 30 segundos hacia atrás para desfases de reloj)
+                            if (docMs > 0 && docMs < overlayStartMs - 30000) {
+                                return; // Notificación antigua, skip silencioso
+                            }
+
+                            // Validar que sea un tipo de alerta soportado
+                            if (!['follow', 'subscribe', 'gift', 'like'].includes(data.type)) return;
+
+                            // Filtrar por tipo si está fijado en la URL
+                            if (urlType !== 'all' && data.type !== urlType) return;
+
+                            console.log(`🔔 [${data.type}] ${data.user || data.uniqueId || '?'} — mostrando alerta`);
+                            addAlert(data);
                         });
+
+                        if (!initialSnapshotDone) {
+                            initialSnapshotDone = true;
+                            console.log("[Firebase] Listener activo — esperando nuevas alertas ✓");
+                        }
                     }, err => {
-                        console.warn("[Firebase] Error al listener de notificaciones:", err);
+                        console.error("[Firebase] Error en listener de notificaciones:", err.code, err.message);
+                        // No recargamos para evitar loops. El listener se reintentará automáticamente.
                     });
+            } else {
+                console.error("[Firebase] SDK no disponible. Verifica que los scripts cargaron correctamente.");
             }
         } catch (e) {
             console.error("[Firebase] No se pudo conectar:", e);
         }
+
 
         // Cargador dinámico de Google Fonts
         function loadFontDynamically(fontName) {
@@ -1199,6 +1275,239 @@
         }
 
         // =============================================
+        //  OBTENER SVG DE REGALO PERSONALIZADO
+        // =============================================
+        function getGiftSvg(giftName) {
+            const name = String(giftName || '').toLowerCase().trim();
+            
+            // 1. Rosa
+            if (name.includes('rose') || name.includes('rosa')) {
+                return `
+                    <svg class="gift-box-svg rose-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="roseRed" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#ff2a5f" />
+                                <stop offset="40%" stop-color="#e11d48" />
+                                <stop offset="100%" stop-color="#881337" />
+                            </linearGradient>
+                            <linearGradient id="roseGreen" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#4ade80" />
+                                <stop offset="100%" stop-color="#15803d" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M50 50 Q48 70 45 85" stroke="url(#roseGreen)" stroke-width="4" stroke-linecap="round" fill="none" />
+                        <path d="M47 68 Q33 65 38 58 Q45 58 48 68 Z" fill="url(#roseGreen)" stroke="#166534" stroke-width="1" />
+                        <path d="M47 75 Q60 72 55 65 Q48 65 46 75 Z" fill="url(#roseGreen)" stroke="#166534" stroke-width="1" />
+                        <path d="M38 48 Q50 54 62 48 Q50 42 38 48 Z" fill="#16a34a" />
+                        <path d="M50 15 C30 15 25 45 50 54 C75 45 70 15 50 15 Z" fill="url(#roseRed)" />
+                        <path d="M50 20 C35 20 32 40 50 48 C68 40 65 20 50 20 Z" fill="#f43f5e" opacity="0.9" />
+                        <path d="M50 25 C40 25 38 35 50 42 C62 35 60 25 50 25 Z" fill="#fda4af" />
+                        <path d="M50 29 C45 29 44 33 50 37 C56 33 55 29 50 29 Z" fill="#fff" opacity="0.9" />
+                    </svg>
+                `;
+            }
+            
+            // 2. Confeti
+            if (name.includes('confeti') || name.includes('confetti') || name.includes('popper') || name.includes('fiesta')) {
+                return `
+                    <svg class="gift-box-svg confetti-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="popperCone" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#a855f7" />
+                                <stop offset="100%" stop-color="#6366f1" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M35 75 L15 85 L25 65 Z" fill="url(#popperCone)" stroke="#c084fc" stroke-width="1.5" />
+                        <path d="M15 85 Q10 92 18 95" stroke="#ef4444" stroke-width="2" stroke-linecap="round" fill="none" />
+                        <path d="M42 55 Q50 35 40 20" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" fill="none" />
+                        <path d="M48 65 Q70 50 75 35" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" fill="none" />
+                        <path d="M32 45 Q30 25 45 10" stroke="#06b6d4" stroke-width="2" stroke-linecap="round" fill="none" />
+                        <circle cx="55" cy="25" r="4" fill="#ef4444" />
+                        <circle cx="35" cy="30" r="3" fill="#3b82f6" />
+                        <circle cx="65" cy="45" r="5" fill="#eab308" />
+                        <circle cx="60" cy="60" r="3" fill="#ec4899" />
+                        <circle cx="25" cy="50" r="4.5" fill="#10b981" />
+                        <path d="M50 12 L52 17 L57 18 L53 22 L54 27 L50 24 L46 27 L47 22 L43 18 L48 17 Z" fill="#fff" />
+                        <path d="M72 28 L73 31 L76 32 L74 34 L75 37 L72 35 L69 37 L70 34 L68 32 L71 31 Z" fill="#fef08a" />
+                    </svg>
+                `;
+            }
+            
+            // 3. Caja del Tesoro
+            if (name.includes('tesoro') || name.includes('cofre') || name.includes('caja del tesoro') || name.includes('treasure')) {
+                return `
+                    <svg class="gift-box-svg treasure-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="chestWood" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#78350f" />
+                                <stop offset="100%" stop-color="#451a03" />
+                            </linearGradient>
+                            <linearGradient id="goldCoins" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#fef08a" />
+                                <stop offset="50%" stop-color="#eab308" />
+                                <stop offset="100%" stop-color="#ca8a04" />
+                            </linearGradient>
+                        </defs>
+                        <rect x="22" y="46" width="56" height="34" rx="4" fill="url(#chestWood)" stroke="#1e1b4b" stroke-width="2" />
+                        <ellipse cx="50" cy="46" rx="24" ry="10" fill="url(#goldCoins)" stroke="#ca8a04" stroke-width="1" />
+                        <circle cx="42" cy="44" r="5" fill="#3b82f6" stroke="#fff" stroke-width="1" />
+                        <circle cx="58" cy="43" r="4.5" fill="#ef4444" stroke="#fff" stroke-width="1" />
+                        <circle cx="50" cy="41" r="5" fill="#10b981" stroke="#fff" stroke-width="1" />
+                        <path d="M22 46 C22 24 78 24 78 46" fill="url(#chestWood)" stroke="#1e1b4b" stroke-width="2.5" />
+                        <path d="M22 40 C35 28 65 28 78 40" fill="none" stroke="#eab308" stroke-width="2.5" />
+                        <rect x="44" y="44" width="12" height="12" rx="2" fill="#fef08a" stroke="#ca8a04" stroke-width="1.5" />
+                        <circle cx="50" cy="50" r="2.5" fill="#000" />
+                        <rect x="22" y="46" width="6" height="34" fill="#eab308" opacity="0.8" />
+                        <rect x="72" y="46" width="6" height="34" fill="#eab308" opacity="0.8" />
+                    </svg>
+                `;
+            }
+            
+            // 4. León
+            if (name.includes('león') || name.includes('leon') || name.includes('lion') || name.includes('king')) {
+                return `
+                    <svg class="gift-box-svg lion-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="maneGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#ea580c" />
+                                <stop offset="50%" stop-color="#f97316" />
+                                <stop offset="100%" stop-color="#eab308" />
+                            </linearGradient>
+                            <linearGradient id="faceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#fed7aa" />
+                                <stop offset="100%" stop-color="#f97316" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M50 10 L59 22 L72 15 L74 29 L88 28 L83 41 L94 46 L85 57 L92 70 L80 74 L82 88 L69 86 L65 96 L50 90 L35 96 L31 86 L18 88 L20 74 L8 70 L15 57 L6 46 L17 41 L12 28 L26 29 L28 15 L41 22 Z" fill="url(#maneGrad)" stroke="#c2410c" stroke-width="1.5" />
+                        <circle cx="34" cy="34" r="8" fill="#c2410c" />
+                        <circle cx="34" cy="34" r="5" fill="#ffedd5" />
+                        <circle cx="66" cy="34" r="8" fill="#c2410c" />
+                        <circle cx="66" cy="34" r="5" fill="#ffedd5" />
+                        <circle cx="50" cy="54" r="26" fill="url(#faceGrad)" stroke="#c2410c" stroke-width="2" />
+                        <path d="M38 48 Q43 44 45 48" stroke="#1e1b4b" stroke-width="3" stroke-linecap="round" fill="none" />
+                        <path d="M62 48 Q57 44 55 48" stroke="#1e1b4b" stroke-width="3" stroke-linecap="round" fill="none" />
+                        <circle cx="33" cy="56" r="4" fill="#f43f5e" opacity="0.6" />
+                        <circle cx="67" cy="56" r="4" fill="#f43f5e" opacity="0.6" />
+                        <path d="M46 64 C46 59 54 59 54 64 Z" fill="#ffedd5" stroke="#c2410c" stroke-width="1" />
+                        <polygon points="47,58 53,58 50,62" fill="#000" />
+                        <path d="M48 64 Q50 67 52 64" stroke="#000" stroke-width="2" stroke-linecap="round" fill="none" />
+                        <polygon points="40,25 44,14 50,20 56,14 60,25" fill="#facc15" stroke="#ca8a04" stroke-width="1.5" />
+                        <circle cx="44" cy="12" r="1.5" fill="#ef4444" />
+                        <circle cx="50" cy="18" r="1.5" fill="#3b82f6" />
+                        <circle cx="56" cy="12" r="1.5" fill="#ef4444" />
+                    </svg>
+                `;
+            }
+            
+            // 5. Corazón
+            if (name.includes('corazón') || name.includes('corazon') || name.includes('heart') || name.includes('quiereme') || name.includes('quiéreme')) {
+                return `
+                    <svg class="gift-box-svg heart-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="heartGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#f472b6" />
+                                <stop offset="40%" stop-color="#db2777" />
+                                <stop offset="100%" stop-color="#9d174d" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M50 82 C50 82 14 56 14 36 C14 20 28 8 44 20 C47 22 49 25 50 27 C51 25 53 22 56 20 C72 8 86 20 86 36 C86 56 50 82 50 82 Z" fill="url(#heartGrad)" stroke="#fbcfe8" stroke-width="2" />
+                        <path d="M24 32 C22 38 24 48 30 52" stroke="#fff" stroke-width="3.5" stroke-linecap="round" opacity="0.65" fill="none" />
+                        <path d="M28 26 C33 22 40 22 44 26" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity="0.5" fill="none" />
+                        <polygon points="48,81 52,81 50,87" fill="#db2777" />
+                        <path d="M50 87 Q48 93 52 97" stroke="#e2e8f0" stroke-width="1.5" fill="none" />
+                    </svg>
+                `;
+            }
+            
+            // 6. Corona
+            if (name.includes('corona') || name.includes('crown')) {
+                return `
+                    <svg class="gift-box-svg crown-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="crownGold" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#fbbf24" />
+                                <stop offset="60%" stop-color="#d97706" />
+                                <stop offset="100%" stop-color="#78350f" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M15 70 L25 35 L40 50 L50 25 L60 50 L75 35 L85 70 Z" fill="url(#crownGold)" stroke="#fef08a" stroke-width="2" />
+                        <rect x="15" y="70" width="70" height="8" rx="2" fill="url(#crownGold)" stroke="#fef08a" stroke-width="1.5" />
+                        <circle cx="25" cy="35" r="3.5" fill="#ef4444" />
+                        <circle cx="50" cy="25" r="4.5" fill="#3b82f6" />
+                        <circle cx="75" cy="35" r="3.5" fill="#ef4444" />
+                        <circle cx="30" cy="74" r="2.5" fill="#10b981" />
+                        <circle cx="50" cy="74" r="2.5" fill="#ec4899" />
+                        <circle cx="70" cy="74" r="2.5" fill="#10b981" />
+                    </svg>
+                `;
+            }
+
+            // 7. Helado
+            if (name.includes('helado') || name.includes('ice cream') || name.includes('cono')) {
+                return `
+                    <svg class="gift-box-svg icecream-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="iceCreamCone" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#f59e0b" />
+                                <stop offset="100%" stop-color="#b45309" />
+                            </linearGradient>
+                            <linearGradient id="iceCreamCream" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#f87171" />
+                                <stop offset="100%" stop-color="#b91c1c" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M35 55 L50 85 L65 55 Z" fill="url(#iceCreamCone)" stroke="#d97706" stroke-width="1.5" />
+                        <path d="M35 55 Q35 40 50 40 Q65 40 65 55 Z" fill="url(#iceCreamCream)" />
+                        <circle cx="50" cy="35" r="7" fill="#ef4444" />
+                        <rect x="48" y="22" width="4" height="15" rx="1" fill="#b91c1c" transform="rotate(15 48 22)" />
+                        <circle cx="42" cy="50" r="2" fill="#fff" />
+                        <circle cx="58" cy="48" r="2.5" fill="#fff" />
+                    </svg>
+                `;
+            }
+
+            // 8. Diamante
+            if (name.includes('diamante') || name.includes('diamond') || name.includes('gema') || name.includes('gem')) {
+                return `
+                    <svg class="gift-box-svg diamond-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="diamondCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#22d3ee" />
+                                <stop offset="55%" stop-color="#06b6d4" />
+                                <stop offset="100%" stop-color="#0891b2" />
+                            </linearGradient>
+                        </defs>
+                        <polygon points="50,15 80,40 50,85 20,40" fill="url(#diamondCyan)" stroke="#cffafe" stroke-width="2" />
+                        <polygon points="50,15 65,40 50,85" fill="#ecfeff" opacity="0.4" />
+                        <polygon points="50,15 35,40 50,85" fill="#0891b2" opacity="0.3" />
+                        <line x1="20" y1="40" x2="80" y2="40" stroke="#cffafe" stroke-width="1.5" />
+                    </svg>
+                `;
+            }
+
+            // Fallback (Caja de regalo dorada 3D original)
+            return `
+                <svg class="gift-box-svg" viewBox="0 0 100 100" fill="none" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="giftGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#eab308" />
+                            <stop offset="100%" stop-color="#f59e0b" />
+                        </linearGradient>
+                        <linearGradient id="ribbonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#ef4444" />
+                            <stop offset="100%" stop-color="#b91c1c" />
+                        </linearGradient>
+                    </defs>
+                    <rect x="25" y="40" width="50" height="42" rx="6" fill="url(#giftGrad)" stroke="#fef08a" stroke-width="2" />
+                    <rect x="20" y="32" width="60" height="12" rx="3" fill="url(#giftGrad)" stroke="#fef08a" stroke-width="2" />
+                    <rect x="44" y="32" width="12" height="50" fill="url(#ribbonGrad)" />
+                    <rect x="20" y="44" width="60" height="10" fill="url(#ribbonGrad)" />
+                    <path d="M50 32C42 22 52 14 50 25C48 14 58 22 50 32Z" fill="url(#ribbonGrad)" stroke="#fee2e2" stroke-width="1.5" />
+                </svg>
+            `;
+        }
+
+        // =============================================
         //  PLAY ALERT
         // =============================================
         function playAlert(data) {
@@ -1206,6 +1515,7 @@
             const type = data.type; // 'follow', 'like', 'gift', 'subscribe'
             
             // Determinar si esta alerta específica está habilitada y cuáles son sus efectos
+            // Nota: si urlType es 'all', forzamos enableAlert=true para no bloquear nada
             let enableAlert = true;
             let playAudio = true;
             let showLottie = true;
@@ -1221,7 +1531,8 @@
             let alertVolume = 50;
             
             if (type === 'follow') {
-                enableAlert = config.enableFollowAlert !== undefined ? config.enableFollowAlert : true;
+                // Si la URL es específica para follow, respetar el flag; si es 'all', siempre mostrar
+                enableAlert = urlType === 'all' ? true : (config.enableFollowAlert !== undefined ? config.enableFollowAlert : true);
                 playAudio = config.followPlayAudio !== undefined ? config.followPlayAudio : true;
                 alertVolume = config.followAudioVolume !== undefined ? config.followAudioVolume : 50;
                 showLottie = config.followShowLottie !== undefined ? config.followShowLottie : true;
@@ -1232,7 +1543,7 @@
                 fontFamily = config.followFontFamily !== undefined ? config.followFontFamily : 'Outfit';
                 textShadow = config.followTextShadow !== undefined ? config.followTextShadow : '3d-retro';
             } else if (type === 'like') {
-                enableAlert = config.enableLikeAlert !== undefined ? config.enableLikeAlert : true;
+                enableAlert = urlType === 'all' ? true : (config.enableLikeAlert !== undefined ? config.enableLikeAlert : true);
                 playAudio = config.likePlayAudio !== undefined ? config.likePlayAudio : true;
                 alertVolume = config.likeAudioVolume !== undefined ? config.likeAudioVolume : 50;
                 showLottie = config.likeShowLottie !== undefined ? config.likeShowLottie : true;
@@ -1243,7 +1554,7 @@
                 fontFamily = config.likeFontFamily !== undefined ? config.likeFontFamily : 'Outfit';
                 textShadow = config.likeTextShadow !== undefined ? config.likeTextShadow : '3d-retro';
             } else if (type === 'gift') {
-                enableAlert = config.enableGiftAlert !== undefined ? config.enableGiftAlert : true;
+                enableAlert = urlType === 'all' ? true : (config.enableGiftAlert !== undefined ? config.enableGiftAlert : true);
                 playAudio = config.giftPlayAudio !== undefined ? config.giftPlayAudio : true;
                 alertVolume = config.giftAudioVolume !== undefined ? config.giftAudioVolume : 50;
                 showLottie = config.giftShowLottie !== undefined ? config.giftShowLottie : true;
@@ -1254,7 +1565,7 @@
                 fontFamily = config.giftFontFamily !== undefined ? config.giftFontFamily : 'Outfit';
                 textShadow = config.giftTextShadow !== undefined ? config.giftTextShadow : '3d-retro';
             } else if (type === 'subscribe') {
-                enableAlert = config.enableSubscribeAlert !== undefined ? config.enableSubscribeAlert : true;
+                enableAlert = urlType === 'all' ? true : (config.enableSubscribeAlert !== undefined ? config.enableSubscribeAlert : true);
                 playAudio = config.subscribePlayAudio !== undefined ? config.subscribePlayAudio : true;
                 alertVolume = config.subscribeAudioVolume !== undefined ? config.subscribeAudioVolume : 50;
                 showLottie = config.subscribeShowLottie !== undefined ? config.subscribeShowLottie : true;
@@ -1271,6 +1582,8 @@
                 ttsEnabled = true;
                 showCard = false;
             }
+
+
 
             // Si la alerta está desactivada en la configuración, no la reproducimos
             if (!enableAlert) {
@@ -1411,6 +1724,7 @@
             $mediaContainer.find("lottie-player").remove();
             $mediaContainer.find(".main-heart-container").remove();
             $mediaContainer.find(".fallback-badge-container").remove();
+            $mediaContainer.find(".gift-badge-container").remove();
             
             const $userAvatar = $("#userAvatar");
             $userAvatar.hide().removeClass("avatar-sync-pulse"); // Reset position/pulse styling
@@ -1521,30 +1835,24 @@
                         $userAvatar.attr("src", data.profilePic).show();
                     }
                 } else if (type === 'gift') {
-                    // SVG fallback para regalo (Caja de regalo dorada 3D)
-                    const $badgeContainer = $("<div>").addClass("fallback-badge-container");
-                    $badgeContainer.html(`
-                        <svg class="gift-box-svg" viewBox="0 0 100 100" fill="none" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-                            <defs>
-                                <linearGradient id="giftGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" stop-color="#eab308" />
-                                    <stop offset="100%" stop-color="#f59e0b" />
-                                </linearGradient>
-                                <linearGradient id="ribbonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" stop-color="#ef4444" />
-                                    <stop offset="100%" stop-color="#b91c1c" />
-                                </linearGradient>
-                            </defs>
-                            <rect x="25" y="40" width="50" height="42" rx="6" fill="url(#giftGrad)" stroke="#fef08a" stroke-width="2" />
-                            <rect x="20" y="32" width="60" height="12" rx="3" fill="url(#giftGrad)" stroke="#fef08a" stroke-width="2" />
-                            <rect x="44" y="32" width="12" height="50" fill="url(#ribbonGrad)" />
-                            <rect x="20" y="44" width="60" height="10" fill="url(#ribbonGrad)" />
-                            <path d="M50 32C42 22 52 14 50 25C48 14 58 22 50 32Z" fill="url(#ribbonGrad)" stroke="#fee2e2" stroke-width="1.5" />
-                        </svg>
-                    `);
-                    $mediaContainer.append($badgeContainer);
-                    if (data.profilePic) {
-                        $userAvatar.attr("src", data.profilePic).show();
+                    const name = String(data.giftName || '').toLowerCase().trim();
+                    if (name.includes('quiereme') || name.includes('quiéreme')) {
+                        // Reproducir el video Quiéreme MP4 de forma discreta y elegante
+                        const $videoContainer = $("<div>").addClass("quiereme-video-container");
+                        $videoContainer.html(`
+                            <video id="quieremeVideo" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;">
+                                <source src="QUIEREME.mp4" type="video/mp4">
+                            </video>
+                        `);
+                        $mediaContainer.append($videoContainer);
+                    } else {
+                        // Cargar el SVG del regalo personalizado según su nombre
+                        const $badgeContainer = $("<div>").addClass("gift-badge-container");
+                        $badgeContainer.html(getGiftSvg(data.giftName));
+                        $mediaContainer.append($badgeContainer);
+                        if (data.profilePic) {
+                            $userAvatar.attr("src", data.profilePic).show();
+                        }
                     }
                 } else if (type === 'subscribe') {
                     // SVG fallback para suscripción (Trofeo estrella cian brillante)
@@ -1579,7 +1887,12 @@
             // Reproducir Audio
             if (playAudio) {
                 const $audio = $("#alertAudio");
-                const audioUrl = theme.audio || theme.defaultAudio;
+                let audioUrl = theme.audio || theme.defaultAudio;
+                if (type === 'follow' && config.followAudioUrl) audioUrl = config.followAudioUrl;
+                else if (type === 'like' && config.likeAudioUrl) audioUrl = config.likeAudioUrl;
+                else if (type === 'gift' && config.giftAudioUrl) audioUrl = config.giftAudioUrl;
+                else if (type === 'subscribe' && config.subscribeAudioUrl) audioUrl = config.subscribeAudioUrl;
+                
                 $audio.attr("src", audioUrl);
                 const audioEl = $audio[0];
                 audioEl.volume = alertVolume / 100;
