@@ -485,18 +485,26 @@
               activeArtistEl.innerText = data.artist || "YouTube Creator";
               activeRequesterEl.innerText = data.requester || "N/A";
               
-              // Cargar o cambiar de video si es diferente
-              const currentVideoId = ytPlayer && typeof ytPlayer.getVideoData === 'function' && ytPlayer.getVideoData()
-                  ? ytPlayer.getVideoData().video_id
-                  : null;
+              if (data.state === 'ended') {
+                  showIdle();
+              } else {
+                  // Cargar o cambiar de video si es diferente
+                  const currentVideoId = ytPlayer && typeof ytPlayer.getVideoData === 'function' && ytPlayer.getVideoData()
+                      ? ytPlayer.getVideoData().video_id
+                      : null;
+                      
+                  if (data.videoId && data.videoId !== currentVideoId) {
+                      loadVideo(data.videoId);
+                  }
                   
-              if (data.videoId && data.videoId !== currentVideoId) {
-                  loadVideo(data.videoId);
+                  // Sincronizar estado de reproducción (play/pause/stop)
+                  syncPlaybackState(data.state);
               }
-              
-              // Sincronizar estado de reproducción (play/pause/stop)
-              syncPlaybackState(data.state);
+            } else {
+              showIdle();
             }
+          } else {
+            showIdle();
           }
         }, (err) => console.error("Error leyendo video activo:", err));
     }
@@ -738,6 +746,8 @@
       playerBar.style.display = 'none';
       if (isObs) {
         idleScreen.style.display = 'none';
+        const mainLayout = document.getElementById('main-layout');
+        if (mainLayout) mainLayout.style.display = 'none';
       } else {
         idleScreen.style.display = 'flex';
         setTimeout(() => {
