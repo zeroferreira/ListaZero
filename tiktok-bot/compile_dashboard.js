@@ -72,7 +72,55 @@ async function ensureLocalAssets() {
   }
 }
 
+// Sync root overlay files to public directory
+function syncRootOverlays() {
+  console.log('⏳ Syncing root overlays to public directory...');
+  const filesToSync = [
+    'alerts_overlay.html',
+    'goal_overlay.html',
+    'welcome_overlay.html',
+    'topgifter_overlay.html',
+    'topliker_overlay.html',
+    'youtube_player_overlay.html',
+    'stats_ticker_widget.html',
+    'overlay.html',
+    'overlay.js',
+    'overlay.css',
+    'queue_overlay.html',
+    'queue.js',
+    'queue.css',
+    'roulette_overlay.html',
+    'roulette.js',
+    'roulette.css',
+    'particles.js',
+    'tops.html',
+    'firebase-config.js'
+  ];
+
+  const rootDir = path.dirname(__dirname); // La raíz es el padre de compile_dashboard.js
+  const publicDir = path.join(__dirname, 'public');
+
+  for (const file of filesToSync) {
+    const srcPath = path.join(rootDir, file);
+    const destPath = path.join(publicDir, file);
+
+    if (fs.existsSync(srcPath)) {
+      try {
+        fs.copyFileSync(srcPath, destPath);
+        console.log(`  ✅ Synced: ${file}`);
+      } catch (e) {
+        console.error(`  ❌ Failed to sync ${file}: ${e.message}`);
+      }
+    } else {
+      console.warn(`  ⚠️ Source not found for syncing: ${file}`);
+    }
+  }
+}
+
 async function run() {
+  // Sincronizar primero
+  syncRootOverlays();
+
   await ensureLocalAssets();
 
   try {
