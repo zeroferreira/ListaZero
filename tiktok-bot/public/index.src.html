@@ -908,7 +908,7 @@
             transform: translateY(0);
         }
 
-        /* Responsive adjust */
+        /* ── Responsive: Tableta ─────────────────────── */
         @media (max-width: 900px) {
             .overlays-layout {
                 flex-direction: column;
@@ -917,12 +917,55 @@
                 width: 100%;
                 flex-direction: row;
                 overflow-x: auto;
+                overflow-y: hidden;
                 padding-bottom: 8px;
+                padding-right: 0;
                 border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                /* Smooth momentum scroll on iOS */
+                -webkit-overflow-scrolling: touch;
+                scroll-snap-type: x proximity;
+                /* Fade edges to hint scroll */
+                -webkit-mask-image: linear-gradient(to right, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%);
+                mask-image: linear-gradient(to right, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%);
             }
             .overlays-menu-item {
                 width: auto;
                 flex-shrink: 0;
+                padding: 10px 14px;
+                font-size: 0.82rem;
+                scroll-snap-align: start;
+                /* Keep badge on same line */
+                flex-direction: row;
+                gap: 6px;
+            }
+        }
+
+        /* ── Responsive: Móvil pequeño ───────────────── */
+        @media (max-width: 600px) {
+            .overlays-sidebar {
+                gap: 6px;
+            }
+            .overlays-menu-item {
+                padding: 8px 12px;
+                font-size: 0.78rem;
+                border-radius: 10px;
+                /* Stack emoji over text for a compact pill */
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 2px;
+                min-width: 72px;
+                text-align: center;
+            }
+            /* On very small screens hide the text label, keep emoji + badge */
+            .overlays-menu-item > span:first-child {
+                /* show emoji + text but smaller */
+                font-size: 0.78rem;
+                white-space: nowrap;
+            }
+            .overlays-menu-item .menu-badge {
+                font-size: 0.6rem;
+                padding: 2px 5px;
             }
         }
     </style>
@@ -1134,6 +1177,10 @@
                 topliker_second_place_color: '#cbd5e1',
                 topliker_third_place_color: '#fb923c',
                 topliker_inactivity_threshold: 90,
+                topliker_gradient_theme: 'none',
+                topliker_gradient_scope: 'all',
+                topliker_bounce_scope: 'all',
+                topliker_count_label: 'Likes',
                 
                 // Specific customization elements
                 playerOpacity: 0.78,
@@ -1240,7 +1287,17 @@
                 likeslockRadius: 22,
                 
                 tickerOpacity: 0.85,
-                tickerFontSize: 14
+                tickerFontSize: 14,
+                
+                // YouTube Player Card Config
+                yt_card_width: 380,
+                yt_card_radius: 22,
+                yt_card_position: 'bottom-left',
+                yt_show_requester: true,
+                yt_show_progress: true,
+                yt_show_artist: true,
+                yt_show_status_dot: true,
+                yt_artwork_size: 82
             });
 
             const [dirtyKeys, setDirtyKeys] = React.useState({});
@@ -1610,6 +1667,7 @@
 
             const [currentOrigin, setCurrentOrigin] = React.useState('http://localhost:3000');
             const [ytPlayerFullscreen, setYtPlayerFullscreen] = React.useState(false);
+            const [ytSettingsExpanded, setYtSettingsExpanded] = React.useState(false);
             const [myinstantsTarget, setMyinstantsTarget] = React.useState(null);
             const [myinstantsQuery, setMyinstantsQuery] = React.useState('');
             const [myinstantsResults, setMyinstantsResults] = React.useState([]);
@@ -1644,7 +1702,7 @@
                 try {
                     const iframe = document.getElementById('iframe-ytplayer');
                     if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage({ action: 'stopVideo' }, '*');
+                        iframe.contentWindow.postMessage({ action: 'ytStop' }, '*');
                     }
                     if (typeof db !== 'undefined' && db) {
                         await db.collection('systemConfig').doc('activeYoutubeVideo').set({
@@ -1663,6 +1721,40 @@
                     }
                 } catch (e) {
                     console.error('Error al detener video:', e);
+                }
+            };
+
+            const handlePauseActiveYoutubeVideo = async () => {
+                try {
+                    const iframe = document.getElementById('iframe-ytplayer');
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage({ action: 'ytPause' }, '*');
+                    }
+                    if (typeof db !== 'undefined' && db) {
+                        await db.collection('systemConfig').doc('activeYoutubeVideo').update({
+                            state: 'paused',
+                            timestamp: Date.now()
+                        });
+                    }
+                } catch (e) {
+                    console.error('Error al pausar video:', e);
+                }
+            };
+
+            const handleResumeActiveYoutubeVideo = async () => {
+                try {
+                    const iframe = document.getElementById('iframe-ytplayer');
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage({ action: 'ytPlay' }, '*');
+                    }
+                    if (typeof db !== 'undefined' && db) {
+                        await db.collection('systemConfig').doc('activeYoutubeVideo').update({
+                            state: 'playing',
+                            timestamp: Date.now()
+                        });
+                    }
+                } catch (e) {
+                    console.error('Error al reanudar video:', e);
                 }
             };
 
@@ -2007,7 +2099,13 @@
                                         primaryColor: data.primaryColor || prev[t].primaryColor,
                                         enabled: data.enabled !== undefined ? data.enabled : prev[t].enabled,
                                         goalsOpacity: data.goalsOpacity !== undefined ? data.goalsOpacity : prev[t].goalsOpacity,
-                                        goalsRadius: data.goalsRadius !== undefined ? data.goalsRadius : prev[t].goalsRadius
+                                        goalsRadius: data.goalsRadius !== undefined ? data.goalsRadius : prev[t].goalsRadius,
+                                        layoutMode: data.layoutMode || prev[t].layoutMode || 'premium',
+                                        autoLoop: data.autoLoop !== undefined ? data.autoLoop : prev[t].autoLoop || false,
+                                        countersAlign: data.countersAlign || prev[t].countersAlign || 'center',
+                                        countersSpacing: data.countersSpacing !== undefined ? data.countersSpacing : (prev[t].countersSpacing !== undefined ? prev[t].countersSpacing : 8),
+                                        countersLabel: data.countersLabel !== undefined ? data.countersLabel : (prev[t].countersLabel !== undefined ? prev[t].countersLabel : ''),
+                                        countersFontSize: data.countersFontSize !== undefined ? data.countersFontSize : (prev[t].countersFontSize !== undefined ? prev[t].countersFontSize : 13)
                                     };
                                 }
                             });
@@ -2140,6 +2238,8 @@
                         sendConfigToIframe('iframe-lastevents', lastevents);
                     } else if (activeSub === 'welcome') {
                         sendConfigToIframe('iframe-welcome', overlays);
+                    } else if (activeSub === 'ytplayer') {
+                        sendConfigToIframe('iframe-ytplayer', overlays);
                     }
                 }, 80);
                 return () => clearTimeout(timerId);
@@ -5625,13 +5725,100 @@
                                                         </div>
 
                                                         <h4 style={{ margin: '15px 0 10px 0', color: '#ff5e7e' }}>✨ Animaciones de Tabla</h4>
-                                                        <div className="toggle-row" style={{ padding: '8px 0', borderBottom: 'none' }}>
-                                                            <span>Texto Gradiente Animado (Arcoíris) 🌈</span>
-                                                            <label className="switch">
-                                                                <input type="checkbox" checked={overlays.topliker_rainbow_username} onChange={(e) => setOverlays({ ...overlays, topliker_rainbow_username: e.target.checked })} />
-                                                                <span className="slider"></span>
-                                                            </label>
+
+                                                        {/* Gradient Theme Picker */}
+                                                        <div className="form-group" style={{ marginBottom: '14px' }}>
+                                                            <label style={{ fontWeight: '600', marginBottom: '8px', display: 'block', fontSize: '0.85rem' }}>🎨 Tema de Color Gradiente (Nombre de Usuario)</label>
+                                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '7px' }}>
+                                                                {[
+                                                                    { value: 'none',    label: 'Sin color',       emoji: '⬜', grad: '#888,#aaa' },
+                                                                    { value: 'rainbow', label: 'Arcoíris',        emoji: '🌈', grad: '#ff007f,#bd00ff,#00f0ff,#00ff66' },
+                                                                    { value: 'silver',  label: 'Plateado',        emoji: '✨', grad: '#c0c0c0,#f0f0f0,#a0a0a0' },
+                                                                    { value: 'rose',    label: 'Rosa Claro',      emoji: '🌸', grad: '#ffb6c1,#ff91a4,#ffd6e0' },
+                                                                    { value: 'pearl',   label: 'Blanco Perlado',  emoji: '🤍', grad: '#fff,#e8e0f0,#f5f0ff' },
+                                                                    { value: 'sky',     label: 'Cielo Pastel',    emoji: '🩵', grad: '#a8d8f0,#c3e8ff,#7fc8f8' },
+                                                                    { value: 'gold',    label: 'Dorado',          emoji: '🌟', grad: '#f5c518,#ffd700,#ffe066' },
+                                                                ].map(theme => (
+                                                                    <button
+                                                                        key={theme.value}
+                                                                        onClick={() => setOverlays({ ...overlays, topliker_gradient_theme: theme.value })}
+                                                                        style={{
+                                                                            padding: '8px 6px',
+                                                                            borderRadius: '10px',
+                                                                            border: (overlays.topliker_gradient_theme || 'none') === theme.value
+                                                                                ? '2px solid #ff5e7e'
+                                                                                : '1.5px solid rgba(255,255,255,0.08)',
+                                                                            background: (overlays.topliker_gradient_theme || 'none') === theme.value
+                                                                                ? 'rgba(255,94,126,0.15)'
+                                                                                : 'rgba(255,255,255,0.03)',
+                                                                            cursor: 'pointer',
+                                                                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                                                                            transition: 'all 0.2s',
+                                                                        }}
+                                                                    >
+                                                                        <span style={{ fontSize: '1.3rem' }}>{theme.emoji}</span>
+                                                                        <span style={{
+                                                                            fontSize: '0.65rem', fontWeight: '700',
+                                                                            background: `linear-gradient(90deg, ${theme.grad})`,
+                                                                            WebkitBackgroundClip: 'text',
+                                                                            WebkitTextFillColor: theme.value === 'none' ? '#888' : 'transparent',
+                                                                            color: theme.value === 'none' ? '#888' : 'transparent',
+                                                                        }}>
+                                                                            {theme.label}
+                                                                        </span>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
                                                         </div>
+
+                                                        {/* Gradient scope selector - only show when a theme is active */}
+                                                        {(overlays.topliker_gradient_theme && overlays.topliker_gradient_theme !== 'none') && (
+                                                            <div className="form-group" style={{ marginBottom: '14px' }}>
+                                                                <label style={{ fontWeight: '600', marginBottom: '8px', display: 'block', fontSize: '0.85rem' }}>🎯 Aplicar Gradiente a...</label>
+                                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                                    {[
+                                                                        { value: 'all',  label: '👥 Todos',       desc: 'Toda la tabla' },
+                                                                        { value: 'top3', label: '🏆 Solo Top 3',  desc: 'Puestos 1, 2 y 3' },
+                                                                    ].map(opt => (
+                                                                        <button
+                                                                            key={opt.value}
+                                                                            onClick={() => setOverlays({ ...overlays, topliker_gradient_scope: opt.value })}
+                                                                            style={{
+                                                                                flex: 1,
+                                                                                padding: '10px 8px',
+                                                                                borderRadius: '10px',
+                                                                                border: (overlays.topliker_gradient_scope || 'all') === opt.value
+                                                                                    ? '2px solid #ff5e7e'
+                                                                                    : '1.5px solid rgba(255,255,255,0.08)',
+                                                                                background: (overlays.topliker_gradient_scope || 'all') === opt.value
+                                                                                    ? 'rgba(255,94,126,0.15)'
+                                                                                    : 'rgba(255,255,255,0.03)',
+                                                                                cursor: 'pointer',
+                                                                                color: '#fff',
+                                                                                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
+                                                                                transition: 'all 0.18s',
+                                                                            }}
+                                                                        >
+                                                                            <span style={{ fontSize: '1.1rem', fontWeight: '700' }}>{opt.label}</span>
+                                                                            <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)' }}>{opt.desc}</span>
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Count label */}
+                                                        <div className="form-group" style={{ marginBottom: '14px' }}>
+                                                            <label style={{ fontWeight: '600', marginBottom: '6px', display: 'block', fontSize: '0.85rem' }}>🏷️ Etiqueta del Conteo de Likes</label>
+                                                            <input
+                                                                type="text"
+                                                                value={overlays.topliker_count_label !== undefined ? overlays.topliker_count_label : 'Likes'}
+                                                                onChange={(e) => setOverlays({ ...overlays, topliker_count_label: e.target.value })}
+                                                                placeholder="Ej: Likes, ♥️, pts, corazones..."
+                                                                style={{ width: '100%' }}
+                                                            />
+                                                        </div>
+
                                                         <div className="toggle-row" style={{ padding: '8px 0', borderBottom: 'none' }}>
                                                             <span>Efecto Rebote 3D de Letras 🦘</span>
                                                             <label className="switch">
@@ -5639,6 +5826,43 @@
                                                                 <span className="slider"></span>
                                                             </label>
                                                         </div>
+
+                                                        {/* Bounce scope selector - only show when bounce is active */}
+                                                        {overlays.topliker_bounce_username && (
+                                                            <div className="form-group" style={{ marginBottom: '14px', marginTop: '4px' }}>
+                                                                <label style={{ fontWeight: '600', marginBottom: '8px', display: 'block', fontSize: '0.85rem' }}>🎯 Aplicar Rebote a...</label>
+                                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                                    {[
+                                                                        { value: 'all',  label: '👥 Todos',       desc: 'Toda la tabla' },
+                                                                        { value: 'top3', label: '🏆 Solo Top 3',  desc: 'Puestos 1, 2 y 3' },
+                                                                    ].map(opt => (
+                                                                        <button
+                                                                            key={opt.value}
+                                                                            onClick={() => setOverlays({ ...overlays, topliker_bounce_scope: opt.value })}
+                                                                            style={{
+                                                                                flex: 1,
+                                                                                padding: '10px 8px',
+                                                                                borderRadius: '10px',
+                                                                                border: (overlays.topliker_bounce_scope || 'all') === opt.value
+                                                                                    ? '2px solid #ff5e7e'
+                                                                                    : '1.5px solid rgba(255,255,255,0.08)',
+                                                                                background: (overlays.topliker_bounce_scope || 'all') === opt.value
+                                                                                    ? 'rgba(255,94,126,0.15)'
+                                                                                    : 'rgba(255,255,255,0.03)',
+                                                                                cursor: 'pointer',
+                                                                                color: '#fff',
+                                                                                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
+                                                                                transition: 'all 0.18s',
+                                                                            }}
+                                                                        >
+                                                                            <span style={{ fontSize: '1.1rem', fontWeight: '700' }}>{opt.label}</span>
+                                                                            <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.5)' }}>{opt.desc}</span>
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
                                                         <div className="toggle-row" style={{ padding: '8px 0', borderBottom: 'none' }}>
                                                             <span>Animar Latido de Likes al Sumar 💓</span>
                                                             <label className="switch">
@@ -5924,6 +6148,23 @@
                                                                         />
                                                                     </div>
 
+                                                                    <div className="form-group" style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                        <input 
+                                                                            type="checkbox" 
+                                                                            id={`goal-autoloop-${t.key}`}
+                                                                            checked={config.autoLoop || false} 
+                                                                            onChange={(e) => {
+                                                                                const updated = { ...goals };
+                                                                                updated[t.key] = { ...config, autoLoop: e.target.checked };
+                                                                                setGoals(updated);
+                                                                            }} 
+                                                                            style={{ width: 'auto', margin: 0 }}
+                                                                        />
+                                                                        <label htmlFor={`goal-autoloop-${t.key}`} style={{ margin: 0, cursor: 'pointer' }}>
+                                                                            Repetir meta automáticamente (Auto-loop)
+                                                                        </label>
+                                                                    </div>
+
                                                                     <div className="form-group" style={{ marginTop: '20px' }}>
                                                                         <label>Enlace de OBS (Browser Source — 500 × 180 px)</label>
                                                                         <div className="copy-url-row">
@@ -5984,11 +6225,29 @@
                                                             
                                                             <div className="personalize-modal-body" style={{ padding: '20px', overflowY: 'auto' }}>
                                                                 {/* 1. Visual Customization */}
-                                                                <details name="goal-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
-                                                                    <summary className="collapsible-config-summary" style={{ cursor: 'pointer',  marginBottom: '15px', color: t.color }}><span>🎨 Estilo Visual</span></summary>
-                                                                    <div style={{ marginTop: '15px' }}>
-                                                                    <div className="form-group">
-                                                                        <label>Color Primario (Barra/Destello)</label>
+                                                                    <details name="goal-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
+                                                                        <summary className="collapsible-config-summary" style={{ cursor: 'pointer',  marginBottom: '15px', color: t.color }}><span>🎨 Estilo Visual</span></summary>
+                                                                        <div style={{ marginTop: '15px' }}>
+                                                                        <div className="form-group" style={{ marginBottom: '15px' }}>
+                                                                            <label>Diseño de la Barra (Tema)</label>
+                                                                            <select 
+                                                                                value={config.layoutMode || 'premium'} 
+                                                                                onChange={(e) => {
+                                                                                    const updated = { ...goals };
+                                                                                    updated[t.key] = { ...config, layoutMode: e.target.value };
+                                                                                    setGoals(updated);
+                                                                                }}
+                                                                                style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#ffffff' }}
+                                                                            >
+                                                                                <option value="premium">Premium (Completo)</option>
+                                                                                <option value="minimal">Minimal (Clásico)</option>
+                                                                                <option value="inline">Integrado (Texto en Barra)</option>
+                                                                                <option value="skewed">Sesgado (Slanted)</option>
+                                                                                <option value="minimalista">Minimalista</option>
+                                                                            </select>
+                                                                        </div>
+                                                                        <div className="form-group">
+                                                                            <label>Color Primario (Barra/Destello)</label>
                                                                         <div style={{ display: 'flex', gap: '10px' }}>
                                                                             <input 
                                                                                 type="color" 
@@ -6039,6 +6298,151 @@
                                                                             onChange={(e) => {
                                                                                 const updated = { ...goals };
                                                                                 updated[t.key] = { ...config, goalsRadius: parseInt(e.target.value) };
+                                                                                setGoals(updated);
+                                                                            }} 
+                                                                        />
+                                                                    </div>
+                                                                    <div className="form-group" style={{ marginTop: '15px' }}>
+                                                                        <label>Altura de la Barra: {config.barHeight !== undefined ? config.barHeight : 18}px</label>
+                                                                        <input 
+                                                                            type="range" 
+                                                                            min="8" 
+                                                                            max="40" 
+                                                                            step="1" 
+                                                                            value={config.barHeight !== undefined ? config.barHeight : 18} 
+                                                                            onChange={(e) => {
+                                                                                const updated = { ...goals };
+                                                                                updated[t.key] = { ...config, barHeight: parseInt(e.target.value) };
+                                                                                setGoals(updated);
+                                                                            }} 
+                                                                        />
+                                                                    </div>
+                                                                    <div className="form-group" style={{ marginTop: '15px' }}>
+                                                                        <label>Redondeado de la Barra: {config.barRadius !== undefined ? config.barRadius : 100}px</label>
+                                                                        <input 
+                                                                            type="range" 
+                                                                            min="0" 
+                                                                            max="50" 
+                                                                            step="2" 
+                                                                            value={config.barRadius !== undefined ? config.barRadius : 100} 
+                                                                            onChange={(e) => {
+                                                                                const updated = { ...goals };
+                                                                                updated[t.key] = { ...config, barRadius: parseInt(e.target.value) };
+                                                                                setGoals(updated);
+                                                                            }} 
+                                                                        />
+                                                                    </div>
+                                                                    <div className="form-group" style={{ marginTop: '15px' }}>
+                                                                        <label>Tamaño de Fuente (Texto): {config.fontSize !== undefined ? config.fontSize : 14}px</label>
+                                                                        <input 
+                                                                            type="range" 
+                                                                            min="10" 
+                                                                            max="24" 
+                                                                            step="1" 
+                                                                            value={config.fontSize !== undefined ? config.fontSize : 14} 
+                                                                            onChange={(e) => {
+                                                                                const updated = { ...goals };
+                                                                                updated[t.key] = { ...config, fontSize: parseInt(e.target.value) };
+                                                                                setGoals(updated);
+                                                                            }} 
+                                                                        />
+                                                                    </div>
+                                                                    <div className="form-group" style={{ marginTop: '15px' }}>
+                                                                        <label>Ancho del Widget (Grosor): {config.customWidth !== undefined ? config.customWidth : 500}px</label>
+                                                                        <input 
+                                                                            type="range" 
+                                                                            min="250" 
+                                                                            max="800" 
+                                                                            step="10" 
+                                                                            value={config.customWidth !== undefined ? config.customWidth : 500} 
+                                                                            onChange={(e) => {
+                                                                                const updated = { ...goals };
+                                                                                updated[t.key] = { ...config, customWidth: parseInt(e.target.value) };
+                                                                                setGoals(updated);
+                                                                            }} 
+                                                                        />
+                                                                    </div>
+                                                                    <div className="form-group" style={{ marginTop: '15px' }}>
+                                                                        <label>Color del Texto / Contadores</label>
+                                                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                                                            <input 
+                                                                                type="color" 
+                                                                                value={config.textColor || '#ffffff'} 
+                                                                                onChange={(e) => {
+                                                                                    const updated = { ...goals };
+                                                                                    updated[t.key] = { ...config, textColor: e.target.value };
+                                                                                    setGoals(updated);
+                                                                                }} 
+                                                                                style={{ width: '50px', height: '40px', padding: '0', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                                                                            />
+                                                                            <input 
+                                                                                type="text" 
+                                                                                value={config.textColor || ''} 
+                                                                                onChange={(e) => {
+                                                                                    const updated = { ...goals };
+                                                                                    updated[t.key] = { ...config, textColor: e.target.value };
+                                                                                    setGoals(updated);
+                                                                                }} 
+                                                                                placeholder="#ffffff"
+                                                                                style={{ flex: 1 }}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="form-group" style={{ marginTop: '15px' }}>
+                                                                        <label>Alineación de la Caja de Meta (Debajo de la Barra)</label>
+                                                                        <select 
+                                                                            value={config.countersAlign || 'center'} 
+                                                                            onChange={(e) => {
+                                                                                const updated = { ...goals };
+                                                                                updated[t.key] = { ...config, countersAlign: e.target.value };
+                                                                                setGoals(updated);
+                                                                            }}
+                                                                            style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#ffffff' }}
+                                                                        >
+                                                                            <option value="left">Izquierda</option>
+                                                                            <option value="center">Centro</option>
+                                                                            <option value="right">Derecha</option>
+                                                                        </select>
+                                                                    </div>
+                                                                    <div className="form-group" style={{ marginTop: '15px' }}>
+                                                                        <label>Distancia a la Barra (Separación): {config.countersSpacing !== undefined ? config.countersSpacing : 8}px</label>
+                                                                        <input 
+                                                                            type="range" 
+                                                                            min="-15" 
+                                                                            max="35" 
+                                                                            step="1" 
+                                                                            value={config.countersSpacing !== undefined ? config.countersSpacing : 8} 
+                                                                            onChange={(e) => {
+                                                                                const updated = { ...goals };
+                                                                                updated[t.key] = { ...config, countersSpacing: parseInt(e.target.value) };
+                                                                                setGoals(updated);
+                                                                            }} 
+                                                                        />
+                                                                    </div>
+                                                                    <div className="form-group" style={{ marginTop: '15px' }}>
+                                                                        <label>Texto del Prefijo (Caja de Meta - Vacío para Default)</label>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={config.countersLabel || ''} 
+                                                                            onChange={(e) => {
+                                                                                const updated = { ...goals };
+                                                                                updated[t.key] = { ...config, countersLabel: e.target.value };
+                                                                                setGoals(updated);
+                                                                            }} 
+                                                                            placeholder="Ej: Meta LIKES ♥️ "
+                                                                        />
+                                                                    </div>
+                                                                    <div className="form-group" style={{ marginTop: '15px' }}>
+                                                                        <label>Tamaño de Fuente (Caja de Meta): {config.countersFontSize !== undefined ? config.countersFontSize : 13}px</label>
+                                                                        <input 
+                                                                            type="range" 
+                                                                            min="10" 
+                                                                            max="24" 
+                                                                            step="1" 
+                                                                            value={config.countersFontSize !== undefined ? config.countersFontSize : 13} 
+                                                                            onChange={(e) => {
+                                                                                const updated = { ...goals };
+                                                                                updated[t.key] = { ...config, countersFontSize: parseInt(e.target.value) };
                                                                                 setGoals(updated);
                                                                             }} 
                                                                         />
@@ -7078,94 +7482,210 @@
                                     </div>
                                 )}
 
-                                {/* SUBPANEL 12: YOUTUBE PLAYER */}
-                                {activeSub === 'ytplayer' && (
-                                    <div className="glass-card animate-fade-in">
-                                        <h3 style={{ marginBottom: '10px' }}>🎥 Reproductor de Videos de YouTube</h3>
-                                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '20px' }}>
-                                            Reproduce automáticamente en tu stream los videos de YouTube solicitados por tus espectadores a través del chat o del formulario.
-                                        </p>
+                                 {/* SUBPANEL 12: YOUTUBE PLAYER */}
+                                 {activeSub === 'ytplayer' && (
+                                     <div className="glass-card animate-fade-in">
+                                         <h3 style={{ marginBottom: '10px' }}>🎥 Reproductor de Videos de YouTube</h3>
+                                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '15px' }}>
+                                             Reproduce en tu stream los videos de YouTube solicitados por tus espectadores.
+                                         </p>
+ 
+                                         {/* Vista Previa del Reproductor */}
+                                         <div className="preview-panel" style={{ marginBottom: '15px' }}>
+                                             <div className="preview-header">
+                                                 <span>📺 Vista Previa del Reproductor</span>
+                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                     <div className="preview-live-dot"></div> Live YT Player
+                                                 </div>
+                                             </div>
+                                             <iframe id="iframe-ytplayer" src="./youtube_player_overlay.html?v=3&preview=true" className="preview-iframe" style={{ height: '380px', width: '100%', border: 'none', borderRadius: '8px' }} allow="autoplay"></iframe>
+                                         </div>
 
-                                        <div className="preview-panel">
-                                            <div className="preview-header">
-                                                <span>📺 Vista Previa del Reproductor</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                    <div className="preview-live-dot"></div> Live YT Player
-                                                </div>
-                                            </div>
-                                            <iframe id="iframe-ytplayer" src="./youtube_player_overlay.html?v=3" className="preview-iframe" style={{ height: '380px', width: '100%', border: 'none', borderRadius: '8px' }}></iframe>
-                                        </div>
+                                         {/* Controles de Reproducción y Simulación (Cerca del Overlay) */}
+                                         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                                             <button className="btn btn-secondary" onClick={() => {
+                                                 const iframe = document.getElementById('iframe-ytplayer');
+                                                 if (iframe && iframe.contentWindow) {
+                                                     // Enviar simulación al nuevo overlay estilo Cider (Rick Astley)
+                                                     iframe.contentWindow.postMessage({
+                                                         action: 'ytPlay',
+                                                         payload: {
+                                                             videoId: 'dQw4w9WgXcQ',
+                                                             title: 'Never Gonna Give You Up',
+                                                             artist: 'Rick Astley',
+                                                             requester: 'PruebaYouTube',
+                                                             duration: 212,
+                                                             timestamp: Date.now()
+                                                         }
+                                                     }, '*');
+                                                 }
+                                                 const apiBase = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+                                                 fetch(`${apiBase}/api/test/sr`, {
+                                                     method: 'POST',
+                                                     headers: {'Content-Type': 'application/json'},
+                                                     body: JSON.stringify({
+                                                         user: 'PruebaYouTube',
+                                                         songName: 'Never Gonna Give You Up',
+                                                         artistName: 'Rick Astley',
+                                                         link: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                                                         sendToQueue: true
+                                                     })
+                                                 }).catch(() => {});
+                                             }} style={{ flex: 1, minWidth: '200px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', color: '#ec4899', borderColor: '#ec4899', background: 'rgba(236,72,153,0.05)' }}>
+                                                 🧪 Simular Pedido con YouTube Link (Rick Astley)
+                                             </button>
+                                             
+                                             <button className="btn btn-secondary" onClick={handlePauseActiveYoutubeVideo} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', color: '#f59e0b', borderColor: '#f59e0b' }}>
+                                                 ⏸️ Pausar
+                                             </button>
+                                             
+                                             <button className="btn btn-secondary" onClick={handleResumeActiveYoutubeVideo} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', color: '#10b981', borderColor: '#10b981' }}>
+                                                 ▶️ Reanudar
+                                             </button>
 
-                                        <div className="form-group" style={{ marginTop: '20px', background: 'rgba(255,255,255,0.02)', padding: '15px', border: '1px dashed var(--border-glass)', borderRadius: '10px' }}>
-                                            <label style={{ fontWeight: '600', color: 'var(--accent-primary)', display: 'block', marginBottom: '8px' }}>🔗 Enlace del Widget para OBS (Fuente de Navegador)</label>
-                                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '10px' }}>
-                                                Agrega este enlace en OBS como <strong>Fuente de Navegador</strong>. Ajusta el tamaño a 850 × 550 px o ponlo en pantalla completa agregando <code>?fullscreen=true</code> al final.
-                                            </p>
-                                            <div className="copy-url-row" style={{ display: 'flex', gap: '10px' }}>
-                                                <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/youtube_player_overlay.html${ytPlayerFullscreen ? '?obs=true' : ''}`} onClick={(e) => e.target.select()} style={{ flex: 1 }} />
-                                                <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/youtube_player_overlay.html${ytPlayerFullscreen ? '?obs=true' : ''}`)}>Copiar URL</button>
-                                            </div>
-                                            <div style={{ marginTop: '10px' }}>
-                                                <label className="toggle-switch-label" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                                                    <input type="checkbox" onChange={(e) => setYtPlayerFullscreen(e.target.checked)} checked={ytPlayerFullscreen} style={{ width: 'auto', marginRight: '8px' }} />
-                                                    Versión Pantalla Completa (Sin barra inferior)
-                                                </label>
-                                            </div>
-                                        </div>
+                                             <button className="btn btn-red" onClick={handleStopActiveYoutubeVideo} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                                                 ⏹️ Detener OBS
+                                             </button>
 
-                                        <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
-                                            <button className="btn btn-red" onClick={handleStopActiveYoutubeVideo} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                                                ⏹️ Detener y Limpiar OBS
-                                            </button>
-                                            <button className="btn btn-secondary" onClick={() => {
-                                                const iframe = document.getElementById('iframe-ytplayer');
-                                                if (iframe && iframe.contentWindow) {
-                                                    // Simular una canción de YouTube enviando un postMessage de prueba
-                                                    iframe.contentWindow.postMessage({
-                                                        action: 'triggerTestAlert', 
-                                                        payload: {
-                                                            type: 'playbackStatus.nowPlayingItemDidChange', 
-                                                            data: {
-                                                                name: 'Video de YouTube de Prueba', 
-                                                                artistName: 'YouTube Creator', 
-                                                                requester: 'PruebaYouTube'
-                                                            }
-                                                        }
-                                                    }, '*');
-                                                }
-                                                const apiBase = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
-                                                // Test API endpoint
-                                                fetch(`${apiBase}/api/test/sr`, {
-                                                    method: 'POST',
-                                                    headers: {'Content-Type': 'application/json'},
-                                                    body: JSON.stringify({
-                                                        user: 'PruebaYouTube',
-                                                        songName: 'Video de YouTube de Prueba',
-                                                        artistName: 'YouTube Creator',
-                                                        artworkUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/4b/c9/7e/4bc97e7b-c3df-f126-df06-e7e7a57a1b55/196362164478.jpg/100x100bb.jpg',
-                                                        link: 'https://www.youtube.com/watch?v=M7lc1UVf-VE', // YouTube Test Video (Google Developers)
-                                                        sendToQueue: true
-                                                    })
-                                                }).catch(() => {});
-                                            }} style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', color: '#ec4899', borderColor: '#ec4899' }}>
-                                                🧪 Simular Pedido con YouTube Link (M7lc1UVf-VE)
-                                            </button>
+                                             <button className="btn btn-secondary" onClick={() => {
+                                                 const apiBase = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+                                                 fetch(`${apiBase}/api/test/clear`, {
+                                                     method: 'POST'
+                                                 }).then(res => res.json()).then((data) => {
+                                                     showAlert('Limpieza de Pruebas', '🧹 Pedidos de prueba eliminados de la base de datos: ' + (data.deletedCount || 0));
+                                                 }).catch((e) => {
+                                                     showAlert('Error', 'Error al limpiar: ' + e);
+                                                 });
+                                                 const iframe = document.getElementById('iframe-ytplayer');
+                                                 if (iframe && iframe.contentWindow) {
+                                                     iframe.contentWindow.postMessage({ action: 'ytStop' }, '*');
+                                                 }
+                                             }} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', color: '#ef4444', borderColor: '#ef4444' }}>
+                                                 🧹 Limpiar
+                                             </button>
+                                         </div>
 
-                                            <button className="btn btn-secondary" onClick={() => {
-                                                const apiBase = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
-                                                fetch(`${apiBase}/api/test/clear`, {
-                                                    method: 'POST'
-                                                }).then(res => res.json()).then((data) => {
-                                                    showAlert('Limpieza de Pruebas', '🧹 Pedidos de prueba eliminados de la base de datos: ' + (data.deletedCount || 0));
-                                                }).catch((e) => {
-                                                    showAlert('Error', 'Error al limpiar: ' + e);
-                                                });
-                                            }} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', color: '#ef4444', borderColor: '#ef4444' }}>
-                                                🧹 Limpiar Pruebas
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
+                                         {/* Acordeón de Configuración Visual */}
+                                         <div style={{ marginBottom: '20px' }}>
+                                             <button 
+                                                 className="btn btn-secondary" 
+                                                 onClick={() => setYtSettingsExpanded(!ytSettingsExpanded)} 
+                                                 style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 15px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.02)' }}
+                                             >
+                                                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600' }}>
+                                                     🎨 {ytSettingsExpanded ? 'Ocultar Opciones de Diseño' : 'Personalizar Diseño del Reproductor'}
+                                                 </span>
+                                                 <span>{ytSettingsExpanded ? '▲' : '▼'}</span>
+                                             </button>
+
+                                             {ytSettingsExpanded && (
+                                                 <div className="animate-fade-in" style={{ marginTop: '12px', padding: '15px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-glass)', borderRadius: '10px' }}>
+                                                     <h4 style={{ marginBottom: '15px', color: 'var(--accent-primary)' }}>🎨 Ajustes de Diseño de la Tarjeta</h4>
+                                                     <div className="grid-2">
+                                                         <div className="form-group">
+                                                             <label>Ancho de la Tarjeta: {overlays.yt_card_width || 380}px</label>
+                                                             <input 
+                                                                 type="range" 
+                                                                 min="280" max="600" step="10" 
+                                                                 value={overlays.yt_card_width || 380} 
+                                                                 onChange={(e) => setOverlays({ ...overlays, yt_card_width: parseInt(e.target.value) })}
+                                                             />
+                                                         </div>
+                                                         <div className="form-group">
+                                                             <label>Redondeado de la Tarjeta: {overlays.yt_card_radius || 22}px</label>
+                                                             <input 
+                                                                 type="range" 
+                                                                 min="0" max="45" step="2" 
+                                                                 value={overlays.yt_card_radius || 22} 
+                                                                 onChange={(e) => setOverlays({ ...overlays, yt_card_radius: parseInt(e.target.value) })}
+                                                             />
+                                                         </div>
+                                                     </div>
+                                                     <div className="grid-2">
+                                                         <div className="form-group">
+                                                             <label>Tamaño de Carátula (Artwork): {overlays.yt_artwork_size || 82}px</label>
+                                                             <input 
+                                                                 type="range" 
+                                                                 min="50" max="150" step="5" 
+                                                                 value={overlays.yt_artwork_size || 82} 
+                                                                 onChange={(e) => setOverlays({ ...overlays, yt_artwork_size: parseInt(e.target.value) })}
+                                                              />
+                                                         </div>
+                                                         <div className="form-group">
+                                                             <label>Posición en OBS</label>
+                                                             <select 
+                                                                 value={overlays.yt_card_position || 'bottom-left'}
+                                                                 onChange={(e) => setOverlays({ ...overlays, yt_card_position: e.target.value })}
+                                                                 style={{ width: '100%', height: '40px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '0 10px' }}
+                                                             >
+                                                                 <option value="bottom-left">Abajo Izquierda</option>
+                                                                 <option value="bottom-right">Abajo Derecha</option>
+                                                                 <option value="top-left">Arriba Izquierda</option>
+                                                                 <option value="top-right">Arriba Derecha</option>
+                                                                 <option value="center">Centrado</option>
+                                                             </select>
+                                                         </div>
+                                                     </div>
+                                                     
+                                                     <div style={{ marginTop: '15px' }} className="grid-2">
+                                                         <div className="toggle-row" style={{ padding: '6px 0', borderBottom: 'none' }}>
+                                                             <span>Mostrar Quién Pidió (Usuario) 👤</span>
+                                                             <label className="switch">
+                                                                 <input type="checkbox" checked={overlays.yt_show_requester !== false} onChange={(e) => setOverlays({ ...overlays, yt_show_requester: e.target.checked })} />
+                                                                 <span className="slider"></span>
+                                                             </label>
+                                                         </div>
+                                                         <div className="toggle-row" style={{ padding: '6px 0', borderBottom: 'none' }}>
+                                                             <span>Mostrar Barra de Progreso ⏳</span>
+                                                             <label className="switch">
+                                                                 <input type="checkbox" checked={overlays.yt_show_progress !== false} onChange={(e) => setOverlays({ ...overlays, yt_show_progress: e.target.checked })} />
+                                                                 <span className="slider"></span>
+                                                             </label>
+                                                         </div>
+                                                     </div>
+                                                     <div className="grid-2">
+                                                         <div className="toggle-row" style={{ padding: '6px 0', borderBottom: 'none' }}>
+                                                             <span>Mostrar Creador/Artista 🎨</span>
+                                                             <label className="switch">
+                                                                 <input type="checkbox" checked={overlays.yt_show_artist !== false} onChange={(e) => setOverlays({ ...overlays, yt_show_artist: e.target.checked })} />
+                                                                 <span className="slider"></span>
+                                                             </label>
+                                                         </div>
+                                                         <div className="toggle-row" style={{ padding: '6px 0', borderBottom: 'none' }}>
+                                                             <span>Mostrar Punto de Estado 🔴</span>
+                                                             <label className="switch">
+                                                                 <input type="checkbox" checked={overlays.yt_show_status_dot !== false} onChange={(e) => setOverlays({ ...overlays, yt_show_status_dot: e.target.checked })} />
+                                                                 <span className="slider"></span>
+                                                             </label>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                             )}
+                                         </div>
+
+                                         {/* Enlace del Widget para OBS */}
+                                         <div className="form-group" style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', border: '1px dashed var(--border-glass)', borderRadius: '10px' }}>
+                                             <label style={{ fontWeight: '600', color: 'var(--accent-primary)', display: 'block', marginBottom: '8px' }}>🔗 Enlace del Widget para OBS (Fuente de Navegador)</label>
+                                             <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '10px' }}>
+                                                 Agrega este enlace en OBS como <strong>Fuente de Navegador</strong>. Ajusta el tamaño a 850 × 550 px o ponlo en pantalla completa agregando <code>?fullscreen=true</code> al final.
+                                             </p>
+                                             <div className="copy-url-row" style={{ display: 'flex', gap: '10px' }}>
+                                                 <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/youtube_player_overlay.html${ytPlayerFullscreen ? '?obs=true' : ''}`} onClick={(e) => e.target.select()} style={{ flex: 1 }} />
+                                                 <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/youtube_player_overlay.html${ytPlayerFullscreen ? '?obs=true' : ''}`)}>Copiar URL</button>
+                                             </div>
+                                             <div style={{ marginTop: '10px' }}>
+                                                 <label className="toggle-switch-label" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                                                     <input type="checkbox" onChange={(e) => setYtPlayerFullscreen(e.target.checked)} checked={ytPlayerFullscreen} style={{ width: 'auto', marginRight: '8px' }} />
+                                                     Versión Pantalla Completa (Sin barra inferior)
+                                                 </label>
+                                             </div>
+                                         </div>
+
+                                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+                                             <button className="btn" onClick={() => handleSaveOverlaysConfigOnly('YouTube Player')}>{renderIcon('save')} Guardar Configuración</button>
+                                         </div>
+                                     </div>
+                                 )}
 
                             </div>
                         </div>

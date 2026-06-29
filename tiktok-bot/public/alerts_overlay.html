@@ -1510,6 +1510,7 @@
         //  PLAY ALERT
         // =============================================
         function playAlert(data) {
+            console.log("[alerts_overlay] playAlert llamada con data:", data);
             const config = window.overlayAlertsConfig || {};
             const type = data.type; // 'follow', 'like', 'gift', 'subscribe'
             
@@ -1584,12 +1585,25 @@
 
 
 
-            // Si la alerta está desactivada en la configuración, no la reproducimos
-            if (!enableAlert) {
+            // Determinar si es una alerta de prueba/test local para saltarnos el bloqueo si está apagada en config
+            const isTestAlert = data.isTest || 
+                                (data.user && (
+                                    data.user.toLowerCase().includes('prueba') || 
+                                    data.user.toLowerCase().includes('test') || 
+                                    data.user.toLowerCase().includes('lover') || 
+                                    data.user.toLowerCase().includes('pro') || 
+                                    data.user.toLowerCase().includes('fanatic') || 
+                                    data.user.toLowerCase().includes('liker')
+                                ));
+
+            // Si la alerta está desactivada en la configuración, no la reproducimos (a menos que sea una de prueba)
+            if (!enableAlert && !isTestAlert) {
+                console.warn("[alerts_overlay] Alerta omitida porque enableAlert es falso para el tipo:", type);
                 isAlertPlaying = false;
                 processQueue();
                 return;
             }
+            console.log("[alerts_overlay] Reproduciendo alerta. Parámetros: showLottie =", showLottie);
 
             // Si es de tipo chat (TTS silencioso sin card visual), procesar directamente
             if (type === 'chat') {
@@ -1835,7 +1849,7 @@
                     }
                 } else if (type === 'gift') {
                     const name = String(data.giftName || '').toLowerCase().trim();
-                    if (name.includes('quiereme') || name.includes('quiéreme')) {
+                    if (name.includes('quiereme') || name.includes('quiéreme') || name.includes('community heart') || name.includes('communityheart')) {
                         // Reproducir el video Quiéreme MP4 de forma discreta y elegante
                         const $videoContainer = $("<div>").addClass("quiereme-video-container");
                         $videoContainer.html(`
@@ -1845,9 +1859,64 @@
                         `);
                         $mediaContainer.append($videoContainer);
                     } else {
-                        // Cargar el SVG del regalo personalizado según su nombre
+                        // Cargar el SVG o imagen del regalo personalizado según su nombre o icono CDN
                         const $badgeContainer = $("<div>").addClass("gift-badge-container");
-                        $badgeContainer.html(getGiftSvg(data.giftName));
+                        const $img = $("<img>").addClass("gift-box-svg");
+                        
+                        const fallbackToSvg = () => {
+                            $badgeContainer.empty().html(getGiftSvg(data.giftName));
+                        };
+                        
+                        // Función para verificar si hay un SVG vectorial de alta calidad predefinido
+                        const hasCustomSvg = (giftName) => {
+                            const name = String(giftName || '').toLowerCase().trim();
+                            return (
+                                name.includes('rose') || name.includes('rosa') ||
+                                name.includes('confeti') || name.includes('confetti') || name.includes('popper') || name.includes('fiesta') ||
+                                name.includes('tesoro') || name.includes('cofre') || name.includes('caja del tesoro') || name.includes('treasure') ||
+                                name.includes('león') || name.includes('leon') || name.includes('lion') || name.includes('king') ||
+                                name.includes('corazón') || name.includes('corazon') || name.includes('heart') || name.includes('quiereme') || name.includes('quiéreme') ||
+                                name.includes('corona') || name.includes('crown') ||
+                                name.includes('helado') || name.includes('ice cream') || name.includes('cono') ||
+                                name.includes('diamante') || name.includes('diamond') || name.includes('gema') || name.includes('gem')
+                            );
+                        };
+
+                        console.log("[alerts_overlay] Resolviendo imagen para regalo:", data.giftName);
+                        if (hasCustomSvg(data.giftName)) {
+                            console.log("[alerts_overlay] Usando SVG vectorial de alta calidad para:", data.giftName);
+                            // Priorizar los SVG vectoriales de alta calidad predefinidos
+                            $badgeContainer.html(getGiftSvg(data.giftName));
+                        } else if (data.giftLocalIcon) {
+                            console.log("[alerts_overlay] Intentando cargar imagen local:", data.giftLocalIcon);
+                            $img.attr("src", `/gifts/${data.giftLocalIcon}`);
+                            $img.on("error", () => {
+                                console.warn("[alerts_overlay] Error cargando imagen local, intentando CDN...");
+                                if (data.giftIcon) {
+                                    $img.off("error");
+                                    $img.on("error", () => {
+                                        console.warn("[alerts_overlay] Error cargando CDN, usando fallback SVG.");
+                                        fallbackToSvg();
+                                    });
+                                    $img.attr("src", data.giftIcon);
+                                } else {
+                                    fallbackToSvg();
+                                }
+                            });
+                            $badgeContainer.append($img);
+                        } else if (data.giftIcon) {
+                            console.log("[alerts_overlay] Intentando cargar imagen CDN:", data.giftIcon);
+                            $img.attr("src", data.giftIcon);
+                            $img.on("error", () => {
+                                console.warn("[alerts_overlay] Error cargando CDN, usando fallback SVG.");
+                                fallbackToSvg();
+                            });
+                            $badgeContainer.append($img);
+                        } else {
+                            console.log("[alerts_overlay] No se encontró imagen local ni CDN, usando fallback SVG.");
+                            $badgeContainer.html(getGiftSvg(data.giftName));
+                        }
+                        
                         $mediaContainer.append($badgeContainer);
                         if (data.profilePic) {
                             $userAvatar.attr("src", data.profilePic).show();

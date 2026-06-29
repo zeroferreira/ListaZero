@@ -1751,7 +1751,10 @@
                   </div>
                   <div class="item-song">
                      <span>${cleanCancion}</span>
-                     ${req.link ? `<span class="song-link-icon" title="Ver enlace">🔗</span>` : ''}
+                     ${req.link ? `
+                        <span class="song-link-icon" title="Ver enlace">🔗</span>
+                        <button class="play-yt-btn" title="Reproducir en Overlay" style="background: rgba(236, 72, 153, 0.15); border: 1px solid rgba(236, 72, 153, 0.3); cursor: pointer; font-size: 0.85rem; padding: 2px 6px; border-radius: 4px; color: #ec4899; font-weight: bold; margin-left: 8px; vertical-align: middle; display: inline-flex; align-items: center; gap: 4px;">▶️ Play</button>
+                      ` : ''}
                   </div>
                   <div class="item-artist">${cleanArtista}</div>
                   
@@ -1791,6 +1794,18 @@
            </div>
         </div>
       `;
+
+      // Agregar listener programático para el botón de reproducción de YouTube
+      const playBtn = div.querySelector('.play-yt-btn');
+      if (playBtn) {
+        playBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (typeof window.playYoutubeLinkFromQueue === 'function') {
+            window.playYoutubeLinkFromQueue(req.link, cancion, artista, usuario, req.id || req.docId || '');
+          }
+        });
+      }
+
       return div;
     }
 
@@ -3293,5 +3308,29 @@
         }
     });
 
-    // --- Roulette Logic Removed ---
+    window.playYoutubeLinkFromQueue = function(link, title, artist, requester, id) {
+        if (typeof db === 'undefined' || !db) {
+            alert("Base de datos de Firebase no conectada.");
+            return;
+        }
+        if (confirm(`¿Quieres reproducir "${title}" en el overlay de YouTube?`)) {
+            db.collection('systemConfig').doc('activeYoutubeVideo').set({
+                videoId: link,
+                title: title,
+                artist: artist,
+                requester: requester,
+                state: 'playing',
+                timestamp: Date.now()
+            }).then(() => {
+                console.log("✅ Video enviado a activeYoutubeVideo:", title);
+                // Marcar canción como reproducida en la cola
+                if (id) {
+                    markSongAsPlayed(id);
+                }
+            }).catch(err => {
+                console.error("Error al reproducir:", err);
+                alert("Error al reproducir: " + err.message);
+            });
+        }
+    };
 

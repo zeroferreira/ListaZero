@@ -1028,6 +1028,10 @@ function startBot() {
 
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
+    app.use('/gifts', express.static(path.join(__dirname, '..', 'REGALOS DE TIK TOK PNG By Adbra')));
+    app.get('/QUIEREME.mp4', (req, res) => {
+        res.sendFile(path.join(__dirname, '..', 'QUIEREME.mp4'));
+    });
 
     // Endpoint dinámico para servir configuración de Firebase a los overlays
     app.get('/firebase-config.js', (req, res) => {
@@ -1513,6 +1517,7 @@ function startBot() {
         sessionShares.clear();
         sessionLikes.clear();
         sessionTotalCoins = 0;
+        likesGoalStartOffset = streamTotalLikesCounter;
         syncSessionCountersToFirestore();
         res.json({ success: true });
     });
@@ -1520,6 +1525,7 @@ function startBot() {
     // Resetear ranking de likes
     app.post('/api/likes/reset', async (req, res) => {
         resetLikeTracking({ resetSession: true, resetTopLiker: true });
+        likesGoalStartOffset = streamTotalLikesCounter;
         await recalculateLikerRanks();
         syncSessionCountersToFirestore(true);
         res.json({ success: true });
@@ -2254,6 +2260,62 @@ async function updateUserProfilePic(userId, displayName, url, extraFields = {}) 
 // Configurar Listeners
 function setupListeners() {
     tiktokLiveConnection.removeAllListeners();
+
+    async function handleSubscription(data) {
+        if (overlayAlertsConfig.enableSubscribeAlert === false) return;
+
+        const displayName = data.nickname;
+        const uid = data.uniqueId;
+        const profilePic = data.profilePictureUrl;
+        
+        // Marcar presencia activa en el live
+        markUserPresent(uid);
+        
+        const subLevel = Number(data.teamMemberLevel || data.memberLevel || data.subMonth || 0);
+        console.log(`⭐ @${uid} se suscribió! (nivel: ${subLevel || '—'})`);
+
+        // ── Guardar membresía en userStats ──────────────────────────────────────
+        if (db) {
+            try {
+                const { doc, setDoc, serverTimestamp: sts } = require('firebase/firestore');
+                const resolved = await getCanonicalUserKey(uid, displayName);
+                const userRef = doc(db, 'userStats', resolved.userKey || uid);
+                const memberData = {
+                    isSubscriber: true,
+                    lastSeen: sts(),
+                    displayName
+                };
+                if (subLevel > 0) memberData.memberLevel = subLevel;
+                const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
+                if (gLvl > 0) memberData.gifterLevel = gLvl;
+                if (profilePic) memberData.profilePic = profilePic;
+                await setDoc(userRef, memberData, { merge: true });
+
+                console.log(`💾 Membresía guardada para @${uid}`);
+            } catch (e) {
+                console.error('Error guardando membresía en userStats:', e);
+            }
+        }
+
+        if (db) {
+            try {
+                let msgTemplate = String(overlayAlertsConfig.subsAlertMsg || "¡gracias por suscribirte al canal! ⭐");
+                let customMsg = msgTemplate.replace(/{user}/g, displayName);
+
+                await addDoc(collection(db, 'notifications'), {
+                    type: 'subscribe',
+                    user: displayName,
+                    uniqueId: uid,
+                    profilePic: profilePic || '',
+                    message: customMsg,
+                    memberLevel: subLevel || null,
+                    timestamp: serverTimestamp()
+                });
+            } catch (e) {
+                console.error('Error guardando notificación de sub en Firestore:', e);
+            }
+        }
+    }
     
     // Debug: Log de conexión exitosa
     tiktokLiveConnection.on('connected', async (state) => {
@@ -2381,6 +2443,11 @@ function setupListeners() {
     // CHAT
     // ─── PRESENCIA: registrar entrada de usuarios al live (evento 'member') ────
     tiktokLiveConnection.on('member', async (data) => {
+        if (data && data.action === 3) {
+            // Es una suscripción. Redirigir al manejador de suscripciones.
+            handleSubscription(data);
+            return;
+        }
         const uid = data && data.uniqueId ? String(data.uniqueId).trim() : '';
         if (uid) {
             markUserPresent(uid);
@@ -2455,7 +2522,7 @@ function setupListeners() {
         if (profilePic) {
             const memberFields = {};
             if (data.isSubscriber === true) memberFields.isSubscriber = true;
-            const lvl = Number(data.memberLevel || 0);
+            const lvl = Number(data.teamMemberLevel || data.memberLevel || 0);
             if (lvl > 0) memberFields.memberLevel = lvl;
             const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
             if (gLvl > 0) memberFields.gifterLevel = gLvl;
@@ -2939,7 +3006,7 @@ function setupListeners() {
             const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
             if (gLvl > 0) extra.gifterLevel = gLvl;
             if (data.isSubscriber === true) extra.isSubscriber = true;
-            const lvl = Number(data.memberLevel || 0);
+            const lvl = Number(data.teamMemberLevel || data.memberLevel || 0);
             if (lvl > 0) extra.memberLevel = lvl;
             updateUserProfilePic(uid, displayName, profilePic, extra);
         }
@@ -2969,7 +3036,7 @@ function setupListeners() {
         } catch (_) {}
 
         const isGiftFinal = (data.repeatEnd === undefined) ? true : (data.repeatEnd === true);
-        const isQuiereme = (giftKey === 'quiereme' || giftKey === 'loveme' || giftKey.indexOf('quiereme') !== -1 || giftKey.indexOf('loveme') !== -1);
+        const isQuiereme = (giftKey === 'quiereme' || giftKey === 'loveme' || giftKey === 'communityheart' || giftKey.indexOf('quiereme') !== -1 || giftKey.indexOf('loveme') !== -1 || giftKey.indexOf('communityheart') !== -1);
         
         if (isGiftFinal && isQuiereme) {
             try {
@@ -2994,7 +3061,7 @@ function setupListeners() {
                     };
                     if (profilePic) quiereData.profilePic = profilePic;
                     if (data.isSubscriber === true) quiereData.isSubscriber = true;
-                    const ql = Number(data.memberLevel || 0);
+                    const ql = Number(data.teamMemberLevel || data.memberLevel || 0);
                     if (ql > 0) quiereData.memberLevel = ql;
                     const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
                     if (gLvl > 0) quiereData.gifterLevel = gLvl;
@@ -3025,12 +3092,31 @@ function setupListeners() {
                         .replace(/{total}/g, (sessionDonations.get(uid) || totalCoins).toLocaleString())
                         .replace(/{totalCoins}/g, (sessionDonations.get(uid) || totalCoins).toLocaleString());
 
+                    let giftLocalIcon = '';
+                    if (data.giftPictureUrl) {
+                        try {
+                            const urlParts = data.giftPictureUrl.split('/');
+                            let lastPart = urlParts[urlParts.length - 1];
+                            lastPart = lastPart.split('?')[0];
+                            if (lastPart.endsWith('.image')) {
+                                lastPart = lastPart.replace(/\.image$/, '.png');
+                            } else if (!lastPart.endsWith('.png')) {
+                                lastPart = lastPart + '.png';
+                            }
+                            giftLocalIcon = lastPart;
+                        } catch (e) {
+                            console.error('Error parsing giftPictureUrl:', e);
+                        }
+                    }
+
                     await addDoc(collection(db, 'notifications'), {
                         type: 'gift',
                         user: displayName,
                         uniqueId: uid,
                         profilePic: profilePic || '',
                         giftName: giftName,
+                        giftIcon: data.giftPictureUrl || '',
+                        giftLocalIcon: giftLocalIcon || '',
                         coins: totalCoins,
                         repeatCount: actualCount,
                         message: customMsg,
@@ -3062,7 +3148,7 @@ function setupListeners() {
                 };
                 // Persistir membresía si viene en el evento de regalo
                 if (data.isSubscriber === true) giftUpdateData.isSubscriber = true;
-                const giftMemberLevel = Number(data.memberLevel || 0);
+                const giftMemberLevel = Number(data.teamMemberLevel || data.memberLevel || 0);
                 if (giftMemberLevel > 0) giftUpdateData.memberLevel = giftMemberLevel;
                 const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
                 if (gLvl > 0) giftUpdateData.gifterLevel = gLvl;
@@ -3120,6 +3206,12 @@ function setupListeners() {
         // ⚡ TOTAL LIKE COUNT GLOBAL: contador más confiable del stream
         const rawTotal = Number(data && data.totalLikeCount);
         if (Number.isFinite(rawTotal) && rawTotal > lastKnownTotalLikeCount) {
+            if (likesGoalStartOffset === null) {
+                // Inicializar offset restando la suma actual de likes de sesión para preservar el progreso acumulado
+                const currentSessionLikes = Array.from(sessionLikes.values()).reduce((a, b) => a + b, 0);
+                likesGoalStartOffset = Math.max(0, rawTotal - currentSessionLikes);
+                console.log(`[Likes Goal] Offset inicializado: rawTotal=${rawTotal}, currentSessionLikes=${currentSessionLikes} → likesGoalStartOffset=${likesGoalStartOffset}`);
+            }
             lastKnownTotalLikeCount = rawTotal;
             streamTotalLikesCounter = rawTotal; // totalLikeCount ya ES el acumulado real
         }
@@ -3206,59 +3298,7 @@ function setupListeners() {
 
     // SUSCRIPTORES (SUBSCRIBE)
     tiktokLiveConnection.on('subscribe', async (data) => {
-        if (overlayAlertsConfig.enableSubscribeAlert === false) return;
-
-        const displayName = data.nickname;
-        const uid = data.uniqueId;
-        const profilePic = data.profilePictureUrl;
-        
-        // Marcar presencia activa en el live
-        markUserPresent(uid);
-        
-        const subLevel = Number(data.memberLevel || data.subMonth || 0);
-        console.log(`⭐ @${uid} se suscribió! (nivel: ${subLevel || '—'})`);
-
-        // ── Guardar membresía en userStats ──────────────────────────────────────
-        if (db) {
-            try {
-                const { doc, setDoc, serverTimestamp: sts } = require('firebase/firestore');
-                const resolved = await getCanonicalUserKey(uid, displayName);
-                const userRef = doc(db, 'userStats', resolved.userKey || uid);
-                const memberData = {
-                    isSubscriber: true,
-                    lastSeen: sts(),
-                    displayName
-                };
-                if (subLevel > 0) memberData.memberLevel = subLevel;
-                const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
-                if (gLvl > 0) memberData.gifterLevel = gLvl;
-                if (profilePic) memberData.profilePic = profilePic;
-                await setDoc(userRef, memberData, { merge: true });
-
-                console.log(`💾 Membresía guardada para @${uid}`);
-            } catch (e) {
-                console.error('Error guardando membresía en userStats:', e);
-            }
-        }
-
-        if (db) {
-            try {
-                let msgTemplate = String(overlayAlertsConfig.subsAlertMsg || "¡gracias por suscribirte al canal! ⭐");
-                let customMsg = msgTemplate.replace(/{user}/g, displayName);
-
-                await addDoc(collection(db, 'notifications'), {
-                    type: 'subscribe',
-                    user: displayName,
-                    uniqueId: uid,
-                    profilePic: profilePic || '',
-                    message: customMsg,
-                    memberLevel: subLevel || null,
-                    timestamp: serverTimestamp()
-                });
-            } catch (e) {
-                console.error('Error guardando notificación de sub en Firestore:', e);
-            }
-        }
+        handleSubscription(data);
     });
 
     // ─── COMPARTIDOS (SHARE) ───────────────────────────────────────────────────
@@ -3314,6 +3354,7 @@ let activeLiveRoomId = null;
 // ⚡ TOTAL LIKE COUNT GLOBAL: contador real del stream (vía totalLikeCount)
 let lastKnownTotalLikeCount = 0;
 let streamTotalLikesCounter = 0;
+let likesGoalStartOffset = null; // offset para contar likes acumulados en la meta sin pérdidas por throttling
 
 // ─── PRESENCIA EN EL LIVE ─────────────────────────────────────────────────────
 // Mapa de uid -> timestamp de la última vez que TikTok envió actividad del usuario
@@ -3350,7 +3391,10 @@ function syncSessionCountersToFirestore(immediate = false) {
         try {
             const totalFollows = Array.from(sessionFollows.values()).reduce((a, b) => a + b, 0);
             const totalShares  = Array.from(sessionShares.values()).reduce((a, b) => a + b, 0);
-            const totalLikes   = Array.from(sessionLikes.values()).reduce((a, b) => a + b, 0);
+            // Usar total likes del stream con offset para evitar pérdida de conteos por throttling de TikTok
+            const totalLikes = likesGoalStartOffset !== null 
+                ? Math.max(0, streamTotalLikesCounter - likesGoalStartOffset) 
+                : Array.from(sessionLikes.values()).reduce((a, b) => a + b, 0);
             await setDoc(doc(db, 'globalStats', 'general'), {
                 sessionFollows: totalFollows,
                 sessionShares:  totalShares,
