@@ -1676,6 +1676,7 @@ function startBot() {
                     coins: finalCoins,
                     repeatCount: 1,
                     message: customMsg,
+                    isTest: true,
                     timestamp: serverTimestampFn()
                 });
 
