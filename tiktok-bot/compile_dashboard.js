@@ -94,7 +94,8 @@ function syncRootOverlays() {
     'roulette.css',
     'particles.js',
     'tops.html',
-    'firebase-config.js'
+    'firebase-config.js',
+    'regalos.html'
   ];
 
   const rootDir = path.dirname(__dirname); // La raíz es el padre de compile_dashboard.js
