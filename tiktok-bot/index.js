@@ -3400,6 +3400,7 @@ function syncSessionCountersToFirestore(immediate = false) {
                 sessionFollows: totalFollows,
                 sessionShares:  totalShares,
                 sessionLikes:   totalLikes,
+                streamTotalLikes: streamTotalLikesCounter,
                 sessionCoins:   sessionTotalCoins,
                 lastUpdate:     serverTimestamp()
             }, { merge: true });
