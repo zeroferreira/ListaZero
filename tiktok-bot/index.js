@@ -2431,6 +2431,7 @@ function setupListeners() {
             lastLikeTimeMap.clear();
             lastKnownTotalLikeCount = 0;
             streamTotalLikesCounter = 0;
+            likesGoalStartOffset = null;
             currentTopLiker = { name: 'N/D', count: 0 };
         } catch (e) {
             console.error('Error limpiando variables en memoria al terminar stream:', e);
@@ -3461,6 +3462,7 @@ function resetLikeTracking(options = {}) {
             // ⚡ Resetear contadores de totalLikeCount al iniciar nuevo live
             lastKnownTotalLikeCount = 0;
             streamTotalLikesCounter = 0;
+            likesGoalStartOffset = null;
             console.log('🔄 Contadores de likes globales reseteados para nuevo live.');
         }
     }
@@ -3621,6 +3623,13 @@ setInterval(async () => {
         await recalculateLikerRanks();
     } catch (err) {
         console.error('Error recalculando ranking de likes en buffer:', err);
+    }
+
+    // Sincronizar contadores de sesión a Firestore (actualiza sessionLikes en globalStats/general)
+    try {
+        syncSessionCountersToFirestore(true);
+    } catch (err) {
+        console.error('Error sincronizando contadores de likes al final del buffer:', err);
     }
 }, 5000); // 5 segundos (más interactivo/en tiempo real)
 

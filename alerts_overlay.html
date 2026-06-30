@@ -883,6 +883,10 @@
 
         /* Contenedor circular discreto para video Quiéreme */
         .quiereme-video-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             width: 140px;
             height: 140px;
             border-radius: 50%;
@@ -891,9 +895,11 @@
             overflow: hidden;
             background: #000;
             display: flex;
-            justifyContent: center;
-            alignItems: center;
-            animation: giftBoxWobble 1.4s infinite ease-in-out;
+            justify-content: center;
+            align-items: center;
+            z-index: 4; /* Sobre el avatar (z-index 3) */
+            animation: giftFloat 3.2s ease-in-out infinite alternate, badgeEntry 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            filter: drop-shadow(0 6px 15px rgba(0,0,0,0.5));
         }
 
         /* Asegurar color de letras blanco en todo momento */
@@ -945,7 +951,12 @@
         //  CONFIGURACIÓN & PRESET ALERTS
         // =============================================
         var CID = new URLSearchParams(document.location.search).get("cid") || "";
-        var urlType = new URLSearchParams(document.location.search).get("type") || "all";
+        var urlTypeRaw = new URLSearchParams(document.location.search).get("type") || "all";
+        var urlType = urlTypeRaw.toLowerCase().trim();
+        if (urlType === 'gifts') urlType = 'gift';
+        if (urlType === 'likes') urlType = 'like';
+        if (urlType === 'follows') urlType = 'follow';
+        if (urlType === 'subscribes' || urlType === 'subscribe' || urlType === 'subscription' || urlType === 'subscriptions' || urlType === 'subs') urlType = 'subscribe';
 
         // Recursos multimedia premium (Lottie y Sonidos libres)
         const ALERT_THEMES = {
@@ -977,7 +988,14 @@
         };
 
         // Configuración de Firebase (centralizada en firebase-config.js)
-        const localFirebaseConfig = window.ZERO_FM_FIREBASE;
+        const localFirebaseConfig = window.ZERO_FM_FIREBASE || {
+            apiKey:            "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+            authDomain:        "zero-strom-web.firebaseapp.com",
+            projectId:         "zero-strom-web",
+            storageBucket:     "zero-strom-web.firebasestorage.app",
+            messagingSenderId: "758369466349",
+            appId:             "1:758369466349:web:f2ced362a5a049c70b59e4"
+        };
 
         // =============================================
         //  ESTADOS DE COLA
@@ -1626,7 +1644,7 @@
             $("#alertMessage").text(data.message || "¡Gracias por el apoyo!");
 
             // Aplicar personalización visual independiente para Likes Lock vs Alertas normales
-            const isLikesLock = data.message && (data.message.includes('🔒') || data.message.includes('Enlaces bloqueados'));
+            const isLikesLock = typeof data.message === 'string' && (data.message.includes('🔒') || data.message.includes('Enlaces bloqueados'));
             const alertBox = document.querySelector('.alert-box');
             if (alertBox) {
                 if (isLikesLock) {
@@ -1717,7 +1735,7 @@
             $usernameContainer.removeClass("rainbow-text");
             $usernameContainer.empty();
 
-            const name = data.user || "Anónimo";
+            const name = String(data.user || "Anónimo");
             // Activar arcoíris si está habilitado
             if (rainbowText) {
                 $usernameContainer.addClass("rainbow-text");
@@ -1848,16 +1866,19 @@
                         $userAvatar.attr("src", data.profilePic).show();
                     }
                 } else if (type === 'gift') {
-                    const name = String(data.giftName || '').toLowerCase().trim();
-                    if (name.includes('quiereme') || name.includes('quiéreme') || name.includes('community heart') || name.includes('communityheart')) {
+                    const giftName = String(data.giftName || '').toLowerCase().trim();
+                    if (giftName.includes('quiereme') || giftName.includes('quiéreme') || giftName.includes('community heart') || giftName.includes('communityheart')) {
                         // Reproducir el video Quiéreme MP4 de forma discreta y elegante
                         const $videoContainer = $("<div>").addClass("quiereme-video-container");
                         $videoContainer.html(`
-                            <video id="quieremeVideo" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;">
-                                <source src="QUIEREME.mp4" type="video/mp4">
+                            <video id="quieremeVideo" autoplay muted playsinline loop style="width: 100%; height: 100%; object-fit: cover;">
+                                <source src="/QUIEREME.mp4" type="video/mp4">
                             </video>
                         `);
                         $mediaContainer.append($videoContainer);
+                        if (data.profilePic) {
+                            $userAvatar.attr("src", data.profilePic).show();
+                        }
                     } else {
                         // Cargar el SVG o imagen del regalo personalizado según su nombre o icono CDN
                         const $badgeContainer = $("<div>").addClass("gift-badge-container");
