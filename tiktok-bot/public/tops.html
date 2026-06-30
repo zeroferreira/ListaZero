@@ -1778,6 +1778,7 @@
 
       /* Top Miembros — consulta y ordenación en memoria combinando suscriptores y niveles altos de TikTok */
       let subList = [];
+      let memberList = [];
       let gifterList = [];
 
       function combineAndRenderMembers() {
@@ -1786,6 +1787,13 @@
         // Agregar suscriptores
         subList.forEach(u => {
           uniqueUsers[u.username] = u;
+        });
+        
+        // Agregar miembros de nivel alto
+        memberList.forEach(u => {
+          if (!uniqueUsers[u.username] || u.totalAmount > uniqueUsers[u.username].totalAmount) {
+            uniqueUsers[u.username] = u;
+          }
         });
         
         // Agregar donadores de nivel alto
@@ -1831,7 +1839,35 @@
           showErr('members-body','members-loading','members-empty','members-error', err);
         });
 
-      // Query 2: Usuarios con nivel de donador alto (simple orderBy en single-field, no requiere índice compuesto)
+      // Query 2: Usuarios con nivel de miembro alto (simple orderBy)
+      db.collection('userStats')
+        .orderBy('memberLevel', 'desc')
+        .limit(50)
+        .onSnapshot(snap => {
+          memberList = [];
+          snap.forEach(doc => {
+            const data = doc.data();
+            const gLvl = Number(data.gifterLevel || 0);
+            const mLvl = Number(data.memberLevel || 0);
+            const maxLvl = Math.max(gLvl, mLvl);
+            if (maxLvl > 0) {
+              memberList.push({
+                username: data.tiktokId || doc.id,
+                nickname: data.displayName || doc.id,
+                profilePictureUrl: data.profilePic || '',
+                totalAmount: maxLvl,
+                memberLevel: mLvl,
+                gifterLevel: gLvl,
+                isSubscriber: data.isSubscriber === true
+              });
+            }
+          });
+          combineAndRenderMembers();
+        }, err => {
+          console.error('[Tops] Miembros MemberLvl err:', err.code, err.message);
+        });
+
+      // Query 3: Usuarios con nivel de donador alto (simple orderBy)
       db.collection('userStats')
         .orderBy('gifterLevel', 'desc')
         .limit(50)

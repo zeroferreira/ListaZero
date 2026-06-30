@@ -2234,6 +2234,46 @@ startBot();
 // Cache para evitar escrituras redundantes de foto de perfil en la misma sesión
 const profilePicCache = new Set();
 
+function extractUserLevels(data) {
+    let memberLevel = Number(data.teamMemberLevel || data.memberLevel || 0);
+    let gifterLevel = Number(data.gifterLevel || (data.user && data.user.payGrade) || 0);
+    
+    const badgeSources = [];
+    if (Array.isArray(data.badges)) badgeSources.push(...data.badges);
+    if (data.user && Array.isArray(data.user.badges)) badgeSources.push(...data.user.badges);
+    
+    for (const badge of badgeSources) {
+        if (!badge) continue;
+        
+        // 1. Club de Fans (badgeSceneType 10 o nombre con 'fans'/'team'/'member')
+        if (badge.badgeSceneType === 10 || 
+            badge.type === 'member' || 
+            (badge.name && (
+                badge.name.toLowerCase().includes('team') || 
+                badge.name.toLowerCase().includes('fan') || 
+                badge.name.toLowerCase().includes('member')
+            )) ||
+            (badge.displayType && badge.displayType === 10)
+        ) {
+            if (badge.level > 0 && badge.level > memberLevel) {
+                memberLevel = Number(badge.level);
+            }
+        }
+        
+        // 2. Gifter Level (badgeSceneType 8 o nombre con 'gifter')
+        if (badge.badgeSceneType === 8 || 
+            badge.type === 'gifter' || 
+            (badge.name && badge.name.toLowerCase().includes('gift'))
+        ) {
+            if (badge.level > 0 && badge.level > gifterLevel) {
+                gifterLevel = Number(badge.level);
+            }
+        }
+    }
+    
+    return { memberLevel, gifterLevel };
+}
+
 async function updateUserProfilePic(userId, displayName, url, extraFields = {}) {
     if (!url || !db) return;
     
@@ -2274,7 +2314,8 @@ function setupListeners() {
         // Marcar presencia activa en el live
         markUserPresent(uid);
         
-        const subLevel = Number(data.teamMemberLevel || data.memberLevel || data.subMonth || 0);
+        const { memberLevel: parsedMemberLevel, gifterLevel: parsedGifterLevel } = extractUserLevels(data);
+        const subLevel = parsedMemberLevel || Number(data.subMonth || 0);
         console.log(`⭐ @${uid} se suscribió! (nivel: ${subLevel || '—'})`);
 
         // ── Guardar membresía en userStats ──────────────────────────────────────
@@ -2289,8 +2330,7 @@ function setupListeners() {
                     displayName
                 };
                 if (subLevel > 0) memberData.memberLevel = subLevel;
-                const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
-                if (gLvl > 0) memberData.gifterLevel = gLvl;
+                if (parsedGifterLevel > 0) memberData.gifterLevel = parsedGifterLevel;
                 if (profilePic) memberData.profilePic = profilePic;
                 await setDoc(userRef, memberData, { merge: true });
 
@@ -2530,10 +2570,9 @@ function setupListeners() {
         if (profilePic) {
             const memberFields = {};
             if (data.isSubscriber === true) memberFields.isSubscriber = true;
-            const lvl = Number(data.teamMemberLevel || data.memberLevel || 0);
-            if (lvl > 0) memberFields.memberLevel = lvl;
-            const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
-            if (gLvl > 0) memberFields.gifterLevel = gLvl;
+            const { memberLevel: parsedMemberLevel, gifterLevel: parsedGifterLevel } = extractUserLevels(data);
+            if (parsedMemberLevel > 0) memberFields.memberLevel = parsedMemberLevel;
+            if (parsedGifterLevel > 0) memberFields.gifterLevel = parsedGifterLevel;
             updateUserProfilePic(userId, displayName, profilePic, memberFields);
         }
 
@@ -3011,11 +3050,10 @@ function setupListeners() {
         // Actualizar foto de perfil
         if (profilePic) {
             const extra = {};
-            const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
-            if (gLvl > 0) extra.gifterLevel = gLvl;
             if (data.isSubscriber === true) extra.isSubscriber = true;
-            const lvl = Number(data.teamMemberLevel || data.memberLevel || 0);
-            if (lvl > 0) extra.memberLevel = lvl;
+            const { memberLevel: parsedMemberLevel, gifterLevel: parsedGifterLevel } = extractUserLevels(data);
+            if (parsedMemberLevel > 0) extra.memberLevel = parsedMemberLevel;
+            if (parsedGifterLevel > 0) extra.gifterLevel = parsedGifterLevel;
             updateUserProfilePic(uid, displayName, profilePic, extra);
         }
 
