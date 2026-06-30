@@ -1698,83 +1698,32 @@
           showErr('gifters-body','gifters-loading','gifters-empty','gifters-error', err);
         });
 
-      /* Top Quiéreme — lee directamente de 'notifications' y agrupa por usuario filtrando por nombre del regalo */
-      (function setupQuiereTop() {
-        const QUIERE_KEYS = ['quiereme','heartme','loveme','querme','amame','communityheart'];
-        function isQuiereGift(name) {
-          if (!name) return false;
-          const key = String(name).toLowerCase()
-            .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-            .replace(/[^a-z0-9]+/g,'');
-          return QUIERE_KEYS.some(k => key === k || key.indexOf(k) !== -1);
-        }
-
-        const since24hMs = Date.now() - 24 * 60 * 60 * 1000;
-        db.collection('notifications')
-          .where('type', '==', 'gift')
-          .limit(200)
-          .onSnapshot(snap => {
-            console.log('[Tops] Quiéreme notifications — size:', snap.size);
-            const byUser = {};
-            snap.forEach(doc => {
-              const d = doc.data();
-              // Filtrar por timestamp en el cliente (últimas 24h)
-              let docMs = 0;
-              if (d.timestamp && typeof d.timestamp.toMillis === 'function') docMs = d.timestamp.toMillis();
-              else if (d.timestamp instanceof Date) docMs = d.timestamp.getTime();
-              else if (typeof d.timestamp === 'number') docMs = d.timestamp;
-              if (docMs > 0 && docMs < since24hMs) return;
-              if (!isQuiereGift(d.giftName)) return;
-              const uid = d.uniqueId || d.user || 'desconocido';
-              if (!byUser[uid]) {
-                byUser[uid] = {
-                  username: uid,
-                  nickname: d.user || uid,
-                  profilePictureUrl: d.profilePic || '',
-                  totalAmount: 0,
-                  isSubscriber: false,
-                  memberLevel: 0
-                };
-              }
-              byUser[uid].totalAmount += (d.repeatCount || 1);
-              if (d.profilePic) byUser[uid].profilePictureUrl = d.profilePic;
-            });
-
-            const list = Object.values(byUser)
-              .filter(u => u.totalAmount > 0)
-              .sort((a,b) => b.totalAmount - a.totalAmount)
-              .slice(0, 20);
-
-            if (list.length === 0) {
-              // Fallback a userStats si aún no hay nada en notifications
-              db.collection('userStats').orderBy('quiereCount','desc').limit(20).get()
-                .then(snap2 => {
-                  const list2 = [];
-                  snap2.forEach(doc => {
-                    const d = doc.data();
-                    if ((d.quiereCount || 0) > 0) {
-                      list2.push({
-                        username: d.tiktokId || doc.id,
-                        nickname: d.displayName || doc.id,
-                        profilePictureUrl: d.profilePic || '',
-                        totalAmount: d.quiereCount || 0,
-                        isSubscriber: d.isSubscriber || false,
-                        memberLevel: d.memberLevel || 0
-                      });
-                    }
-                  });
-                  renderPanel('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error',list2,'quiereme');
-                })
-                .catch(() => renderPanel('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error',[],'quiereme'));
-            } else {
-              renderPanel('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error',list,'quiereme');
+      /* Top Quiéreme — consulta histórica y en tiempo real desde userStats */
+      db.collection('userStats')
+        .orderBy('quiereCount', 'desc')
+        .limit(20)
+        .onSnapshot(snap => {
+          console.log('[Tops] snapshot userStats (Quiéreme) — size:', snap.size);
+          const list = [];
+          snap.forEach(doc => {
+            const data = doc.data();
+            if ((data.quiereCount || 0) > 0) {
+              list.push({
+                username: data.tiktokId || doc.id,
+                nickname: data.displayName || doc.id,
+                profilePictureUrl: data.profilePic || '',
+                totalAmount: data.quiereCount || 0,
+                isSubscriber: data.isSubscriber || false,
+                memberLevel: data.memberLevel || 0
+              });
             }
-            setUbar(new Date());
-          }, err => {
-            console.error('[Tops] Quiéreme err:', err.code, err.message);
-            showErr('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error', err);
           });
-      })();
+          renderPanel('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error', list, 'quiereme');
+          setUbar(new Date());
+        }, err => {
+          console.error('[Tops] Quiéreme err:', err.code, err.message);
+          showErr('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error', err);
+        });
 
       /* Top Miembros — consulta y ordenación en memoria combinando suscriptores y niveles altos de TikTok */
       let subList = [];
