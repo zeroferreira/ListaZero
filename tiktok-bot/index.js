@@ -2341,7 +2341,11 @@ function setupListeners() {
                 const likersRef = docFn(db, 'globalStats', 'topLikers');
                 const likersSnap = await getDocFn(likersRef);
                 if (likersSnap.exists()) {
-                    const list = likersSnap.data().list || [];
+                    const snapData = likersSnap.data() || {};
+                    const list = snapData.list || [];
+                    streamTotalLikesCounter = Number(snapData.streamTotalLikes) || 0;
+                    lastKnownTotalLikeCount = streamTotalLikesCounter;
+                    console.log(`🟢 Recuperado streamTotalLikes del live: ${streamTotalLikesCounter}`);
                     for (const user of list) {
                         sessionLikes.set(user.username, user.totalAmount);
                         lastLikeCountMap.set(user.username, user.totalAmount);
