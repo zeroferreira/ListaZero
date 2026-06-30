@@ -273,6 +273,18 @@
       <div class="badge-live">En Vivo / Realtime</div>
     </header>
 
+    <!-- Banner de Advertencia de Índice de Base de Datos -->
+    <div id="index-warning-banner" class="diag-card" style="display: none; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); margin-bottom: 20px;">
+      <h3 style="color: #fbbf24; margin-top: 0; display: flex; align-items: center; gap: 8px;">⚠️ Historial de Regalos Incompleto (Falta Índice)</h3>
+      <p style="font-size: 0.85rem; color: #fef08a; line-height: 1.4; margin-bottom: 15px;">
+        Actualmente estás viendo únicamente los regalos muy recientes porque falta crear un índice en tu base de datos de Firebase. 
+        Para poder ver el historial completo de los últimos 300 regalos (sin que se diluyan con otros eventos como likes y comentarios), haz clic en el siguiente enlace para crear el índice compuesto automáticamente en tu consola de Firebase:
+      </p>
+      <a id="index-create-btn" href="#" target="_blank" style="display: inline-block; background: #eab308; color: #000; text-decoration: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.5px;">
+        ⚡ Habilitar Historial Completo (Crear Índice)
+      </a>
+    </div>
+
     <!-- Sección de Diagnóstico del Quiéreme -->
     <div class="diag-card">
       <h2>💜 Diagnóstico del Regalo "Quiéreme"</h2>
@@ -342,98 +354,136 @@
       firebase.initializeApp(config);
       const db = firebase.firestore();
 
-      // Listener en tiempo real ordenado por timestamp (filtra por tipo 'gift' en memoria para evitar error de índice compuesto)
-      db.collection('notifications')
-        .orderBy('timestamp', 'desc')
-        .limit(300)
-        .onSnapshot(snapshot => {
-          const tbody = document.getElementById('gifts-body');
-          if (snapshot.empty) {
-            tbody.innerHTML = `
-              <tr>
-                <td colspan="6" class="empty-state">
-                  <span class="empty-icon">🎁</span>
-                  Aún no se han recibido regalos en este directo.
-                </td>
-              </tr>
-            `;
-            return;
-          }
+      let unsubscribe;
 
-          let html = '';
-          let count = 0;
-          snapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.type !== 'gift') return;
-            count++;
-            const ts = data.timestamp ? data.timestamp.toDate() : new Date();
-            const timeStr = ts.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-            const giftName = String(data.giftName || '').trim();
-            const normalizedName = giftName.toLowerCase()
-              .normalize('NFD')
-              .replace(/[\u0300-\u036f]/g, '')
-              .replace(/[^a-z0-9]+/g, '');
-
-            const isQuiereme = (normalizedName.indexOf('quiereme') !== -1 || normalizedName.indexOf('loveme') !== -1 || normalizedName.indexOf('communityheart') !== -1);
-            const rowClass = isQuiereme ? 'class="row-quiereme"' : '';
-
-            const avatarUrl = data.profilePic || 'https://www.tiktok.com/favicon.ico';
-            const giftIcon = data.giftIcon || '';
-
-            html += `
-              <tr ${rowClass}>
-                <td class="time-col">${timeStr}</td>
-                <td>
-                  <div class="user-col">
-                    <img class="user-avatar" src="${avatarUrl}" onerror="this.src='https://www.tiktok.com/favicon.ico'" alt="">
-                    <div>
-                      <div class="user-name">${data.user || 'Usuario'}</div>
-                      <div class="user-handle">@${data.uniqueId || ''}</div>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <div class="gift-col">
-                    ${giftIcon ? `<img class="gift-img" src="${giftIcon}" alt="">` : '<span style="font-size: 1.2rem;">🎁</span>'}
-                    <div>
-                      <div class="gift-name-tag">${giftName}</div>
-                      <div style="font-size: 0.72rem; color: var(--text-secondary); font-family: monospace;">key: "${normalizedName}"</div>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <div class="coins-tag">💎 ${data.coins || 0}</div>
-                </td>
-                <td>
-                  <div class="count-tag">${data.repeatCount || 1}x</div>
-                </td>
-                <td class="msg-col">${data.message || ''}</td>
-              </tr>
-            `;
-          });
-          if (count === 0) {
-            tbody.innerHTML = `
-              <tr>
-                <td colspan="6" class="empty-state">
-                  <span class="empty-icon">🎁</span>
-                  No se encontraron regalos en las últimas 300 alertas.
-                </td>
-              </tr>
-            `;
-            return;
-          }
-          tbody.innerHTML = html;
-        }, err => {
-          console.error("Firestore Error:", err);
-          document.getElementById('gifts-body').innerHTML = `
+      function renderGifts(snapshot, isFallback = false) {
+        const tbody = document.getElementById('gifts-body');
+        if (snapshot.empty) {
+          tbody.innerHTML = `
             <tr>
-              <td colspan="6" class="empty-state" style="color: #ef4444;">
-                ❌ Error de base de datos: ${err.message}
+              <td colspan="6" class="empty-state">
+                <span class="empty-icon">🎁</span>
+                Aún no se han recibido regalos en este directo.
               </td>
             </tr>
           `;
+          return;
+        }
+
+        let html = '';
+        let count = 0;
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          if (isFallback && data.type !== 'gift') return;
+          count++;
+          const ts = data.timestamp ? data.timestamp.toDate() : new Date();
+          const timeStr = ts.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+          const giftName = String(data.giftName || '').trim();
+          const normalizedName = giftName.toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '');
+
+          const isQuiereme = (normalizedName.indexOf('quiereme') !== -1 || normalizedName.indexOf('loveme') !== -1 || normalizedName.indexOf('communityheart') !== -1);
+          const rowClass = isQuiereme ? 'class="row-quiereme"' : '';
+
+          const avatarUrl = data.profilePic || 'https://www.tiktok.com/favicon.ico';
+          const giftIcon = data.giftIcon || '';
+
+          html += `
+            <tr ${rowClass}>
+              <td class="time-col">${timeStr}</td>
+              <td>
+                <div class="user-col">
+                  <img class="user-avatar" src="${avatarUrl}" onerror="this.src='https://www.tiktok.com/favicon.ico'" alt="">
+                  <div>
+                    <div class="user-name">${data.user || 'Usuario'}</div>
+                    <div class="user-handle">@${data.uniqueId || ''}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="gift-col">
+                  ${giftIcon ? `<img class="gift-img" src="${giftIcon}" alt="">` : '<span style="font-size: 1.2rem;">🎁</span>'}
+                  <div>
+                    <div class="gift-name-tag">${giftName}</div>
+                    <div style="font-size: 0.72rem; color: var(--text-secondary); font-family: monospace;">key: "${normalizedName}"</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="coins-tag">💎 ${data.coins || 0}</div>
+              </td>
+              <td>
+                <div class="count-tag">${data.repeatCount || 1}x</div>
+              </td>
+              <td class="msg-col">${data.message || ''}</td>
+            </tr>
+          `;
         });
+
+        if (count === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="6" class="empty-state">
+                <span class="empty-icon">🎁</span>
+                No se encontraron regalos en la lista.
+              </td>
+            </tr>
+          `;
+          return;
+        }
+        tbody.innerHTML = html;
+      }
+
+      function showGeneralError(err) {
+        console.error("Firestore General Error:", err);
+        document.getElementById('gifts-body').innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state" style="color: #ef4444;">
+              ❌ Error de base de datos: ${err.message}
+            </td>
+          </tr>
+        `;
+      }
+
+      function startListener() {
+        // Intenta la consulta óptima que requiere índice
+        unsubscribe = db.collection('notifications')
+          .where('type', '==', 'gift')
+          .orderBy('timestamp', 'desc')
+          .limit(300)
+          .onSnapshot(snapshot => {
+            document.getElementById('index-warning-banner').style.display = 'none';
+            renderGifts(snapshot, false);
+          }, error => {
+            console.warn("Consulta óptima falló. Intentando fallback sin índice...", error);
+            if (error.message && error.message.includes("index")) {
+              // Extraer link del índice
+              const match = error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/);
+              const indexUrl = match ? match[0] : "https://console.firebase.google.com";
+              
+              document.getElementById('index-create-btn').href = indexUrl;
+              document.getElementById('index-warning-banner').style.display = 'block';
+              
+              // Fallback a consulta sin índice
+              if (unsubscribe) unsubscribe();
+              db.collection('notifications')
+                .orderBy('timestamp', 'desc')
+                .limit(300)
+                .onSnapshot(fallbackSnapshot => {
+                  renderGifts(fallbackSnapshot, true);
+                }, fallbackError => {
+                  showGeneralError(fallbackError);
+                });
+            } else {
+              showGeneralError(error);
+            }
+          });
+      }
+
+      startListener();
     })();
   </script>
 </body>
