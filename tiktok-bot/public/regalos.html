@@ -342,11 +342,10 @@
       firebase.initializeApp(config);
       const db = firebase.firestore();
 
-      // Listener en tiempo real de notificaciones tipo 'gift'
+      // Listener en tiempo real ordenado por timestamp (filtra por tipo 'gift' en memoria para evitar error de índice compuesto)
       db.collection('notifications')
-        .where('type', '==', 'gift')
         .orderBy('timestamp', 'desc')
-        .limit(100)
+        .limit(300)
         .onSnapshot(snapshot => {
           const tbody = document.getElementById('gifts-body');
           if (snapshot.empty) {
@@ -362,8 +361,11 @@
           }
 
           let html = '';
+          let count = 0;
           snapshot.forEach(doc => {
             const data = doc.data();
+            if (data.type !== 'gift') return;
+            count++;
             const ts = data.timestamp ? data.timestamp.toDate() : new Date();
             const timeStr = ts.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -410,6 +412,17 @@
               </tr>
             `;
           });
+          if (count === 0) {
+            tbody.innerHTML = `
+              <tr>
+                <td colspan="6" class="empty-state">
+                  <span class="empty-icon">🎁</span>
+                  No se encontraron regalos en las últimas 300 alertas.
+                </td>
+              </tr>
+            `;
+            return;
+          }
           tbody.innerHTML = html;
         }, err => {
           console.error("Firestore Error:", err);
