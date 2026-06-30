@@ -1590,7 +1590,7 @@
       if (typeof animatePanelEntry === 'function') animatePanelEntry(bodyId);
     }
 
-    function showErr(bodyId,loadId,emptyId,errId){
+    function showErr(bodyId,loadId,emptyId,errId, err){
       const b=document.getElementById(bodyId);
       const l=document.getElementById(loadId);
       const em=document.getElementById(emptyId);
@@ -1598,7 +1598,20 @@
       if(l){l.style.display='none';}
       if(b){b.hidden=true;b.innerHTML='';}
       if(em) em.hidden=true;
-      if(er) er.hidden=false;
+      if(er) {
+        er.hidden=false;
+        if (err && err.message) {
+          const match = err.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/);
+          if (match) {
+            er.innerHTML = `<span><i data-lucide="alert-triangle" style="width: 32px; height: 32px; color: #ff9f43;"></i></span>
+              <p>Falta crear un índice en Firebase.<br>
+              <a href="${match[0]}" target="_blank" style="display:inline-block;margin-top:8px;padding:6px 12px;font-size:11px;background:#eab308;color:#000;border:none;border-radius:4px;text-decoration:none;font-weight:bold;text-transform:uppercase;">⚡ Crear Índice en Firebase</a></p>`;
+          } else {
+            er.innerHTML = `<span><i data-lucide="alert-triangle" style="width: 32px; height: 32px; color: #ff5252;"></i></span><p>No se pudo cargar el ranking.<br><small style="color:#ff5252;font-size:11px;opacity:0.8;">${err.message}</small></p>`;
+          }
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+      }
     }
 
     function setUbar(ts){
@@ -1649,7 +1662,7 @@
         },err=>{
           console.error('[Tops] Likers err:',err.code, err.message);
           setDebug('Error Likers: '+err.code+' — '+err.message);
-          showErr('likers-body','likers-loading','likers-empty','likers-error');
+          showErr('likers-body','likers-loading','likers-empty','likers-error', err);
         });
 
       /* Top Gifters - Consultar base de datos real de usuarios (userStats) */
@@ -1677,7 +1690,7 @@
           setUbar(new Date());
         },err=>{
           console.error('[Tops] Gifters err:',err.code, err.message);
-          showErr('gifters-body','gifters-loading','gifters-empty','gifters-error');
+          showErr('gifters-body','gifters-loading','gifters-empty','gifters-error', err);
         });
 
       /* Top Quiéreme — lee directamente de 'notifications' y agrupa por usuario filtrando por nombre del regalo */
@@ -1754,7 +1767,7 @@
             setUbar(new Date());
           }, err => {
             console.error('[Tops] Quiéreme err:', err.code, err.message);
-            showErr('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error');
+            showErr('quiereme-body','quiereme-loading','quiereme-empty','quiereme-error', err);
           });
       })();
 
@@ -1810,7 +1823,7 @@
           combineAndRenderMembers();
         }, err => {
           console.error('[Tops] Miembros Sub err:', err.code, err.message);
-          showErr('members-body','members-loading','members-empty','members-error');
+          showErr('members-body','members-loading','members-empty','members-error', err);
         });
 
       // Query 2: Usuarios con nivel de donador alto (simple orderBy en single-field, no requiere índice compuesto)
