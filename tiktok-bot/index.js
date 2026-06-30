@@ -3311,6 +3311,15 @@ function setupListeners() {
         const uid = data.uniqueId;
         const profilePic = data.profilePictureUrl;
 
+        // Actualizar foto de perfil y niveles
+        if (profilePic) {
+            const extra = {};
+            const { memberLevel: parsedMemberLevel, gifterLevel: parsedGifterLevel } = extractUserLevels(data);
+            if (parsedMemberLevel > 0) extra.memberLevel = parsedMemberLevel;
+            if (parsedGifterLevel > 0) extra.gifterLevel = parsedGifterLevel;
+            updateUserProfilePic(uid, displayName, profilePic, extra);
+        }
+
         // Marcar presencia activa en el live
         markUserPresent(uid);
 
