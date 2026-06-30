@@ -1,0 +1,1604 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Lista d'Canciones - Zero Radio</title>
+  <link rel="stylesheet" href="styles.css?v=2.11" />
+  <link rel="stylesheet" href="lista.css" />
+  
+  
+
+  <!-- Script de sincronización de temas -->
+  
+  <!-- Barra moderna desactivada -->
+
+  <!-- Widget React Desactivado por conflicto con lista de admin
+  
+  -->
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="lista.js" defer></script>
+  <!-- Detección de Nubia/iPhone ELIMINADA para uniformidad visual -->
+
+  
+</head>
+
+<body>
+  <!-- Indicador de Live Flotante -->
+  <div id="live-indicator" class="live-indicator offline" title="Estado de la transmisión">
+    <div class="live-dot"></div>
+    <span class="live-text">Offline</span>
+  </div>
+
+  <!-- Banner de Mantenimiento (se muestra/oculta dinámicamente desde Firestore) -->
+  <div id="maintenance-banner" hidden role="alert" aria-live="polite"
+    style="
+      position: sticky;
+      top: 0;
+      z-index: 9000;
+      background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+      color: #fff;
+      padding: 10px 16px;
+      font-family: 'Avenir', 'Inter', system-ui, sans-serif;
+      font-size: 0.92rem;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      box-shadow: 0 2px 12px rgba(255,107,53,0.4);
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+    ">
+    <span style="font-size: 1.1em; margin-right: 8px; flex-shrink: 0;">🔧</span>
+    <div style="flex: 1; overflow: hidden; white-space: nowrap;">
+      <span id="maintenance-banner-text" style="display: inline-block; padding-left: 100%; animation: ticker-scroll 20s linear infinite;">El sistema de puntos está en mantenimiento. Los puntos se actualizarán una vez que se restablezca el servicio.</span>
+    </div>
+  </div>
+
+  <main class="container">
+    <section class="card" aria-labelledby="titulo">
+      <div class="title-bar" role="group" aria-label="Barra de título y filtro">
+        <h1 id="titulo">Lista de canciones</h1>
+        <div class="title-tools">
+          <form class="search-box" role="search" autocomplete="off" data-lpignore="true" data-1p-ignore="true">
+            <span class="search-icon" aria-hidden="true">🔍</span>
+            <input id="search-input" name="song-search-query" type="search" placeholder="Buscar canción..."
+              aria-label="Buscar canción" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+              data-form-type="search" data-lpignore="true" data-1p-ignore="true" inputmode="search"
+              enterkeyhint="search" readonly onfocus="this.removeAttribute('readonly');" />
+            <div id="search-results" class="search-results" hidden></div>
+          </form>
+          <button id="theme-btn" class="theme-btn" type="button" aria-label="Cambiar tema" title="Cambiar tema">
+            🎨
+          </button>
+          <button id="vip-hierarchy-btn" class="theme-btn" type="button" aria-label="Jerarquía VIP"
+            title="Jerarquía VIP">
+            👑
+          </button>
+          <!-- Botón de lápiz para modo edición (visible solo en modo admin) -->
+          <button id="edit-toggle-btn" class="edit-toggle-btn" type="button" title="Editar lista (eliminar / mover)"
+            aria-pressed="false" hidden>
+            ✏️
+          </button>
+          <button id="menu-btn" class="menu-btn" type="button" aria-label="Abrir menú" aria-haspopup="true"
+            aria-expanded="false" aria-controls="menu-dropdown">
+            <span class="bar bar1"></span>
+            <span class="bar bar2"></span>
+            <span class="bar bar3"></span>
+          </button>
+          <!-- Fondo oscuro/opaco para el menú de hamburguesa -->
+          <div id="menu-backdrop" class="menu-backdrop"></div>
+          <div id="menu-dropdown" class="menu-dropdown" hidden>
+            <ul class="menu-list" role="menu" aria-label="Acciones">
+              <li><a href="index.html" class="menu-item" role="menuitem">🎵 Pedir nueva canción</a></li>
+              <li><button type="button" id="menu-stats-open" class="menu-item" role="menuitem">📊 Estadísticas</button>
+              </li>
+              <li><button type="button" id="menu-gamification-open" class="menu-item" role="menuitem">🏆 Mi
+                  Perfil</button></li>
+              <li><a href="tops.html" class="menu-item" role="menuitem">🏆 TOPs</a></li>
+              <li><button type="button" id="menu-rewards-open" class="menu-item" role="menuitem">🎁 Puntos</button></li>
+              <li><button type="button" id="menu-changelog-open" class="menu-item" role="menuitem">🚀 Mejoras
+                  (v2.2)</button></li>
+              <li><button type="button" id="menu-admin-open" class="menu-item" role="menuitem">
+                  ⚙️ Modo Admin <span id="admin-badge" class="notification-badge" hidden>0</span>
+                </button></li>
+            </ul>
+          </div>
+
+        </div>
+
+
+      </div>
+
+      <div class="filter-controls-row" role="group" aria-label="Filtros de lista">
+        <div class="day-filter">
+          <label for="day-select" style="margin-right: 8px;">Ver día:</label>
+          <select id="day-select"></select>
+        </div>
+        <div class="day-filter" id="sort-filter-container" style="display: none;">
+          <label for="sort-select" style="margin-right: 8px;">Orden:</label>
+          <select id="sort-select">
+            <option value="default">Cola (FIFO / sincronizado)</option>
+            <option value="smart">Cola inteligente (sin repetidos)</option>
+            <option value="tandas15">Cola por tandas (15 min)</option>
+            <option value="recent">Más recientes arriba</option>
+            <option value="oldest">Más antiguas arriba</option>
+            <option value="manual_recent">Manual + recientes</option>
+            <option value="manual_fifo">Manual (FIFO)</option>
+          </select>
+        </div>
+        <div class="vip-filter">
+          <label><input type="checkbox" id="vip-only" /> Ver solo VIP</label>
+        </div>
+      </div>
+
+      <!-- BUSCADOR -->
+      <div id="search-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="search-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="search-modal-title">Buscar Canción</h2>
+          <div class="field">
+            <input type="text" id="modal-search-input" placeholder="Escribe artista, canción o usuario..."
+              class="search-input">
+          </div>
+          <div id="modal-search-results" class="search-results-list">
+            <!-- Resultados aquí -->
+          </div>
+          <button type="button" id="search-load-more" class="btn btn-secondary" hidden
+            style="width: 100%; margin-top: 10px;">Cargar más resultados...</button>
+          <div class="actions modal-actions">
+            <button type="button" id="search-close" class="btn">Cerrar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="admin-panel" class="admin-panel" hidden>
+
+        <div class="admin-sections-tabs" role="tablist" aria-label="Secciones de administración">
+          <button type="button" class="admin-menu-tab admin-section-tab active" data-section="badges" role="tab"
+            aria-selected="true">👑 Insignias</button>
+          <button type="button" class="admin-menu-tab admin-section-tab" data-section="rewards" role="tab"
+            aria-selected="false">🎁 Solicitudes</button>
+          <button type="button" class="admin-menu-tab admin-section-tab" data-section="rewards-config" role="tab"
+            aria-selected="false">⚙️ Config. Canjes</button>
+          <button type="button" class="admin-menu-tab admin-section-tab" data-section="links" role="tab"
+            aria-selected="false">🔗 Vinculaciones</button>
+          <button type="button" class="admin-menu-tab admin-section-tab" data-section="maintenance" role="tab"
+            aria-selected="false">🔧 Mantenimiento</button>
+          <select id="admin-section-select" class="admin-select" hidden aria-hidden="true" tabindex="-1">
+            <option value="badges">👑 Gestión de Insignias</option>
+            <option value="rewards">🎁 Solicitudes de Canje</option>
+            <option value="rewards-config">⚙️ Configuración de Canjes</option>
+            <option value="links">🔗 Vinculación de Cuentas</option>
+            <option value="maintenance">🔧 Mantenimiento</option>
+          </select>
+        </div>
+
+        <!-- Sección de Gestión de Insignias -->
+        <div id="badges-section" class="admin-section">
+          <!-- Selector de Insignia -->
+          <div class="admin-row badge-selector">
+            <div class="badge-selector-title">Selecciona tipo de insignia</div>
+            <div class="badge-tabs" role="tablist" aria-label="Tipos de insignia">
+              <button type="button" class="points-tab badge-tab" data-badge="superfan" role="tab"
+                aria-selected="false">⭐ Superfan</button>
+              <button type="button" class="points-tab badge-tab active" data-badge="vip" role="tab"
+                aria-selected="true">👑 VIP</button>
+              <button type="button" class="points-tab badge-tab" data-badge="z0-vip" role="tab" aria-selected="false">⭐
+                Z0-VIP</button>
+              <button type="button" class="points-tab badge-tab" data-badge="donador" role="tab"
+                aria-selected="false">💎 Donador</button>
+              <button type="button" class="points-tab badge-tab" data-badge="z0-fan" role="tab" aria-selected="false">🤍
+                z0-Fan</button>
+              <button type="button" class="points-tab badge-tab" data-badge="z0-platino" role="tab"
+                aria-selected="false">🥈 z0-Platino</button>
+            </div>
+            <select id="badge-type-select" class="admin-select" hidden aria-hidden="true" tabindex="-1">
+              <option value="superfan">⭐ Superfan</option>
+              <option value="vip">👑 VIP</option>
+              <option value="z0-vip">⭐ Z0-VIP</option>
+              <option value="donador">💎 Donador</option>
+              <option value="z0-fan">🤍 z0-Fan</option>
+              <option value="z0-platino">🥈 z0-Platino</option>
+            </select>
+          </div>
+
+          <div id="superfan-management" class="badge-management" hidden>
+            <div class="admin-row">
+              <label for="all-users-select-superfan">Selecciona usuario para Superfan (TikTok):</label>
+              <select id="all-users-select-superfan" class="user-select"
+                aria-label="Usuarios registrados para Superfan">
+                <option value="">Selecciona un usuario</option>
+              </select>
+              <div class="admin-btns">
+                <button type="button" id="superfan-add" class="btn">Agregar Superfan</button>
+              </div>
+              <div class="admin-list-section">
+                <strong>Usuarios Superfan:</strong>
+                <ul id="superfan-list" class="vip-list"></ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Gestión de VIP -->
+          <div id="vip-management" class="badge-management">
+            <div class="admin-row">
+              <label for="all-users-select">Selecciona usuario registrado para VIP:</label>
+              <select id="all-users-select" class="user-select" aria-label="Usuarios registrados">
+                <option value="">Selecciona un usuario</option>
+              </select>
+              <div class="admin-btns">
+                <button type="button" id="vip-add" class="btn">Agregar</button>
+                <button type="button" id="user-delete" class="btn">Borrar usuario</button>
+              </div>
+              <div class="admin-list-section">
+                <strong>Usuarios VIP:</strong>
+                <ul id="vip-list" class="vip-list"></ul>
+
+              </div>
+            </div>
+          </div>
+
+          <!-- Gestión de Z0-VIP -->
+          <div id="z0-vip-management" class="badge-management" hidden>
+            <div class="admin-row">
+              <label for="all-users-select-z0">Selecciona usuario registrado para Z0-VIP:</label>
+              <select id="all-users-select-z0" class="user-select" aria-label="Usuarios registrados para Z0-VIP">
+                <option value="">Selecciona un usuario</option>
+              </select>
+              <div class="admin-btns">
+                <button type="button" id="z0-vip-add" class="btn">Agregar Z0-VIP</button>
+              </div>
+              <div class="admin-list-section">
+                <strong>Usuarios Z0-VIP:</strong>
+                <ul id="z0-vip-list" class="vip-list"></ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Gestión de Donador -->
+          <div id="donador-management" class="badge-management" hidden>
+            <div class="admin-row">
+              <label for="all-users-select-donador">Selecciona usuario registrado para Donador (1 día):</label>
+              <select id="all-users-select-donador" class="user-select" aria-label="Usuarios registrados para Donador">
+                <option value="">Selecciona un usuario</option>
+              </select>
+              <div class="admin-btns">
+                <button type="button" id="donador-add" class="btn">Agregar Donador</button>
+              </div>
+              <div class="admin-list-section">
+                <strong>Usuarios Donadores (temporales):</strong>
+                <ul id="donador-list" class="vip-list"></ul>
+              </div>
+            </div>
+          </div>
+
+          <div id="z0-fan-management" class="badge-management" hidden>
+            <div class="admin-row">
+              <label for="all-users-select-z0-fan">Selecciona usuario para z0-Fan:</label>
+              <select id="all-users-select-z0-fan" class="user-select" aria-label="Usuarios registrados para z0-Fan">
+                <option value="">Selecciona un usuario</option>
+              </select>
+              <div class="admin-btns">
+                <button type="button" id="z0-fan-add" class="btn">Agregar z0-Fan</button>
+              </div>
+              <div class="admin-list-section">
+                <strong>Usuarios z0-Fan:</strong>
+                <ul id="z0-fan-list" class="vip-list"></ul>
+              </div>
+            </div>
+          </div>
+
+          <div id="z0-platino-management" class="badge-management" hidden>
+            <div class="admin-row">
+              <label for="all-users-select-z0-platino">Selecciona usuario para z0-Platino:</label>
+              <select id="all-users-select-z0-platino" class="user-select"
+                aria-label="Usuarios registrados para z0-Platino">
+                <option value="">Selecciona un usuario</option>
+              </select>
+              <div class="admin-btns">
+                <button type="button" id="z0-platino-add" class="btn">Agregar z0-Platino</button>
+              </div>
+              <div class="admin-list-section">
+                <strong>Usuarios z0-Platino:</strong>
+                <ul id="z0-platino-list" class="vip-list"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Sección de Vinculaciones (NUEVA) -->
+        <div id="links-section" class="admin-section" hidden>
+          <div class="admin-row">
+            <h3>🔗 Gestión de Vinculaciones</h3>
+            <p style="font-size: 0.9em; opacity: 0.8; margin-bottom: 15px;">
+              Aquí puedes ver qué cuentas están fusionadas. Los puntos y estadísticas se comparten entre cuentas vinculadas.
+            </p>
+            
+            <div class="admin-list-section">
+              <strong>Cuentas Vinculadas Actualmente:</strong>
+              <div id="admin-links-list" class="vip-list" style="margin-top: 10px;">
+                <!-- Se llena dinámicamente -->
+              </div>
+            </div>
+            
+            <div class="admin-btns" style="margin-top: 20px;">
+              <button type="button" id="refresh-links-btn" class="btn btn-primary">🔄 Refrescar Lista</button>
+            </div>
+          </div>
+        </div>
+        <!-- Sección de Administración de Recompensas -->
+        <div id="rewards-section" class="admin-section" hidden>
+          <div class="admin-rewards-section">
+            <h3>🎁 Solicitudes de Canje</h3>
+
+            <!-- Estadísticas de Recompensas -->
+            <div class="admin-rewards-stats">
+              <div class="reward-stat-item">
+                <span class="stat-number" id="admin-total-pending">0</span>
+                <span class="stat-label">Pendientes</span>
+              </div>
+              <div class="reward-stat-item">
+                <span class="stat-number" id="admin-total-approved">0</span>
+                <span class="stat-label">Aprobadas Hoy</span>
+              </div>
+              <div class="reward-stat-item">
+                <span class="stat-number" id="admin-total-rejected">0</span>
+                <span class="stat-label">Rechazadas Hoy</span>
+              </div>
+            </div>
+
+            <!-- Filtros de Recompensas -->
+            <div class="admin-rewards-filters">
+              <select id="admin-rewards-status-filter" class="admin-select">
+                <option value="all">Todas las solicitudes</option>
+                <option value="pending" selected>Solo pendientes</option>
+                <option value="approved">Solo aprobadas</option>
+                <option value="rejected">Solo rechazadas</option>
+              </select>
+              <select id="admin-rewards-user-filter" class="admin-select">
+                <option value="all">Todos los usuarios</option>
+              </select>
+              <button type="button" id="admin-refresh-rewards" class="btn">🔄 Actualizar</button>
+            </div>
+
+            <!-- Lista de Solicitudes de Recompensas -->
+            <div class="admin-rewards-list-container">
+              <div id="admin-rewards-list" class="admin-rewards-list">
+                <p class="loading-message">Cargando solicitudes...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección de Configuración de Recompensas (NUEVA) -->
+        <div id="rewards-config-section" class="admin-section" hidden>
+          <div class="admin-card">
+            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3>⚙️ Configuración del Catálogo de Recompensas</h3>
+              <button type="button" class="btn btn-sm btn-success" onclick="saveRewardsConfig()">💾 Guardar
+                Cambios</button>
+            </div>
+            <div class="card-body">
+              <p class="help-text">Edita los costos y descripciones de las tarjetas. Los cambios se aplicarán a todos
+                los usuarios.</p>
+              <div id="rewards-config-list" class="rewards-config-list"
+                style="display:flex; flex-direction:column; gap:15px; margin-top:15px;">
+                <!-- Se llena dinámicamente -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección de Mantenimiento -->
+        <div id="maintenance-section" class="admin-section" hidden>
+          <div class="admin-section-tabs">
+            <button type="button" class="points-tab active" data-tab="system">🔧 Sistema</button>
+            <button type="button" class="points-tab" data-tab="compensation">💰 Compensación</button>
+            <button type="button" class="points-tab" data-tab="links">🔗 Enlaces</button>
+            <button type="button" class="points-tab" data-tab="aliases">👥 Alias</button>
+          </div>
+
+          <div class="admin-tab-content">
+            <!-- Panel Sistema -->
+            <div id="admin-tab-system" class="admin-tab-panel active">
+              <div class="admin-card maintenance-card">
+                <div class="card-header">
+                  <h3>🔧 Acciones de Sistema</h3>
+                </div>
+                <div class="card-body">
+
+                  <!-- Código anti-fantasma -->
+                  <div class="live-control-box">
+                    <h4>🧷 Código anti-fantasma</h4>
+                    <p class="control-description">
+                      Si hay código (mín. 4 caracteres), se exige en nuevas solicitudes para reducir peticiones fantasma.
+                    </p>
+                    <div class="control-row-stack">
+                      <span id="current-live-code-text" class="status-label">Código Actual: (desactivado)</span>
+                      <div class="live-code-row">
+                        <input id="live-code-admin" type="text" placeholder="Ej: Z0-2026" class="live-code-input" />
+                        <button type="button" id="set-live-code" class="btn-save-code">Guardar</button>
+                        <button type="button" id="clear-live-code" class="btn-clear-code">Quitar</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Banner de Mantenimiento del Sistema de Puntos -->
+                  <div class="live-control-box" style="border: 1px solid rgba(255,107,53,0.4); background: rgba(255,107,53,0.08); margin-bottom: 20px; padding-bottom: 15px; border-radius: 8px; padding: 14px;">
+                    <h4 style="color: #ff6b35;">🔧 Banner de Mantenimiento</h4>
+                    <p class="control-description">
+                      Escribe un mensaje para mostrar un aviso a todos los usuarios (ej: "El sistema de puntos está en mantenimiento"). Déjalo vacío para ocultarlo.
+                    </p>
+                    <div class="control-row-stack">
+                      <span id="maintenance-banner-status" class="status-label">Estado: <strong>Desactivado</strong></span>
+                      <textarea id="maintenance-message-input" rows="2" placeholder="Ej: El sistema de puntos está en mantenimiento temporal. Volverá pronto." class="live-code-input" style="width: 100%; resize: vertical; min-height: 60px; margin-bottom: 8px;"></textarea>
+                      <div class="live-code-row">
+                        <button type="button" id="set-maintenance-message" class="btn-save-code" style="background: #ff6b35; flex: 1;">Activar Banner</button>
+                        <button type="button" id="clear-maintenance-message" class="btn-clear-code">Quitar Banner</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="control-row-stack" style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid rgba(0,0,0,0.1);">
+                    <h4>🚀 Forzar Actualización a Usuarios</h4>
+                    <p class="control-description">Empuja el cartel de actualización a todas las pantallas en vivo inmediatamente (vía Firebase WebSocket).</p>
+                    <button type="button" id="force-update-btn" class="btn" style="background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%); color: #000; font-weight: bold; width: 100%; border: none; box-shadow: 0 4px 15px rgba(0,242,254,0.3);">Lanzar Actualización Global</button>
+                  </div>
+
+
+                  <div class="recalc-selector-row" style="margin-bottom: 12px; display: flex; gap: 10px; align-items: flex-end;">
+                    <div class="field" style="flex: 1; margin: 0;">
+                      <label style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: block;">🎯 Objetivo del Recálculo</label>
+                      <input id="recalc-single-user" type="text" placeholder="Todos (vacío) o @usuario" class="live-code-input" style="height: 38px; border-color: rgba(34, 211, 238, 0.3);" />
+                    </div>
+                  </div>
+
+                  <div class="action-grid">
+                    <button type="button" id="recalculate-users" class="btn btn-outline-success"
+                      title="Recalcular puntos de todos los usuarios">
+                      <span class="btn-icon">🔄</span>
+                      <span class="btn-text">Recalcular Puntos</span>
+                    </button>
+                    <button type="button" id="rebuild-played-btn" class="btn btn-outline-secondary"
+                      title="Recontar canciones reproducidas del día">
+                      <span class="btn-icon">📊</span>
+                      <span class="btn-text">Recontar Reprod.</span>
+                    </button>
+                    <button type="button" id="wipe-all" class="btn btn-outline-danger"
+                      title="Borrar todas las solicitudes del día actual">
+                      <span class="btn-icon">🗑️</span>
+                      <span class="btn-text">Borrar Día</span>
+                    </button>
+                  </div>
+                  <div id="recalc-report-box" class="recalc-report-box" hidden>
+                    <div class="report-header">
+                      <h3>🛡️ Escaneo de Integridad</h3>
+                      <div class="scanner-controls">
+                        <button type="button" id="recalc-pause" class="btn-scan-ctrl" title="Pausar/Reanudar">⏸️</button>
+                        <button type="button" id="recalc-stop" class="btn-scan-ctrl stop" title="Detener">⏹️</button>
+                        <span id="recalc-status-badge" class="badge-status">PROCESANDO</span>
+                      </div>
+                    </div>
+                    
+                    <div class="progress-container">
+                      <div id="recalc-progress-bar" class="progress-bar"></div>
+                    </div>
+                    
+                    <div class="scanning-info">
+                      <div class="info-item">
+                        <span class="label">Total Usuarios</span>
+                        <span id="recalc-total-users" class="value">0</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="label">Procesados</span>
+                        <span id="recalc-processed-users" class="value">0</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="label">Ajustes Realizados</span>
+                        <span id="recalc-corrected-users" class="value">0</span>
+                      </div>
+                    </div>
+
+                    <div class="current-user-scanner">
+                      <span class="scanner-label">Analizando:</span>
+                      <span id="recalc-current-user" class="scanner-value">...</span>
+                    </div>
+
+                    <pre id="recalc-report-text" class="report-log" hidden></pre>
+                  </div>
+
+                  <div class="dj-control-wrapper">
+                    <button type="button" id="set-master-dj" class="btn btn-dj-master">
+                      🎛️ Establecer ESTE dispositivo como DJ Maestro
+                    </button>
+                    <p class="help-text">Solo el DJ Maestro puede marcar canciones como sonadas/pendientes.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel Compensación -->
+            <div id="admin-tab-compensation" class="admin-tab-panel">
+              <div class="admin-card compensation-card">
+                <div class="card-header">
+                  <h3>💰 Compensación Manual</h3>
+                </div>
+                <div class="card-body">
+                  <div class="form-grid">
+                    <div class="field full-width">
+                      <label>Usuario a compensar</label>
+                      <select id="comp-user-select" class="admin-select">
+                        <option value="">Seleccionar usuario...</option>
+                      </select>
+                    </div>
+                    <div class="field-row">
+                      <div class="field">
+                        <label>Puntos (+/-)</label>
+                        <input type="number" id="comp-points-input" placeholder="Ej: 500" class="admin-input">
+                      </div>
+                      <div class="field flex-grow">
+                        <label>Motivo</label>
+                        <input type="text" id="comp-reason-input" placeholder="Ej: Bono especial" class="admin-input">
+                      </div>
+                    </div>
+                    <div class="field full-width">
+                      <button type="button" id="grant-comp-points-btn" class="btn btn-primary btn-block">🎁 Otorgar
+                        Puntos</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel Enlaces -->
+            <div id="admin-tab-links" class="admin-tab-panel">
+              <div class="admin-card overlay-links-card">
+                <div class="card-header">
+                  <h3>🔗 Enlaces Overlay (OBS)</h3>
+                </div>
+                <div class="card-body">
+                  <div class="action-grid">
+                    <button type="button" onclick="copyOverlayLink('overlay.html')" class="btn btn-outline-primary"
+                      title="Copiar enlace del Overlay de Pedidos">
+                      <span class="btn-icon">📋</span>
+                      <span class="btn-text">Overlay Pedidos</span>
+                    </button>
+                    <button type="button" onclick="copyOverlayLink('queue_overlay.html')"
+                      class="btn btn-outline-primary" title="Copiar enlace del Overlay de Cola">
+                      <span class="btn-icon">📋</span>
+                      <span class="btn-text">Overlay Cola</span>
+                    </button>
+                    <button type="button" onclick="copyOverlayLink('roulette_overlay.html')"
+                      class="btn btn-outline-primary" title="Copiar enlace del Overlay de Ruleta">
+                      <span class="btn-icon">📋</span>
+                      <span class="btn-text">Overlay Ruleta</span>
+                    </button>
+                  </div>
+                  <p class="help-text" style="margin-top: 10px;">Copia estos enlaces y pégalos como "Fuente de
+                    Navegador" en OBS.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel Alias -->
+            <div id="admin-tab-aliases" class="admin-tab-panel">
+              <div class="admin-card">
+                <div class="card-header">
+                  <h3>🔗 Unificar Usuarios (Alias)</h3>
+                </div>
+                <div class="card-body">
+                  <p class="help-text">Vincula nombres alternativos (ej. TikTok) al nombre principal para que sumen
+                    puntos en una sola cuenta.</p>
+
+                  <div class="form-grid" style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 15px;">
+                    <div class="field flex-grow">
+                      <label style="font-size: 12px; color: #aaa;">Alias (ej. @jenngarcia123)</label>
+                      <input type="text" id="alias-input-alias" class="admin-input" placeholder="@usuario_tiktok"
+                        style="width: 100%;">
+                    </div>
+                    <div class="field flex-grow">
+                      <label style="font-size: 12px; color: #aaa;">Usuario Principal (ej. Jenn Garcia)</label>
+                      <input type="text" id="alias-input-real" class="admin-input" placeholder="Nombre en Web"
+                        style="width: 100%;">
+                    </div>
+                    <div class="field">
+                      <button type="button" onclick="addAdminAlias()" class="btn btn-primary" style="height: 38px;">➕
+                        Vincular</button>
+                    </div>
+                  </div>
+
+                  <div id="admin-alias-list-container"
+                    style="max-height: 300px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 4px; padding: 10px;">
+                    <p style="text-align: center; color: #666; font-size: 12px;">Cargando alias...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Acciones Generales del Admin -->
+        <div class="admin-row admin-actions">
+          <button type="button" id="admin-exit" class="btn">Salir del modo Admin</button>
+        </div>
+      </div>
+
+
+
+      <!-- Modales -->
+      <!-- Log de Actualizaciones (Para el usuario) -->
+      <div id="updates-log-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="updates-log-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="updates-log-title">🚀 Novedades y Mejoras</h2>
+          <div class="updates-content">
+            <div class="update-item">
+              <h4>📊 Estadísticas 100% Precisas</h4>
+              <p>Hemos rediseñado el sistema de conteo para asegurar que tus números en "Mi Perfil" y "Transparencia"
+                sean idénticos y exactos.</p>
+              <ul>
+                <li>"Canciones Pedidas" ahora cuenta todo tu historial completo.</li>
+                <li>"Canciones Reproducidas" se actualiza al instante al marcar/desmarcar.</li>
+                <li>Los números son consistentes entre todas las vistas.</li>
+              </ul>
+            </div>
+            <div class="update-item">
+              <h4>📅 Calendario de Rachas Mejorado</h4>
+              <p>El calendario ahora pinta correctamente todos los días que tuviste actividad, sin saltarse fechas por
+                cambios de hora.</p>
+            </div>
+            <div class="update-item">
+              <h4>⚡ Actualización Instantánea</h4>
+              <p>Ahora verás los cambios en tus puntos y estadísticas inmediatamente, sin tener que recargar la página.
+              </p>
+            </div>
+          </div>
+          <div class="actions modal-actions">
+            <button type="button" id="close-updates-log" class="btn btn-primary">Entendido</button>
+          </div>
+        </div>
+      </div>
+
+
+
+      <!-- Modal de Mensajes Genéricos (Error/Éxito) -->
+      <div id="message-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="message-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="message-modal-title">Mensaje</h2>
+          <p id="message-modal-content">Contenido del mensaje</p>
+          <div class="actions modal-actions">
+            <button type="button" id="message-modal-ok" class="btn btn-primary">Aceptar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="admin-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="admin-modal-title">Modo Admin</h2>
+          <p>Inicia sesión para administrar VIP y mantenimiento</p>
+          <div class="field">
+            <label for="admin-email-input">Correo</label>
+            <input id="admin-email-input" type="email" placeholder="correo@ejemplo.com" autocomplete="off"
+              spellcheck="false" data-form-type="other" />
+          </div>
+          <div class="field">
+            <label for="admin-pass-input">Contraseña</label>
+            <input id="admin-pass-input" type="password" placeholder="Contraseña" autocomplete="new-password"
+              spellcheck="false" data-form-type="other" />
+            <p id="admin-auth-error" class="error" hidden>Credenciales incorrectas o no eres admin.</p>
+          </div>
+          <div class="actions modal-actions">
+            <button type="button" id="admin-pass-cancel" class="btn">Cancelar</button>
+            <button type="button" id="admin-pass-confirm" class="btn">Entrar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="user-delete-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="user-delete-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="user-delete-modal-title">Borrar usuario</h2>
+          <p>¿Borrar al usuario "<span id="user-delete-name"></span>" de la lista de registrados?</p>
+          <div class="actions modal-actions">
+            <button type="button" id="user-delete-cancel" class="btn">Cancelar</button>
+            <button type="button" id="user-delete-confirm" class="btn">Borrar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="vip-remove-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="vip-remove-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="vip-remove-modal-title">Quitar VIP</h2>
+          <p>¿Quitar VIP a "<span id="vip-remove-user"></span>"?</p>
+          <div class="actions modal-actions">
+            <button type="button" id="vip-remove-cancel" class="btn">Cancelar</button>
+            <button type="button" id="vip-remove-confirm" class="btn">Quitar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="wipe-all-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="wipe-all-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="wipe-all-modal-title">Borrar todas las solicitudes</h2>
+          <p>¿Borrar todas las solicitudes del día "<span id="wipe-all-day"></span>"?</p>
+          <div class="actions modal-actions">
+            <button type="button" id="wipe-all-cancel" class="btn">Cancelar</button>
+            <button type="button" id="wipe-all-confirm" class="btn">Borrar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal de cambios por versión (changelog) -->
+      <div id="changelog-modal" class="modal-overlay" hidden>
+        <div class="modal changelog-modal" role="dialog" aria-modal="true" aria-labelledby="changelog-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="changelog-modal-title">Mejoras por versión</h2>
+
+          <div class="changelog-content">
+            <h3>v2.2 (ACTUAL) 🚀</h3>
+            <ul>
+              <li>🎡 <strong>Ruleta v2.2:</strong> nueva interfaz por pestañas, alta manual, botón de giro integrado,
+                mejor responsive y soporte para mover/redimensionar.</li>
+              <li>🎯 <strong>Gestión de participantes:</strong> lectura correcta desde la lista de canciones pendientes,
+                canjes aprobados y duplicados globales o por persona.</li>
+              <li>🏆 <strong>Mejor gestión del sistema:</strong> ajustes de puntos, conexión más estable con el bot y
+                organización general del panel.</li>
+            </ul>
+
+            <h3>v2.1</h3>
+            <ul>
+              <li>✨ <strong>Nuevas Figuras y Temas:</strong> Se añadieron figuras visuales (partículas) y mejoras en los
+                temas para una experiencia más inmersiva.</li>
+              <li>🔍 <strong>Transparencia:</strong> Nueva pestaña para ver el desglose detallado de puntos y acciones.
+              </li>
+              <li>🍔 <strong>Nuevo Menú:</strong> Menú rediseñado y mejorado para facilitar la navegación.</li>
+              <li>🏆 <strong>Puntos Mejorados:</strong> Sistema de puntos optimizado y más justo.</li>
+            </ul>
+
+            <h3>v2.0</h3>
+            <ul>
+              <li>📊 <strong>Estadísticas Precisas:</strong> Corrección total en el cálculo de puntos y lecturas de
+                canciones pedidas/reproducidas.</li>
+              <li>📈 <strong>Barra de Estadísticas en Vivo:</strong> Nuevo ticker superior con datos en tiempo real de
+                Top usuarios, canciones y artistas.</li>
+              <li>✨ <strong>Mejora Visual:</strong> Interfaz refinada y más limpia para una mejor experiencia.</li>
+              <li>🔍 <strong>Transparencia Total:</strong> Nueva sección de desglose detallado de puntos para que sepas
+                exactamente de dónde viene cada punto.</li>
+              <li>💰 <strong>Compensación:</strong> Se detectaron errores previos en el cálculo de puntos. Los usuarios
+                activos recibirán una bonificación automática por las molestias.</li>
+            </ul>
+
+            <h3>v1.9 (actual)</h3>
+            <ul>
+              <li>📋 Menú reparado en laptops: posicionamiento en desktop (>768px), ancho fijo 220px y reubicación
+                arriba si no cabe.</li>
+              <li>🎖️ Insignias: z0-fan muestra “z0”, VIP negro estándar y VIP Platino muestra “VIP” en plata.</li>
+              <li>👤 Cambio de insignias desde “Mi Perfil” para cualquier usuario.</li>
+              <li>✨ Notificaciones estilizadas en perfil para feedback de acciones.</li>
+            </ul>
+
+            <h3>v1.7</h3>
+            <ul>
+              <li>🎯 Botón dedicado para marcar canciones: Cada canción ahora tiene un botón específico (✓) para
+                marcar/desmarcar.</li>
+              <li>📝 Texto seleccionable: Ahora puedes seleccionar y copiar el texto de las canciones sin interferir con
+                la funcionalidad de marcado.</li>
+              <li>🖱️ Separación de funciones: El botón maneja el marcado y el texto permite selección independiente.
+              </li>
+              <li>📱 Optimización responsive: El botón se adapta perfectamente a diferentes tamaños de pantalla.</li>
+              <li>🎨 Estados visuales mejorados: El botón cambia de apariencia cuando la canción está marcada (verde).
+              </li>
+              <li>🌙 Compatibilidad con temas: Funciona perfectamente en tema claro y oscuro.</li>
+              <li>⚡ Experiencia de usuario mejorada: Interacción más intuitiva y sin conflictos entre acciones.</li>
+              <li>🏆 Corrección de puntos VIP: Los usuarios VIP y Z0-VIP ahora reciben correctamente sus puntos de
+                logro.</li>
+              <li>🎧 Nueva recompensa "Conviértete en fan": Los usuarios pueden obtener el estado de Fan Z0 permanente
+                por 2000 puntos.</li>
+              <li>🔄 Sistema de recálculo mejorado: Corrige automáticamente inconsistencias en puntos e insignias de
+                usuarios.</li>
+              <li>🛠️ Herramienta de mantenimiento: Botón de recálculo masivo en el panel de administración para
+                corregir datos.</li>
+              <li>🔧 Mejorado cálculo de puntos de logros existentes y nuevos.</li>
+              <li>🔧 Implementada validación y corrección automática de datos.</li>
+              <li>🔧 Preservación correcta de estructura de rachas y estadísticas.</li>
+              <li>📅 Calendario de rachas mensual con navegación por mes y año.</li>
+              <li>🗓️ Días de otros meses atenuados y cabecera de días de la semana.</li>
+              <li>🌙📱 Controles del calendario con soporte para tema oscuro y responsive.</li>
+              <li>🎨 Leyenda de niveles de actividad mostrada en una sola línea.</li>
+              <li>🔥 Reglas de racha refinadas: día válido con 2+ usuarios distintos y tú participando; continuidad solo
+                si el día previo fue válido; récord preservado.</li>
+            </ul>
+
+            <h3>v1.6</h3>
+            <ul>
+              <li>🎵 Canciones clickeables: Marcado de las canciones como reproducidas con un simple clic.</li>
+              <li>🔒 Sistema de clics restringido: Solo el dispositivo ADMIN puede modificar canciones, otros solo ven
+                cambios.</li>
+              <li>✅ Indicador visual: Las canciones reproducidas se muestran con colores contrastantes según el tema.
+              </li>
+              <li>💾 Persistencia local: El estado de las canciones se guarda automáticamente por día.</li>
+              <li>🎨 Adaptación temática: Los colores de las canciones reproducidas se adaptan al tema seleccionado.
+              </li>
+              <li>🛡️ Seguridad de doble capa: Validación tanto en interfaz como en base de datos Firebase.</li>
+            </ul>
+
+            <h3>v1.5</h3>
+            <ul>
+              <li>🎁 Sistema de canje de puntos: intercambia tus puntos por recompensas exclusivas.</li>
+              <li>💰 Costos de recompensas rebalanceados: ahora desde 600 puntos mínimo para mayor valor.</li>
+              <li>🎯 Sistema de puntos mejorado: 25 puntos por canción, bonos VIP de 40 puntos.</li>
+              <li>🏆 Recompensas exclusivas: Cambia tus puntos por recompensas</li>
+              <li>⚡ Bonificaciones especiales: primer canción del día (+50), fines de semana (+10).</li>
+              <li>📱 Experiencia móvil perfeccionada: botones touch-friendly de 44px mínimo.</li>
+              <li>✨ Modales de confirmación mejorados: visibilidad garantizada en todos los dispositivos.</li>
+              <li>🔧 Interfaz responsive optimizada: diseño adaptativo para móviles y tablets.</li>
+              <li>🎮 Sistema de gamificación balanceado: progresión más satisfactoria y justa.</li>
+              <li>⚡ Solicitudes de recompensas: sistema de aprobación con notificaciones.</li>
+            </ul>
+
+            <h3>v1.4</h3>
+            <ul>
+              <li>🎮 Modal de gamificación con logros, rachas y estadísticas personales.</li>
+              <li>📊 Sistema de estadísticas avanzadas con gráficos y métricas detalladas.</li>
+              <li>🔍 Búsqueda global mejorada: navega a cualquier fecha con un click.</li>
+              <li>📅 Resultados de búsqueda con fechas formateadas ("Hoy", "Ayer", etc.).</li>
+              <li>🎨 Sistema de temas completo: modo claro/oscuro con 5 colores de acento.</li>
+              <li>🔄 Sincronización de temas en tiempo real entre todas las páginas abiertas.</li>
+              <li>💾 Persistencia de preferencias de tema con migración automática de datos.</li>
+              <li>🎯 Modal de temas rediseñado con botones de cerrar y restablecer funcionales.</li>
+              <li>📱 Centrado perfecto del contenido en pantallas pequeñas y móviles.</li>
+              <li>⚡ Búsqueda con debounce y indicadores de carga para mejor UX.</li>
+              <li>🎨 Scrollbars personalizados en secciones de gamificación.</li>
+              <li>📱 Calendario de actividad reciente centrado y optimizado.</li>
+            </ul>
+
+            <h3>v1.3</h3>
+            <ul>
+              <li>Buscador con lupita y opción en menú; resultados en tiempo real.</li>
+              <li>Modal para "Borrar todas las solicitudes" (sin pop-up nativo).</li>
+              <li>Borrar usuario en Admin con modal y permisos ajustados.</li>
+              <li>Tipografía global Avenir y mejoras de responsive en móviles.</li>
+              <li>Panel Admin: botones "Agregar/Borrar" apilados y selector ajustado.</li>
+            </ul>
+
+            <h3>v1.2</h3>
+            <ul>
+              <li>Quitar VIP con modal (botón “×”).</li>
+              <li>Selector de usuarios registrados y gestión de VIP desde Admin.</li>
+              <li>Correcciones de eventos en Admin y limpieza de código.</li>
+            </ul>
+
+            <h3>v1.1</h3>
+            <ul>
+              <li>Modo Admin básico, filtro VIP y selección de día.</li>
+              <li>Suscripción en tiempo real a solicitudes y VIP.</li>
+            </ul>
+          </div>
+
+          <div class="actions modal-actions">
+            <button type="button" id="changelog-close" class="btn">Cerrar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal de Estadísticas -->
+      <div id="stats-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="stats-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="stats-modal-title">📊 Estadísticas</h2>
+
+          <div class="stats-tabs">
+            <button type="button" class="stats-tab active" data-tab="general">General</button>
+            <button type="button" class="stats-tab" data-tab="songs">Canciones</button>
+            <button type="button" class="stats-tab" data-tab="artists">Artistas</button>
+            <button type="button" class="stats-tab" data-tab="users">Usuarios</button>
+            <button type="button" class="stats-tab" data-tab="genres">Géneros</button>
+          </div>
+
+          <div class="stats-content">
+            <div id="stats-general" class="stats-panel active">
+              <div class="stats-grid">
+                <div class="stat-card">
+                  <div class="stat-number" id="total-songs">0</div>
+                  <div class="stat-label">Total de canciones</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-number" id="total-users">0</div>
+                  <div class="stat-label">Usuarios únicos</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-number" id="total-artists">0</div>
+                  <div class="stat-label">Artistas únicos</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-number" id="today-songs">0</div>
+                  <div class="stat-label">Canciones hoy</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-number" id="top-genre-name">N/D</div>
+                  <div class="stat-label">Género más pedido</div>
+                </div>
+              </div>
+            </div>
+
+            <div id="stats-songs" class="stats-panel">
+              <h3>🎵 Top Canciones</h3>
+              <div id="top-songs-list" class="stats-list"></div>
+            </div>
+
+            <div id="stats-artists" class="stats-panel">
+              <h3>🎤 Top Artistas</h3>
+              <div id="top-artists-list" class="stats-list"></div>
+            </div>
+
+            <div id="stats-users" class="stats-panel">
+              <h3>👥 Usuarios Más Activos</h3>
+              <div id="top-users-list" class="stats-list"></div>
+            </div>
+
+            <div id="stats-genres" class="stats-panel">
+              <h3>🎹 Top Géneros</h3>
+              <div id="top-genres-list" class="stats-list"></div>
+            </div>
+          </div>
+
+          <div class="actions modal-actions">
+            <button type="button" id="stats-close" class="btn">Cerrar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="vip-hierarchy-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="vip-hierarchy-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="vip-hierarchy-modal-title">👑 Jerarquía VIP</h2>
+          <div id="vip-hierarchy-content"></div>
+          <div class="actions modal-actions">
+            <button type="button" id="vip-hierarchy-close" class="btn">Cerrar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal de Gamificación -->
+      <div id="gamification-modal" class="modal-overlay" hidden>
+        <div class="modal gamification-modal" role="dialog" aria-modal="true"
+          aria-labelledby="gamification-modal-title">
+          <button type="button" id="gamification-close-x" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="gamification-modal-title">🏆 Mi Perfil Musical</h2>
+
+          <!-- Información del Usuario -->
+          <div class="user-profile">
+            <div class="user-avatar">🎵</div>
+            <div class="user-info">
+              <h3 id="user-name">Usuario</h3>
+              <div class="user-level">
+                <span id="user-level-name">Novato</span>
+                <span id="user-level-number">Nivel 1</span>
+              </div>
+              <button type="button" id="link-tiktok-btn" class="btn btn-sm btn-outline-secondary"
+                style="margin-top: 5px; font-size: 11px; padding: 2px 8px; display: none;">
+                🔗 Vincular TikTok
+              </button>
+            </div>
+            <div class="user-points">
+              <div class="points-display">
+                <span id="user-points">0</span>
+                <span class="points-label">puntos</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Selector de Usuario -->
+          <div class="user-selector">
+            <label for="user-search-filter">👤 Ver perfil de usuario:</label>
+            <div class="user-autocomplete-container">
+              <input type="text" id="user-search-filter" class="user-search-input" placeholder="🔍 Selecciona o busca un usuario..." autocomplete="off">
+              <div id="user-search-dropdown" class="user-search-dropdown-list" hidden></div>
+              <select id="gamification-user-select" class="user-select" style="display: none;">
+                <option value="">Selecciona un usuario</option>
+              </select>
+            </div>
+            <button type="button" id="back-to-my-profile" class="btn btn-primary" style="display: none; margin-top: 10px;">
+              👥 Cambiar Usuario
+            </button>
+          </div>
+
+          <div class="badge-display">
+            <label for="badge-select">🎖️ Insignia a mostrar:</label>
+            <select id="badge-select" class="user-select">
+              <option value="">Ninguna</option>
+              <option value="superfan">Superfan</option>
+              <option value="z0-fan">z0-Fan</option>
+              <option value="z0-vip">z0Vip</option>
+              <option value="z0-platino">VIP Platino</option>
+              <option value="vip">VIP</option>
+              <option value="donador">Donador</option>
+            </select>
+            <div id="earned-badges" class="earned-badges"></div>
+          </div>
+
+          <!-- Barra de Progreso -->
+          <div class="level-progress">
+            <div class="progress-bar">
+              <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <div class="progress-text">
+              <span id="current-xp">0</span> / <span id="next-level-xp">100</span> XP para el siguiente nivel
+            </div>
+          </div>
+
+          <!-- Tabs de Gamificación -->
+          <div class="gamification-tabs">
+            <button type="button" class="gamification-tab active" data-tab="achievements">🏅 Logros</button>
+            <button type="button" class="gamification-tab" data-tab="streaks">🔥 Rachas</button>
+            <button type="button" class="gamification-tab" data-tab="stats">📈 Estadísticas</button>
+            <button type="button" class="gamification-tab" data-tab="breakdown">🔎 Transparencia</button>
+          </div>
+
+          <div class="gamification-content">
+            <!-- Panel de Logros -->
+            <div id="gamification-achievements" class="gamification-panel active">
+              <div id="achievements-list" class="achievements-grid">
+                <!-- Los logros se cargarán dinámicamente -->
+              </div>
+            </div>
+
+            <!-- Panel de Rachas -->
+            <div id="gamification-streaks" class="gamification-panel">
+              <div class="streaks-container">
+                <div class="streak-card">
+                  <div class="streak-icon">🔥</div>
+                  <div class="streak-info">
+                    <h4>Racha Actual</h4>
+                    <div class="streak-count" id="current-streak">0 días</div>
+                    <div class="streak-desc">Días consecutivos pidiendo canciones</div>
+                  </div>
+                </div>
+
+                <div class="streak-card">
+                  <div class="streak-icon">⭐</div>
+                  <div class="streak-info">
+                    <h4>Mejor Racha</h4>
+                    <div class="streak-count" id="best-streak">0 días</div>
+                    <div class="streak-desc">Tu récord personal</div>
+                  </div>
+                </div>
+
+                <div class="streak-calendar">
+                  <h4>📅 Actividad Reciente</h4>
+                  <!-- Controles de navegación del calendario de rachas -->
+                  <div class="calendar-navigation" aria-label="Navegación de calendario">
+                    <button type="button" id="prev-month" class="calendar-nav-btn" title="Mes anterior"
+                      aria-label="Mes anterior">‹</button>
+                    <div class="calendar-month-selector">
+                      <select id="month-select" class="calendar-select" aria-label="Seleccionar mes">
+                        <option value="0">Enero</option>
+                        <option value="1">Febrero</option>
+                        <option value="2">Marzo</option>
+                        <option value="3">Abril</option>
+                        <option value="4">Mayo</option>
+                        <option value="5">Junio</option>
+                        <option value="6">Julio</option>
+                        <option value="7">Agosto</option>
+                        <option value="8">Septiembre</option>
+                        <option value="9">Octubre</option>
+                        <option value="10">Noviembre</option>
+                        <option value="11">Diciembre</option>
+                      </select>
+                      <select id="year-select" class="calendar-select" aria-label="Seleccionar año">
+                        <!-- Se llena dinámicamente -->
+                      </select>
+                    </div>
+                    <button type="button" id="next-month" class="calendar-nav-btn" title="Mes siguiente"
+                      aria-label="Mes siguiente">›</button>
+                  </div>
+                  <!-- Cabecera de días de la semana -->
+                  <div class="calendar-weekdays" aria-hidden="true">
+                    <div class="weekday">Dom</div>
+                    <div class="weekday">Lun</div>
+                    <div class="weekday">Mar</div>
+                    <div class="weekday">Mié</div>
+                    <div class="weekday">Jue</div>
+                    <div class="weekday">Vie</div>
+                    <div class="weekday">Sáb</div>
+                  </div>
+                  <div id="streak-calendar-grid" class="calendar-grid" aria-live="polite">
+                    <!-- El calendario se generará dinámicamente -->
+                  </div>
+                  <div class="activity-legend">
+                    <div class="legend-title">Nivel de actividad:</div>
+                    <div class="legend-items">
+                      <div class="legend-item">
+                        <div class="legend-color activity-low"></div>
+                        <span>1 canción</span>
+                      </div>
+                      <div class="legend-item">
+                        <div class="legend-color activity-medium"></div>
+                        <span>2 canciones</span>
+                      </div>
+                      <div class="legend-item">
+                        <div class="legend-color activity-high"></div>
+                        <span>3-4 canciones</span>
+                      </div>
+                      <div class="legend-item">
+                        <div class="legend-color activity-very-high"></div>
+                        <span>5-6 canciones</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Panel de Estadísticas Personales -->
+            <div id="gamification-stats" class="gamification-panel">
+              <div class="personal-stats-container">
+                <div class="personal-stats-grid">
+                  <div class="stat-card">
+                    <div class="stat-icon">🎵</div>
+                    <div class="stat-number" id="personal-total-songs">0</div>
+                    <div class="stat-label">Canciones pedidas</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">▶️</div>
+                    <div class="stat-number" id="personal-total-played">0</div>
+                    <div class="stat-label">Canciones reproducidas</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">🎤</div>
+                    <div class="stat-number" id="personal-unique-artists">0</div>
+                    <div class="stat-label">Artistas únicos</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">📅</div>
+                    <div class="stat-number" id="personal-active-days">0</div>
+                    <div class="stat-label">Días activos</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">🏆</div>
+                    <div class="stat-number" id="personal-rank">-</div>
+                    <div class="stat-label">Posición global</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">🎁</div>
+                    <div class="stat-number" id="personal-accepted-redemptions">0</div>
+                    <div class="stat-label">Canjes aceptados</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">❤️</div>
+                    <div class="stat-number" id="personal-total-likes">0</div>
+                    <div class="stat-label">Likes enviados</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-number" id="personal-session-likes">0</div>
+                    <div class="stat-label">Likes en este Live</div>
+                  </div>
+                  <!-- Progress bar for likes pointing to earning points -->
+                  <div class="likes-progress-container" style="grid-column: 1 / -1; margin-top: 10px; background: rgba(255,255,255,0.05); padding: 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.15);">
+                    <h4 style="margin: 0 0 10px 0; font-size: 0.95rem; color: #ff0050; display: flex; align-items: center; gap: 6px; font-weight: 700;">❤️ Progreso de Likes para Puntos</h4>
+                    <div class="progress-bar" style="background: rgba(255,255,255,0.1); height: 10px; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
+                      <div id="likes-progress-fill" style="background: linear-gradient(90deg, #ff0050, #ff5e62); height: 100%; width: 0%; transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(255, 0, 80, 0.5);"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 8px; color: rgba(255,255,255,0.65); font-weight: 500;">
+                      <span id="likes-progress-text">0 / 300 likes</span>
+                      <span>+1 punto 🪙</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="favorite-genres">
+                  <h4>🎼 Tus Géneros Favoritos</h4>
+                  <div id="favorite-genres-list" class="genres-list">
+                    <!-- Se generará dinámicamente -->
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="gamification-breakdown" class="gamification-panel">
+              <div class="personal-stats-container">
+                <div class="personal-stats-grid">
+                  <div class="stat-card">
+                    <div class="stat-icon">▶️</div>
+                    <div class="stat-number" id="breakdown-played-base">0</div>
+                    <div class="stat-label">Temas reproducidos (×25 pts)</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">👑</div>
+                    <div class="stat-number" id="breakdown-vip-bonus">0</div>
+                    <div class="stat-label">Temas VIP (×40 pts extra)</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">📅</div>
+                    <div class="stat-number" id="breakdown-daily-bonus">0</div>
+                    <div class="stat-label">Días activos (×5 pts)</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">🏅</div>
+                    <div class="stat-number" id="breakdown-achievements">0</div>
+                    <div class="stat-label">Logros / Racha / Ajustes</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">🎁</div>
+                    <div class="stat-number" id="breakdown-streak-residual">0</div>
+                    <div class="stat-label">Canjes</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-number" id="breakdown-total">0</div>
+                    <div class="stat-label">Total</div>
+                  </div>
+                </div>
+                <div class="favorite-genres">
+                  <h4>📋 Detalle</h4>
+                  <div id="breakdown-detail-list" class="genres-list"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="actions modal-actions">
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal de Puntos -->
+      <div id="rewards-modal" class="modal-overlay" hidden>
+        <div class="modal rewards-modal" role="dialog" aria-modal="true" aria-labelledby="rewards-modal-title">
+          <button type="button" id="rewards-close-x" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <h2 id="rewards-modal-title">🎁 Puntos</h2>
+
+          <!-- Selector de Usuario -->
+          <div class="user-selector">
+            <label for="rewards-user-select">👤 Selecciona tu usuario:</label>
+            <select id="rewards-user-select" class="user-select">
+              <option value="">Selecciona un usuario</option>
+            </select>
+          </div>
+
+          <!-- Información del Usuario Seleccionado -->
+          <div class="user-info-section">
+            <div class="user-display">
+              <span class="user-icon">👤</span>
+              <span id="rewards-user-info">Selecciona un usuario</span>
+            </div>
+            <div class="user-points-display">
+              <span class="points-icon">💰</span>
+              <span id="rewards-user-points">0</span>
+              <span class="points-label">puntos disponibles</span>
+            </div>
+          </div>
+
+          <div class="gamification-tabs">
+            <button type="button" class="points-tab active" data-tab="redeem">🎁 Canje de Puntos</button>
+            <button type="button" class="points-tab" data-tab="breakdown">📋 Desglose de Puntos</button>
+          </div>
+          <div class="gamification-content">
+            <div id="points-redeem" class="points-panel active">
+              <div class="rewards-section">
+                <h3>🎁 Recompensas Disponibles</h3>
+                <div id="rewards-list" class="rewards-grid"></div>
+              </div>
+              <div class="pending-rewards-section">
+                <h3>📋 Solicitudes Pendientes de Aprobación</h3>
+                <div id="pending-requests" class="pending-rewards-list">
+                  <p class="no-pending">No tienes solicitudes pendientes</p>
+                </div>
+              </div>
+            </div>
+            <div id="points-breakdown" class="points-panel">
+              <div id="points-breakdown-content" class="favorite-genres"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal de Confirmación -->
+      <div id="confirmation-modal" class="modal-overlay" hidden>
+        <div class="modal confirmation-modal" role="dialog" aria-modal="true"
+          aria-labelledby="confirmation-modal-title">
+          <button type="button" id="confirmation-close-x" class="modal-close-btn" aria-label="Cerrar">×</button>
+          <div class="confirmation-content">
+            <div class="confirmation-icon" id="confirmation-icon">ℹ️</div>
+            <h3 id="confirmation-title">Confirmación</h3>
+            <p id="confirmation-message">¿Estás seguro?</p>
+            <div class="confirmation-buttons">
+              <button type="button" id="confirmation-cancel" class="btn-secondary">Cancelar</button>
+              <button type="button" id="confirmation-confirm" class="btn-primary">Confirmar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal de Temas -->
+      <div id="theme-modal" class="modal-overlay" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="theme-modal-title">
+          <button type="button" class="modal-close-btn" aria-label="Cerrar modal">&times;</button>
+          <h2 id="theme-modal-title">🎨 Personalizar Tema</h2>
+
+          <div class="theme-options accordion">
+            <!-- Sección: Modo de Color (Abierto por defecto) -->
+            <div class="accordion-item active">
+              <button type="button" class="accordion-header">
+                <span>Modo de Color</span>
+                <span class="accordion-icon">▼</span>
+              </button>
+              <div class="accordion-content">
+                <div class="theme-grid">
+                  <button type="button" class="theme-option active" data-theme="light">
+                    <div class="theme-preview light-preview"></div>
+                    <span>Claro</span>
+                  </button>
+                  <button type="button" class="theme-option" data-theme="dark">
+                    <div class="theme-preview dark-preview"></div>
+                    <span>Oscuro</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sección: Colores de Acento -->
+            <div class="accordion-item">
+              <button type="button" class="accordion-header">
+                <span>Colores de Acento</span>
+                <span class="accordion-icon">▼</span>
+              </button>
+              <div class="accordion-content">
+                <div class="theme-grid">
+                  <button type="button" class="theme-color active" data-color="default">
+                    <div class="color-preview" style="background: #000;"></div>
+                    <span>Negro</span>
+                  </button>
+                  <button type="button" class="theme-color" data-color="blue">
+                    <div class="color-preview" style="background: #2563eb;"></div>
+                    <span>Azul</span>
+                  </button>
+                  <button type="button" class="theme-color" data-color="green">
+                    <div class="color-preview" style="background: #16a34a;"></div>
+                    <span>Verde</span>
+                  </button>
+                  <button type="button" class="theme-color" data-color="purple">
+                    <div class="color-preview" style="background: #9333ea;"></div>
+                    <span>Morado</span>
+                  </button>
+                  <button type="button" class="theme-color" data-color="red">
+                    <div class="color-preview" style="background: #dc2626;"></div>
+                    <span>Rojo</span>
+                  </button>
+                  <button type="button" class="theme-color" data-color="pink">
+                    <div class="color-preview" style="background: #ec4899;"></div>
+                    <span>Rosa</span>
+                  </button>
+                  <button type="button" class="theme-color" data-color="magenta">
+                    <div class="color-preview" style="background: #d946ef;"></div>
+                    <span>Magenta</span>
+                  </button>
+                  <button type="button" class="theme-color" data-color="cyan">
+                    <div class="color-preview" style="background: #06b6d4;"></div>
+                    <span>Cian</span>
+                  </button>
+                  <button type="button" class="theme-color" data-color="orange">
+                    <div class="color-preview" style="background: #f97316;"></div>
+                    <span>Naranja</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sección: Forma del Fondo -->
+            <div class="accordion-item">
+              <button type="button" class="accordion-header">
+                <span>Forma del Fondo</span>
+                <span class="accordion-icon">▼</span>
+              </button>
+              <div class="accordion-content">
+                <div class="theme-grid">
+                  <button type="button" class="theme-shape active" data-shape="orb">
+                    <div class="shape-preview shape-orb"></div>
+                    <span>Orb</span>
+                  </button>
+                  <button type="button" class="theme-shape" data-shape="triangle">
+                    <div class="shape-preview shape-triangle"></div>
+                    <span>Triángulo</span>
+                  </button>
+                  <button type="button" class="theme-shape" data-shape="hexagon">
+                    <div class="shape-preview shape-hexagon"></div>
+                    <span>Teseracto</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sección: Cantidad de Partículas -->
+            <div class="accordion-item">
+              <button type="button" class="accordion-header">
+                <span>Cantidad de Partículas</span>
+                <span class="accordion-icon">▼</span>
+              </button>
+              <div class="accordion-content">
+                <div class="particle-control" style="padding: 0 4px;">
+                  <input type="range" id="theme-particles" min="100" max="2000" step="100" value="800"
+                    style="width: 100%; margin-bottom: 8px; cursor: pointer;">
+                  <div
+                    style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary, #666);">
+                    <span>Pocas</span>
+                    <span>Muchas</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sección: Transparencia -->
+            <div class="accordion-item">
+              <button type="button" class="accordion-header">
+                <span>Transparencia de Fondo</span>
+                <span class="accordion-icon">▼</span>
+              </button>
+              <div class="accordion-content">
+                <div class="transparency-control" style="padding: 0 4px;">
+                  <input type="range" id="theme-transparency" min="0" max="100" value="0"
+                    style="width: 100%; margin-bottom: 8px; cursor: pointer;">
+                  <div
+                    style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary, #666);">
+                    <span>Opaco</span>
+                    <span>Transparente</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="actions modal-actions">
+            <button type="button" id="theme-reset" class="btn">Restablecer</button>
+            <button type="button" id="theme-close" class="btn">Cerrar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="list-scroll-container">
+        <section class="list" aria-live="polite">
+          <div class="list-header" role="group" aria-label="Encabezados de lista">
+            <span class="col col-time">Hora</span>
+            <span class="col col-usuario">Usuario</span>
+            <span class="col col-cancion">Canción</span>
+            <span class="col col-artista">Artista</span>
+            <span class="col col-cancion-artista">Canción / Artista</span>
+            <span class="col col-action">✓</span>
+          </div>
+          <div id="edit-actions-bar" class="edit-actions-bar" hidden>
+            <button type="button" id="undo-delete-btn" class="btn btn-primary" disabled>↩️ Deshacer</button>
+            <button type="button" id="redo-delete-btn" class="btn btn-primary" disabled>↪️ Rehacer</button>
+            <button type="button" id="open-deleted-btn" class="btn btn-warn">
+              🗑️ Eliminadas <span id="deleted-count-badge" hidden>0</span>
+            </button>
+            <span class="edit-spacer"></span>
+            <button type="button" id="clear-deleted-btn" class="btn" title="Vaciar eliminadas del día">🧹
+              Limpiar</button>
+          </div>
+          <ul id="solicitudes-list" class="items"></ul>
+          <p id="empty" class="empty" hidden>Aún no hay solicitudes.</p>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div id="deleted-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="deleted-modal-title">
+      <button type="button" class="modal-close-btn" id="deleted-close-x" aria-label="Cerrar">×</button>
+      <h2 id="deleted-modal-title">Canciones eliminadas</h2>
+      <div class="field" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <label for="deleted-day-select" style="font-weight:800;">Ver día:</label>
+        <select id="deleted-day-select"></select>
+        <span style="flex:1 1 auto;"></span>
+        <button type="button" id="restore-all-deleted" class="btn btn-primary">Restaurar todo</button>
+      </div>
+      <div id="deleted-list" class="deleted-list"></div>
+      <div class="actions modal-actions">
+        <button type="button" id="deleted-close" class="btn">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  
+
+  
+
+  <div id="stats-ticker" class="stats-ticker" hidden>
+    <div class="ticker-content">Cargando estadísticas…</div>
+    <button id="stats-ticker-config-btn" class="ticker-config-btn" type="button" aria-label="Configurar banda"
+      title="Configurar banda">⚙️</button>
+  </div>
+
+  <div id="stats-ticker-config-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="stats-ticker-config-title">
+      <button type="button" class="modal-close-btn" aria-label="Cerrar">×</button>
+      <h2 id="stats-ticker-config-title">⚙️ Configurar banda</h2>
+      <div class="admin-row" style="gap:12px;">
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Alto (px)</span>
+          <input id="stc-height" type="number" min="24" max="120" step="1" class="admin-input" value="36"
+            style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Tamaño letra (px)</span>
+          <input id="stc-fontSize" type="number" min="10" max="26" step="1" class="admin-input" value="14"
+            style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Velocidad (s)</span>
+          <input id="stc-speed" type="number" min="10" max="180" step="1" class="admin-input" value="30"
+            style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Padding X (px)</span>
+          <input id="stc-paddingX" type="number" min="0" max="40" step="1" class="admin-input" value="12"
+            style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Opacidad (oscuro %)</span>
+          <input id="stc-opacityDark" type="number" min="0" max="100" step="1" class="admin-input" value="35"
+            style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Opacidad (claro %)</span>
+          <input id="stc-opacityLight" type="number" min="0" max="100" step="1" class="admin-input" value="60"
+            style="width:120px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <span>Blur (px)</span>
+          <input id="stc-blur" type="number" min="0" max="24" step="1" class="admin-input" value="6"
+            style="width:120px;">
+        </label>
+      </div>
+      <div class="actions modal-actions">
+        <button type="button" id="stc-reset" class="btn">Reset</button>
+        <button type="button" id="stc-save" class="btn">Guardar</button>
+        <button type="button" id="stc-close" class="btn">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <button type="button" id="queue-mode-fab" aria-label="Modo de cola" title="Modo de cola">Z</button>
+  <div id="queue-mode-panel" hidden>
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <div style="font-weight: 900;">Modo de cola</div>
+      <button type="button" id="queue-mode-close" aria-label="Cerrar"
+        style="border:none; background:transparent; color:#f87171; font-size: 18px; cursor:pointer;">×</button>
+    </div>
+    <label style="display:flex; flex-direction:column; gap:8px; margin-top: 10px;">
+      <span style="opacity:0.9;">Orden</span>
+      <select id="queue-mode-select"
+        style="width:100%; padding:10px 10px; border-radius:10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #f9fafb;">
+        <option value="default">Cola (FIFO)</option>
+        <option value="smart">Cola inteligente</option>
+        <option value="tandas15">Cola por tandas</option>
+        <option value="recent">Más recientes</option>
+        <option value="oldest">Más antiguas</option>
+        <option value="manual_recent">Manual + recientes</option>
+        <option value="manual_fifo">Manual (FIFO)</option>
+      </select>
+    </label>
+    <div id="queue-mode-status" style="margin-top: 8px; font-size: 12px; opacity: 0.85;">Estado: (desconocido)</div>
+  </div>
+
+  <div id="immersive-bg"></div>
+  <canvas id="orb-background" class="immersive-layer orb-background-canvas"></canvas>
+  <script src="particles.js"></script>
+</body>
+
+</html>
