@@ -3044,7 +3044,7 @@ function setupListeners() {
         } catch (_) {}
 
         const isGiftFinal = (data.repeatEnd === undefined) ? true : (data.repeatEnd === true);
-        const isQuiereme = (giftKey === 'quiereme' || giftKey === 'loveme' || giftKey === 'communityheart' || giftKey.indexOf('quiereme') !== -1 || giftKey.indexOf('loveme') !== -1 || giftKey.indexOf('communityheart') !== -1);
+        const isQuiereme = (giftKey === 'quiereme' || giftKey === 'loveme' || giftKey === 'communityheart' || giftKey === 'heartme' || giftKey === 'heart me' || giftKey.indexOf('quiereme') !== -1 || giftKey.indexOf('loveme') !== -1 || giftKey.indexOf('communityheart') !== -1 || giftKey.indexOf('heartme') !== -1 || giftKey.indexOf('heart me') !== -1);
         
         if (isGiftFinal && isQuiereme) {
             try {
@@ -3087,7 +3087,7 @@ function setupListeners() {
             const totalCoins = coins * actualCount;
             const minCoins = Number(overlayAlertsConfig.minCoinsAlert) || 1;
             
-            if (totalCoins >= minCoins) {
+            if (totalCoins >= minCoins || isQuiereme) {
                 try {
                     let msgTemplate = String(overlayAlertsConfig.giftsAlertMsg || "¡Gracias por {repeatCount}x {giftName}! 🎁");
                     let customMsg = msgTemplate
