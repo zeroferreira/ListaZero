@@ -1475,14 +1475,14 @@
     /* ─── Render ──────────────────────────────── */
     const MEDALS = ['🥇','🥈','🥉'];
 
-    function renderPanel(bodyId, loadId, emptyId, errId, list, type){
+    function renderPanel(bodyId, loadId, emptyId, errId, rawList, type){
       const body  = document.getElementById(bodyId);
       const load  = document.getElementById(loadId);
       const empty = document.getElementById(emptyId);
       const err   = document.getElementById(errId);
 
       if(load) load.style.display='none';
-      if(!list||list.length===0){
+      if(!rawList||rawList.length===0){
         if(body){body.hidden=true;body.innerHTML='';}
         if(empty) empty.hidden=false;
         if(err)   err.hidden=true;
@@ -1490,6 +1490,19 @@
       }
       if(empty) empty.hidden=true;
       if(err)   err.hidden=true;
+
+      // Deduplicar por apodo/nickname normalizado
+      const unique = {};
+      rawList.forEach(u => {
+        const nick = (u.nickname || u.username || 'Anónimo').toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+          .replace(/[^a-z0-9]/g, '');
+        const key = nick || u.username || 'anon';
+        if (!unique[key] || u.totalAmount > unique[key].totalAmount) {
+          unique[key] = u;
+        }
+      });
+      const list = Object.values(unique).sort((a, b) => b.totalAmount - a.totalAmount);
 
       const sc  = type==='liker' ? 'lk' : type==='quiereme' ? 'qr' : type==='member' ? 'mb' : 'gf';
       const ico = type==='liker'
