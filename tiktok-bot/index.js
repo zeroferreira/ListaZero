@@ -1883,6 +1883,7 @@ function startBot() {
                     coins: 1,
                     repeatCount: 1,
                     message: giftsMsg.replace(/{user}/g, 'GifterRookie').replace(/{giftName}/g, 'TikTok Rose').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '1').replace(/{total}/g, '10').replace(/{totalCoins}/g, '10'),
+                    isTest: true,
                     timestamp: serverTimestampFn()
                 };
             } else if (type === 'gift_lion') {
@@ -1895,6 +1896,7 @@ function startBot() {
                     coins: 2999,
                     repeatCount: 1,
                     message: giftsMsg.replace(/{user}/g, 'VIP_Sponsor').replace(/{giftName}/g, 'TikTok León').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '2999').replace(/{total}/g, '5000').replace(/{totalCoins}/g, '5000'),
+                    isTest: true,
                     timestamp: serverTimestampFn()
                 };
             } else if (type === 'subscribe') {
