@@ -139,11 +139,25 @@ function syncRootOverlays() {
     const srcIndexHtml = path.join(rootDir, 'index.html');
     const destPedirHtml = path.join(publicDir, 'pedir.html');
     if (fs.existsSync(srcIndexHtml)) {
-      fs.copyFileSync(srcIndexHtml, destPedirHtml);
-      console.log('  ✅ Synced root index.html to public/pedir.html');
+      let content = fs.readFileSync(srcIndexHtml, 'utf8');
+      content = content.replace('src="index.js"', 'src="pedir.js"');
+      fs.writeFileSync(destPedirHtml, content, 'utf8');
+      console.log('  ✅ Synced root index.html to public/pedir.html (with pedir.js path update)');
     }
   } catch (e) {
     console.error('  ❌ Failed to sync root index.html to public/pedir.html:', e.message);
+  }
+
+  // Sincronizar index.js como pedir.js en public/
+  try {
+    const srcIndexJs = path.join(rootDir, 'index.js');
+    const destPedirJs = path.join(publicDir, 'pedir.js');
+    if (fs.existsSync(srcIndexJs)) {
+      fs.copyFileSync(srcIndexJs, destPedirJs);
+      console.log('  ✅ Synced root index.js to public/pedir.js');
+    }
+  } catch (e) {
+    console.error('  ❌ Failed to sync root index.js to public/pedir.js:', e.message);
   }
 }
 
