@@ -76,6 +76,18 @@
       // Abrir modal
       (function setupThemeBtnDraggable() {
         if (!themeBtn) return;
+        
+        // Desactivar arrastre si está dentro de un iframe (como el dashboard)
+        const isIframe = window.self !== window.top;
+        if (isIframe) {
+          themeBtn.addEventListener('click', function(e) {
+            themeModal.hidden = false;
+            updateActiveStates();
+            e.stopPropagation();
+          });
+          return;
+        }
+
         const storageKey = `widget_btn_pos:${location.pathname}:theme-btn`;
         let isDragging = false;
         let hasMoved = false;
