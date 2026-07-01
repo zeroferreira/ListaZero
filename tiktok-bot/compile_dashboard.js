@@ -7,7 +7,7 @@ const htmlPath = path.join(__dirname, 'public/index.html');
 const srcHtmlPath = path.join(__dirname, 'public/index.src.html');
 const jsDir = path.join(__dirname, 'public/js');
 
-console.log('--- Zero FM Dashboard Compiler ---');
+console.log('--- Bot Zero Dashboard Compiler ---');
 
 if (!fs.existsSync(srcHtmlPath)) {
     console.error(`❌ Error: Source file not found: ${srcHtmlPath}`);
