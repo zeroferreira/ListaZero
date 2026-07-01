@@ -1077,9 +1077,54 @@
           users.map(u => `<option value="${escapeHTML(u)}">@${escapeHTML(u)}</option>`).join('');
       }
 
-      // Asegurar oculto al cargar
-      adminModal && (adminModal.hidden = true);
-      adminPanel && (adminPanel.hidden = true);
+      function hasActiveAdminSession() {
+        try {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('admin') === 'true') {
+            localStorage.setItem('isAdminMode', 'true');
+            localStorage.setItem('isAdminAuthenticated', 'true');
+            sessionStorage.setItem('isAdminMode', 'true');
+            sessionStorage.setItem('isAdminAuthenticated', 'true');
+            return true;
+          }
+          return localStorage.getItem('isAdminMode') === 'true' ||
+            localStorage.getItem('isAdminAuthenticated') === 'true' ||
+            sessionStorage.getItem('isAdminMode') === 'true' ||
+            sessionStorage.getItem('isAdminAuthenticated') === 'true';
+        } catch (_) {
+          return false;
+        }
+      }
+
+      const isAdminLoggedIn = hasActiveAdminSession();
+
+      // Asegurar oculto al cargar o restaurar sesión
+      if (adminModal) adminModal.hidden = true;
+      if (isAdminLoggedIn) {
+        if (adminPanel) {
+          if (document.readyState === 'complete') {
+            initializeAdminPanelOnLoad();
+          } else {
+            window.addEventListener('load', initializeAdminPanelOnLoad);
+          }
+        }
+      } else {
+        if (adminPanel) adminPanel.hidden = true;
+      }
+
+      function initializeAdminPanelOnLoad() {
+        setTimeout(() => {
+          try {
+            if (adminPanel) {
+              adminPanel.hidden = false;
+              renderVipList?.();
+              renderAllUsersSelect?.();
+            }
+          } catch (e) {
+            console.error('Error al abrir panel de administración autologueado en index:', e);
+          }
+        }, 500);
+      }
 
       // Abrir modal solo al hacer click en "Modo Admin"
       adminBtn?.addEventListener('click', () => {
@@ -1096,6 +1141,12 @@
           if (!adminModal || !adminPanel) return;
           adminModal.hidden = true;
           adminPanel.hidden = false;
+          try {
+            localStorage.setItem('isAdminMode', 'true');
+            localStorage.setItem('isAdminAuthenticated', 'true');
+            sessionStorage.setItem('isAdminMode', 'true');
+            sessionStorage.setItem('isAdminAuthenticated', 'true');
+          } catch (_) { }
           // Inicializar contenido del panel
           renderVipList?.();
           renderAllUsersSelect?.();

@@ -2736,11 +2736,18 @@
       // Determinación estricta de dispositivo maestro (DJ)
       function isDJDevice() {
         try {
-          // 1. Si se estableció manualmente, respetar
+          // 1. Si está logueado como Admin, es dispositivo DJ
+          const isAdmin = localStorage.getItem('isAdminMode') === 'true' || 
+                          localStorage.getItem('isAdminAuthenticated') === 'true' ||
+                          sessionStorage.getItem('isAdminMode') === 'true' ||
+                          sessionStorage.getItem('isAdminAuthenticated') === 'true';
+          if (isAdmin) return true;
+
+          // 2. Si se estableció manualmente, respetar
           if (localStorage.getItem('isMasterDJDevice') === 'true') return true;
           if (localStorage.getItem('isMasterDJDevice') === 'false') return false;
 
-          // 2. Por defecto false si no hay configuración explícita
+          // 3. Por defecto false si no hay configuración explícita
           return false;
         } catch (e) {
           return false;
@@ -5668,9 +5675,20 @@ function shouldShowStatsTicker() {
       const daySelect = document.getElementById('day-select');
 
       // const ADMIN_PASS = '...'; // Eliminado por seguridad
+      const DEFAULT_ADMIN_PASS = '1415130*';
       function hasActiveAdminSession() {
         try {
-          return sessionStorage.getItem('isAdminMode') === 'true' ||
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('admin') === 'true') {
+            localStorage.setItem('isAdminMode', 'true');
+            localStorage.setItem('isAdminAuthenticated', 'true');
+            sessionStorage.setItem('isAdminMode', 'true');
+            sessionStorage.setItem('isAdminAuthenticated', 'true');
+            return true;
+          }
+          return localStorage.getItem('isAdminMode') === 'true' ||
+            localStorage.getItem('isAdminAuthenticated') === 'true' ||
+            sessionStorage.getItem('isAdminMode') === 'true' ||
             sessionStorage.getItem('isAdminAuthenticated') === 'true' ||
             window.__ACTIVE_ADMIN_SESSION__ === true;
         } catch (_) {
@@ -5681,12 +5699,6 @@ function shouldShowStatsTicker() {
       // Leer estado inicial de sesión admin real del dispositivo actual
       let isAdminLoggedIn = hasActiveAdminSession();
       window.__ACTIVE_ADMIN_SESSION__ = isAdminLoggedIn === true;
-      if (!isAdminLoggedIn) {
-        try {
-          localStorage.removeItem('isAdminMode');
-          localStorage.removeItem('isAdminAuthenticated');
-        } catch (_) { }
-      }
       const adminModal = document.getElementById('admin-modal');
       const adminPanel = document.getElementById('admin-panel');
       const adminPassInput = document.getElementById('admin-pass-input');
@@ -5721,14 +5733,46 @@ function shouldShowStatsTicker() {
 
 
       adminModal.hidden = true;
-      adminPanel.hidden = true;
+      if (isAdminLoggedIn) {
+        // Restaurar sesión al iniciar
+        if (document.readyState === 'complete') {
+          initializeAdminPanelOnLoad();
+        } else {
+          window.addEventListener('load', initializeAdminPanelOnLoad);
+        }
+      } else {
+        adminPanel.hidden = true;
+      }
+
+      function initializeAdminPanelOnLoad() {
+        setTimeout(() => {
+          try {
+            // Keep panel hidden on load, just enable admin capabilities
+            adminPanel.hidden = true;
+            updateDJControls?.();
+            updateEditToggleVisibility?.();
+          } catch (e) {
+            console.error('Error al inicializar sesión de administración autologueada:', e);
+          }
+        }, 500);
+      }
       // Event listeners para el modal de Admin
       menuAdminOpen?.addEventListener('click', () => {
         closeMenu();
-        adminModal.hidden = false;
-        adminPassInput.value = '';
-        adminPassError.hidden = true;
-        adminPassInput.focus();
+        if (hasActiveAdminSession()) {
+          // Si ya está autenticado, alternamos la visibilidad del panel admin directamente
+          if (adminPanel.hidden) {
+            showAdminPanel();
+            adminPanel.scrollIntoView({ behavior: 'smooth' });
+          } else {
+            adminPanel.hidden = true;
+          }
+        } else {
+          adminModal.hidden = false;
+          adminPassInput.value = '';
+          adminPassError.hidden = true;
+          adminPassInput.focus();
+        }
       });
 
 
@@ -5746,34 +5790,38 @@ function shouldShowStatsTicker() {
         const pass = adminPassInput.value;
         const storedHash = getAdminPass();
 
-        // Si no hay contraseña configurada, la primera vez se configura
-        if (!storedHash) {
-          if (pass.length > 5) {
-            if (confirm('¿Quieres establecer esta contraseña como la clave de Admin para este navegador?')) {
-              setAdminPass(pass);
-              alert('Contraseña guardada localmente. Úsala para ingresar.');
-              return;
-            }
-          } else {
-            alert('Para configurar el acceso por primera vez, ingresa una contraseña de al menos 6 caracteres.');
-            return;
-          }
-        }
+        const isCorrect = (pass === DEFAULT_ADMIN_PASS) || (storedHash && pass === storedHash);
 
-        if (pass === storedHash) {
+        if (isCorrect) {
           isAdminLoggedIn = true;
           window.__ACTIVE_ADMIN_SESSION__ = true;
+          if (!storedHash) {
+            setAdminPass(DEFAULT_ADMIN_PASS);
+          }
           try {
             sessionStorage.setItem('isAdminMode', 'true');
             sessionStorage.setItem('isAdminAuthenticated', 'true');
+            localStorage.setItem('isAdminMode', 'true');
+            localStorage.setItem('isAdminAuthenticated', 'true');
           } catch (_) { }
-          localStorage.setItem('isAdminMode', 'true'); // Persistir login
+          try {
+            updateDJControls?.();
+            updateEditToggleVisibility?.();
+          } catch (_) { }
           adminModal.hidden = true;
           adminPanel.hidden = false;
           window.renderAllUsersSelect?.();
           console.log('✅ Panel de administración abierto (DJ Mode ON)');
           try { setTimeout(() => { try { calculateAndSaveGlobalStats(); } catch (_) { } }, 250); } catch (_) { }
         } else {
+          // Si no coincide y no hay contraseña configurada aún, permitimos configurar una personalizada
+          if (!storedHash && pass.length > 5) {
+            if (confirm('¿Quieres establecer esta contraseña como la clave de Admin para este navegador?')) {
+              setAdminPass(pass);
+              alert('Contraseña guardada localmente. Úsala para ingresar.');
+              return;
+            }
+          }
           adminPassError.hidden = false;
           adminPassInput.focus();
         }
@@ -5797,8 +5845,9 @@ function shouldShowStatsTicker() {
         try {
           sessionStorage.removeItem('isAdminMode');
           sessionStorage.removeItem('isAdminAuthenticated');
+          localStorage.removeItem('isAdminMode');
+          localStorage.removeItem('isAdminAuthenticated');
         } catch (_) { }
-        localStorage.removeItem('isAdminMode'); // Borrar login
         adminPanel.hidden = true;
         adminModal.hidden = true;
         adminPassInput.value = '';

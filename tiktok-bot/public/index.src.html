@@ -16,6 +16,7 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
     <!-- Configuración compartida de Firebase -->
     <script src="firebase-config.js"></script>
     <!-- Babel (Solo para desarrollo) -->
@@ -1917,9 +1918,9 @@
             const [showGoalsCoinsPersonalize, setShowGoalsCoinsPersonalize] = React.useState(false);
             const [showTopgifterPersonalize, setShowTopgifterPersonalize] = React.useState(false);
             const [showToplikerPersonalize, setShowToplikerPersonalize] = React.useState(false);
-            const [activeControlSub, setActiveControlSub] = React.useState('lista');
+            const [activeControlSub, setActiveControlSub] = React.useState('queue');
             const [pendingRequests, setPendingRequests] = React.useState([]);
-            const [playedSongs, setPlayedSongs] = React.useState(new Set());
+            const [playedState, setPlayedState] = React.useState({ songs: new Set(), skipped: new Set() });
             const [activeVideo, setActiveVideo] = React.useState({ state: 'ended', videoId: '', title: '', volume: 100 });
 
             React.useEffect(() => {
@@ -1934,6 +1935,13 @@
                             : window.firebase.app();
                         const db = app.firestore();
 
+                        // Autenticación anónima para permitir borrado y operaciones de base de datos
+                        if (app.auth) {
+                            app.auth().signInAnonymously().catch(err => {
+                                console.warn('[Auth] Anonymous sign-in failed:', err);
+                            });
+                        }
+
                         const getLocalDateKey = () => {
                             const d = new Date();
                             const year = d.getFullYear();
@@ -1943,14 +1951,18 @@
                         };
                         const currentDay = getLocalDateKey();
 
-                        // 1. Escuchar playedSongs
+                        // 1. Escuchar playedSongs (con canciones reproducidas y saltadas)
                         unsubPlayed = db.collection('playedSongs').doc(currentDay).onSnapshot((doc) => {
                             const data = doc.data();
                             if (data) {
-                                const arr = Array.isArray(data.songs) ? data.songs : (Array.isArray(data.list) ? data.list : []);
-                                setPlayedSongs(new Set(arr.map(id => String(id).replace(/[^a-zA-Z0-9-]/g, '').toLowerCase())));
+                                const songs = Array.isArray(data.songs) ? data.songs : (Array.isArray(data.list) ? data.list : []);
+                                const skipped = Array.isArray(data.skipped) ? data.skipped : [];
+                                setPlayedState({
+                                    songs: new Set(songs),
+                                    skipped: new Set(skipped)
+                                });
                             } else {
-                                setPlayedSongs(new Set());
+                                setPlayedState({ songs: new Set(), skipped: new Set() });
                             }
                         }, err => {
                             console.warn("Error loading played songs for today:", err);
@@ -2019,6 +2031,52 @@
                 return () => window.removeEventListener('message', handleMessage);
             }, []);
 
+            const handlePlayPauseRequestInObs = async (req) => {
+                if (!window.db) return;
+                try {
+                    const videoId = req.link || '';
+                    if (!videoId) {
+                        if (typeof showToast === 'function') {
+                            showToast('Esta petición no tiene un enlace de YouTube válido.', 'error');
+                        } else {
+                            alert('Esta petición no tiene un enlace de YouTube válido.');
+                        }
+                        return;
+                    }
+
+                    const isActive = activeVideo.videoId === videoId;
+                    if (isActive) {
+                        // Toggle play/pause
+                        const nextState = activeVideo.state === 'playing' ? 'paused' : 'playing';
+                        await window.db.collection('systemConfig').doc('activeYoutubeVideo').update({
+                            state: nextState,
+                            timestamp: Date.now()
+                        });
+                        if (typeof showToast === 'function') {
+                            showToast(nextState === 'playing' ? 'Reanudando música en OBS' : 'Pausando música en OBS', 'success');
+                        }
+                    } else {
+                        // Play new video
+                        await window.db.collection('systemConfig').doc('activeYoutubeVideo').set({
+                            videoId: videoId,
+                            title: req.cancion || 'Sin título',
+                            artist: req.artista || 'Sin artista',
+                            requester: req.displayName || req.usuario || 'Invitado',
+                            state: 'playing',
+                            timestamp: Date.now()
+                        });
+                        if (typeof showToast === 'function') {
+                            showToast(`Reproduciendo "${req.cancion}" en OBS`, 'success');
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error al controlar reproducción en OBS:', e);
+                    if (typeof showToast === 'function') {
+                        showToast('Error: ' + e.message, 'error');
+                    }
+                }
+            };
+
             const handleDeleteRequest = async (docId) => {
                 if (!window.db) return;
                 try {
@@ -2030,7 +2088,26 @@
                 }
             };
 
-            const handleMarkRequestAsPlayed = async (req) => {
+            const updateUserPlayedCounter = async (usuario, day, delta) => {
+                if (!window.db) return;
+                try {
+                    const u = String(usuario || '').trim().replace(/^@/, '').toLowerCase();
+                    const d = day || '';
+                    if (!u || !d) return;
+                    
+                    const ref = window.db.collection('playedSongs').doc('userTotals');
+                    await ref.set({ totals: {}, counts: {}, lastUpdated: window.firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+                    const payload = { lastUpdated: window.firebase.firestore.FieldValue.serverTimestamp() };
+                    payload[`totals.${u}`] = window.firebase.firestore.FieldValue.increment(delta);
+                    payload[`counts.${d}.${u}`] = window.firebase.firestore.FieldValue.increment(delta);
+                    await ref.set(payload, { merge: true });
+                    console.log(`💰 Puntos actualizados en Firestore para ${u}: delta=${delta}`);
+                } catch (e) {
+                    console.error("Error updating user played counter:", e);
+                }
+            };
+
+            const handleTogglePlayedInDashboard = async (req) => {
                 if (!window.db) return;
                 try {
                     const getLocalDateKey = () => {
@@ -2041,27 +2118,93 @@
                         return `${year}-${month}-${day}`;
                     };
                     const currentDay = getLocalDateKey();
-                    
-                    const playedRef = window.db.collection('playedSongs').doc(currentDay);
-                    const doc = await playedRef.get();
-                    let list = [];
-                    if (doc.exists && doc.data()) {
-                        const data = doc.data();
-                        list = Array.isArray(data.songs) ? data.songs : (Array.isArray(data.list) ? data.list : []);
-                    }
-                    
                     const sid = req.docId;
-                    const cleanSid = sid.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
-                    if (!list.includes(cleanSid)) {
-                        list.push(cleanSid);
+
+                    const isPlayed = playedState.songs.has(sid);
+                    const isSkipped = playedState.skipped.has(sid);
+
+                    const playedRef = window.db.collection('playedSongs').doc(currentDay);
+
+                    if (isPlayed && !isSkipped) {
+                        // Estaba reproducido válido -> Cambiar a no reproducido (desmarcar todo)
+                        await playedRef.set({
+                            songs: window.firebase.firestore.FieldValue.arrayRemove(sid),
+                            skipped: window.firebase.firestore.FieldValue.arrayRemove(sid),
+                            lastUpdate: window.firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+
+                        // Restar puntos del contador
+                        await updateUserPlayedCounter(req.usuario || req.username || 'invitado', currentDay, -1);
+                        if (typeof showToast === 'function') showToast('Canción desmarcada (restados puntos)', 'info');
+                    } else {
+                        // No estaba reproducido o estaba skippeado -> Marcar como reproducido válido
+                        await playedRef.set({
+                            songs: window.firebase.firestore.FieldValue.arrayUnion(sid),
+                            skipped: window.firebase.firestore.FieldValue.arrayRemove(sid),
+                            lastUpdate: window.firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+
+                        // Si antes estaba skippeado (pero ya estaba en songs), no sumamos delta de played, pero al pasar de skippeado a válido hay que sumarle puntos
+                        const wasValid = isPlayed && !isSkipped;
+                        const nextValid = true;
+                        if (nextValid && !wasValid) {
+                            await updateUserPlayedCounter(req.usuario || req.username || 'invitado', currentDay, 1);
+                        }
+                        if (typeof showToast === 'function') showToast('Canción marcada como reproducida (sumados puntos)', 'success');
                     }
-                    
-                    await playedRef.set({
-                        songs: list,
-                        lastUpdate: window.firebase.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
                 } catch (e) {
-                    console.error("Error marking request as played:", e);
+                    console.error("Error toggling played state:", e);
+                }
+            };
+
+            const handleToggleSkippedInDashboard = async (req) => {
+                if (!window.db) return;
+                try {
+                    const getLocalDateKey = () => {
+                        const d = new Date();
+                        const year = d.getFullYear();
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    };
+                    const currentDay = getLocalDateKey();
+                    const sid = req.docId;
+
+                    const isPlayed = playedState.songs.has(sid);
+                    const isSkipped = playedState.skipped.has(sid);
+
+                    const playedRef = window.db.collection('playedSongs').doc(currentDay);
+
+                    if (!isPlayed) {
+                        // Caso 1: No estaba reproducida -> Se marca como reproducida y saltada (no suma puntos)
+                        await playedRef.set({
+                            songs: window.firebase.firestore.FieldValue.arrayUnion(sid),
+                            skipped: window.firebase.firestore.FieldValue.arrayUnion(sid),
+                            lastUpdate: window.firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                        if (typeof showToast === 'function') showToast('Canción saltada (sin puntos)', 'warning');
+                    } else {
+                        // Caso 2: Ya estaba reproducida -> Alternamos solo el estado skip
+                        if (isSkipped) {
+                            // Si ya estaba skippeada, al quitarle el skip pasa a ser reproducida válida (gana puntos)
+                            await playedRef.set({
+                                skipped: window.firebase.firestore.FieldValue.arrayRemove(sid),
+                                lastUpdate: window.firebase.firestore.FieldValue.serverTimestamp()
+                            }, { merge: true });
+                            await updateUserPlayedCounter(req.usuario || req.username || 'invitado', currentDay, 1);
+                            if (typeof showToast === 'function') showToast('Quitado salto: ahora es válida (sumados puntos)', 'success');
+                        } else {
+                            // Si no estaba skippeada, al ponerle el skip pierde validez (resta puntos)
+                            await playedRef.set({
+                                skipped: window.firebase.firestore.FieldValue.arrayUnion(sid),
+                                lastUpdate: window.firebase.firestore.FieldValue.serverTimestamp()
+                            }, { merge: true });
+                            await updateUserPlayedCounter(req.usuario || req.username || 'invitado', currentDay, -1);
+                            if (typeof showToast === 'function') showToast('Canción saltada (restados puntos)', 'warning');
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error toggling skipped state:", e);
                 }
             };
 
@@ -8317,11 +8460,11 @@
                     {activeTab === 'control' && (
                         <div className="config-layout animate-fade-in">
                             <div className="config-sidebar" style={{ background: 'rgba(10, 8, 20, 0.4)' }}>
-                                <button className={`config-menu-item ${activeControlSub === 'lista' ? 'active' : ''}`} onClick={() => setActiveControlSub('lista')}>
-                                    <span>{renderIcon('music')} 🎵 Catálogo</span>
-                                </button>
                                 <button className={`config-menu-item ${activeControlSub === 'queue' ? 'active' : ''}`} onClick={() => setActiveControlSub('queue')}>
                                     <span>{renderIcon('list')} 📋 Cola de Espera</span>
+                                </button>
+                                <button className={`config-menu-item ${activeControlSub === 'lista' ? 'active' : ''}`} onClick={() => setActiveControlSub('lista')}>
+                                    <span>{renderIcon('music')} 🎵 Catálogo</span>
                                 </button>
                                 <button className={`config-menu-item ${activeControlSub === 'youtube' ? 'active' : ''}`} onClick={() => setActiveControlSub('youtube')}>
                                     <span>{renderIcon('video')} 🎥 Control YouTube</span>
@@ -8357,110 +8500,126 @@
 
                                                 {/* Unified Media Player Controls (Spotify-style) */}
                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 15px', background: 'rgba(0,0,0,0.3)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)', gap: '15px', width: '100%' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '28px', width: '100%' }}>
-                                                        {/* Button: Detener */}
-                                                        <button 
-                                                            onClick={handleStopActiveYoutubeVideo} 
-                                                            title="Detener reproducción"
-                                                            style={{ 
-                                                                width: '46px', 
-                                                                height: '46px', 
-                                                                borderRadius: '50%', 
-                                                                background: 'rgba(239, 68, 68, 0.05)', 
-                                                                border: '1.5px solid rgba(239, 68, 68, 0.25)', 
-                                                                color: '#ef4444', 
-                                                                display: 'flex', 
-                                                                justifyContent: 'center', 
-                                                                alignItems: 'center', 
-                                                                cursor: 'pointer',
-                                                                transition: 'all 0.2s ease-in-out',
-                                                                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.06)'
-                                                            }}
-                                                            className="control-player-btn-red"
-                                                        >
-                                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2.5" fill="currentColor" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
-                                                        </button>
+                                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: '30px', width: '100%', marginBottom: '5px' }}>
+                                                        {/* Control 1: Detener */}
+                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '65px' }}>
+                                                            <div style={{ height: '62px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                <button 
+                                                                    onClick={handleStopActiveYoutubeVideo} 
+                                                                    title="Detener reproducción"
+                                                                    style={{ 
+                                                                        width: '46px', 
+                                                                        height: '46px', 
+                                                                        borderRadius: '50%', 
+                                                                        background: 'rgba(239, 68, 68, 0.05)', 
+                                                                        border: '1.5px solid rgba(239, 68, 68, 0.25)', 
+                                                                        color: '#ef4444', 
+                                                                        display: 'flex', 
+                                                                        justifyContent: 'center', 
+                                                                        alignItems: 'center', 
+                                                                        cursor: 'pointer',
+                                                                        transition: 'all 0.2s ease-in-out',
+                                                                        boxShadow: '0 4px 12px rgba(239, 68, 68, 0.06)',
+                                                                        padding: 0,
+                                                                        margin: 0
+                                                                    }}
+                                                                    className="control-player-btn-red"
+                                                                >
+                                                                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2.5" fill="currentColor" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+                                                                </button>
+                                                            </div>
+                                                            <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold', textAlign: 'center' }}>Detener</span>
+                                                        </div>
 
-                                                        {/* Button: Play/Pause Toggle */}
-                                                        {activeVideo.state === 'playing' ? (
-                                                            <button 
-                                                                onClick={handlePauseActiveYoutubeVideo} 
-                                                                title="Pausar video"
-                                                                style={{ 
-                                                                    width: '62px', 
-                                                                    height: '62px', 
-                                                                    borderRadius: '50%', 
-                                                                    background: 'rgba(245, 158, 11, 0.15)', 
-                                                                    border: '2.5px solid rgba(245, 158, 11, 0.5)', 
-                                                                    color: '#f59e0b', 
-                                                                    display: 'flex', 
-                                                                    justifyContent: 'center', 
-                                                                    alignItems: 'center', 
-                                                                    cursor: 'pointer',
-                                                                    transition: 'all 0.2s ease-in-out',
-                                                                    boxShadow: '0 6px 18px rgba(245, 158, 11, 0.2)'
-                                                                }}
-                                                                className="control-player-btn-orange"
-                                                            >
-                                                                <svg viewBox="0 0 24 24" width="26" height="26" stroke="currentColor" strokeWidth="2.5" fill="currentColor" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><rect x="14" y="4" width="4" height="16" rx="1"></rect><rect x="6" y="4" width="4" height="16" rx="1"></rect></svg>
-                                                            </button>
-                                                        ) : (
-                                                            <button 
-                                                                onClick={handleResumeActiveYoutubeVideo} 
-                                                                title="Reproducir/Reanudar video"
-                                                                style={{ 
-                                                                    width: '62px', 
-                                                                    height: '62px', 
-                                                                    borderRadius: '50%', 
-                                                                    background: 'rgba(16, 185, 129, 0.15)', 
-                                                                    border: '2.5px solid rgba(16, 185, 129, 0.5)', 
-                                                                    color: '#10b981', 
-                                                                    display: 'flex', 
-                                                                    justifyContent: 'center', 
-                                                                    alignItems: 'center', 
-                                                                    cursor: 'pointer',
-                                                                    transition: 'all 0.2s ease-in-out',
-                                                                    boxShadow: '0 6px 18px rgba(16, 185, 129, 0.2)'
-                                                                }}
-                                                                className="control-player-btn-green"
-                                                            >
-                                                                <svg viewBox="0 0 24 24" width="26" height="26" stroke="currentColor" strokeWidth="2.5" fill="currentColor" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
-                                                            </button>
-                                                        )}
+                                                        {/* Control 2: Play/Pause Toggle */}
+                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '75px' }}>
+                                                            <div style={{ height: '62px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                {activeVideo.state === 'playing' ? (
+                                                                    <button 
+                                                                        onClick={handlePauseActiveYoutubeVideo} 
+                                                                        title="Pausar video"
+                                                                        style={{ 
+                                                                            width: '62px', 
+                                                                            height: '62px', 
+                                                                            borderRadius: '50%', 
+                                                                            background: 'rgba(245, 158, 11, 0.15)', 
+                                                                            border: '2.5px solid rgba(245, 158, 11, 0.5)', 
+                                                                            color: '#f59e0b', 
+                                                                            display: 'flex', 
+                                                                            justifyContent: 'center', 
+                                                                            alignItems: 'center', 
+                                                                            cursor: 'pointer',
+                                                                            transition: 'all 0.2s ease-in-out',
+                                                                            boxShadow: '0 6px 18px rgba(245, 158, 11, 0.2)',
+                                                                            padding: 0,
+                                                                            margin: 0
+                                                                        }}
+                                                                        className="control-player-btn-orange"
+                                                                    >
+                                                                        <svg viewBox="0 0 24 24" width="26" height="26" stroke="currentColor" strokeWidth="2.5" fill="currentColor" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><rect x="14" y="4" width="4" height="16" rx="1"></rect><rect x="6" y="4" width="4" height="16" rx="1"></rect></svg>
+                                                                    </button>
+                                                                ) : (
+                                                                    <button 
+                                                                        onClick={handleResumeActiveYoutubeVideo} 
+                                                                        title="Reproducir/Reanudar video"
+                                                                        style={{ 
+                                                                            width: '62px', 
+                                                                            height: '62px', 
+                                                                            borderRadius: '50%', 
+                                                                            background: 'rgba(16, 185, 129, 0.15)', 
+                                                                            border: '2.5px solid rgba(16, 185, 129, 0.5)', 
+                                                                            color: '#10b981', 
+                                                                            display: 'flex', 
+                                                                            justifyContent: 'center', 
+                                                                            alignItems: 'center', 
+                                                                            cursor: 'pointer',
+                                                                            transition: 'all 0.2s ease-in-out',
+                                                                            boxShadow: '0 6px 18px rgba(16, 185, 129, 0.2)',
+                                                                            padding: 0,
+                                                                            margin: 0
+                                                                        }}
+                                                                        className="control-player-btn-green"
+                                                                    >
+                                                                        <svg viewBox="0 0 24 24" width="26" height="26" stroke="currentColor" strokeWidth="2.5" fill="currentColor" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            <span style={{ fontSize: '0.75rem', color: activeVideo.state === 'playing' ? '#f59e0b' : '#10b981', fontWeight: 'bold', textAlign: 'center' }}>
+                                                                {activeVideo.state === 'playing' ? 'Pausar' : 'Reproducir'}
+                                                            </span>
+                                                        </div>
 
-                                                        {/* Button: Saltar (Skip) */}
-                                                        <button 
-                                                            onClick={handleStopActiveYoutubeVideo} 
-                                                            title="Saltar a la siguiente canción"
-                                                            style={{ 
-                                                                width: '46px', 
-                                                                height: '46px', 
-                                                                borderRadius: '50%', 
-                                                                background: 'rgba(168, 85, 247, 0.05)', 
-                                                                border: '1.5px solid rgba(168, 85, 247, 0.25)', 
-                                                                color: '#c084fc', 
-                                                                display: 'flex', 
-                                                                justifyContent: 'center', 
-                                                                alignItems: 'center', 
-                                                                cursor: 'pointer',
-                                                                transition: 'all 0.2s ease-in-out',
-                                                                boxShadow: '0 4px 12px rgba(168, 85, 247, 0.06)'
-                                                            }}
-                                                            className="control-player-btn-purple"
-                                                        >
-                                                            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2.5" fill="currentColor" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
-                                                        </button>
+                                                        {/* Control 3: Saltar */}
+                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '65px' }}>
+                                                            <div style={{ height: '62px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                <button 
+                                                                    onClick={handleStopActiveYoutubeVideo} 
+                                                                    title="Saltar a la siguiente canción"
+                                                                    style={{ 
+                                                                        width: '46px', 
+                                                                        height: '46px', 
+                                                                        borderRadius: '50%', 
+                                                                        background: 'rgba(168, 85, 247, 0.05)', 
+                                                                        border: '1.5px solid rgba(168, 85, 247, 0.25)', 
+                                                                        color: '#c084fc', 
+                                                                        display: 'flex', 
+                                                                        justifyContent: 'center', 
+                                                                        alignItems: 'center', 
+                                                                        cursor: 'pointer',
+                                                                        transition: 'all 0.2s ease-in-out',
+                                                                        boxShadow: '0 4px 12px rgba(168, 85, 247, 0.06)',
+                                                                        padding: 0,
+                                                                        margin: 0
+                                                                    }}
+                                                                    className="control-player-btn-purple"
+                                                                >
+                                                                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2.5" fill="currentColor" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+                                                                </button>
+                                                            </div>
+                                                            <span style={{ fontSize: '0.75rem', color: '#c084fc', fontWeight: 'bold', textAlign: 'center' }}>Saltar</span>
+                                                        </div>
                                                     </div>
-
-                                                    {/* Text indicators */}
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: '260px', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 'bold' }}>
-                                                        <span style={{ textAlign: 'center', flex: 1, color: '#ef4444' }}>Detener</span>
-                                                        <span style={{ textAlign: 'center', flex: 1, color: activeVideo.state === 'playing' ? '#f59e0b' : '#10b981' }}>
-                                                            {activeVideo.state === 'playing' ? 'Pausar' : 'Reproducir'}
-                                                        </span>
-                                                        <span style={{ textAlign: 'center', flex: 1, color: '#c084fc' }}>Saltar</span>
-                                                    </div>
-
+                                                    
                                                     {/* Volume Slider Bar */}
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', maxWidth: '240px', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
                                                         <span style={{ color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center' }}>
@@ -8511,69 +8670,90 @@
                                                         📋 Cola de Peticiones (Por Orden)
                                                     </h4>
                                                     <span style={{ fontSize: '0.75rem', background: 'rgba(192, 132, 252, 0.15)', color: '#c084fc', padding: '3px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
-                                                        {pendingRequests.filter(req => {
-                                                            const id = req.docId || req.id || '';
-                                                            const cleanId = id.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
-                                                            return !playedSongs.has(cleanId);
-                                                        }).length} pendientes
+                                                        {pendingRequests.filter(req => !playedState.songs.has(req.docId)).length} pendientes
                                                     </span>
                                                 </div>
 
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '370px', overflowY: 'auto', paddingRight: '5px' }}>
-                                                    {pendingRequests.filter(req => {
-                                                        const id = req.docId || req.id || '';
-                                                        const cleanId = id.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
-                                                        return !playedSongs.has(cleanId);
-                                                    }).length === 0 ? (
+                                                    {pendingRequests.length === 0 ? (
                                                         <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.01)', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.05)' }}>
                                                             <div style={{ fontSize: '2rem', marginBottom: '10px' }}>🎵</div>
-                                                            <div>No hay canciones pendientes en la cola.</div>
+                                                            <div>No hay canciones en la cola.</div>
                                                         </div>
                                                     ) : (
-                                                        pendingRequests.filter(req => {
-                                                            const id = req.docId || req.id || '';
-                                                            const cleanId = id.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
-                                                            return !playedSongs.has(cleanId);
-                                                        }).map((req, idx) => (
-                                                            <div key={req.docId} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px' }}>
-                                                                <div style={{ fontSize: '0.8rem', fontWeight: '800', color: 'rgba(255,255,255,0.2)', width: '20px', textAlign: 'center' }}>
-                                                                    #{idx + 1}
-                                                                </div>
-                                                                <img 
-                                                                    src={req.cover || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=80&auto=format&fit=crop'} 
-                                                                    alt="cover" 
-                                                                    style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} 
-                                                                />
-                                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                                    <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                        {req.cancion}
+                                                        pendingRequests.map((req, idx) => {
+                                                            const isPlayed = playedState.songs.has(req.docId);
+                                                            const isSkipped = playedState.skipped.has(req.docId);
+                                                            
+                                                            let itemBorder = '1px solid rgba(255,255,255,0.05)';
+                                                            let itemBg = 'rgba(255,255,255,0.02)';
+                                                            if (isPlayed) {
+                                                                if (isSkipped) {
+                                                                    itemBorder = '1px solid rgba(245, 158, 11, 0.3)';
+                                                                    itemBg = 'rgba(245, 158, 11, 0.04)';
+                                                                } else {
+                                                                    itemBorder = '1px solid rgba(16, 185, 129, 0.3)';
+                                                                    itemBg = 'rgba(16, 185, 129, 0.04)';
+                                                                }
+                                                            }
+
+                                                            return (
+                                                                <div key={req.docId} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', background: itemBg, border: itemBorder, borderRadius: '10px', transition: 'all 0.2s ease' }}>
+                                                                    <div style={{ fontSize: '0.8rem', fontWeight: '800', color: 'rgba(255,255,255,0.2)', width: '20px', textAlign: 'center' }}>
+                                                                        #{idx + 1}
                                                                     </div>
-                                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                        {req.artista}
+                                                                    <img 
+                                                                        src={req.cover || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=80&auto=format&fit=crop'} 
+                                                                        alt="cover" 
+                                                                        style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} 
+                                                                    />
+                                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                                        <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: isSkipped ? 'line-through' : 'none' }}>
+                                                                            {req.cancion}
+                                                                        </div>
+                                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                            {req.artista}
+                                                                        </div>
+                                                                        <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                            👤 {req.displayName || req.usuario} 
+                                                                            {req.source === 'tiktok' && <span style={{ padding: '1px 4px', background: 'rgba(255,0,80,0.15)', color: '#ff0050', borderRadius: '4px', fontSize: '0.55rem', fontWeight: 'bold' }}>TikTok</span>}
+                                                                        </div>
                                                                     </div>
-                                                                    <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                        👤 {req.displayName || req.usuario} 
-                                                                        {req.source === 'tiktok' && <span style={{ padding: '1px 4px', background: 'rgba(255,0,80,0.15)', color: '#ff0050', borderRadius: '4px', fontSize: '0.55rem', fontWeight: 'bold' }}>TikTok</span>}
+                                                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                                                        {req.link && (
+                                                                            <button 
+                                                                                onClick={() => handlePlayPauseRequestInObs(req)} 
+                                                                                title={activeVideo.videoId === req.link && activeVideo.state === 'playing' ? "⏸️ Pausar reproducción" : "▶ Reproducir en OBS"} 
+                                                                                style={{ padding: '6px 10px', background: (activeVideo.videoId === req.link && activeVideo.state === 'playing') ? 'rgba(236, 72, 153, 0.15)' : 'rgba(168, 85, 247, 0.15)', border: (activeVideo.videoId === req.link && activeVideo.state === 'playing') ? '1px solid rgba(236, 72, 153, 0.4)' : '1px solid rgba(168, 85, 247, 0.4)', borderRadius: '6px', color: (activeVideo.videoId === req.link && activeVideo.state === 'playing') ? '#ec4899' : '#c084fc', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', transition: 'all 0.15s ease' }}
+                                                                            >
+                                                                                {activeVideo.videoId === req.link && activeVideo.state === 'playing' ? "⏸" : "▶"}
+                                                                            </button>
+                                                                        )}
+                                                                        <button 
+                                                                            onClick={() => handleTogglePlayedInDashboard(req)} 
+                                                                            title={isPlayed && !isSkipped ? "✓ Desmarcar como reproducida" : "✓ Marcar como reproducida (Suma puntos)"}
+                                                                            style={{ padding: '6px 10px', background: (isPlayed && !isSkipped) ? 'rgba(16, 185, 129, 0.3)' : 'rgba(16, 185, 129, 0.05)', border: (isPlayed && !isSkipped) ? '1px solid rgba(16, 185, 129, 0.6)' : '1px solid rgba(16, 185, 129, 0.15)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', transition: 'all 0.15s ease' }}
+                                                                        >
+                                                                            ✓
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={() => handleToggleSkippedInDashboard(req)} 
+                                                                            title={isPlayed && isSkipped ? "⏭️ Quitar salto de canción" : "⏭️ Saltar canción (No suma puntos)"}
+                                                                            style={{ padding: '6px 10px', background: (isPlayed && isSkipped) ? 'rgba(245, 158, 11, 0.3)' : 'rgba(245, 158, 11, 0.05)', border: (isPlayed && isSkipped) ? '1px solid rgba(245, 158, 11, 0.6)' : '1px solid rgba(245, 158, 11, 0.15)', borderRadius: '6px', color: '#f59e0b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', transition: 'all 0.15s ease' }}
+                                                                        >
+                                                                            ⏭️
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={() => handleDeleteRequest(req.docId)} 
+                                                                            title="✕ Eliminar de la lista de peticiones" 
+                                                                            style={{ padding: '6px 10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                                                        >
+                                                                            ✕
+                                                                        </button>
                                                                     </div>
                                                                 </div>
-                                                                <div style={{ display: 'flex', gap: '6px' }}>
-                                                                    <button 
-                                                                        onClick={() => handleMarkRequestAsPlayed(req)} 
-                                                                        title="Marcar como reproducida (Quitar de la cola)" 
-                                                                        style={{ padding: '6px 10px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
-                                                                    >
-                                                                        ✓
-                                                                    </button>
-                                                                    <button 
-                                                                        onClick={() => handleDeleteRequest(req.docId)} 
-                                                                        title="Eliminar de la base de datos" 
-                                                                        style={{ padding: '6px 10px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
-                                                                    >
-                                                                        ✕
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ))
+                                                            );
+                                                        })
                                                     )}
                                                 </div>
                                             </div>
@@ -8607,7 +8787,7 @@
                                 )}
 
                                 {activeControlSub === 'lista' && (
-                                    <iframe src="./lista.html" style={{ width: '100%', height: '750px', border: 'none', borderRadius: '12px', background: 'rgba(0,0,0,0.15)' }}></iframe>
+                                    <iframe src="./lista.html?admin=true" style={{ width: '100%', height: '750px', border: 'none', borderRadius: '12px', background: 'rgba(0,0,0,0.15)' }}></iframe>
                                 )}
 
                                 {activeControlSub === 'roulette' && (
