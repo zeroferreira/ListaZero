@@ -302,6 +302,13 @@
 </head>
 <body>
 
+  <!-- Idle Preview Placeholder -->
+  <div id="idle-preview" style="display: none; width: 100%; max-width: 420px; min-height: 140px; background: rgba(255, 255, 255, 0.03); border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 16px; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.4); font-size: 13px; font-weight: 600; text-align: center; padding: 24px; flex-direction: column; gap: 8px; font-family: 'Inter', sans-serif; backdrop-filter: blur(10px);">
+    <div style="font-size: 28px;">📺</div>
+    <div>Reproductor de YouTube (Vista Previa)</div>
+    <div style="font-size: 11px; font-weight: 400; color: rgba(255, 255, 255, 0.25); max-width: 280px; line-height: 1.4;">Se activará y mostrará aquí de forma automática al reproducir una canción en la cola.</div>
+  </div>
+
   <!-- Player Card -->
   <div id="player-card">
     <div class="card-bg" id="card-bg"></div>
@@ -578,6 +585,9 @@
   function applyData(data) {
     if (!data || !data.videoId) { setIdle(); return; }
 
+    const idlePreview = document.getElementById('idle-preview');
+    if (idlePreview) idlePreview.style.display = 'none';
+
     const vid = getYoutubeVideoId(data.videoId) || data.videoId;
     const thumb = getThumbnailUrl(vid);
 
@@ -634,6 +644,9 @@
   }
 
   function showCard() {
+    card.style.display = 'block';
+    // Force browser reflow to register display change before animating opacity
+    void card.offsetWidth;
     if (!isVisible) {
       card.classList.add('visible');
       isVisible = true;
@@ -643,6 +656,10 @@
   function hideCard() {
     card.classList.remove('visible');
     isVisible = false;
+    // Set display: none after transition finishes (500ms)
+    setTimeout(() => {
+      if (!isVisible) card.style.display = 'none';
+    }, 500);
   }
 
   function applyState(state) {
@@ -678,6 +695,7 @@
   function setIdle() {
     stopTimer();
     hideCard();
+    card.style.display = 'none';
     currentVideoId = null;
     elapsedSec = 0;
     progressFill.style.width = '0%';
@@ -690,6 +708,14 @@
       try {
         ytPlayer.stopVideo();
       } catch (e) {}
+    }
+
+    // Toggle preview placeholder
+    const params = new URLSearchParams(window.location.search);
+    const isPreview = params.get('preview') === 'true';
+    const idlePreview = document.getElementById('idle-preview');
+    if (idlePreview) {
+      idlePreview.style.display = (isPreview) ? 'flex' : 'none';
     }
   }
 
