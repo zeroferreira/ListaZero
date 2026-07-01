@@ -98,7 +98,8 @@ function syncRootOverlays() {
     'regalos.html',
     'lista.html',
     'lista.js',
-    'lista.css'
+    'lista.css',
+    'styles.css'
   ];
 
   const rootDir = path.dirname(__dirname); // La raíz es el padre de compile_dashboard.js

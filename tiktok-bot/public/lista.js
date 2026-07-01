@@ -659,7 +659,7 @@
 (function () {
       console.log('🚀 Iniciando aplicación v2.1 - Fixes applied');
       window.playedSongsCache = {};
-      const firebaseConfig = {
+      const firebaseConfig = window.ZERO_FM_FIREBASE || {
         apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
         authDomain: "zero-strom-web.firebaseapp.com",
         projectId: "zero-strom-web",
@@ -6554,7 +6554,7 @@ function shouldShowStatsTicker() {
 
       // Función para aplicar tema (sincronizada)
       function applyTheme() {
-        const savedTheme = localStorage.getItem('selectedTheme') || 'light';
+        const savedTheme = localStorage.getItem('selectedTheme') || 'dark';
         const savedColor = localStorage.getItem('selectedColor') || 'default';
         const savedTransparency = parseInt(localStorage.getItem('themeTransparency') || '0');
 
@@ -6606,7 +6606,7 @@ function shouldShowStatsTicker() {
 
       // Actualizar estados activos del modal
       function updateActiveStates() {
-        const savedTheme = localStorage.getItem('selectedTheme') || 'light';
+        const savedTheme = localStorage.getItem('selectedTheme') || 'dark';
         const savedColor = localStorage.getItem('selectedColor') || 'default';
         const savedShape = localStorage.getItem('selectedShape') || 'orb';
         const savedTransparency = localStorage.getItem('themeTransparency') || '0';
@@ -6822,7 +6822,7 @@ function shouldShowStatsTicker() {
           // Disparar evento personalizado para sincronización
           window.dispatchEvent(new CustomEvent('themeChanged', {
             detail: {
-              theme: localStorage.getItem('selectedTheme') || 'light',
+              theme: localStorage.getItem('selectedTheme') || 'dark',
               color: colorName,
               transparency: localStorage.getItem('themeTransparency') || '0'
             }
@@ -6867,7 +6867,7 @@ function shouldShowStatsTicker() {
 
         window.dispatchEvent(new CustomEvent('themeChanged', {
           detail: {
-            theme: localStorage.getItem('selectedTheme') || 'light',
+            theme: localStorage.getItem('selectedTheme') || 'dark',
             color: localStorage.getItem('selectedColor') || 'default',
             transparency: val
           }
