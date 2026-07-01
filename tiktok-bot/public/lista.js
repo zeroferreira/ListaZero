@@ -17851,6 +17851,23 @@ function shouldShowStatsTicker() {
       });
 
     });
+
+    // INTERCEPT PEDIR CANCIÓN LINKS INSIDE IFRAME (DASHBOARD PREVIEW)
+    if (window.self !== window.top) {
+      document.addEventListener('click', function(e) {
+        const anchor = e.target.closest('a');
+        if (anchor && anchor.getAttribute('href') === 'index.html') {
+          e.preventDefault();
+          e.stopPropagation();
+          try {
+            window.parent.postMessage({ action: 'switchTab', tab: 'control', subTab: 'youtube' }, '*');
+            console.log("📨 Sent switchTab message to parent dashboard");
+          } catch(err) {
+            console.error("Error sending postMessage to parent:", err);
+          }
+        }
+      }, true);
+    }
   })();
 
   // Global handler for modal close buttons (X)
