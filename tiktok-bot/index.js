@@ -175,28 +175,68 @@ try {
 }
 // -----------------------------------
 
-// --- CONFIGURACIÓN ESTATICA ---
-const CONFIG_FILE = path.join(__dirname, 'config.json');
+// --- CONFIGURACIÓN ESTATICA Y MULTIUSUARIO ---
+const PROFILES_DIR = path.join(__dirname, 'profiles');
+const ACTIVE_PROFILE_FILE = path.join(PROFILES_DIR, 'active_profile.json');
 
-// Cargar Configuración Inicial
+// Asegurar que exista la carpeta de perfiles
+if (!fs.existsSync(PROFILES_DIR)) {
+    fs.mkdirSync(PROFILES_DIR);
+}
+
+// Cargar perfil activo
+let activeProfile = 'zeroferreira';
+if (fs.existsSync(ACTIVE_PROFILE_FILE)) {
+    try {
+        const raw = fs.readFileSync(ACTIVE_PROFILE_FILE, 'utf8');
+        activeProfile = JSON.parse(raw).activeProfile || 'zeroferreira';
+    } catch (_) {}
+}
+
+const activeProfileDir = path.join(PROFILES_DIR, activeProfile);
+if (!fs.existsSync(activeProfileDir)) {
+    fs.mkdirSync(activeProfileDir);
+}
+
+const PROFILE_CONFIG_FILE = path.join(activeProfileDir, 'config.json');
+const PROFILE_FB_CONFIG_FILE = path.join(activeProfileDir, 'firebase-config.js');
+
 let config = {
     allowSubscribers: true,
     allowModerators: true,
     allowSuperFans: true,
     minCoinsForVip: 30,
     vipDurationSession: true,
-    tiktokUsername: "zeroferreira", // Default
-    sessionId: "", // TikTok Session ID (cookie "sessionid")
-    ttTargetIdc: "", // TikTok region cookie "tt-target-idc" (requerido junto con sessionId)
+    tiktokUsername: activeProfile === 'zeroferreira' ? 'zeroferreira' : activeProfile,
+    sessionId: "",
+    ttTargetIdc: "",
     dashboardPort: 3000,
     ciderUrl: "http://localhost:10767",
     mockCider: false,
     requireVipForSr: false,
-    allowPointsCommand: true, // Nuevo: Permitir !puntos
-    likesPerPoint: 300, // Configuración por defecto: 300 likes = 1 punto
+    allowPointsCommand: true,
+    likesPerPoint: 300,
     commandAliases: ["!zr", "!sr", "!pedir", "!cancion"],
     ignoreExampleQuery: "artista cancion"
 };
+
+// Si el perfil no tiene sus archivos, copiarlos de la raíz o crearlos
+if (!fs.existsSync(PROFILE_CONFIG_FILE)) {
+    const rootConfig = path.join(__dirname, 'config.json');
+    if (fs.existsSync(rootConfig)) {
+        fs.copyFileSync(rootConfig, PROFILE_CONFIG_FILE);
+    } else {
+        fs.writeFileSync(PROFILE_CONFIG_FILE, JSON.stringify(config, null, 2));
+    }
+}
+if (!fs.existsSync(PROFILE_FB_CONFIG_FILE)) {
+    const rootFbConfig = path.join(__dirname, 'firebase-config.js');
+    if (fs.existsSync(rootFbConfig)) {
+        fs.copyFileSync(rootFbConfig, PROFILE_FB_CONFIG_FILE);
+    }
+}
+
+const CONFIG_FILE = PROFILE_CONFIG_FILE;
 
 let overlayAlertsConfig = {
     minLikesAlert: 100,
@@ -219,11 +259,11 @@ try {
     if (fs.existsSync(CONFIG_FILE)) {
         const raw = fs.readFileSync(CONFIG_FILE);
         config = { ...config, ...JSON.parse(raw) };
-        console.log("📂 Configuración cargada:", config);
+        console.log(`📂 Configuración cargada del perfil [${activeProfile}]:`, config);
     }
     
     // Cargar credenciales Firebase Web para actualizar estado LIVE
-    const fbConfigFile = path.join(__dirname, 'firebase-config.js');
+    const fbConfigFile = PROFILE_FB_CONFIG_FILE;
     if (fs.existsSync(fbConfigFile)) {
         const fbConfig = require(fbConfigFile);
         initStatusUpdater(fbConfig);
@@ -1035,12 +1075,12 @@ function startBot() {
 
     // Endpoint dinámico para servir configuración de Firebase a los overlays
     app.get('/firebase-config.js', (req, res) => {
-        const fbConfigFile = path.join(__dirname, 'firebase-config.js');
+        const fbConfigFile = PROFILE_FB_CONFIG_FILE;
         res.setHeader('Content-Type', 'application/javascript');
         if (fs.existsSync(fbConfigFile)) {
             try {
-                delete require.cache[require.resolve('./firebase-config')];
-                const fbConfig = require('./firebase-config');
+                delete require.cache[require.resolve(fbConfigFile)];
+                const fbConfig = require(fbConfigFile);
                 res.send(`window.ZERO_FM_FIREBASE = ${JSON.stringify(fbConfig)};`);
             } catch (e) {
                 res.status(500).send(`console.error("Error reading firebase-config.js:", ${JSON.stringify(e.message)});`);
@@ -1332,6 +1372,102 @@ function startBot() {
             res.json({ success: true, config });
         } catch (e) {
             console.error("Error guardando config:", e);
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // API para obtener lista de perfiles y perfil activo
+    app.get('/api/profiles', (req, res) => {
+        try {
+            const files = fs.readdirSync(PROFILES_DIR, { withFileTypes: true });
+            const profileNames = files
+                .filter(dirent => dirent.isDirectory())
+                .map(dirent => dirent.name);
+            res.json({
+                profiles: profileNames.length > 0 ? profileNames : ['zeroferreira'],
+                activeProfile: activeProfile
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // API para cambiar de perfil
+    app.post('/api/switch-profile', (req, res) => {
+        try {
+            const { profile } = req.body;
+            if (!profile) return res.status(400).json({ error: "Debe especificar un perfil." });
+            const cleanProfileName = profile.toLowerCase().replace(/[^a-z0-9_-]/g, '').trim();
+            const targetDir = path.join(PROFILES_DIR, cleanProfileName);
+            if (!fs.existsSync(targetDir)) {
+                return res.status(404).json({ error: `El perfil ${cleanProfileName} no existe.` });
+            }
+
+            // Guardar perfil activo
+            fs.writeFileSync(ACTIVE_PROFILE_FILE, JSON.stringify({ activeProfile: cleanProfileName }, null, 2));
+            console.log(`🔄 Cambiando perfil activo a: ${cleanProfileName}...`);
+
+            // Responder éxito y reiniciar bot en 1 segundo para aplicar cambios limpios
+            res.json({ success: true, activeProfile: cleanProfileName });
+            setTimeout(() => {
+                console.log("👋 Apagando proceso para reinicio limpio con el nuevo perfil...");
+                process.exit(0);
+            }, 1000);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // API para crear un perfil nuevo
+    app.post('/api/create-profile', (req, res) => {
+        try {
+            const { profile } = req.body;
+            if (!profile) return res.status(400).json({ error: "Debe especificar un perfil nuevo." });
+            const cleanProfileName = profile.toLowerCase().replace(/[^a-z0-9_-]/g, '').trim();
+            if (!cleanProfileName) return res.status(400).json({ error: "Nombre de perfil inválido." });
+
+            const targetDir = path.join(PROFILES_DIR, cleanProfileName);
+            if (fs.existsSync(targetDir)) {
+                return res.status(400).json({ error: "El perfil ya existe." });
+            }
+
+            // Crear directorio del perfil
+            fs.mkdirSync(targetDir);
+
+            // Copiar configuración por defecto
+            const default_config = {
+                allowSubscribers: true,
+                allowModerators: true,
+                allowSuperFans: true,
+                minCoinsForVip: 30,
+                vipDurationSession: true,
+                tiktokUsername: cleanProfileName,
+                sessionId: "",
+                ttTargetIdc: "",
+                dashboardPort: 3000,
+                ciderUrl: "http://localhost:10767",
+                mockCider: false,
+                requireVipForSr: false,
+                allowPointsCommand: true,
+                likesPerPoint: 300,
+                commandAliases: ["!zr", "!sr", "!pedir", "!cancion"],
+                ignoreExampleQuery: "artista cancion"
+            };
+
+            const default_fb = {
+                apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+                authDomain: "zero-strom-web.firebaseapp.com",
+                projectId: "zero-strom-web",
+                storageBucket: "zero-strom-web.firebasestorage.app",
+                messagingSenderId: "758369466349",
+                appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+            };
+
+            fs.writeFileSync(path.join(targetDir, 'config.json'), JSON.stringify(default_config, null, 2));
+            fs.writeFileSync(path.join(targetDir, 'firebase-config.js'), `module.exports = ${JSON.stringify(default_fb, null, 2)};`);
+
+            res.json({ success: true, profile: cleanProfileName });
+        } catch (e) {
             res.status(500).json({ error: e.message });
         }
     });

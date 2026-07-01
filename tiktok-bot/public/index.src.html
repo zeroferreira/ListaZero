@@ -996,6 +996,8 @@
             const [activeSub, setActiveSub] = React.useState('player');
             const [activeConfigSub, setActiveConfigSub] = React.useState('commands');
             const [saveStatus, setSaveStatus] = React.useState('');
+            const [profiles, setProfiles] = React.useState(['zeroferreira']);
+            const [activeProfile, setActiveProfile] = React.useState('zeroferreira');
             
             // System Configurations
             const [config, setConfig] = React.useState({
@@ -2111,6 +2113,13 @@
                 setCurrentOrigin(origin);
 
                 // Load all initial configurations
+                fetch('/api/profiles')
+                    .then(r => r.json())
+                    .then(data => {
+                        setProfiles(data.profiles || ['zeroferreira']);
+                        setActiveProfile(data.activeProfile || 'zeroferreira');
+                    }).catch(() => {});
+
                 fetch('/api/config')
                     .then(r => r.json())
                     .then(data => {
@@ -2547,6 +2556,48 @@
                 }).catch(() => {
                     alert('No se pudo copiar, por favor hazlo manualmente.');
                 });
+            };
+
+            const handleProfileChange = async (newProfile) => {
+                try {
+                    const res = await fetch('/api/switch-profile', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ profile: newProfile })
+                    });
+                    if (res.ok) {
+                        alert("Cambiando perfil... El bot se reiniciará en un momento. Espere 5 segundos y recargue la página.");
+                        setTimeout(() => window.location.reload(), 5000);
+                    } else {
+                        alert("Error al cambiar de perfil.");
+                    }
+                } catch (e) {
+                    alert("Error de red: " + e.message);
+                }
+            };
+
+            const handleCreateProfile = async () => {
+                const name = prompt("Escribe el nombre del nuevo perfil (letras y números únicamente, ej: videojuegos):");
+                if (!name) return;
+                const cleanName = name.toLowerCase().replace(/[^a-z0-9_-]/g, '').trim();
+                if (!cleanName) return;
+                
+                try {
+                    const res = await fetch('/api/create-profile', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ profile: cleanName })
+                    });
+                    if (res.ok) {
+                        alert("Perfil creado con éxito. Cambiando al nuevo perfil...");
+                        handleProfileChange(cleanName);
+                    } else {
+                        const data = await res.json();
+                        alert(data.error || "Error al crear perfil.");
+                    }
+                } catch (e) {
+                    alert("Error: " + e.message);
+                }
             };
 
             // Event simulation triggers
@@ -3025,6 +3076,36 @@
                                 {/* SUBPANEL 1: COMANDOS & BOT */}
                                 {activeConfigSub === 'commands' && (
                                     <div className="glass-card">
+                                        {/* Perfil Switcher Section */}
+                                        <div style={{ marginBottom: '25px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <h3 style={{ marginBottom: '14px', fontSize: '1.2rem', fontWeight: '700', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span>👤 Perfil Activo (Multiusuario)</span>
+                                            </h3>
+                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                                <div style={{ flexGrow: 1 }}>
+                                                    <select 
+                                                        value={activeProfile} 
+                                                        onChange={(e) => handleProfileChange(e.target.value)}
+                                                        style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '6px' }}
+                                                    >
+                                                        {profiles.map(p => (
+                                                            <option key={p} value={p}>{p === 'zeroferreira' ? 'Música (zeroferreira)' : p}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <button 
+                                                    className="btn" 
+                                                    onClick={handleCreateProfile}
+                                                    style={{ padding: '10px 16px', background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}
+                                                >
+                                                    ➕ Crear Perfil
+                                                </button>
+                                            </div>
+                                            <small style={{ display: 'block', marginTop: '6px', color: 'var(--text-muted)' }}>
+                                                Cambia de cuenta de TikTok y bases de datos al instante. Cada perfil tiene su propia configuración y overlays independientes.
+                                            </small>
+                                        </div>
+
                                         <h3 style={{ marginBottom: '18px', fontSize: '1.2rem', fontWeight: '700' }}>Acceso a TikTok</h3>
                                         
                                         <div className="form-group">

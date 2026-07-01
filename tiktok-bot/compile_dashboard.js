@@ -105,8 +105,21 @@ function syncRootOverlays() {
   const publicDir = path.join(__dirname, 'public');
 
   for (const file of filesToSync) {
-    const srcPath = path.join(rootDir, file);
+    let srcPath = path.join(rootDir, file);
     const destPath = path.join(publicDir, file);
+
+    if (file === 'firebase-config.js') {
+      const activeProfileJson = path.join(__dirname, 'profiles', 'active_profile.json');
+      if (fs.existsSync(activeProfileJson)) {
+        try {
+          const activeProfile = JSON.parse(fs.readFileSync(activeProfileJson, 'utf8')).activeProfile;
+          const profileFbConfig = path.join(__dirname, 'profiles', activeProfile, 'firebase-config.js');
+          if (fs.existsSync(profileFbConfig)) {
+            srcPath = profileFbConfig;
+          }
+        } catch (_) {}
+      }
+    }
 
     if (fs.existsSync(srcPath)) {
       try {
