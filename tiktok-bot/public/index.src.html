@@ -1495,6 +1495,7 @@
                             ? window.firebase.initializeApp(window.ZERO_FM_FIREBASE)
                             : window.firebase.app();
                         const db = app.firestore();
+                        window.db = db;
                         
                         const startTimestamp = new Date(Date.now() - 30 * 1000); // 30s tolerados
                         let isInitialLoad = true;
@@ -1835,7 +1836,119 @@
             const [showGoalsCoinsPersonalize, setShowGoalsCoinsPersonalize] = React.useState(false);
             const [showTopgifterPersonalize, setShowTopgifterPersonalize] = React.useState(false);
             const [showToplikerPersonalize, setShowToplikerPersonalize] = React.useState(false);
-            const [activeControlSub, setActiveControlSub] = React.useState('ytqueue');
+            const [activeControlSub, setActiveControlSub] = React.useState('youtube');
+            const [pendingRequests, setPendingRequests] = React.useState([]);
+            const [playedSongs, setPlayedSongs] = React.useState(new Set());
+
+            React.useEffect(() => {
+                let unsubPlayed = () => {};
+                let unsubRequests = () => {};
+
+                if (typeof window !== 'undefined' && window.firebase && window.ZERO_FM_FIREBASE) {
+                    try {
+                        const app = window.firebase.apps.length === 0 
+                            ? window.firebase.initializeApp(window.ZERO_FM_FIREBASE)
+                            : window.firebase.app();
+                        const db = app.firestore();
+
+                        const getLocalDateKey = () => {
+                            const d = new Date();
+                            const year = d.getFullYear();
+                            const month = String(d.getMonth() + 1).padStart(2, '0');
+                            const day = String(d.getDate()).padStart(2, '0');
+                            return `${year}-${month}-${day}`;
+                        };
+                        const currentDay = getLocalDateKey();
+
+                        // 1. Escuchar playedSongs
+                        unsubPlayed = db.collection('playedSongs').doc(currentDay).onSnapshot((doc) => {
+                            const data = doc.data();
+                            if (data) {
+                                const arr = Array.isArray(data.songs) ? data.songs : (Array.isArray(data.list) ? data.list : []);
+                                setPlayedSongs(new Set(arr.map(id => String(id).replace(/[^a-zA-Z0-9-]/g, '').toLowerCase())));
+                            } else {
+                                setPlayedSongs(new Set());
+                            }
+                        }, err => {
+                            console.warn("Error loading played songs for today:", err);
+                        });
+
+                        // 2. Escuchar solicitudes de hoy ordenadas por timestamp
+                        const startOfToday = new Date();
+                        startOfToday.setHours(0, 0, 0, 0);
+
+                        const q = db.collection('solicitudes')
+                            .where('ts', '>=', startOfToday)
+                            .orderBy('ts', 'asc');
+
+                        unsubRequests = q.onSnapshot((snapshot) => {
+                            const reqs = [];
+                            snapshot.forEach((doc) => {
+                                const data = doc.data();
+                                reqs.push({ docId: doc.id, ...data });
+                            });
+                            setPendingRequests(reqs);
+                        }, err => {
+                            console.warn("Error loading active solicitudes:", err);
+                        });
+
+                    } catch (e) {
+                        console.error("Error setting up React solicitudes listener:", e);
+                    }
+                }
+
+                return () => {
+                    unsubPlayed();
+                    unsubRequests();
+                };
+            }, [activeProfile]);
+
+            const handleDeleteRequest = async (docId) => {
+                if (!window.db) return;
+                try {
+                    if (confirm("¿Estás seguro de que deseas eliminar esta petición de la cola?")) {
+                        await window.db.collection('solicitudes').doc(docId).delete();
+                    }
+                } catch (e) {
+                    console.error("Error deleting request:", e);
+                }
+            };
+
+            const handleMarkRequestAsPlayed = async (req) => {
+                if (!window.db) return;
+                try {
+                    const getLocalDateKey = () => {
+                        const d = new Date();
+                        const year = d.getFullYear();
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    };
+                    const currentDay = getLocalDateKey();
+                    
+                    const playedRef = window.db.collection('playedSongs').doc(currentDay);
+                    const doc = await playedRef.get();
+                    let list = [];
+                    if (doc.exists && doc.data()) {
+                        const data = doc.data();
+                        list = Array.isArray(data.songs) ? data.songs : (Array.isArray(data.list) ? data.list : []);
+                    }
+                    
+                    const sid = req.docId;
+                    const cleanSid = sid.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+                    if (!list.includes(cleanSid)) {
+                        list.push(cleanSid);
+                    }
+                    
+                    await playedRef.set({
+                        songs: list,
+                        lastUpdate: window.firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                } catch (e) {
+                    console.error("Error marking request as played:", e);
+                }
+            };
+
             const [showQueuePersonalize, setShowQueuePersonalize] = React.useState(false);
             const [showRoulettePersonalize, setShowRoulettePersonalize] = React.useState(false);
             const [showLastEventsPersonalize, setShowLastEventsPersonalize] = React.useState(false);
@@ -8089,8 +8202,11 @@
                         <div className="config-layout animate-fade-in">
                             {/* Left Configuration subpanels sidebar selectors */}
                             <div className="config-sidebar" style={{ background: 'rgba(10, 8, 20, 0.4)' }}>
-                                <button className={`config-menu-item ${activeControlSub === 'ytqueue' ? 'active' : ''}`} onClick={() => setActiveControlSub('ytqueue')}>
-                                    <span>{renderIcon('video')} 🎥 YouTube & Cola</span>
+                                <button className={`config-menu-item ${activeControlSub === 'youtube' ? 'active' : ''}`} onClick={() => setActiveControlSub('youtube')}>
+                                    <span>{renderIcon('video')} 🎥 Control YouTube</span>
+                                </button>
+                                <button className={`config-menu-item ${activeControlSub === 'queue' ? 'active' : ''}`} onClick={() => setActiveControlSub('queue')}>
+                                    <span>{renderIcon('list')} 📋 Cola de Espera</span>
                                 </button>
                                 <button className={`config-menu-item ${activeControlSub === 'lista' ? 'active' : ''}`} onClick={() => setActiveControlSub('lista')}>
                                     <span>{renderIcon('music')} 🎵 Catálogo</span>
@@ -8102,14 +8218,14 @@
 
                             {/* Right Content Panel */}
                             <div className="config-content">
-                                {activeControlSub === 'ytqueue' && (
+                                {activeControlSub === 'youtube' && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                                         <div className="glass-card" style={{ background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(236, 72, 153, 0.05) 100%)', border: '1px solid rgba(168, 85, 247, 0.15)' }}>
                                             <h3 style={{ margin: 0, color: '#f472b6', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                🎥 Reproductor & Cola de YouTube
+                                                🎥 Control de Reproducción YouTube
                                             </h3>
                                             <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem', marginTop: '6px', marginBottom: 0 }}>
-                                                Monitorea el video actual, ajusta la reproducción de YouTube en OBS y visualiza la lista de espera de tus espectadores desde una sola ventana.
+                                                Monitorea el video actual, ajusta la reproducción de YouTube en OBS y gestiona las solicitudes entrantes exclusivamente.
                                             </p>
                                         </div>
 
@@ -8141,26 +8257,104 @@
                                                 </div>
                                             </div>
 
-                                            {/* Column 2: Live Queue Iframe */}
+                                            {/* Column 2: Peticiones por YouTube */}
                                             <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                <h4 style={{ margin: 0, color: '#c084fc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    📋 Cola de Espera en Vivo
-                                                </h4>
-                                                
-                                                <div className="preview-panel" style={{ marginBottom: 0 }}>
-                                                    <iframe id="iframe-control-queue" src="./queue_overlay.html" className="preview-iframe" style={{ height: '330px', width: '100%', border: 'none', borderRadius: '8px', background: 'rgba(0,0,0,0.2)' }}></iframe>
-                                                </div>
-                                                
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Vista de la cola en OBS</span>
-                                                    <button className="btn btn-secondary" onClick={() => {
-                                                        const iframe = document.getElementById('iframe-control-queue');
-                                                        if (iframe) iframe.src = iframe.src;
-                                                    }} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>
-                                                        🔄 Recargar Cola
-                                                    </button>
+                                                    <h4 style={{ margin: 0, color: '#c084fc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        📋 Cola de Peticiones (Por Orden)
+                                                    </h4>
+                                                    <span style={{ fontSize: '0.75rem', background: 'rgba(192, 132, 252, 0.15)', color: '#c084fc', padding: '3px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                                                        {pendingRequests.filter(req => {
+                                                            const id = req.docId || req.id || '';
+                                                            const cleanId = id.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+                                                            return !playedSongs.has(cleanId);
+                                                        }).length} pendientes
+                                                    </span>
+                                                </div>
+
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '370px', overflowY: 'auto', paddingRight: '5px' }}>
+                                                    {pendingRequests.filter(req => {
+                                                        const id = req.docId || req.id || '';
+                                                        const cleanId = id.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+                                                        return !playedSongs.has(cleanId);
+                                                    }).length === 0 ? (
+                                                        <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.01)', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.05)' }}>
+                                                            <div style={{ fontSize: '2rem', marginBottom: '10px' }}>🎵</div>
+                                                            <div>No hay canciones pendientes en la cola.</div>
+                                                        </div>
+                                                    ) : (
+                                                        pendingRequests.filter(req => {
+                                                            const id = req.docId || req.id || '';
+                                                            const cleanId = id.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+                                                            return !playedSongs.has(cleanId);
+                                                        }).map((req, idx) => (
+                                                            <div key={req.docId} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px' }}>
+                                                                <div style={{ fontSize: '0.8rem', fontWeight: '800', color: 'rgba(255,255,255,0.2)', width: '20px', textAlign: 'center' }}>
+                                                                    #{idx + 1}
+                                                                </div>
+                                                                <img 
+                                                                    src={req.cover || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=80&auto=format&fit=crop'} 
+                                                                    alt="cover" 
+                                                                    style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} 
+                                                                />
+                                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                                    <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                        {req.cancion}
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                        {req.artista}
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                        👤 {req.displayName || req.usuario} 
+                                                                        {req.source === 'tiktok' && <span style={{ padding: '1px 4px', background: 'rgba(255,0,80,0.15)', color: '#ff0050', borderRadius: '4px', fontSize: '0.55rem', fontWeight: 'bold' }}>TikTok</span>}
+                                                                    </div>
+                                                                </div>
+                                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                                    <button 
+                                                                        onClick={() => handleMarkRequestAsPlayed(req)} 
+                                                                        title="Marcar como reproducida (Quitar de la cola)" 
+                                                                        style={{ padding: '6px 10px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '6px', color: '#10b981', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                                                    >
+                                                                        ✓
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => handleDeleteRequest(req.docId)} 
+                                                                        title="Eliminar de la base de datos" 
+                                                                        style={{ padding: '6px 10px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                                                    >
+                                                                        ✕
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
                                                 </div>
                                             </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeControlSub === 'queue' && (
+                                    <div className="glass-card animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '15px', padding: '20px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
+                                            <div>
+                                                <h3 style={{ margin: 0, color: '#a855f7', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    📋 Cola de Espera en Vivo
+                                                </h3>
+                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '4px 0 0 0' }}>
+                                                    Previsualiza la lista de espera animada exactamente como se ve en la pantalla de OBS para tu audiencia.
+                                                </p>
+                                            </div>
+                                            <button className="btn btn-secondary" onClick={() => {
+                                                const iframe = document.getElementById('iframe-control-queue-tab');
+                                                if (iframe) iframe.src = iframe.src;
+                                            }} style={{ padding: '8px 16px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                🔄 Recargar Cola
+                                            </button>
+                                        </div>
+
+                                        <div style={{ position: 'relative', width: '100%', height: '580px', background: 'rgba(0,0,0,0.1)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+                                            <iframe id="iframe-control-queue-tab" src="./queue_overlay.html" style={{ width: '100%', height: '100%', border: 'none' }}></iframe>
                                         </div>
                                     </div>
                                 )}
