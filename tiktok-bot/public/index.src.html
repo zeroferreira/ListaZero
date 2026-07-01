@@ -2474,6 +2474,43 @@
                 setTimeout(() => setSaveStatus(''), 3000);
             };
 
+            const toggleRouletteActive = async (enabled) => {
+                try {
+                    // 1. Guardar en config local
+                    const next = { ...overlays, rouletteOverlayEnabled: enabled };
+                    setDirtyKeys(d => ({ ...d, rouletteOverlayEnabled: true }));
+                    setOverlays(next);
+                    localStorage.setItem('offline_overlays_config', JSON.stringify(next));
+                    await saveOverlaysConfig(next, { rouletteOverlayEnabled: true });
+
+                    // 2. Sincronizar en Firestore para control remoto
+                    if (window.db) {
+                        await window.db.collection('system').doc('status').set({
+                            rouletteOverlayEnabled: enabled,
+                            lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
+                            updatedBy: 'dashboard'
+                        }, { merge: true });
+
+                        await window.db.collection('notifications').add({
+                            type: 'roulette_overlay_toggle',
+                            enabled: enabled,
+                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    }
+
+                    // 3. Notificar al iframe local (si existe)
+                    const iframe = document.getElementById('iframe-control-roulette-page');
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage({
+                            action: 'roulette_overlay_toggle_remote',
+                            enabled: enabled
+                        }, '*');
+                    }
+                } catch (e) {
+                    console.error("Error toggling roulette:", e);
+                }
+            };
+
             // Custom specific Overlay config saves
             const handleSaveOverlaysConfigOnly = async (subpanel = '') => {
                 localStorage.setItem('offline_overlays_config', JSON.stringify(overlays));
@@ -8153,6 +8190,51 @@
                                         
                                         <div style={{ padding: '10px 15px', background: 'rgba(234, 179, 8, 0.05)', borderRadius: '8px', border: '1px solid rgba(234, 179, 8, 0.15)', fontSize: '0.82rem', color: '#fef08a', lineHeight: '1.4' }}>
                                             ⚙️ <strong>Instrucciones:</strong> Para controlar la ruleta, haz clic en el botón de engranaje ⚙️ ubicado en la esquina inferior izquierda de la ruleta de abajo. Eso desplegará el panel para configurar participantes, premios y girar la rueda.
+                                        </div>
+
+                                        {/* Barra de Visibilidad de Ruleta en OBS */}
+                                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', flexWrap: 'wrap' }}>
+                                            <div style={{ flex: 1, minWidth: '200px' }}>
+                                                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '700', color: '#eab308', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    🖥️ Visibilidad de Ruleta en OBS
+                                                </h4>
+                                                <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                                    Controla si la ruleta es visible para tu audiencia en la pantalla de transmisión.
+                                                </p>
+                                            </div>
+                                            
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: '0.8rem', fontWeight: '800', letterSpacing: '0.5px', color: overlays.rouletteOverlayEnabled !== false ? '#10b981' : '#ef4444' }}>
+                                                    {overlays.rouletteOverlayEnabled !== false ? '🟢 ACTIVA (MOSTRANDO)' : '🔴 DESACTIVADA (OCULTA)'}
+                                                </span>
+                                                <label className="switch">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={overlays.rouletteOverlayEnabled !== false} 
+                                                        onChange={(e) => toggleRouletteActive(e.target.checked)}
+                                                    />
+                                                    <span className="slider"></span>
+                                                </label>
+                                                
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <button 
+                                                        type="button" 
+                                                        className="btn btn-secondary" 
+                                                        onClick={() => toggleRouletteActive(true)}
+                                                        style={{ padding: '6px 12px', fontSize: '0.78rem', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.2)', background: 'rgba(16, 185, 129, 0.05)' }}
+                                                    >
+                                                        Activar
+                                                    </button>
+                                                    <button 
+                                                        type="button" 
+                                                        className="btn btn-secondary" 
+                                                        onClick={() => toggleRouletteActive(false)}
+                                                        style={{ padding: '6px 12px', fontSize: '0.78rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)', background: 'rgba(239, 68, 68, 0.05)' }}
+                                                    >
+                                                        Desactivar
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div style={{ position: 'relative', width: '100%', height: '600px', background: 'rgba(0,0,0,0.1)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>

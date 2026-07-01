@@ -1768,6 +1768,10 @@ const firebaseConfig = {
                 winnerOverlay.classList.remove('no-card-bg');
               }
             }
+        } else if (event.data.action === 'roulette_overlay_toggle_remote') {
+            if (typeof applyOverlayEnabled === 'function') {
+                applyOverlayEnabled(event.data.enabled, { broadcast: false });
+            }
         }
     });
 
