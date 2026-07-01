@@ -941,8 +941,9 @@ function startBot() {
     // Cargar configuración de Firebase
     let firebaseConfig;
     try {
-        if (fs.existsSync(path.join(__dirname, 'firebase-config.js'))) {
-            firebaseConfig = require('./firebase-config');
+        if (fs.existsSync(PROFILE_FB_CONFIG_FILE)) {
+            delete require.cache[require.resolve(PROFILE_FB_CONFIG_FILE)];
+            firebaseConfig = require(PROFILE_FB_CONFIG_FILE);
         } else {
             // Fallback si no existe el archivo (usar credenciales por defecto)
             firebaseConfig = {
