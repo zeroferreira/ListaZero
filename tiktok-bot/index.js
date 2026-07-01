@@ -259,8 +259,18 @@ try {
     if (fs.existsSync(CONFIG_FILE)) {
         const raw = fs.readFileSync(CONFIG_FILE);
         config = { ...config, ...JSON.parse(raw) };
-        console.log(`📂 Configuración cargada del perfil [${activeProfile}]:`, config);
     }
+    
+    // Auto-corregir nombres de usuario por defecto
+    if (activeProfile === 'zeroferreira' && (config.tiktokUsername === 'testuser2' || !config.tiktokUsername)) {
+        config.tiktokUsername = 'zeroferreira';
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    } else if (activeProfile === 'videojuegos' && (config.tiktokUsername === 'videojuegos' || config.tiktokUsername === 'testuser2' || !config.tiktokUsername)) {
+        config.tiktokUsername = 'game.zer0';
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    }
+    
+    console.log(`📂 Configuración cargada del perfil [${activeProfile}]:`, config);
     
     // Cargar credenciales Firebase Web para actualizar estado LIVE
     const fbConfigFile = PROFILE_FB_CONFIG_FILE;
