@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Canciones Zero Radio</title>
+  <link rel="stylesheet" href="styles.css?v=2.11" />
+  
+  <!-- Script de sincronización de temas -->
+  
+  
+  <!-- Firebase SDK (compat para uso sencillo en HTML) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <!-- Banner de Mantenimiento (se muestra/oculta dinámicamente desde Firestore) -->
+  <div id="maintenance-banner" hidden role="alert" aria-live="polite"
+    style="
+      position: sticky;
+      top: 0;
+      z-index: 9000;
+      background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+      color: #fff;
+      padding: 10px 16px;
+      font-family: 'Avenir', 'Inter', system-ui, sans-serif;
+      font-size: 0.92rem;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      box-shadow: 0 2px 12px rgba(255,107,53,0.4);
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+    ">
+    <span style="font-size: 1.1em; margin-right: 8px; flex-shrink: 0;">🔧</span>
+    <div style="flex: 1; overflow: hidden; white-space: nowrap;">
+      <span id="maintenance-banner-text" style="display: inline-block; padding-left: 100%; animation: ticker-scroll 20s linear infinite;">El sistema de puntos está en mantenimiento. Los puntos se actualizarán una vez que se restablezca el servicio.</span>
+    </div>
+  </div>
+  <main class="container">
+    <section class="card" aria-labelledby="titulo">
+      <div class="header-with-points">
+        <h1 id="titulo">Lista de canciones</h1>
+        <div class="header-controls">
+          <div id="user-points-indicator" class="points-indicator" style="display: none;">
+            <div class="points-icon">🏆</div>
+            <div class="points-info">
+              <div class="points-value" id="header-points">0</div>
+              <div class="points-label">puntos</div>
+            </div>
+          </div>
+          <button type="button" class="theme-btn" id="theme-btn" aria-label="Cambiar tema">🎨</button>
+        </div>
+      </div>
+
+
+      <!-- Formulario: Usuario | Canción | Artista -->
+      <form id="formulario" class="nuevo-form" autocomplete="off" aria-label="Formulario para pedir nueva canción">
+        <div class="field">
+          <label for="usuario">Usuario</label>
+          <div class="user-split">
+            <input id="usuario" name="usuario" type="text" placeholder="Escribe aquí tu nombre de usuario" />
+            <select id="usuario-registrado" aria-label="Selecciona un usuario registrado">
+              <option value="">Selecciona un usuario</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="cancion">Canción</label>
+          <input id="cancion" name="cancion" type="text" placeholder="¿Qué cancion vas a elegir?" />
+        </div>
+        <div class="field">
+          <label for="artista">Artista</label>
+          <input id="artista" name="artista" type="text" placeholder="¿Quién interpreta la cancion?" />
+        </div>
+        <div class="field">
+          <label for="link">Enlace / Link (Opcional)</label>
+          <input id="link" name="link" type="url" placeholder="Pega aquí el link de YouTube o Spotify" />
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn">Enviar solicitud</button>
+          <a href="lista.html" class="btn">Lista de Canciones</a>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <!-- Modal de Temas -->
+  <div id="theme-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="theme-modal-title">
+      <button type="button" class="modal-close-btn" aria-label="Cerrar modal">&times;</button>
+      <h2 id="theme-modal-title">🎨 Personalizar Tema</h2>
+      
+      <div class="theme-options accordion">
+        <!-- Sección: Modo de Color (Abierto por defecto) -->
+        <div class="accordion-item active">
+          <button type="button" class="accordion-header">
+             <span>Modo de Color</span>
+             <span class="accordion-icon">▼</span>
+          </button>
+          <div class="accordion-content">
+            <div class="theme-grid">
+              <button type="button" class="theme-option active" data-theme="light">
+                <div class="theme-preview light-preview"></div>
+                <span>Claro</span>
+              </button>
+              <button type="button" class="theme-option" data-theme="dark">
+                <div class="theme-preview dark-preview"></div>
+                <span>Oscuro</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección: Colores de Acento -->
+        <div class="accordion-item">
+          <button type="button" class="accordion-header">
+             <span>Colores de Acento</span>
+             <span class="accordion-icon">▼</span>
+          </button>
+          <div class="accordion-content">
+            <div class="theme-grid">
+              <button type="button" class="theme-color active" data-color="default">
+                <div class="color-preview" style="background: #000;"></div>
+                <span>Negro</span>
+              </button>
+              <button type="button" class="theme-color" data-color="blue">
+                <div class="color-preview" style="background: #2563eb;"></div>
+                <span>Azul</span>
+              </button>
+              <button type="button" class="theme-color" data-color="green">
+                <div class="color-preview" style="background: #16a34a;"></div>
+                <span>Verde</span>
+              </button>
+              <button type="button" class="theme-color" data-color="purple">
+                <div class="color-preview" style="background: #9333ea;"></div>
+                <span>Morado</span>
+              </button>
+              <button type="button" class="theme-color" data-color="red">
+                <div class="color-preview" style="background: #dc2626;"></div>
+                <span>Rojo</span>
+              </button>
+              <button type="button" class="theme-color" data-color="pink">
+                <div class="color-preview" style="background: #ec4899;"></div>
+                <span>Rosa</span>
+              </button>
+              <button type="button" class="theme-color" data-color="magenta">
+                <div class="color-preview" style="background: #d946ef;"></div>
+                <span>Magenta</span>
+              </button>
+              <button type="button" class="theme-color" data-color="cyan">
+                <div class="color-preview" style="background: #06b6d4;"></div>
+                <span>Cian</span>
+              </button>
+              <button type="button" class="theme-color" data-color="orange">
+                <div class="color-preview" style="background: #f97316;"></div>
+                <span>Naranja</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección: Forma del Fondo -->
+        <div class="accordion-item">
+          <button type="button" class="accordion-header">
+             <span>Forma del Fondo</span>
+             <span class="accordion-icon">▼</span>
+          </button>
+          <div class="accordion-content">
+            <div class="theme-grid">
+              <button type="button" class="theme-shape active" data-shape="orb">
+                <div class="shape-preview shape-orb"></div>
+                <span>Orb</span>
+              </button>
+              <button type="button" class="theme-shape" data-shape="triangle">
+                <div class="shape-preview shape-triangle"></div>
+                <span>Triángulo</span>
+              </button>
+              <button type="button" class="theme-shape" data-shape="hexagon">
+                <div class="shape-preview shape-hexagon"></div>
+                <span>Teseracto</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección: Cantidad de Partículas -->
+        <div class="accordion-item">
+          <button type="button" class="accordion-header">
+             <span>Cantidad de Partículas</span>
+             <span class="accordion-icon">▼</span>
+          </button>
+          <div class="accordion-content">
+            <div class="particle-control" style="padding: 0 4px;">
+              <input type="range" id="theme-particles" min="100" max="2000" step="100" value="800" style="width: 100%; margin-bottom: 8px; cursor: pointer;">
+              <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary, #666);">
+                <span>Pocas</span>
+                <span>Muchas</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección: Transparencia -->
+        <div class="accordion-item">
+          <button type="button" class="accordion-header">
+             <span>Transparencia de Fondo</span>
+             <span class="accordion-icon">▼</span>
+          </button>
+          <div class="accordion-content">
+            <div class="transparency-control" style="padding: 0 4px;">
+              <input type="range" id="theme-transparency" min="0" max="100" value="0" style="width: 100%; margin-bottom: 8px; cursor: pointer;">
+              <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary, #666);">
+                <span>Opaco</span>
+                <span>Transparente</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions modal-actions">
+        <button type="button" id="theme-reset" class="btn">Restablecer</button>
+        <button type="button" id="theme-close" class="btn">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  
+<!-- Deploy Trigger: 2026-02-02 Force Update -->
+
+  <div id="immersive-bg"></div>
+  <canvas id="orb-background" class="immersive-layer orb-background-canvas"></canvas>
+  
+  <script src="particles.js" defer></script>
+  <script src="index.js" defer></script>
+</body>
+</html>

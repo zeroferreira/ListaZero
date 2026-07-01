@@ -17859,12 +17859,8 @@ function shouldShowStatsTicker() {
         if (anchor && anchor.getAttribute('href') === 'index.html') {
           e.preventDefault();
           e.stopPropagation();
-          try {
-            window.parent.postMessage({ action: 'switchTab', tab: 'control', subTab: 'youtube' }, '*');
-            console.log("📨 Sent switchTab message to parent dashboard");
-          } catch(err) {
-            console.error("Error sending postMessage to parent:", err);
-          }
+          window.location.href = './pedir.html';
+          console.log("🔄 Navigated iframe to ./pedir.html");
         }
       }, true);
     }

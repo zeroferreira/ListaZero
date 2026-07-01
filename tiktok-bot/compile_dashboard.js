@@ -133,6 +133,18 @@ function syncRootOverlays() {
       console.warn(`  ⚠️ Source not found for syncing: ${file}`);
     }
   }
+
+  // Sincronizar index.html (formulario de peticiones pública) como pedir.html en public/
+  try {
+    const srcIndexHtml = path.join(rootDir, 'index.html');
+    const destPedirHtml = path.join(publicDir, 'pedir.html');
+    if (fs.existsSync(srcIndexHtml)) {
+      fs.copyFileSync(srcIndexHtml, destPedirHtml);
+      console.log('  ✅ Synced root index.html to public/pedir.html');
+    }
+  } catch (e) {
+    console.error('  ❌ Failed to sync root index.html to public/pedir.html:', e.message);
+  }
 }
 
 async function run() {
