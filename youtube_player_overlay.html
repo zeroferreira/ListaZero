@@ -351,6 +351,7 @@
   let ytPlayer = null;
   let isYtApiReady = false;
   let pendingVideoId = null;
+  let currentVolume = 100;
 
   // ─── YouTube Iframe API Loader ────────────────
   const tag = document.createElement('script');
@@ -399,7 +400,7 @@
       },
       events: {
         'onReady': (event) => {
-          updatePlayerMuteState();
+          updatePlayerMuteState(currentVolume);
           event.target.playVideo();
         },
         'onStateChange': (event) => {
@@ -423,8 +424,20 @@
     });
   }
 
-  function updatePlayerMuteState() {
+  function updatePlayerMuteState(customVolume) {
     if (!ytPlayer || typeof ytPlayer.mute !== 'function') return;
+    
+    if (typeof customVolume === 'number') {
+      if (customVolume > 0) {
+        ytPlayer.unMute();
+        ytPlayer.setVolume(customVolume);
+        console.log(`🔊 Audio des-silenciado. Volumen: ${customVolume}`);
+      } else {
+        ytPlayer.mute();
+        console.log(`🔇 Audio silenciado (volumen 0)`);
+      }
+      return;
+    }
     
     const params = new URLSearchParams(window.location.search);
     const isObsParam = params.get('obs') === 'true' || window.location.search.includes('obs') || (typeof window.obsstudio !== 'undefined');
@@ -441,11 +454,11 @@
     // - NOT running on macOS (to prevent Windows PC from playing audio)
     if (isObsParam || isLocalhost || !isMac) {
       ytPlayer.mute();
-      console.log(`🔇 Audio silenciado. Host: ${hostname}, Mac: ${isMac}, OBS: ${isObsParam}`);
+      console.log(`🔇 Audio silenciado por defecto. Host: ${hostname}, Mac: ${isMac}, OBS: ${isObsParam}`);
     } else {
       ytPlayer.unMute();
       ytPlayer.setVolume(100);
-      console.log(`🔊 Audio activado. Host: ${hostname}, Mac: ${isMac}`);
+      console.log(`🔊 Audio activado por defecto. Host: ${hostname}, Mac: ${isMac}`);
     }
   }
 
@@ -545,6 +558,11 @@
       syncPlayerState(data.state || 'playing', vid);
     }
     
+    if (typeof data.volume === 'number') {
+      currentVolume = data.volume;
+      updatePlayerMuteState(currentVolume);
+    }
+
     currentVideoId = vid;
     showCard();
   }
@@ -757,6 +775,10 @@
     if (action === 'ytSeek' && typeof payload?.elapsed === 'number') {
       elapsedSec = payload.elapsed;
       updateProgress();
+    }
+    if (action === 'ytSetVolume' && typeof payload?.volume === 'number') {
+      currentVolume = payload.volume;
+      updatePlayerMuteState(currentVolume);
     }
   });
 </script>

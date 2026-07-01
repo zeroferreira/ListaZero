@@ -972,6 +972,66 @@
                 font-size: 0.6rem;
                 padding: 2px 5px;
             }
+            /* Premium Media Player Controls */
+            .control-player-btn-orange:hover {
+                transform: scale(1.08);
+                background: rgba(245, 158, 11, 0.22) !important;
+                border-color: rgba(245, 158, 11, 0.7) !important;
+                box-shadow: 0 0 20px rgba(245, 158, 11, 0.3) !important;
+            }
+            .control-player-btn-orange:active {
+                transform: scale(0.95);
+            }
+            .control-player-btn-green:hover {
+                transform: scale(1.08);
+                background: rgba(16, 185, 129, 0.22) !important;
+                border-color: rgba(16, 185, 129, 0.7) !important;
+                box-shadow: 0 0 20px rgba(16, 185, 129, 0.3) !important;
+            }
+            .control-player-btn-green:active {
+                transform: scale(0.95);
+            }
+            .control-player-btn-red:hover {
+                transform: scale(1.08);
+                background: rgba(239, 68, 68, 0.12) !important;
+                border-color: rgba(239, 68, 68, 0.45) !important;
+                box-shadow: 0 0 15px rgba(239, 68, 68, 0.2) !important;
+            }
+            .control-player-btn-red:active {
+                transform: scale(0.95);
+            }
+            .control-player-btn-purple:hover {
+                transform: scale(1.08);
+                background: rgba(168, 85, 247, 0.12) !important;
+                border-color: rgba(168, 85, 247, 0.45) !important;
+                box-shadow: 0 0 15px rgba(168, 85, 247, 0.2) !important;
+            }
+            .control-player-btn-purple:active {
+                transform: scale(0.95);
+            }
+            
+            /* Volume Slider Styling */
+            .volume-slider {
+                -webkit-appearance: none;
+                width: 100%;
+                height: 4px;
+                border-radius: 2px;
+                outline: none;
+                cursor: pointer;
+            }
+            .volume-slider::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                background: #ffffff;
+                cursor: pointer;
+                transition: transform 0.1s ease;
+                box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+            }
+            .volume-slider::-webkit-slider-thumb:hover {
+                transform: scale(1.25);
+            }
         }
     </style>
 </head>
@@ -1767,6 +1827,27 @@
                 }
             };
 
+            const handleSetActiveYoutubeVolume = async (vol) => {
+                try {
+                    const iframeObs = document.getElementById('iframe-ytplayer');
+                    if (iframeObs && iframeObs.contentWindow) {
+                        iframeObs.contentWindow.postMessage({ action: 'ytSetVolume', payload: { volume: vol } }, '*');
+                    }
+                    const iframeControl = document.getElementById('iframe-control-ytplayer');
+                    if (iframeControl && iframeControl.contentWindow) {
+                        iframeControl.contentWindow.postMessage({ action: 'ytSetVolume', payload: { volume: vol } }, '*');
+                    }
+                    if (typeof db !== 'undefined' && db) {
+                        await db.collection('systemConfig').doc('activeYoutubeVideo').update({
+                            volume: vol,
+                            timestamp: Date.now()
+                        });
+                    }
+                } catch (e) {
+                    console.error('Error al cambiar volumen:', e);
+                }
+            };
+
             const handleSearchMyInstants = async () => {
                 if (!myinstantsQuery.trim()) return;
                 setMyinstantsLoading(true);
@@ -1839,10 +1920,12 @@
             const [activeControlSub, setActiveControlSub] = React.useState('youtube');
             const [pendingRequests, setPendingRequests] = React.useState([]);
             const [playedSongs, setPlayedSongs] = React.useState(new Set());
+            const [activeVideo, setActiveVideo] = React.useState({ state: 'ended', videoId: '', title: '', volume: 100 });
 
             React.useEffect(() => {
                 let unsubPlayed = () => {};
                 let unsubRequests = () => {};
+                let unsubActiveVideo = () => {};
 
                 if (typeof window !== 'undefined' && window.firebase && window.ZERO_FM_FIREBASE) {
                     try {
@@ -1892,14 +1975,32 @@
                             console.warn("Error loading active solicitudes:", err);
                         });
 
+                        // 3. Escuchar activeYoutubeVideo
+                        unsubActiveVideo = db.collection('systemConfig').doc('activeYoutubeVideo').onSnapshot((doc) => {
+                            if (doc.exists && doc.data()) {
+                                const data = doc.data();
+                                setActiveVideo({
+                                    state: data.state || 'ended',
+                                    videoId: data.videoId || '',
+                                    title: data.title || '',
+                                    volume: typeof data.volume === 'number' ? data.volume : 100
+                                });
+                            } else {
+                                setActiveVideo({ state: 'ended', videoId: '', title: '', volume: 100 });
+                            }
+                        }, err => {
+                            console.warn("Error loading active video status:", err);
+                        });
+
                     } catch (e) {
-                        console.error("Error setting up React solicitudes listener:", e);
+                        console.error("Error setting up React listeners:", e);
                     }
                 }
 
                 return () => {
                     unsubPlayed();
                     unsubRequests();
+                    unsubActiveVideo();
                 };
             }, [activeProfile]);
 
@@ -8241,83 +8342,140 @@
                                                 </div>
 
                                                 {/* Unified Media Player Controls (Spotify-style) */}
-                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 15px', background: 'rgba(0,0,0,0.3)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)', gap: '12px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '24px', width: '100%' }}>
-                                                        {/* Button: Pausar */}
-                                                        <button 
-                                                            onClick={handlePauseActiveYoutubeVideo} 
-                                                            title="Pausar video"
-                                                            style={{ 
-                                                                width: '50px', 
-                                                                height: '50px', 
-                                                                borderRadius: '50%', 
-                                                                background: 'rgba(245, 158, 11, 0.08)', 
-                                                                border: '1.5px solid rgba(245, 158, 11, 0.3)', 
-                                                                color: '#f59e0b', 
-                                                                display: 'flex', 
-                                                                justifyContent: 'center', 
-                                                                alignItems: 'center', 
-                                                                cursor: 'pointer',
-                                                                transition: 'all 0.2s ease-in-out',
-                                                                boxShadow: '0 4px 12px rgba(245, 158, 11, 0.08)'
-                                                            }}
-                                                            className="control-player-btn-orange"
-                                                        >
-                                                            {renderIcon('pause', 20)}
-                                                        </button>
-
-                                                        {/* Button: Reanudar (Play - Big center button) */}
-                                                        <button 
-                                                            onClick={handleResumeActiveYoutubeVideo} 
-                                                            title="Reanudar video"
-                                                            style={{ 
-                                                                width: '60px', 
-                                                                height: '60px', 
-                                                                borderRadius: '50%', 
-                                                                background: 'rgba(16, 185, 129, 0.15)', 
-                                                                border: '2px solid rgba(16, 185, 129, 0.5)', 
-                                                                color: '#10b981', 
-                                                                display: 'flex', 
-                                                                justifyContent: 'center', 
-                                                                alignItems: 'center', 
-                                                                cursor: 'pointer',
-                                                                transition: 'all 0.2s ease-in-out',
-                                                                boxShadow: '0 6px 18px rgba(16, 185, 129, 0.2)'
-                                                            }}
-                                                            className="control-player-btn-green"
-                                                        >
-                                                            {renderIcon('play', 24)}
-                                                        </button>
-
-                                                        {/* Button: Detener / Saltar */}
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 15px', background: 'rgba(0,0,0,0.3)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)', gap: '15px', width: '100%' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '28px', width: '100%' }}>
+                                                        {/* Button: Detener */}
                                                         <button 
                                                             onClick={handleStopActiveYoutubeVideo} 
-                                                            title="Detener canción actual / Saltar a la siguiente"
+                                                            title="Detener reproducción"
                                                             style={{ 
-                                                                width: '50px', 
-                                                                height: '50px', 
+                                                                width: '46px', 
+                                                                height: '46px', 
                                                                 borderRadius: '50%', 
-                                                                background: 'rgba(239, 68, 68, 0.08)', 
-                                                                border: '1.5px solid rgba(239, 68, 68, 0.3)', 
+                                                                background: 'rgba(239, 68, 68, 0.05)', 
+                                                                border: '1.5px solid rgba(239, 68, 68, 0.25)', 
                                                                 color: '#ef4444', 
                                                                 display: 'flex', 
                                                                 justifyContent: 'center', 
                                                                 alignItems: 'center', 
                                                                 cursor: 'pointer',
                                                                 transition: 'all 0.2s ease-in-out',
-                                                                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.08)'
+                                                                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.06)'
                                                             }}
                                                             className="control-player-btn-red"
                                                         >
-                                                            {renderIcon('skip-forward', 20)}
+                                                            {renderIcon('square', 18)}
+                                                        </button>
+
+                                                        {/* Button: Play/Pause Toggle */}
+                                                        {activeVideo.state === 'playing' ? (
+                                                            <button 
+                                                                onClick={handlePauseActiveYoutubeVideo} 
+                                                                title="Pausar video"
+                                                                style={{ 
+                                                                    width: '62px', 
+                                                                    height: '62px', 
+                                                                    borderRadius: '50%', 
+                                                                    background: 'rgba(245, 158, 11, 0.15)', 
+                                                                    border: '2.5px solid rgba(245, 158, 11, 0.5)', 
+                                                                    color: '#f59e0b', 
+                                                                    display: 'flex', 
+                                                                    justifyContent: 'center', 
+                                                                    alignItems: 'center', 
+                                                                    cursor: 'pointer',
+                                                                    transition: 'all 0.2s ease-in-out',
+                                                                    boxShadow: '0 6px 18px rgba(245, 158, 11, 0.2)'
+                                                                }}
+                                                                className="control-player-btn-orange"
+                                                            >
+                                                                {renderIcon('pause', 26)}
+                                                            </button>
+                                                        ) : (
+                                                            <button 
+                                                                onClick={handleResumeActiveYoutubeVideo} 
+                                                                title="Reproducir/Reanudar video"
+                                                                style={{ 
+                                                                    width: '62px', 
+                                                                    height: '62px', 
+                                                                    borderRadius: '50%', 
+                                                                    background: 'rgba(16, 185, 129, 0.15)', 
+                                                                    border: '2.5px solid rgba(16, 185, 129, 0.5)', 
+                                                                    color: '#10b981', 
+                                                                    display: 'flex', 
+                                                                    justifyContent: 'center', 
+                                                                    alignItems: 'center', 
+                                                                    cursor: 'pointer',
+                                                                    transition: 'all 0.2s ease-in-out',
+                                                                    boxShadow: '0 6px 18px rgba(16, 185, 129, 0.2)'
+                                                                }}
+                                                                className="control-player-btn-green"
+                                                            >
+                                                                {renderIcon('play', 26)}
+                                                            </button>
+                                                        )}
+
+                                                        {/* Button: Saltar (Skip) */}
+                                                        <button 
+                                                            onClick={handleStopActiveYoutubeVideo} 
+                                                            title="Saltar a la siguiente canción"
+                                                            style={{ 
+                                                                width: '46px', 
+                                                                height: '46px', 
+                                                                borderRadius: '50%', 
+                                                                background: 'rgba(168, 85, 247, 0.05)', 
+                                                                border: '1.5px solid rgba(168, 85, 247, 0.25)', 
+                                                                color: '#c084fc', 
+                                                                display: 'flex', 
+                                                                justifyContent: 'center', 
+                                                                alignItems: 'center', 
+                                                                cursor: 'pointer',
+                                                                transition: 'all 0.2s ease-in-out',
+                                                                boxShadow: '0 4px 12px rgba(168, 85, 247, 0.06)'
+                                                            }}
+                                                            className="control-player-btn-purple"
+                                                        >
+                                                            {renderIcon('skip-forward', 18)}
                                                         </button>
                                                     </div>
 
                                                     {/* Text indicators */}
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: '240px', fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', fontWeight: '700', letterSpacing: '0.3px' }}>
-                                                        <span style={{ textAlign: 'center', flex: 1, color: '#f59e0b' }}>Pausar</span>
-                                                        <span style={{ textAlign: 'center', flex: 1, color: '#10b981' }}>Reproducir</span>
-                                                        <span style={{ textAlign: 'center', flex: 1, color: '#ef4444' }}>Saltar</span>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: '260px', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 'bold' }}>
+                                                        <span style={{ textAlign: 'center', flex: 1, color: '#ef4444' }}>Detener</span>
+                                                        <span style={{ textAlign: 'center', flex: 1, color: activeVideo.state === 'playing' ? '#f59e0b' : '#10b981' }}>
+                                                            {activeVideo.state === 'playing' ? 'Pausar' : 'Reproducir'}
+                                                        </span>
+                                                        <span style={{ textAlign: 'center', flex: 1, color: '#c084fc' }}>Saltar</span>
+                                                    </div>
+
+                                                    {/* Volume Slider Bar */}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', maxWidth: '240px', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
+                                                        <span style={{ color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center' }}>
+                                                            {activeVideo.volume === 0 ? renderIcon('volume-x', 16, '#ef4444') : activeVideo.volume < 40 ? renderIcon('volume', 16) : renderIcon('volume-2', 16, '#10b981')}
+                                                        </span>
+                                                        <input 
+                                                            type="range" 
+                                                            min="0" 
+                                                            max="100" 
+                                                            value={activeVideo.volume || 0} 
+                                                            onChange={(e) => {
+                                                                const val = parseInt(e.target.value);
+                                                                setActiveVideo(prev => ({ ...prev, volume: val }));
+                                                                handleSetActiveYoutubeVolume(val);
+                                                            }}
+                                                            style={{ 
+                                                                flex: 1, 
+                                                                height: '4px', 
+                                                                background: `linear-gradient(to right, #10b981 0%, #10b981 ${activeVideo.volume || 0}%, rgba(255,255,255,0.1) ${activeVideo.volume || 0}%, rgba(255,255,255,0.1) 100%)`,
+                                                                borderRadius: '2px', 
+                                                                outline: 'none', 
+                                                                cursor: 'pointer',
+                                                                WebkitAppearance: 'none'
+                                                            }}
+                                                            className="volume-slider"
+                                                        />
+                                                        <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem', fontWeight: 'bold', width: '32px', textAlign: 'right' }}>
+                                                            {activeVideo.volume || 0}%
+                                                        </span>
                                                     </div>
                                                 </div>
 
