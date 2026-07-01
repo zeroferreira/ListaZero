@@ -1483,6 +1483,48 @@ function startBot() {
         }
     });
 
+    // API para renombrar un perfil
+    app.post('/api/rename-profile', (req, res) => {
+        try {
+            const { oldName, newName } = req.body;
+            if (!oldName || !newName) {
+                return res.status(400).json({ error: "Faltan parámetros oldName o newName." });
+            }
+            const cleanOld = oldName.toLowerCase().replace(/[^a-z0-9_-]/g, '').trim();
+            const cleanNew = newName.toLowerCase().replace(/[^a-z0-9_-]/g, '').trim();
+            if (!cleanOld || !cleanNew) {
+                return res.status(400).json({ error: "Nombres de perfil inválidos." });
+            }
+
+            const oldDir = path.join(PROFILES_DIR, cleanOld);
+            const newDir = path.join(PROFILES_DIR, cleanNew);
+
+            if (!fs.existsSync(oldDir)) {
+                return res.status(404).json({ error: `El perfil ${cleanOld} no existe.` });
+            }
+            if (fs.existsSync(newDir)) {
+                return res.status(400).json({ error: `El perfil destino ${cleanNew} ya existe.` });
+            }
+
+            // Renombrar carpeta
+            fs.renameSync(oldDir, newDir);
+
+            // Si el perfil renombrado era el activo, actualizar active_profile.json
+            if (activeProfile === cleanOld) {
+                fs.writeFileSync(ACTIVE_PROFILE_FILE, JSON.stringify({ activeProfile: cleanNew }, null, 2));
+            }
+
+            res.json({ success: true, activeProfile: cleanNew });
+            // Reiniciar bot en 1 segundo
+            setTimeout(() => {
+                console.log("👋 Reiniciando tras renombrar perfil...");
+                process.exit(0);
+            }, 1000);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.post('/api/test/sr', async (req, res) => {
         try {
             const body = req.body || {};
