@@ -985,6 +985,9 @@
       }
 
       toggleSettings(); // close panel
+      if (window.opener) {
+        setTimeout(() => { window.close(); }, 300);
+      }
     }
 
     function resetSettings() {
@@ -993,6 +996,9 @@
         safeLocalStorage.removeItem('queue_overlay_settings');
         loadSettings(); // reload inputs
         toggleSettings();
+        if (window.opener) {
+          setTimeout(() => { window.close(); }, 300);
+        }
       }
     }
 
@@ -1003,6 +1009,19 @@
 
     // Inicializar settings
     loadSettings();
+
+    // Auto-abrir panel de configuración si la URL lo solicita (?config=true)
+    try {
+      const qParams = new URLSearchParams(window.location.search);
+      if (qParams.get('config') === 'true' || qParams.get('settings') === 'true') {
+        setTimeout(() => {
+          const panel = document.getElementById('settings-panel');
+          if (panel && !panel.classList.contains('open')) {
+            toggleSettings();
+          }
+        }, 500);
+      }
+    } catch (_) {}
 
     // Configuración de Firebase (centralizada en firebase-config.js)
     const queueFirebaseConfig = window.ZERO_FM_FIREBASE;
