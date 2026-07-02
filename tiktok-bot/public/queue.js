@@ -3056,6 +3056,38 @@
     let dragOffsetY = 0;
     let hasMoved = false;
 
+    // --- Drag & Drop variables for Settings Panel ---
+    const panelPosKey = `widget_panel_pos:${location.pathname}:settings-panel`;
+    let isPanelDragging = false;
+    let panelDragOffsetX = 0;
+    let panelDragOffsetY = 0;
+
+    const settingsPanel = document.getElementById('settings-panel');
+    if (settingsPanel) {
+        try {
+            const saved = safeLocalStorage.getItem(panelPosKey);
+            if (saved) {
+                const pos = JSON.parse(saved);
+                if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
+                    settingsPanel.style.left = `${pos.left}px`;
+                    settingsPanel.style.top = `${pos.top}px`;
+                }
+            }
+        } catch (_) {}
+
+        const panelHeader = settingsPanel.querySelector('.settings-header');
+        if (panelHeader) {
+            panelHeader.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.settings-close-btn')) return;
+                isPanelDragging = true;
+                const rect = settingsPanel.getBoundingClientRect();
+                panelDragOffsetX = e.clientX - rect.left;
+                panelDragOffsetY = e.clientY - rect.top;
+                settingsPanel.style.transition = 'none';
+            });
+        }
+    }
+
     // --- Drag & Drop Logic for Queue Cards ---
     let dragSrcEl = null;
 
@@ -3195,40 +3227,57 @@
     }
 
     document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        
-        hasMoved = true;
-        e.preventDefault();
-        
-        const x = e.clientX - dragOffsetX;
-        const y = e.clientY - dragOffsetY;
-        
-        if (settingsBtn) {
-          settingsBtn.style.left = `${x}px`;
-          settingsBtn.style.top = `${y}px`;
+        if (isDragging) {
+            hasMoved = true;
+            e.preventDefault();
+            const x = e.clientX - dragOffsetX;
+            const y = e.clientY - dragOffsetY;
+            if (settingsBtn) {
+              settingsBtn.style.left = `${x}px`;
+              settingsBtn.style.top = `${y}px`;
+            }
+        } else if (isPanelDragging) {
+            e.preventDefault();
+            const x = e.clientX - panelDragOffsetX;
+            const y = e.clientY - panelDragOffsetY;
+            if (settingsPanel) {
+              settingsPanel.style.left = `${x}px`;
+              settingsPanel.style.top = `${y}px`;
+            }
         }
     });
 
     document.addEventListener('mouseup', (e) => {
-        if (!isDragging) return;
-        
-        isDragging = false;
-        if (settingsBtn) {
-          settingsBtn.style.cursor = 'grab';
-          
-          // Restore transitions
-          settingsBtn.style.transition = 'background 0.3s ease, transform 0.3s ease, opacity 0.3s ease';
+        if (isDragging) {
+            isDragging = false;
+            if (settingsBtn) {
+              settingsBtn.style.cursor = 'grab';
+              settingsBtn.style.transition = 'background 0.3s ease, transform 0.3s ease, opacity 0.3s ease';
 
-          if (hasMoved) {
-            const rect = settingsBtn.getBoundingClientRect();
-            const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
-            const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
-            settingsBtn.style.left = `${left}px`;
-            settingsBtn.style.top = `${top}px`;
-            try {
-              safeLocalStorage.setItem(settingsBtnPosKey, JSON.stringify({ left, top }));
-            } catch (_) {}
-          }
+              if (hasMoved) {
+                const rect = settingsBtn.getBoundingClientRect();
+                const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
+                const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
+                settingsBtn.style.left = `${left}px`;
+                settingsBtn.style.top = `${top}px`;
+                try {
+                  safeLocalStorage.setItem(settingsBtnPosKey, JSON.stringify({ left, top }));
+                } catch (_) {}
+              }
+            }
+        } else if (isPanelDragging) {
+            isPanelDragging = false;
+            if (settingsPanel) {
+              settingsPanel.style.transition = '';
+              const rect = settingsPanel.getBoundingClientRect();
+              const left = Math.max(0, Math.min(rect.left, window.innerWidth - rect.width));
+              const top = Math.max(0, Math.min(rect.top, window.innerHeight - rect.height));
+              settingsPanel.style.left = `${left}px`;
+              settingsPanel.style.top = `${top}px`;
+              try {
+                safeLocalStorage.setItem(panelPosKey, JSON.stringify({ left, top }));
+              } catch (_) {}
+            }
         }
     });
     
