@@ -1034,6 +1034,78 @@
                 transform: scale(1.25);
             }
         }
+
+        /* Collapsible Sidebar styling */
+        .config-sidebar {
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .config-sidebar.collapsed {
+            width: 70px !important;
+            padding: 15px 8px !important;
+            align-items: center;
+        }
+        .config-sidebar.collapsed .config-menu-item {
+            justify-content: center;
+            padding: 10px !important;
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+        }
+        .config-sidebar.collapsed .config-menu-item span {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0;
+            gap: 0;
+        }
+        .config-sidebar.collapsed .config-menu-item span i {
+            margin: 0 !important;
+        }
+
+        /* Streamer Mode (Compact view) styles */
+        .container.streamer-mode {
+            padding-top: 10px !important;
+            padding-bottom: 10px !important;
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+        .container.streamer-mode header {
+            display: none !important;
+        }
+        .container.streamer-mode .tabs {
+            margin-bottom: 12px !important;
+            padding: 4px !important;
+            gap: 6px !important;
+        }
+        .container.streamer-mode .tab-btn {
+            padding: 6px 12px !important;
+            font-size: 0.78rem !important;
+            height: 34px !important;
+        }
+        .container.streamer-mode .config-layout {
+            gap: 12px !important;
+            margin-top: 5px !important;
+        }
+        .container.streamer-mode .glass-card {
+            padding: 12px !important;
+            margin-bottom: 0px !important;
+            gap: 10px !important;
+        }
+        .container.streamer-mode h3 {
+            font-size: 0.95rem !important;
+        }
+        .container.streamer-mode h4 {
+            font-size: 0.88rem !important;
+        }
+        .container.streamer-mode p {
+            display: none !important; /* Oculta descripciones largas para ahorrar espacio vertical */
+        }
+        .container.streamer-mode .preview-iframe {
+            height: 200px !important; /* Iframe más bajo de youtube player */
+        }
     </style>
 </head>
 <body>
@@ -1096,6 +1168,8 @@
 
         function App() {
             const [activeTab, setActiveTab] = React.useState('configuracion');
+            const [streamerMode, setStreamerMode] = React.useState(false);
+            const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
             const [activeSub, setActiveSub] = React.useState('player');
             const [activeConfigSub, setActiveConfigSub] = React.useState('commands');
             const [saveStatus, setSaveStatus] = React.useState('');
@@ -3450,7 +3524,8 @@
             const showSaveBar = isConfigDirty || Object.keys(dirtyKeys).length > 0 || !!saveStatus;
 
             return (
-                <div className="container">
+                <div className={`container ${streamerMode ? 'streamer-mode' : ''}`}>
+
                     {/* Header bar */}
                     <header style={{ marginBottom: '30px' }}>
                         <h1>🎛️ Bot Zero Control</h1>
@@ -3512,19 +3587,43 @@
                     </header>
 
                     {/* Navigation Tab links */}
-                    <div className="tabs">
-                        <button className={`tab-btn ${activeTab === 'configuracion' ? 'active' : ''}`} onClick={() => setActiveTab('configuracion')}>
-                            {renderIcon('settings')} Configuración
-                        </button>
-                        <button className={`tab-btn ${activeTab === 'overlays' ? 'active' : ''}`} onClick={() => setActiveTab('overlays')}>
-                            {renderIcon('tv')} 📺 Overlays
-                        </button>
-                        <button className={`tab-btn ${activeTab === 'control' ? 'active' : ''}`} onClick={() => setActiveTab('control')} style={{ position: 'relative' }}>
-                            {renderIcon('sliders')} 🎛️ Control de Stream
-                            <span style={{ position: 'absolute', top: '-6px', right: '4px', background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', color: 'white', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '8px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Live</span>
-                        </button>
-                        <button className={`tab-btn ${activeTab === 'prueba' ? 'active' : ''}`} onClick={() => setActiveTab('prueba')}>
-                            {renderIcon('test-tube')} 🧪 Pruebas
+                    <div className="tabs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button className={`tab-btn ${activeTab === 'configuracion' ? 'active' : ''}`} onClick={() => setActiveTab('configuracion')}>
+                                {renderIcon('settings')} Configuración
+                            </button>
+                            <button className={`tab-btn ${activeTab === 'overlays' ? 'active' : ''}`} onClick={() => setActiveTab('overlays')}>
+                                {renderIcon('tv')} 📺 Overlays
+                            </button>
+                            <button className={`tab-btn ${activeTab === 'control' ? 'active' : ''}`} onClick={() => setActiveTab('control')} style={{ position: 'relative' }}>
+                                {renderIcon('sliders')} 🎛️ Control de Stream
+                                <span style={{ position: 'absolute', top: '-6px', right: '4px', background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', color: 'white', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '8px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Live</span>
+                            </button>
+                            <button className={`tab-btn ${activeTab === 'prueba' ? 'active' : ''}`} onClick={() => setActiveTab('prueba')}>
+                                {renderIcon('test-tube')} 🧪 Pruebas
+                            </button>
+                        </div>
+                        <button 
+                            onClick={() => setStreamerMode(!streamerMode)}
+                            style={{ 
+                                cursor: 'pointer', 
+                                border: streamerMode ? '1px solid rgba(236, 72, 153, 0.4)' : '1px solid var(--border-glass)', 
+                                background: streamerMode ? 'linear-gradient(135deg, rgba(236, 72, 153, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%)' : 'rgba(255,255,255,0.03)', 
+                                color: streamerMode ? '#f472b6' : '#fff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 12px',
+                                borderRadius: '10px',
+                                fontWeight: 'bold',
+                                fontSize: '0.75rem',
+                                transition: 'all 0.3s ease',
+                                height: '36px',
+                                boxShadow: streamerMode ? '0 0 10px rgba(139, 92, 246, 0.2)' : 'none'
+                            }}
+                            title={streamerMode ? "Desactivar vista compacta para stream" : "Activar vista compacta para stream"}
+                        >
+                            <span>🎬 {streamerMode ? 'Modo Streamer: Activo' : 'Modo Streamer'}</span>
                         </button>
                     </div>
 
@@ -3532,18 +3631,42 @@
                     {activeTab === 'configuracion' && (
                         <div className="config-layout">
                             {/* Left Configuration subpanels sidebar selectors */}
-                            <div className="config-sidebar">
+                            <div className={`config-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} style={{ position: 'relative' }}>
+                                <button 
+                                    onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                                    style={{
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        borderRadius: '8px',
+                                        color: 'rgba(255,255,255,0.5)',
+                                        cursor: 'pointer',
+                                        padding: '4px 8px',
+                                        alignSelf: 'stretch',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        marginBottom: '10px',
+                                        fontSize: '0.68rem',
+                                        gap: '4px',
+                                        transition: 'all 0.2s'
+                                    }}
+                                    title={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
+                                >
+                                    {renderIcon(sidebarCollapsed ? 'chevron-right' : 'chevron-left', 14)}
+                                    {!sidebarCollapsed && <span>Ocultar Menú</span>}
+                                </button>
+                                
                                 <button className={`config-menu-item ${activeConfigSub === 'commands' ? 'active' : ''}`} onClick={() => setActiveConfigSub('commands')}>
-                                    <span>{renderIcon('user')} Conexión & Bot</span>
+                                    <span>{renderIcon('user')} {!sidebarCollapsed && " Conexión & Bot"}</span>
                                 </button>
                                 <button className={`config-menu-item ${activeConfigSub === 'permissions' ? 'active' : ''}`} onClick={() => setActiveConfigSub('permissions')}>
-                                    <span>{renderIcon('shield')} Permisos & VIP</span>
+                                    <span>{renderIcon('shield')} {!sidebarCollapsed && " Permisos & VIP"}</span>
                                 </button>
                                 <button className={`config-menu-item ${activeConfigSub === 'likes' ? 'active' : ''}`} onClick={() => setActiveConfigSub('likes')}>
-                                    <span>{renderIcon('heart')} Economía de Likes</span>
+                                    <span>{renderIcon('heart')} {!sidebarCollapsed && " Economía de Likes"}</span>
                                 </button>
                                 <button className={`config-menu-item ${activeConfigSub === 'system' ? 'active' : ''}`} onClick={() => setActiveConfigSub('system')}>
-                                    <span>{renderIcon('power')} Sistema & Servidor</span>
+                                    <span>{renderIcon('power')} {!sidebarCollapsed && " Sistema & Servidor"}</span>
                                 </button>
                             </div>
 
@@ -8674,18 +8797,42 @@
                     {/* TAB PANEL 5: STREAM CONTROL CENTER */}
                     {/* persistent control tab */}
                         <div style={{ display: activeTab === 'control' ? 'flex' : 'none' }} className="config-layout animate-fade-in">
-                            <div className="config-sidebar" style={{ background: 'rgba(10, 8, 20, 0.4)' }}>
+                            <div className={`config-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} style={{ background: 'rgba(10, 8, 20, 0.4)', position: 'relative' }}>
+                                <button 
+                                    onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                                    style={{
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid rgba(255,255,255,0.08)',
+                                        borderRadius: '8px',
+                                        color: 'rgba(255,255,255,0.5)',
+                                        cursor: 'pointer',
+                                        padding: '4px 8px',
+                                        alignSelf: 'stretch',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        marginBottom: '10px',
+                                        fontSize: '0.68rem',
+                                        gap: '4px',
+                                        transition: 'all 0.2s'
+                                    }}
+                                    title={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
+                                >
+                                    {renderIcon(sidebarCollapsed ? 'chevron-right' : 'chevron-left', 14)}
+                                    {!sidebarCollapsed && <span>Ocultar Menú</span>}
+                                </button>
+
                                 <button className={`config-menu-item ${activeControlSub === 'queue' ? 'active' : ''}`} onClick={() => setActiveControlSub('queue')}>
-                                    <span>{renderIcon('list')} 📋 Cola de Espera</span>
+                                    <span>{renderIcon('list')} {!sidebarCollapsed && " 📋 Cola de Espera"}</span>
                                 </button>
                                 <button className={`config-menu-item ${activeControlSub === 'lista' ? 'active' : ''}`} onClick={() => setActiveControlSub('lista')}>
-                                    <span>{renderIcon('music')} 🎵 Catálogo</span>
+                                    <span>{renderIcon('music')} {!sidebarCollapsed && " 🎵 Catálogo"}</span>
                                 </button>
                                 <button className={`config-menu-item ${activeControlSub === 'youtube' ? 'active' : ''}`} onClick={() => setActiveControlSub('youtube')}>
-                                    <span>{renderIcon('video')} 🎥 Control YouTube</span>
+                                    <span>{renderIcon('video')} {!sidebarCollapsed && " 🎥 Control YouTube"}</span>
                                 </button>
                                 <button className={`config-menu-item ${activeControlSub === 'roulette' ? 'active' : ''}`} onClick={() => setActiveControlSub('roulette')}>
-                                    <span>{renderIcon('refresh-cw')} 🎡 Control Ruleta</span>
+                                    <span>{renderIcon('refresh-cw')} {!sidebarCollapsed && " 🎡 Control Ruleta"}</span>
                                 </button>
                             </div>
 
