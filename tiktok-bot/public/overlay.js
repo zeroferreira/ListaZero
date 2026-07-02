@@ -714,13 +714,16 @@
     function getLocalDateKey(ts) {
       const dt = ts ? new Date(ts) : new Date();
       try {
-        const formatter = new Intl.DateTimeFormat('sv-SE', {
+        const formatter = new Intl.DateTimeFormat('en-US', {
           timeZone: 'America/Mexico_City',
           year: 'numeric',
           month: '2-digit',
           day: '2-digit'
         });
-        return formatter.format(dt);
+        const parts = formatter.formatToParts(dt);
+        const map = {};
+        parts.forEach(p => map[p.type] = p.value);
+        return `${map.year}-${map.month}-${map.day}`;
       } catch (e) {
         const y = dt.getFullYear();
         const m = String(dt.getMonth() + 1).padStart(2, '0');

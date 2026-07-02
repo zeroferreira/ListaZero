@@ -364,14 +364,17 @@
       function getLocalDateKey(ts) {
         const d = ts ? new Date(ts) : new Date();
         try {
-          const formatter = new Intl.DateTimeFormat('sv-SE', {
-            timeZone: 'America/Mexico_City',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-          });
-          return formatter.format(d);
-        } catch (e) {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/Mexico_City',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        const parts = formatter.formatToParts(d);
+        const map = {};
+        parts.forEach(p => map[p.type] = p.value);
+        return `${map.year}-${map.month}-${map.day}`;
+      } catch (e) {
           const y = d.getFullYear();
           const m = String(d.getMonth() + 1).padStart(2, '0');
           const dd = String(d.getDate()).padStart(2, '0');
