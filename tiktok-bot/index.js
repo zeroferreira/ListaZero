@@ -3260,11 +3260,28 @@ function setupListeners() {
         } catch (e) {
             console.error('Error writing diagnostic gift log:', e);
         }
-        // ── DEDUPLICACIÓN: descartar si este msgId ya fue procesado ──
-        if (data.msgId && isDuplicate(data.msgId)) {
-            // console.log(`[DEDUP] Regalo duplicado ignorado: ${data.msgId}`);
-            return;
+        // ── DEDUPLICACIÓN INTELIGENTE PARA RACHAS (STREAKS) ──
+        let lastCount = 0;
+        const newCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
+        const msgId = data.msgId ? String(data.msgId) : '';
+        if (msgId) {
+            if (!global.processedGiftsMap) {
+                global.processedGiftsMap = new Map();
+            }
+            lastCount = global.processedGiftsMap.get(msgId) || 0;
+            if (newCount <= lastCount) {
+                // Ya procesamos este conteo o uno mayor para este regalo
+                return;
+            }
+            global.processedGiftsMap.set(msgId, newCount);
+            
+            // Limpieza periódica para evitar fugas de memoria
+            if (global.processedGiftsMap.size > 2000) {
+                const firstKey = global.processedGiftsMap.keys().next().value;
+                global.processedGiftsMap.delete(firstKey);
+            }
         }
+        const delta = newCount - lastCount;
 
         const giftName = data.giftName || data.gift?.name || data.gift?.giftName || '';
         const giftKey = normalizeComparableText(giftName);
@@ -3310,43 +3327,47 @@ function setupListeners() {
         const isGiftFinal = (data.repeatEnd === undefined) ? true : (data.repeatEnd === true);
         const isQuiereme = (giftKey === 'quiereme' || giftKey === 'loveme' || giftKey === 'communityheart' || giftKey === 'heartme' || giftKey === 'heart me' || giftKey.indexOf('quiereme') !== -1 || giftKey.indexOf('loveme') !== -1 || giftKey.indexOf('communityheart') !== -1 || giftKey.indexOf('heartme') !== -1 || giftKey.indexOf('heart me') !== -1);
         
-        if (isGiftFinal && isQuiereme) {
+        // ── Otorgar insignia z0-Fan (se hace en el primer envío o en el evento final) ──
+        if (isQuiereme && (isGiftFinal || lastCount === 0)) {
             try {
                 await grantZ0FanFromTikTok(uid, displayName);
             } catch (e) {
                 console.error('Error otorgando z0-Fan por regalo:', e);
             }
+        }
 
-            // ── Acumular en Top Quiéreme ──────────────────────────────────────
-            if (db) {
-                try {
-                    const resolved = await getCanonicalUserKey(uid, displayName);
-                    const userKey = resolved.userKey || uid;
-                    const actualCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
-                    const quiereCoins = coins * actualCount;
-                    const quiereRef = doc(db, 'userStats', userKey);
-                    const quiereData = {
-                        quiereCount: increment(actualCount),
-                        totalQuiereCoins: increment(quiereCoins),
-                        displayName: displayName,
-                        lastActiveAt: serverTimestamp()
-                    };
-                    if (profilePic) quiereData.profilePic = profilePic;
-                    if (data.isSubscriber === true) quiereData.isSubscriber = true;
-                    const ql = Number(data.teamMemberLevel || data.memberLevel || 0);
-                    if (ql > 0) quiereData.memberLevel = ql;
-                    const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
-                    if (gLvl > 0) quiereData.gifterLevel = gLvl;
-                    await setDoc(quiereRef, quiereData, { merge: true });
-                    console.log(`💜 Top Quiéreme: @${displayName} +${actualCount} (${quiereCoins} coins)`);
-                } catch (e) {
-                    console.error('Error acumulando Top Quiéreme:', e);
-                }
+        // ── Acumular en Top Quiéreme (usando delta en tiempo real para no perder nada) ──
+        if (isQuiereme && db) {
+            try {
+                const resolved = await getCanonicalUserKey(uid, displayName);
+                const userKey = resolved.userKey || uid;
+                const quiereCoins = coins * delta;
+                const quiereRef = doc(db, 'userStats', userKey);
+                const quiereData = {
+                    quiereCount: increment(delta),
+                    totalQuiereCoins: increment(quiereCoins),
+                    displayName: displayName,
+                    lastActiveAt: serverTimestamp()
+                };
+                if (profilePic) quiereData.profilePic = profilePic;
+                if (data.isSubscriber === true) quiereData.isSubscriber = true;
+                
+                // Mapear nivel de miembro de TikTok usando la función robusta extractUserLevels
+                const { memberLevel: parsedMemberLevel, gifterLevel: parsedGifterLevel } = extractUserLevels(data);
+                if (parsedMemberLevel > 0) quiereData.memberLevel = parsedMemberLevel;
+                if (parsedGifterLevel > 0) quiereData.gifterLevel = parsedGifterLevel;
+                
+                await setDoc(quiereRef, quiereData, { merge: true });
+                console.log(`💜 Top Quiéreme: @${displayName} +${delta} (${quiereCoins} coins)`);
+            } catch (e) {
+                console.error('Error acumulando Top Quiéreme:', e);
             }
         }
 
 
-        if (isGiftFinal && db) {
+        // Escribimos la notificación de regalo si es el evento final de la racha,
+        // o si es un Quiéreme en su primer envío de la racha (para asegurar la alerta instantánea en OBS).
+        if ((isGiftFinal || (isQuiereme && lastCount === 0)) && db) {
             const actualCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
             const totalCoins = coins * actualCount;
             const minCoins = Number(overlayAlertsConfig.minCoinsAlert) || 1;
@@ -3401,8 +3422,9 @@ function setupListeners() {
         }
 
         // --- SISTEMA DE PUNTOS POR DONACIÓN ---
-        // 1 punto por cada 10 monedas
-        const pointsFromGift = Math.floor(coins / 10);
+        // 1 punto por cada 10 monedas (acumulado usando delta en tiempo real para no duplicar ni perder nada)
+        const totalCoinsFromDelta = coins * delta;
+        const pointsFromGift = Math.floor(totalCoinsFromDelta / 10);
         
         if (pointsFromGift > 0 && db) {
             try {
@@ -3414,16 +3436,18 @@ function setupListeners() {
                 const giftUpdateData = {
                     totalPoints: increment(pointsFromGift),
                     totalGiftPoints: increment(pointsFromGift),
-                    totalCoinsDonated: increment(coins),
+                    totalCoinsDonated: increment(totalCoinsFromDelta),
                     lastActiveAt: serverTimestamp(),
-                    displayName: displayName // Actualizar nombre por si acaso
+                    displayName: displayName
                 };
                 // Persistir membresía si viene en el evento de regalo
                 if (data.isSubscriber === true) giftUpdateData.isSubscriber = true;
-                const giftMemberLevel = Number(data.teamMemberLevel || data.memberLevel || 0);
-                if (giftMemberLevel > 0) giftUpdateData.memberLevel = giftMemberLevel;
-                const gLvl = Number(data.payGrade || data.user?.payGrade || 0);
-                if (gLvl > 0) giftUpdateData.gifterLevel = gLvl;
+                
+                // Usar extractUserLevels para leer de forma robusta la insignia del club de fans / nivel de miembro
+                const { memberLevel: parsedMemberLevel, gifterLevel: parsedGifterLevel } = extractUserLevels(data);
+                if (parsedMemberLevel > 0) giftUpdateData.memberLevel = parsedMemberLevel;
+                if (parsedGifterLevel > 0) giftUpdateData.gifterLevel = parsedGifterLevel;
+                
                 await setDoc(userRef, giftUpdateData, { merge: true });
 
                 
