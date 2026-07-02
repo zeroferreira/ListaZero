@@ -3031,11 +3031,6 @@
         if (settingsBtn) {
             settingsBtn.style.display = 'none';
         }
-        const settingsPanel = document.getElementById('settings-panel');
-        if (settingsPanel) {
-            settingsPanel.style.display = 'none';
-            settingsPanel.classList.remove('active');
-        }
     }
 
     if (isObs) {
