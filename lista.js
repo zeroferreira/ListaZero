@@ -10014,8 +10014,10 @@ function shouldShowStatsTicker() {
 
         // 2. CONTAR CANCIONES REPRODUCIDAS (BASE PARA PUNTOS)
         let playedCount = 0;
+        let userPlayedSongsSet = new Set();
         try {
-          playedCount = await countTotalToggledSongsForUser(usuario, fusedIds);
+          userPlayedSongsSet = await getGlobalPlayedSongsSetForUser(usuario, fusedIds);
+          playedCount = userPlayedSongsSet.size;
         } catch (e) { console.error('Error counting played:', e); }
 
         // 3. CONTAR CANCIONES PEDIDAS (INFORMATIVO, NO SUMA PUNTOS)
@@ -10128,7 +10130,7 @@ function shouldShowStatsTicker() {
           let userPlayedThatDay = false;
           for (let k = 0; k < playedArr.length; k++) {
             const xl = String(playedArr[k] || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
-            if (userPrefixes.some(pref => xl.startsWith(pref))) {
+            if (userPrefixes.some(pref => xl.startsWith(pref)) || userPlayedSongsSet.has(xl)) {
               userPlayedThatDay = true;
               break;
             }
@@ -10164,7 +10166,7 @@ function shouldShowStatsTicker() {
             // FILTRO DE SEGURIDAD
             if (typeof window.isInvalid === 'function' && window.isInvalid(xl)) continue;
             
-            if (userPrefixes.some(pref => xl.startsWith(pref))) {
+            if (userPrefixes.some(pref => xl.startsWith(pref)) || userPlayedSongsSet.has(xl)) {
               userPlayedThatDay++;
             }
           }
