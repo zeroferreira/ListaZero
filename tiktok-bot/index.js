@@ -3239,7 +3239,7 @@ function setupListeners() {
 
         const giftName = data.giftName || data.gift?.name || data.gift?.giftName || '';
         const giftKey = normalizeComparableText(giftName);
-        const coins = data.diamondCount;
+        const coins = Number(data.diamondCount || data.gift?.diamondCount || data.giftDetails?.diamondCount || 0) || 0;
         const uid = data.uniqueId;
         const displayName = data.nickname;
         const profilePic = data.profilePictureUrl;
@@ -3293,7 +3293,7 @@ function setupListeners() {
                 try {
                     const resolved = await getCanonicalUserKey(uid, displayName);
                     const userKey = resolved.userKey || uid;
-                    const actualCount = data.repeatCount || 1;
+                    const actualCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
                     const quiereCoins = coins * actualCount;
                     const quiereRef = doc(db, 'userStats', userKey);
                     const quiereData = {
@@ -3318,7 +3318,7 @@ function setupListeners() {
 
 
         if (isGiftFinal && db) {
-            const actualCount = data.repeatCount || 1;
+            const actualCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
             const totalCoins = coins * actualCount;
             const minCoins = Number(overlayAlertsConfig.minCoinsAlert) || 1;
             
@@ -3419,7 +3419,7 @@ function setupListeners() {
 
         // ─── GOAL OVERLAYS: acumular coins de sesión ────────────────────────────
         if (isGiftFinal) {
-            const actualCount = data.repeatCount || 1;
+            const actualCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
             const totalCoinsThisGift = coins * actualCount;
             sessionTotalCoins += totalCoinsThisGift;
             syncSessionCountersToFirestore();
