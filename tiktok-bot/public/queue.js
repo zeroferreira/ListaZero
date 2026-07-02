@@ -1005,13 +1005,13 @@
     loadSettings();
 
     // Configuración de Firebase (centralizada en firebase-config.js)
-    const firebaseConfig = window.ZERO_FM_FIREBASE;
+    const queueFirebaseConfig = window.ZERO_FM_FIREBASE;
 
     let db = null;
     try {
       if (typeof firebase !== 'undefined' && firebase.apps) {
         if (!firebase.apps.length) {
-          firebase.initializeApp(firebaseConfig);
+          firebase.initializeApp(queueFirebaseConfig);
         }
         db = firebase.firestore();
       } else {
