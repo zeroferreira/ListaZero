@@ -3231,6 +3231,22 @@ function setupListeners() {
 
     // REGALOS
     tiktokLiveConnection.on('gift', async (data) => {
+        // DIAGNOSTIC LOG FOR GIFTS
+        try {
+            const logEntry = {
+                timestamp: new Date().toISOString(),
+                giftName: data.giftName || '',
+                giftId: data.giftId || data.gift?.id || '',
+                diamondCount: data.diamondCount || '',
+                giftDetails: data.gift || null,
+                nickname: data.nickname || '',
+                uniqueId: data.uniqueId || ''
+            };
+            const logPath = path.join(__dirname, 'gift_logs.json');
+            fs.appendFileSync(logPath, JSON.stringify(logEntry) + '\n');
+        } catch (e) {
+            console.error('Error writing diagnostic gift log:', e);
+        }
         // ── DEDUPLICACIÓN: descartar si este msgId ya fue procesado ──
         if (data.msgId && isDuplicate(data.msgId)) {
             // console.log(`[DEDUP] Regalo duplicado ignorado: ${data.msgId}`);
