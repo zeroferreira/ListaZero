@@ -1713,6 +1713,8 @@
 
             React.useEffect(() => {
                 let unsubscribe = null;
+                let unsubSession = null;
+                let interval = null;
                 if (typeof window !== 'undefined' && window.firebase && window.ZERO_FM_FIREBASE) {
                     try {
                         const app = window.firebase.apps.length === 0 
@@ -1721,6 +1723,28 @@
                         const db = app.firestore();
                         window.db = db;
                         
+                        // Heartbeat: Registrar sesión activa del dashboard
+                        const registerDashboard = () => {
+                            db.collection('systemConfig').doc('activeDashboardSession').set({
+                                hostname: window.location.hostname,
+                                timestamp: Date.now()
+                            }).catch(err => console.warn('Error setting active dashboard session:', err));
+                        };
+                        registerDashboard();
+                        interval = setInterval(registerDashboard, 10000); // Latido cada 10s
+                        
+                        // Escuchar ruteo de sesión de audio activa del dashboard
+                        window.activeDashboardHost = '';
+                        window.activeDashboardTime = 0;
+                        unsubSession = db.collection('systemConfig').doc('activeDashboardSession')
+                            .onSnapshot((doc) => {
+                                if (doc.exists && doc.data()) {
+                                    const dData = doc.data();
+                                    window.activeDashboardHost = dData.hostname || '';
+                                    window.activeDashboardTime = dData.timestamp || 0;
+                                }
+                            }, err => console.warn("Error activeDashboardSession sub:", err));
+
                         const startTimestamp = new Date(Date.now() - 30 * 1000); // 30s tolerados
                         let isInitialLoad = true;
                         
@@ -1736,8 +1760,28 @@
                                     if (change.type === 'added') {
                                         const data = change.doc.data();
                                         if (data.type === 'chat') {
-                                            console.log("🗣️ Comentario TTS recibido localmente:", data.message);
-                                            enqueueLocalTts(data);
+                                            // Verificar si este cliente debe reproducir el TTS
+                                            const now = Date.now();
+                                            const isIP = (h) => /^[0-9.]+$/.test(h) && h !== '127.0.0.1';
+                                            const activeHost = window.activeDashboardHost || '';
+                                            const activeTime = window.activeDashboardTime || 0;
+                                            const isDashActive = (now - activeTime) < 25000;
+                                            
+                                            let playHere = true;
+                                            if (isDashActive && isIP(activeHost)) {
+                                                // Si el dashboard activo está en una IP remota, reproducimos solo si somos esa IP
+                                                playHere = (window.location.hostname === activeHost);
+                                            } else {
+                                                // Si no hay dashboard activo en IP remota, reproducimos si somos local/host
+                                                playHere = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
+                                            }
+
+                                            if (playHere) {
+                                                console.log("🗣️ Comentario TTS recibido localmente:", data.message);
+                                                enqueueLocalTts(data);
+                                            } else {
+                                                console.log("🗣️ TTS ignorado en dashboard local (reproduciendo en IP remota:", activeHost, ")");
+                                            }
                                         }
                                     }
                                 });
@@ -1750,6 +1794,8 @@
                 }
                 return () => {
                     if (unsubscribe) unsubscribe();
+                    if (unsubSession) unsubSession();
+                    if (interval) clearInterval(interval);
                 };
             }, [enqueueLocalTts]);
 

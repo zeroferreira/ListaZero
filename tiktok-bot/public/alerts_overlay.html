@@ -1044,6 +1044,18 @@
                         console.warn("[Firebase] Error al cargar overlayAlertsConfig:", err);
                     });
 
+                // Escuchar sesión activa del dashboard para ruteo de audio
+                window.activeDashboardHost = '';
+                window.activeDashboardTime = 0;
+                db.collection('systemConfig').doc('activeDashboardSession')
+                    .onSnapshot(doc => {
+                        if (doc.exists && doc.data()) {
+                            const dData = doc.data();
+                            window.activeDashboardHost = dData.hostname || '';
+                            window.activeDashboardTime = dData.timestamp || 0;
+                        }
+                    }, err => console.warn('[Firebase] Error activeDashboardSession:', err));
+
                 // Escuchar la colección de notificaciones del Bot
                 // overlayStartedAt = 2 minutos ANTES del inicio para tolerar desfases de reloj
                 const overlayStartedAt = new Date(overlayStartMs - 2 * 60 * 1000);
@@ -1074,7 +1086,45 @@
                             }
 
                             // Validar que sea un tipo de alerta soportado
-                            if (!['follow', 'subscribe', 'gift', 'like'].includes(data.type)) return;
+                            if (!['follow', 'subscribe', 'gift', 'like', 'chat'].includes(data.type)) return;
+
+                            if (data.type === 'chat') {
+                                // Ruteo de audio para TTS de chat
+                                const now = Date.now();
+                                const isIP = (h) => /^[0-9.]+$/.test(h) && h !== '127.0.0.1';
+                                const activeHost = window.activeDashboardHost || '';
+                                const activeTime = window.activeDashboardTime || 0;
+                                const isDashActive = (now - activeTime) < 25000;
+                                
+                                let playHere = true;
+                                if (isDashActive && isIP(activeHost)) {
+                                    // Si el dashboard activo está en una IP remota, OBS (host local) no lo reproduce
+                                    const currentHost = window.location.hostname;
+                                    const currentHostIsLocal = (currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost);
+                                    if (currentHostIsLocal) {
+                                        playHere = false;
+                                    } else {
+                                        playHere = (currentHost === activeHost);
+                                    }
+                                } else {
+                                    // Si no hay dashboard remoto activo, suena en OBS (host local)
+                                    const currentHost = window.location.hostname;
+                                    playHere = (currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost);
+                                }
+
+                                if (playHere) {
+                                    console.log("🗣️ TTS de chat reproducido en Overlay:", data.message);
+                                    triggerTTS({
+                                        ...data,
+                                        voice: data.voiceOverride,
+                                        speed: data.speedOverride,
+                                        pitch: data.pitchOverride
+                                    }, true);
+                                } else {
+                                    console.log("🗣️ TTS de chat ignorado en Overlay (reproduciendo en Dashboard IP:", activeHost, ")");
+                                }
+                                return;
+                            }
 
                             // Filtrar por tipo si está fijado en la URL
                             if (urlType !== 'all' && data.type !== urlType) return;
