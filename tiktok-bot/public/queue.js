@@ -2923,13 +2923,11 @@
       const qs = new URLSearchParams(window.location.search);
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
       const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
-      const randomUsers = ["OyenteZero", "ZeroFan", "FielOyente", "InvitadoZero", "Melomano", "SuperLiker", "TopGifter"];
       
       const randomIndex = Math.floor(Math.random() * artists.length);
       const randomArtist = artists[randomIndex];
       const randomSong = songs[randomIndex];
-      const randomUserIndex = Math.floor(Math.random() * randomUsers.length);
-      const randomUser = String(qs.get('user') || randomUsers[randomUserIndex]).trim();
+      const randomUser = String(qs.get('user') || "Prueba").trim() || "Prueba";
       const forcedBadge = String(qs.get('badge') || '').trim();
       
       const now = new Date();
@@ -3027,6 +3025,8 @@
     }
     const urlParams = new URLSearchParams(window.location.search);
     const isPreview = urlParams.get('preview') === 'true' || urlParams.get('dashboard') === 'true';
+    const isObs = typeof window.obsstudio !== 'undefined' || urlParams.get('obs') === 'true' || urlParams.get('hide_controls') === 'true';
+
     if (isIframe || isPreview) {
         if (settingsBtn) {
             settingsBtn.style.display = 'none';
@@ -3036,6 +3036,9 @@
             settingsPanel.style.display = 'none';
             settingsPanel.classList.remove('active');
         }
+    }
+
+    if (isObs) {
         const debugControls = document.getElementById('debug-controls');
         if (debugControls) {
             debugControls.style.display = 'none';

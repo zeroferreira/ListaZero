@@ -3428,25 +3428,21 @@
         const days = new Set();
 
         if (db) {
-          try {
-            const snap = await db.collection('solicitudes').orderBy('ts', 'desc').get();
-            snap.forEach(doc => {
-              const d = doc.data();
-              if (isValidDay(d.day)) {
-                days.add(String(d.day).trim());
-              } else if (d.ts) {
-                try {
-                  const date = d.ts.toDate ? d.ts.toDate() : new Date(d.ts);
-                  const yyyy = date.getFullYear();
-                  const mm = String(date.getMonth() + 1).padStart(2, '0');
-                  const dd = String(date.getDate()).padStart(2, '0');
-                  days.add(`${yyyy}-${mm}-${dd}`);
-                } catch (_) { }
-              }
-            });
-          } catch (e) {
-            console.error("Error loading days from Firestore:", e);
-          }
+          const snap = await db.collection('solicitudes').orderBy('ts', 'desc').get();
+          snap.forEach(doc => {
+            const d = doc.data();
+            if (isValidDay(d.day)) {
+              days.add(String(d.day).trim());
+            } else if (d.ts) {
+              try {
+                const date = d.ts.toDate ? d.ts.toDate() : new Date(d.ts);
+                const yyyy = date.getFullYear();
+                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                const dd = String(date.getDate()).padStart(2, '0');
+                days.add(`${yyyy}-${mm}-${dd}`);
+              } catch (_) { }
+            }
+          });
         }
 
         if (!days.size) {
@@ -4953,11 +4949,8 @@
           const initial = allowedSortModes.has(savedQ) ? savedQ : (allowedSortModes.has(saved) ? saved : 'default');
           if (sortSelect) sortSelect.value = initial;
           localStorage.setItem(SORT_MODE_KEY, initial);
-        try {
-          await loadDays();
-        } catch (e) {
-          console.error("loadDays failed during startup:", e);
-        }
+        } catch (_) { }
+        await loadDays();
         // Mostrar estado inicial aunque no haya datos todavía
         try { renderSolicitudes([]); } catch (_) { }
         console.log('📅 Días cargados, iniciando suscripciones...');
