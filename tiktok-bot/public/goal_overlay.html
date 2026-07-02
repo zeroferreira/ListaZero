@@ -1083,13 +1083,14 @@
             let pct = (currentValue / target) * 100;
             
             if (cfg.autoLoop) {
-                // Modo Auto-loop: Calcular nivel y progreso residual
-                const level = Math.floor(currentValue / target);
-                displayVal = currentValue % target;
-                pct = (displayVal / target) * 100;
+                // Modo Auto-loop: Incrementar el target al siguiente múltiplo y mostrar valor acumulado
+                const level = currentValue > 0 ? Math.floor((currentValue - 1) / target) : 0;
+                displayTarget = (level + 1) * target;
+                displayVal = currentValue;
+                pct = (currentValue / displayTarget) * 100;
                 
                 // Si completó un ciclo (por ejemplo, subió de nivel) emitir sparks y confetti
-                const prevLevel = Math.floor(prev / target);
+                const prevLevel = prev > 0 ? Math.floor((prev - 1) / target) : 0;
                 if (level > prevLevel) {
                     emitSparks(100);
                     startConfetti();
@@ -1110,12 +1111,12 @@
             // Animate counter
             animateCounter(
                 document.getElementById('goalCurrent'),
-                cfg.autoLoop ? (prev % target) : prev,
+                prev,
                 displayVal
             );
 
-            // Bar
-            document.getElementById('progressBar').style.width = pct + '%';
+            // Bar (limitado al 100% para evitar desbordes visuales)
+            document.getElementById('progressBar').style.width = Math.min(100, pct) + '%';
 
             // Percentage bubble
             const bubble = document.getElementById('pctBubble');
@@ -1185,8 +1186,10 @@
                     }
                 }
             } else {
-                // En modo loop, si está al 100% exacto o más, brillar temporalmente
-                if (displayVal === 0 && currentValue > 0) {
+                // En modo loop, si subió de nivel (completó un ciclo), brillar temporalmente
+                const prevLevel = prev > 0 ? Math.floor((prev - 1) / target) : 0;
+                const level = currentValue > 0 ? Math.floor((currentValue - 1) / target) : 0;
+                if (level > prevLevel) {
                     card.classList.add('complete');
                     setTimeout(() => card.classList.remove('complete'), 2500);
                 }
