@@ -1081,7 +1081,15 @@ function startBot() {
     app.use(express.static(path.join(__dirname, 'public')));
     app.use('/gifts', express.static(path.join(__dirname, '..', 'REGALOS DE TIK TOK PNG By Adbra')));
     app.get('/QUIEREME.mov', (req, res) => {
-        res.sendFile(path.join(__dirname, '..', 'QUIEREME.mov'));
+        const mp4Path = path.join(__dirname, '..', 'QUIEREME.mp4');
+        if (fs.existsSync(mp4Path)) {
+            res.sendFile(mp4Path);
+        } else {
+            res.sendFile(path.join(__dirname, '..', 'QUIEREME.mov'));
+        }
+    });
+    app.get('/QUIEREME.mp4', (req, res) => {
+        res.sendFile(path.join(__dirname, '..', 'QUIEREME.mp4'));
     });
 
     // Endpoint dinámico para servir configuración de Firebase a los overlays
