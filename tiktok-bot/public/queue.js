@@ -2923,11 +2923,13 @@
       const qs = new URLSearchParams(window.location.search);
       const artists = ["Bad Bunny", "Karol G", "Feid", "Rauw Alejandro", "Shakira", "Daddy Yankee", "Rosalía"];
       const songs = ["Tití Me Preguntó", "Provenza", "Classy 101", "Todo de Ti", "Bzrp Music Sessions, Vol. 53", "Gasolina", "Despechá"];
+      const randomUsers = ["OyenteZero", "ZeroFan", "FielOyente", "InvitadoZero", "Melomano", "SuperLiker", "TopGifter"];
       
       const randomIndex = Math.floor(Math.random() * artists.length);
       const randomArtist = artists[randomIndex];
       const randomSong = songs[randomIndex];
-      const randomUser = String(qs.get('user') || "Prueba").trim() || "Prueba";
+      const randomUserIndex = Math.floor(Math.random() * randomUsers.length);
+      const randomUser = String(qs.get('user') || randomUsers[randomUserIndex]).trim();
       const forcedBadge = String(qs.get('badge') || '').trim();
       
       const now = new Date();
