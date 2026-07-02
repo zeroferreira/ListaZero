@@ -2083,6 +2083,19 @@ function startBot() {
                     isTest: true,
                     timestamp: serverTimestampFn()
                 };
+            } else if (type === 'gift_quiereme') {
+                mockData = {
+                    type: 'gift',
+                    user: 'GifterQuiere',
+                    uniqueId: 'gifterquiere',
+                    profilePic: avatarUrl,
+                    giftName: 'Quiéreme',
+                    coins: 1,
+                    repeatCount: 1,
+                    message: giftsMsg.replace(/{user}/g, 'GifterQuiere').replace(/{giftName}/g, 'Quiéreme').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '1').replace(/{total}/g, '10').replace(/{totalCoins}/g, '10'),
+                    isTest: true,
+                    timestamp: serverTimestampFn()
+                };
             } else if (type === 'gift_lion') {
                 mockData = {
                     type: 'gift',
