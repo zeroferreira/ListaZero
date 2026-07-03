@@ -1799,7 +1799,7 @@ function startBot() {
     // Configurar timer (label, color, secondsPerGift, opacity, radius, fontSize, etc.)
     app.post('/api/timer/config', async (req, res) => {
         try {
-            const { label, primaryColor, secondsPerGift, timerOpacity, timerRadius, timerFontSize, secondsPerCoin, secondsPerFollow, secondsPerLike } = req.body || {};
+            const { label, primaryColor, secondsPerGift, timerOpacity, timerRadius, timerFontSize, secondsPerCoin, secondsPerFollow, secondsPerLike, timerTheme } = req.body || {};
             if (label)          timerState.label          = String(label).trim();
             if (primaryColor)   timerState.primaryColor   = String(primaryColor).trim();
             if (secondsPerGift !== undefined) timerState.secondsPerGift = Number(secondsPerGift) || 0;
@@ -1809,6 +1809,7 @@ function startBot() {
             if (timerOpacity !== undefined)  timerState.timerOpacity  = parseFloat(timerOpacity);
             if (timerRadius !== undefined)   timerState.timerRadius   = parseInt(timerRadius);
             if (timerFontSize !== undefined) timerState.timerFontSize = parseInt(timerFontSize);
+            if (timerTheme !== undefined)    timerState.timerTheme     = String(timerTheme).trim();
             await saveTimerToFirestore();
             res.json({ success: true, timerState });
         } catch (e) {
@@ -3935,7 +3936,8 @@ let timerState = {
     secondsPerLike: 0,
     timerOpacity: 0.85,
     timerRadius: 22,
-    timerFontSize: 14
+    timerFontSize: 14,
+    timerTheme: 'neon'
 };
 
 async function saveTimerToFirestore() {
@@ -3953,6 +3955,7 @@ async function saveTimerToFirestore() {
             timerOpacity:     timerState.timerOpacity !== undefined ? timerState.timerOpacity : 0.85,
             timerRadius:      timerState.timerRadius !== undefined ? timerState.timerRadius : 22,
             timerFontSize:    timerState.timerFontSize !== undefined ? timerState.timerFontSize : 14,
+            timerTheme:       timerState.timerTheme || 'neon',
             updatedAt:        serverTimestamp()
         }, { merge: true });
     } catch (e) {
