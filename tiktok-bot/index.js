@@ -2607,15 +2607,16 @@ async function mergeTwoUsers(sourceKey, targetKey) {
             updateData.memberLevel = Math.max(Number(srcData.memberLevel || 0), Number(tgtData.memberLevel || 0));
             updateData.gifterLevel = Math.max(Number(srcData.gifterLevel || 0), Number(tgtData.gifterLevel || 0));
             
-            // Sumar estadísticas de juego y puntos
-            updateData.quiereCount = (Number(tgtData.quiereCount || 0)) + srcQuiereCount;
-            updateData.totalQuiereCoins = (Number(tgtData.totalQuiereCoins || 0)) + srcQuiereCoins;
-            updateData.totalCoinsDonated = (Number(tgtData.totalCoinsDonated || 0)) + srcCoins;
-            updateData.totalGiftPoints = (Number(tgtData.totalGiftPoints || 0)) + srcGiftPts;
-            updateData.totalLikes = (Number(tgtData.totalLikes || 0)) + srcLikes;
-            updateData.totalLikesPoints = (Number(tgtData.totalLikesPoints || 0)) + srcLikesPts;
-            updateData.totalPoints = (Number(tgtData.totalPoints || 0)) + srcPoints;
-            updateData.sessionLikes = (Number(tgtData.sessionLikes || 0)) + srcSessionLikes;
+            // Usar el máximo (Math.max) en lugar de sumarlos, ya que los documentos vinculados
+            // a menudo representan el mismo historial de usuario duplicado y no actividades separadas.
+            updateData.quiereCount = Math.max(Number(tgtData.quiereCount || 0), srcQuiereCount);
+            updateData.totalQuiereCoins = Math.max(Number(tgtData.totalQuiereCoins || 0), srcQuiereCoins);
+            updateData.totalCoinsDonated = Math.max(Number(tgtData.totalCoinsDonated || 0), srcCoins);
+            updateData.totalGiftPoints = Math.max(Number(tgtData.totalGiftPoints || 0), srcGiftPts);
+            updateData.totalLikes = Math.max(Number(tgtData.totalLikes || 0), srcLikes);
+            updateData.totalLikesPoints = Math.max(Number(tgtData.totalLikesPoints || 0), srcLikesPts);
+            updateData.totalPoints = Math.max(Number(tgtData.totalPoints || 0), srcPoints);
+            updateData.sessionLikes = Math.max(Number(tgtData.sessionLikes || 0), srcSessionLikes);
             
             // Fusionar objeto gamification
             if (srcData.gamification || tgtData.gamification) {
@@ -2626,14 +2627,14 @@ async function mergeTwoUsers(sourceKey, targetKey) {
                 
                 updateData.gamification = {
                     ...tgtG,
-                    points: (Number(tgtG.points || 0)) + (Number(srcG.points || 0)),
-                    xp: (Number(tgtG.xp || 0)) + (Number(srcG.xp || 0)),
+                    points: Math.max(Number(tgtG.points || 0), Number(srcG.points || 0)),
+                    xp: Math.max(Number(tgtG.xp || 0), Number(srcG.xp || 0)),
                     level: Math.max(Number(tgtG.level || 1), Number(srcG.level || 1)),
                     stats: {
                         ...tgtGStats,
-                        totalSongs: (Number(tgtGStats.totalSongs || 0)) + (Number(srcGStats.totalSongs || 0)),
-                        totalPlayedSongs: (Number(tgtGStats.totalPlayedSongs || 0)) + (Number(srcGStats.totalPlayedSongs || 0)),
-                        uniqueArtists: (Number(tgtGStats.uniqueArtists || 0)) + (Number(srcGStats.uniqueArtists || 0)),
+                        totalSongs: Math.max(Number(tgtGStats.totalSongs || 0), Number(srcGStats.totalSongs || 0)),
+                        totalPlayedSongs: Math.max(Number(tgtGStats.totalPlayedSongs || 0), Number(srcGStats.totalPlayedSongs || 0)),
+                        uniqueArtists: Math.max(Number(tgtGStats.uniqueArtists || 0), Number(srcGStats.uniqueArtists || 0)),
                         activeDays: Math.max(Number(tgtGStats.activeDays || 0), Number(srcGStats.activeDays || 0))
                     }
                 };
