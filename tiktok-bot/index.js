@@ -682,6 +682,39 @@ async function getCanonicalUserKey(userId, displayName) {
         // console.log(`🔗 Usando alias para ${uid || name} -> ${userKey}`);
     }
 
+    // FUSIÓN AUTOMÁTICA AL VUELO: Si no está aliased en memoria, pero el nickname ('name') tiene un
+    // documento en Firestore, creamos automáticamente la vinculación y fusionamos para evitar duplicados.
+    if (uid && name && uid !== name && aliasedKey === uid && db) {
+        try {
+            const nameDocRef = doc(db, 'userStats', name);
+            const nameSnap = await getDoc(nameDocRef);
+            if (nameSnap && typeof nameSnap.exists === 'function' && nameSnap.exists()) {
+                console.log(`[AUTO-LINK] Vinculando automáticamente TikTok ID @${uid} con nickname @${name}`);
+                
+                // 1. Crear el vínculo en systemConfig/userAliases
+                await setDoc(doc(db, 'systemConfig', 'userAliases'), {
+                    [uid]: name
+                }, { merge: true });
+
+                // 2. Crear el vínculo en la colección userAliases
+                await setDoc(doc(db, 'userAliases', uid), {
+                    aliasedTo: name,
+                    updatedAt: serverTimestamp()
+                });
+
+                // Actualizar mapa en memoria
+                if (USER_ALIASES_MAP) USER_ALIASES_MAP[uid] = name;
+                
+                // 3. Fusionar datos
+                await mergeTwoUsers(uid, name);
+                
+                userKey = name;
+            }
+        } catch (e) {
+            console.error(`[AUTO-LINK] Error en vinculación automática:`, e);
+        }
+    }
+
     try {
         if (db && typeof getDoc === 'function' && typeof doc === 'function') {
             let found = false;
@@ -1053,6 +1086,27 @@ function startBot() {
                 console.log("✅ Corrección masiva completada.");
             } else {
                 console.log("✅ No se encontraron usuarios con puntos inflados.");
+            }
+            
+            // --- FUSIÓN AUTOMÁTICA DE ALIASES EN EL INICIO ---
+            try {
+                console.log("🧹 Iniciando fusión automática de usuarios vinculados (aliases)...");
+                const docSnap = await getDoc(doc(db, 'systemConfig', 'userAliases'));
+                if (docSnap.exists()) {
+                    const aliases = docSnap.data() || {};
+                    const aliasPairs = Object.entries(aliases);
+                    console.log(`🔍 Procesando ${aliasPairs.length} vinculaciones para buscar duplicados...`);
+                    for (const [sourceKeyRaw, targetKeyRaw] of aliasPairs) {
+                        const sourceKey = String(sourceKeyRaw).trim().toLowerCase();
+                        const targetKey = String(targetKeyRaw).trim().toLowerCase();
+                        if (sourceKey && targetKey && sourceKey !== targetKey) {
+                            await mergeTwoUsers(sourceKey, targetKey);
+                        }
+                    }
+                    console.log("✅ Fusión automática de vinculaciones completada.");
+                }
+            } catch (err) {
+                console.error("❌ Error en autofusión de vinculaciones:", err);
             }
         } catch (e) {
             console.error("Error en saneamiento automático:", e);
@@ -2510,6 +2564,102 @@ async function updateUserProfilePic(userId, displayName, url, extraFields = {}) 
     }
 }
 
+async function mergeTwoUsers(sourceKey, targetKey) {
+    if (!db) return;
+    try {
+        const srcRef = doc(db, 'userStats', sourceKey);
+        const tgtRef = doc(db, 'userStats', targetKey);
+        
+        const srcSnap = await getDoc(srcRef);
+        if (!srcSnap.exists()) return;
+        
+        const srcData = srcSnap.data() || {};
+        const tgtSnap = await getDoc(tgtRef);
+        
+        const srcLikes = Number(srcData.totalLikes || 0);
+        const srcLikesPts = Number(srcData.totalLikesPoints || 0);
+        const srcCoins = Number(srcData.totalCoinsDonated || 0);
+        const srcGiftPts = Number(srcData.totalGiftPoints || 0);
+        const srcPoints = Number(srcData.totalPoints || 0);
+        const srcQuiereCount = Number(srcData.quiereCount || 0);
+        const srcQuiereCoins = Number(srcData.totalQuiereCoins || 0);
+        const srcSessionLikes = Number(srcData.sessionLikes || 0);
+        
+        if (tgtSnap.exists()) {
+            const tgtData = tgtSnap.data() || {};
+            
+            // Combinar todos los campos del destino con el origen
+            const updateData = {
+                ...tgtData,
+                tiktokId: srcData.tiktokId || tgtData.tiktokId || sourceKey,
+                displayName: tgtData.displayName || srcData.displayName || targetKey,
+                lastSeen: serverTimestamp()
+            };
+            
+            if (srcData.profilePic && (!tgtData.profilePic || tgtData.profilePic.includes('broken') || tgtData.profilePic.includes('avatar'))) {
+                updateData.profilePic = srcData.profilePic;
+            }
+            
+            if (srcData.isSubscriber === true || tgtData.isSubscriber === true) {
+                updateData.isSubscriber = true;
+            }
+            
+            updateData.memberLevel = Math.max(Number(srcData.memberLevel || 0), Number(tgtData.memberLevel || 0));
+            updateData.gifterLevel = Math.max(Number(srcData.gifterLevel || 0), Number(tgtData.gifterLevel || 0));
+            
+            // Sumar estadísticas de juego y puntos
+            updateData.quiereCount = (Number(tgtData.quiereCount || 0)) + srcQuiereCount;
+            updateData.totalQuiereCoins = (Number(tgtData.totalQuiereCoins || 0)) + srcQuiereCoins;
+            updateData.totalCoinsDonated = (Number(tgtData.totalCoinsDonated || 0)) + srcCoins;
+            updateData.totalGiftPoints = (Number(tgtData.totalGiftPoints || 0)) + srcGiftPts;
+            updateData.totalLikes = (Number(tgtData.totalLikes || 0)) + srcLikes;
+            updateData.totalLikesPoints = (Number(tgtData.totalLikesPoints || 0)) + srcLikesPts;
+            updateData.totalPoints = (Number(tgtData.totalPoints || 0)) + srcPoints;
+            updateData.sessionLikes = (Number(tgtData.sessionLikes || 0)) + srcSessionLikes;
+            
+            // Fusionar objeto gamification
+            if (srcData.gamification || tgtData.gamification) {
+                const srcG = srcData.gamification || {};
+                const tgtG = tgtData.gamification || {};
+                const srcGStats = srcG.stats || {};
+                const tgtGStats = tgtG.stats || {};
+                
+                updateData.gamification = {
+                    ...tgtG,
+                    points: (Number(tgtG.points || 0)) + (Number(srcG.points || 0)),
+                    xp: (Number(tgtG.xp || 0)) + (Number(srcG.xp || 0)),
+                    level: Math.max(Number(tgtG.level || 1), Number(srcG.level || 1)),
+                    stats: {
+                        ...tgtGStats,
+                        totalSongs: (Number(tgtGStats.totalSongs || 0)) + (Number(srcGStats.totalSongs || 0)),
+                        totalPlayedSongs: (Number(tgtGStats.totalPlayedSongs || 0)) + (Number(srcGStats.totalPlayedSongs || 0)),
+                        uniqueArtists: (Number(tgtGStats.uniqueArtists || 0)) + (Number(srcGStats.uniqueArtists || 0)),
+                        activeDays: Math.max(Number(tgtGStats.activeDays || 0), Number(srcGStats.activeDays || 0))
+                    }
+                };
+            }
+            
+            console.log(`[AUTO-MERGE] Fusionando estadísticas: @${sourceKey} -> @${targetKey} (Puntos: +${srcPoints}, Quiéreme: +${srcQuiereCount})`);
+            await setDoc(tgtRef, updateData, { merge: true });
+        } else {
+            // Si el destino no existe, renombramos/movemos
+            const updateData = {
+                ...srcData,
+                tiktokId: srcData.tiktokId || sourceKey,
+                displayName: srcData.displayName || targetKey,
+                lastSeen: serverTimestamp()
+            };
+            console.log(`[AUTO-MERGE] Creando y migrando a destino: @${sourceKey} -> @${targetKey}`);
+            await setDoc(tgtRef, updateData);
+        }
+        
+        await deleteDoc(srcRef);
+        console.log(`[AUTO-MERGE] Documento temporal @${sourceKey} eliminado.`);
+    } catch (e) {
+        console.error(`[AUTO-MERGE] Error fusionando @${sourceKey} -> @${targetKey}:`, e);
+    }
+}
+
 // Configurar Listeners
 function setupListeners() {
     tiktokLiveConnection.removeAllListeners();
@@ -3109,6 +3259,11 @@ function setupListeners() {
                     
                     // Actualizar mapa en memoria inmediatamente
                     USER_ALIASES_MAP[tiktokHandle] = webUser;
+
+                    // 1.2 MIGRACIÓN AUTOMÁTICA DE DATOS
+                    // Al vincular exitosamente, fusionamos el documento temporal del TikTok handle
+                    // con el documento principal del usuario web.
+                    await mergeTwoUsers(tiktokHandle, webUser);
 
                     // 2. Marcar en userStats del usuario web para búsqueda reversa rápida
                     try {
