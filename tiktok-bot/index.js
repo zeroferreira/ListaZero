@@ -3506,11 +3506,13 @@ function setupListeners() {
                     lastActiveAt: serverTimestamp()
                 };
                 if (profilePic) quiereData.profilePic = profilePic;
-                if (data.isSubscriber === true) quiereData.isSubscriber = true;
+                
+                // Forzar suscripción activa a nivel 1 al mandar Quiéreme (Heart Me)
+                quiereData.isSubscriber = true;
                 
                 // Mapear nivel de miembro de TikTok usando la función robusta extractUserLevels
                 const { memberLevel: parsedMemberLevel, gifterLevel: parsedGifterLevel } = extractUserLevels(data);
-                if (parsedMemberLevel > 0) quiereData.memberLevel = parsedMemberLevel;
+                quiereData.memberLevel = Math.max(1, parsedMemberLevel || 1);
                 if (parsedGifterLevel > 0) quiereData.gifterLevel = parsedGifterLevel;
                 
                 await setDoc(quiereRef, quiereData, { merge: true });
