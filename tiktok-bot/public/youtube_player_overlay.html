@@ -298,6 +298,18 @@
       gap: 6px;
       margin-top: -4px;
     }
+    
+    /* YouTube Player Container & responsive iframe */
+    #yt-player-container {
+      pointer-events: none;
+      transition: all 0.3s ease;
+    }
+    #yt-player-container iframe {
+      width: 100% !important;
+      height: 100% !important;
+      border: none;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -310,8 +322,11 @@
   </div>
 
   <!-- Player Card -->
-  <div id="player-card">
+  <div id="player-card" style="position: relative;">
     <div class="card-bg" id="card-bg"></div>
+    <div id="yt-player-container" style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; left: -9999px; overflow: hidden; z-index: 0;">
+      <div id="yt-player"></div>
+    </div>
     <div class="card-inner">
 
       <!-- Top: Artwork + Info -->
@@ -366,8 +381,7 @@
     </div>
   </div>
   
-  <!-- Invisible YouTube Iframe Player Container -->
-  <div id="yt-player" style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; left: -9999px;"></div>
+  
 
 <script>
   // ─── DOM refs ────────────────────────────────
@@ -452,8 +466,8 @@
     }
 
     ytPlayer = new YT.Player('yt-player', {
-      height: '1',
-      width: '1',
+      height: '100%',
+      width: '100%',
       videoId: videoId,
       playerVars: {
         'autoplay': startState === 'playing' ? 1 : 0,
@@ -874,6 +888,57 @@
       card.style.background = cfg.yt_card_bg_color;
     } else {
       card.style.background = ''; // reset to CSS theme default
+    }
+
+    // 10.5 YouTube Video Mode (audio_only | miniature | card_background)
+    const videoMode = cfg.yt_video_display_mode || 'audio_only';
+    const ytContainer = document.getElementById('yt-player-container');
+    const artworkImg = document.getElementById('artwork');
+
+    if (ytContainer) {
+      if (videoMode === 'audio_only') {
+        ytContainer.style.position = 'absolute';
+        ytContainer.style.top = '0';
+        ytContainer.style.left = '-9999px';
+        ytContainer.style.width = '1px';
+        ytContainer.style.height = '1px';
+        ytContainer.style.opacity = '0';
+        ytContainer.style.zIndex = '-999';
+        ytContainer.style.borderRadius = '0';
+        ytContainer.style.filter = '';
+        
+        if (artworkImg) artworkImg.style.opacity = '1';
+      } else if (videoMode === 'miniature') {
+        // Miniature Mode: Overlay on the artwork box
+        ytContainer.style.position = 'absolute';
+        ytContainer.style.top = '20px'; // Matching .card-inner padding
+        ytContainer.style.left = '20px'; // Matching .card-inner padding
+        ytContainer.style.width = `${artSize}px`;
+        ytContainer.style.height = `${artSize}px`;
+        ytContainer.style.opacity = '1';
+        ytContainer.style.zIndex = '2'; // In front of standard artwork
+        ytContainer.style.borderRadius = '14px'; // Match artwork-wrap border-radius
+        ytContainer.style.overflow = 'hidden';
+        ytContainer.style.filter = '';
+        
+        if (artworkImg) artworkImg.style.opacity = '0'; // Hide static thumbnail
+      } else if (videoMode === 'card_background') {
+        // Card Background Mode: Covers the whole card behind content
+        ytContainer.style.position = 'absolute';
+        ytContainer.style.top = '0';
+        ytContainer.style.left = '0';
+        ytContainer.style.width = '100%';
+        ytContainer.style.height = '100%';
+        ytContainer.style.opacity = cfg.yt_bg_video_opacity !== undefined ? cfg.yt_bg_video_opacity : 0.25;
+        ytContainer.style.zIndex = '0'; // Sibling to card-bg, behind card-inner
+        ytContainer.style.borderRadius = `${radius}px`;
+        ytContainer.style.overflow = 'hidden';
+        
+        const bgBlur = cfg.yt_bg_video_blur !== undefined ? cfg.yt_bg_video_blur : 4;
+        ytContainer.style.filter = bgBlur > 0 ? `blur(${bgBlur}px)` : '';
+        
+        if (artworkImg) artworkImg.style.opacity = '1'; // Show standard artwork thumbnail
+      }
     }
 
     // 11. Font Sizes
