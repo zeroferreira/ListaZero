@@ -1809,7 +1809,7 @@ function startBot() {
             if (timerOpacity !== undefined)  timerState.timerOpacity  = parseFloat(timerOpacity);
             if (timerRadius !== undefined)   timerState.timerRadius   = parseInt(timerRadius);
             if (timerFontSize !== undefined) timerState.timerFontSize = parseInt(timerFontSize);
-            if (timerTheme !== undefined)    timerState.timerTheme     = String(timerTheme).trim();
+            if (timerTheme !== undefined)    timerState.timerTheme    = String(timerTheme).trim();
             await saveTimerToFirestore();
             res.json({ success: true, timerState });
         } catch (e) {
