@@ -2284,7 +2284,9 @@ function startBot() {
     // Conexión a Cider (Reproductor)
     ciderSocket = io(getCiderUrl(), {
       transports: ['websocket'],
-      reconnectionAttempts: 5
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0
     });
 
     ciderSocket.on("connect", () => {
