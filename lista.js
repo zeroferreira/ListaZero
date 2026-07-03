@@ -15750,15 +15750,25 @@ function shouldShowStatsTicker() {
           const userOriginal = {};
           const processedIds = new Set(); // Para evitar doble conteo
 
-          const processItem = (sId, meta) => {
+          const processItem = (sId, meta, fullId = '') => {
             if (!sId || processedIds.has(sId)) return;
             processedIds.add(sId);
             totalRequests++;
 
-            const aRaw = meta.artista || '';
-            const sRaw = meta.cancion || '';
+            let aRaw = meta.artista || '';
+            let sRaw = meta.cancion || '';
             let uRaw = meta.usuario || '';
             let gRaw = meta.genre || '';
+
+            // NUEVO: Intentar extraer metadatos de IDs legado (usuario-cancion-artista-hora)
+            if ((!aRaw || !sRaw || !uRaw) && fullId && fullId.includes('-')) {
+              const parts = fullId.split('-');
+              if (parts.length === 4) {
+                if (!uRaw) uRaw = parts[0];
+                if (!sRaw) sRaw = parts[1];
+                if (!aRaw) aRaw = parts[2];
+              }
+            }
 
             // Intentar reconstruir el usuario a partir del songId si no viene en los metadatos
             if (!uRaw) {
@@ -15812,7 +15822,7 @@ function shouldShowStatsTicker() {
                 if (skippedArr.includes(fullId)) return; // Ignorar canciones saltadas (skip)
                 const sId = String(fullId || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
                 const meta = masterMetaMap[sId] || {};
-                processItem(sId, meta);
+                processItem(sId, meta, fullId);
                 if (isToday) totalTodayRequests++;
               });
             });
