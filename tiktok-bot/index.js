@@ -1799,7 +1799,7 @@ function startBot() {
     // Configurar timer (label, color, secondsPerGift, opacity, radius, fontSize, etc.)
     app.post('/api/timer/config', async (req, res) => {
         try {
-            const { label, primaryColor, secondsPerGift, timerOpacity, timerRadius, timerFontSize, secondsPerCoin, secondsPerFollow, secondsPerLike, secondsPerSubscribe, secondsPerShare, secondsPerChatMessage, multiplierEnabled, multiplierValue, actionOnExpiry, timerTheme } = req.body || {};
+            const { label, primaryColor, secondsPerGift, timerOpacity, timerRadius, timerFontSize, secondsPerCoin, secondsPerFollow, secondsPerLike, secondsPerSubscribe, secondsPerShare, secondsPerChatMessage, multiplierEnabled, multiplierValue, actionOnExpiry, timerTheme, timerWidth, timerHeight, progressHeight, showProgressBar, showMeta, showLabel } = req.body || {};
             if (label)          timerState.label          = String(label).trim();
             if (primaryColor)   timerState.primaryColor   = String(primaryColor).trim();
             if (secondsPerGift !== undefined) timerState.secondsPerGift = Number(secondsPerGift) || 0;
@@ -1816,6 +1816,12 @@ function startBot() {
             if (timerRadius !== undefined)   timerState.timerRadius   = parseInt(timerRadius);
             if (timerFontSize !== undefined) timerState.timerFontSize = parseInt(timerFontSize);
             if (timerTheme !== undefined)    timerState.timerTheme    = String(timerTheme).trim();
+            if (timerWidth !== undefined)    timerState.timerWidth    = parseInt(timerWidth) || 300;
+            if (timerHeight !== undefined)   timerState.timerHeight   = parseInt(timerHeight) || 135;
+            if (progressHeight !== undefined) timerState.progressHeight = parseInt(progressHeight) || 3;
+            if (showProgressBar !== undefined) timerState.showProgressBar = Boolean(showProgressBar);
+            if (showMeta !== undefined)      timerState.showMeta       = Boolean(showMeta);
+            if (showLabel !== undefined)     timerState.showLabel      = Boolean(showLabel);
             await saveTimerToFirestore();
             res.json({ success: true, timerState });
         } catch (e) {
@@ -3995,7 +4001,13 @@ let timerState = {
     timerOpacity: 0.85,
     timerRadius: 22,
     timerFontSize: 14,
-    timerTheme: 'neon'
+    timerTheme: 'neon',
+    timerWidth: 300,
+    timerHeight: 135,
+    progressHeight: 3,
+    showProgressBar: true,
+    showMeta: true,
+    showLabel: true
 };
 
 async function saveTimerToFirestore() {
@@ -4020,6 +4032,12 @@ async function saveTimerToFirestore() {
             timerRadius:      timerState.timerRadius !== undefined ? timerState.timerRadius : 22,
             timerFontSize:    timerState.timerFontSize !== undefined ? timerState.timerFontSize : 14,
             timerTheme:       timerState.theme || timerState.timerTheme || 'neon',
+            timerWidth:       timerState.timerWidth !== undefined ? timerState.timerWidth : 300,
+            timerHeight:      timerState.timerHeight !== undefined ? timerState.timerHeight : 135,
+            progressHeight:   timerState.progressHeight !== undefined ? timerState.progressHeight : 3,
+            showProgressBar:  timerState.showProgressBar !== undefined ? timerState.showProgressBar : true,
+            showMeta:         timerState.showMeta !== undefined ? timerState.showMeta : true,
+            showLabel:        timerState.showLabel !== undefined ? timerState.showLabel : true,
             updatedAt:        serverTimestamp()
         }, { merge: true });
     } catch (e) {

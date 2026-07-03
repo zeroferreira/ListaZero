@@ -1881,6 +1881,7 @@
             });
 
             // Timer state settings
+            const [timerAccordion, setTimerAccordion] = React.useState('controls'); // 'controls' | 'styles' | 'triggers'
             const [timer, setTimer] = React.useState({
                 label: '⏳ Tiempo de stream',
                 primaryColor: '#7c3aed',
@@ -1898,6 +1899,12 @@
                 timerRadius: 22,
                 timerFontSize: 14,
                 timerTheme: 'neon',
+                timerWidth: 300,
+                timerHeight: 135,
+                progressHeight: 3,
+                showProgressBar: true,
+                showMeta: true,
+                showLabel: true,
                 // running controllers
                 initialDuration: 30
             });
@@ -2822,7 +2829,13 @@
                             timerOpacity: data.timerOpacity !== undefined ? data.timerOpacity : 0.85,
                             timerRadius: data.timerRadius !== undefined ? data.timerRadius : 22,
                             timerFontSize: data.timerFontSize !== undefined ? data.timerFontSize : 14,
-                            timerTheme: data.timerTheme || 'neon'
+                            timerTheme: data.timerTheme || 'neon',
+                            timerWidth: data.timerWidth !== undefined ? data.timerWidth : 300,
+                            timerHeight: data.timerHeight !== undefined ? data.timerHeight : 135,
+                            progressHeight: data.progressHeight !== undefined ? data.progressHeight : 3,
+                            showProgressBar: data.showProgressBar !== undefined ? data.showProgressBar : true,
+                            showMeta: data.showMeta !== undefined ? data.showMeta : true,
+                            showLabel: data.showLabel !== undefined ? data.showLabel : true
                         }));
                     }).catch(() => {});
 
@@ -7474,34 +7487,253 @@
                                             Cuenta regresiva controlable. Los viewers pueden regalar y añadir segundos al tiempo en OBS.
                                         </p>
 
-                                        <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '20px', paddingBottom: '20px' }}>
-                                            <h4 style={{ marginBottom: '15px' }}>🎨 Personalización Visual Independiente</h4>
-                                            <div className="grid-4">
-                                                <div className="form-group">
-                                                    <label>Tema del Timer</label>
-                                                    <select value={timer.timerTheme || 'neon'} onChange={(e) => setTimer({ ...timer, timerTheme: e.target.value })}>
-                                                        <option value="neon">Neon / Brillo (Original)</option>
-                                                        <option value="glass">Glassmorphism</option>
-                                                        <option value="minimalist">Minimalista (Solo Texto)</option>
-                                                        <option value="retro">Retro LCD / Digital</option>
-                                                    </select>
+                                        {/* --- ACORDEÓN APILABLE / AUTOAPILABLE --- */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+                                            
+                                            {/* SECCIÓN 1: ⏱️ CONTROLES DEL TEMPORIZADOR */}
+                                            <div style={{ border: '1px solid var(--border-glass)', borderRadius: '10px', overflow: 'hidden' }}>
+                                                <div 
+                                                    onClick={() => setTimerAccordion(timerAccordion === 'controls' ? null : 'controls')}
+                                                    style={{ 
+                                                        padding: '12px 16px', 
+                                                        background: 'rgba(255,255,255,0.03)', 
+                                                        cursor: 'pointer', 
+                                                        display: 'flex', 
+                                                        justifyContent: 'space-between', 
+                                                        alignItems: 'center',
+                                                        fontWeight: 'bold',
+                                                        color: timerAccordion === 'controls' ? '#c084fc' : '#fff'
+                                                    }}
+                                                >
+                                                    <span>⏱️ Controles de Ejecución y Duración</span>
+                                                    <span>{timerAccordion === 'controls' ? '▲' : '▼'}</span>
                                                 </div>
-                                                <div className="form-group">
-                                                    <label>Opacidad: {Math.round(timer.timerOpacity * 100)}%</label>
-                                                    <input type="range" min="0.1" max="1" step="0.05" value={timer.timerOpacity} onChange={(e) => setTimer({ ...timer, timerOpacity: parseFloat(e.target.value) })} />
-                                                </div>
-                                                <div className="form-group">
-                                                    <label>Redondeado: {timer.timerRadius}px</label>
-                                                    <input type="range" min="0" max="30" step="2" value={timer.timerRadius} onChange={(e) => setTimer({ ...timer, timerRadius: parseInt(e.target.value) })} />
-                                                </div>
-                                                <div className="form-group">
-                                                    <label>Letra: {timer.timerFontSize}px</label>
-                                                    <input type="range" min="10" max="24" step="1" value={timer.timerFontSize} onChange={(e) => setTimer({ ...timer, timerFontSize: parseInt(e.target.value) })} />
-                                                </div>
+                                                {timerAccordion === 'controls' && (
+                                                    <div style={{ padding: '16px', background: 'rgba(0,0,0,0.15)', borderTop: '1px solid var(--border-glass)' }}>
+                                                        <div className="grid-2">
+                                                            <div className="form-group">
+                                                                <label>Duración Inicial (minutos)</label>
+                                                                <input type="number" min="1" max="360" value={timer.initialDuration} onChange={(e) => setTimer({ ...timer, initialDuration: parseInt(e.target.value) || 30 })} />
+                                                            </div>
+                                                            <div className="form-group" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                                                                <button className="btn btn-green" onClick={startActiveTimer} style={{ width: '100%' }}>▶️ Iniciar/Reiniciar</button>
+                                                            </div>
+                                                        </div>
+
+                                                        <div style={{ marginTop: '15px', padding: '12px 16px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '10px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                                            {timerDisplay}
+                                                        </div>
+
+                                                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '15px' }}>
+                                                            <button className="btn btn-orange" onClick={() => handleTimerAction('pause')}>⏸️ Pausar</button>
+                                                            <button className="btn btn-blue" onClick={() => handleTimerAction('resume')}>▶️ Reanudar</button>
+                                                            <button className="btn btn-red" onClick={() => handleTimerAction('stop')}>⏹️ Detener</button>
+                                                        </div>
+
+                                                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
+                                                            <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 14px' }} onClick={() => handleTimerAction('extend', { seconds: 300 })}>+5 min</button>
+                                                            <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 14px' }} onClick={() => handleTimerAction('extend', { seconds: 600 })}>+10 min</button>
+                                                            <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 14px' }} onClick={() => handleTimerAction('extend', { seconds: 1800 })}>+30 min</button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
-                                            <button className="btn btn-secondary" onClick={handleSaveTimerConfigOnly} style={{ marginTop: '5px' }}>
-                                                {renderIcon('save')} Guardar Diseño
-                                            </button>
+
+                                            {/* SECCIÓN 2: 🎨 PERSONALIZACIÓN VISUAL Y DIMENSIONES */}
+                                            <div style={{ border: '1px solid var(--border-glass)', borderRadius: '10px', overflow: 'hidden' }}>
+                                                <div 
+                                                    onClick={() => setTimerAccordion(timerAccordion === 'styles' ? null : 'styles')}
+                                                    style={{ 
+                                                        padding: '12px 16px', 
+                                                        background: 'rgba(255,255,255,0.03)', 
+                                                        cursor: 'pointer', 
+                                                        display: 'flex', 
+                                                        justifyContent: 'space-between', 
+                                                        alignItems: 'center',
+                                                        fontWeight: 'bold',
+                                                        color: timerAccordion === 'styles' ? '#c084fc' : '#fff'
+                                                    }}
+                                                >
+                                                    <span>🎨 Estilos, Tamaño y Dimensiones</span>
+                                                    <span>{timerAccordion === 'styles' ? '▲' : '▼'}</span>
+                                                </div>
+                                                {timerAccordion === 'styles' && (
+                                                    <div style={{ padding: '16px', background: 'rgba(0,0,0,0.15)', borderTop: '1px solid var(--border-glass)' }}>
+                                                        <div className="grid-2">
+                                                            <div className="form-group">
+                                                                <label>Tema del Timer</label>
+                                                                <select value={timer.timerTheme || 'neon'} onChange={(e) => setTimer({ ...timer, timerTheme: e.target.value })}>
+                                                                    <option value="neon">Neon / Brillo (Original)</option>
+                                                                    <option value="glass">Glassmorphism</option>
+                                                                    <option value="minimalist">Minimalista (Solo Texto)</option>
+                                                                    <option value="retro">Retro LCD / Digital</option>
+                                                                </select>
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Color Principal</label>
+                                                                <input 
+                                                                    type="color" 
+                                                                    value={timer.primaryColor} 
+                                                                    onChange={(e) => setTimer({ ...timer, primaryColor: e.target.value })}
+                                                                    style={{ width: '100%', height: '40px', cursor: 'pointer', border: '1px solid var(--border-glass)', borderRadius: '10px' }}
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid-3" style={{ marginTop: '15px' }}>
+                                                            <div className="form-group">
+                                                                <label>Opacidad: {Math.round(timer.timerOpacity * 100)}%</label>
+                                                                <input type="range" min="0.1" max="1" step="0.05" value={timer.timerOpacity} onChange={(e) => setTimer({ ...timer, timerOpacity: parseFloat(e.target.value) })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Redondeado: {timer.timerRadius}px</label>
+                                                                <input type="range" min="0" max="30" step="2" value={timer.timerRadius} onChange={(e) => setTimer({ ...timer, timerRadius: parseInt(e.target.value) })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Letra: {timer.timerFontSize}px</label>
+                                                                <input type="range" min="10" max="90" step="1" value={timer.timerFontSize} onChange={(e) => setTimer({ ...timer, timerFontSize: parseInt(e.target.value) })} />
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid-3" style={{ marginTop: '15px' }}>
+                                                            <div className="form-group">
+                                                                <label>Ancho (px): {timer.timerWidth || 300}px</label>
+                                                                <input type="range" min="150" max="800" step="10" value={timer.timerWidth || 300} onChange={(e) => setTimer({ ...timer, timerWidth: parseInt(e.target.value) })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Alto (px): {timer.timerHeight || 135}px</label>
+                                                                <input type="range" min="60" max="400" step="5" value={timer.timerHeight || 135} onChange={(e) => setTimer({ ...timer, timerHeight: parseInt(e.target.value) })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Grosor Barra (px): {timer.progressHeight || 3}px</label>
+                                                                <input type="range" min="1" max="12" step="1" value={timer.progressHeight || 3} onChange={(e) => setTimer({ ...timer, progressHeight: parseInt(e.target.value) })} />
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid-2" style={{ marginTop: '15px' }}>
+                                                            <div className="form-group">
+                                                                <label>Texto del Timer</label>
+                                                                <input type="text" value={timer.label} onChange={(e) => setTimer({ ...timer, label: e.target.value })} />
+                                                            </div>
+                                                            <div className="form-group" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px', paddingTop: '10px' }}>
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                                                    <input type="checkbox" checked={timer.showLabel !== false} onChange={(e) => setTimer({ ...timer, showLabel: e.target.checked })} />
+                                                                    <span>Mostrar Título</span>
+                                                                </label>
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                                                    <input type="checkbox" checked={timer.showProgressBar !== false} onChange={(e) => setTimer({ ...timer, showProgressBar: e.target.checked })} />
+                                                                    <span>Mostrar Barra de Progreso</span>
+                                                                </label>
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                                                    <input type="checkbox" checked={timer.showMeta !== false} onChange={(e) => setTimer({ ...timer, showMeta: e.target.checked })} />
+                                                                    <span>Mostrar Detalles de Regalo / LIVE</span>
+                                                                </label>
+                                                            </div>
+                                                        </div>
+
+                                                        <button className="btn btn-secondary" onClick={handleSaveTimerConfigOnly} style={{ marginTop: '15px', width: '100%' }}>
+                                                            {renderIcon('save')} Guardar Configuración de Diseño
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* SECCIÓN 3: ⚡ CONFIGURACIÓN DE DISPARADORES E INTERACCIONES */}
+                                            <div style={{ border: '1px solid var(--border-glass)', borderRadius: '10px', overflow: 'hidden' }}>
+                                                <div 
+                                                    onClick={() => setTimerAccordion(timerAccordion === 'triggers' ? null : 'triggers')}
+                                                    style={{ 
+                                                        padding: '12px 16px', 
+                                                        background: 'rgba(255,255,255,0.03)', 
+                                                        cursor: 'pointer', 
+                                                        display: 'flex', 
+                                                        justifyContent: 'space-between', 
+                                                        alignItems: 'center',
+                                                        fontWeight: 'bold',
+                                                        color: timerAccordion === 'triggers' ? '#c084fc' : '#fff'
+                                                    }}
+                                                >
+                                                    <span>⚡ Disparadores de Tiempo e Interacciones</span>
+                                                    <span>{timerAccordion === 'triggers' ? '▲' : '▼'}</span>
+                                                </div>
+                                                {timerAccordion === 'triggers' && (
+                                                    <div style={{ padding: '16px', background: 'rgba(0,0,0,0.15)', borderTop: '1px solid var(--border-glass)' }}>
+                                                        <div className="grid-2">
+                                                            <div className="form-group">
+                                                                <label>Segundos por cada Regalo (Modo Fijo)</label>
+                                                                <input type="number" min="0" max="600" value={timer.secondsPerGift} onChange={(e) => setTimer({ ...timer, secondsPerGift: parseInt(e.target.value) || 0 })} />
+                                                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginTop: '4px' }}>Suma fija por regalo (sin importar monedas)</span>
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Segundos por Moneda (Modo Proporcional)</label>
+                                                                <input type="number" step="0.1" min="0" max="100" value={timer.secondsPerCoin || 0} onChange={(e) => setTimer({ ...timer, secondsPerCoin: parseFloat(e.target.value) || 0 })} />
+                                                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginTop: '4px' }}>Suma (monedas * segundos) por regalo. 0 = inactivo</span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid-3" style={{ marginTop: '15px' }}>
+                                                            <div className="form-group">
+                                                                <label>Segundos por Seguidor (Follow)</label>
+                                                                <input type="number" min="0" max="600" value={timer.secondsPerFollow || 0} onChange={(e) => setTimer({ ...timer, secondsPerFollow: parseInt(e.target.value) || 0 })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Segundos por Like</label>
+                                                                <input type="number" step="0.001" min="0" max="10" value={timer.secondsPerLike || 0} onChange={(e) => setTimer({ ...timer, secondsPerLike: parseFloat(e.target.value) || 0 })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Segundos por Suscriptor</label>
+                                                                <input type="number" min="0" max="1200" value={timer.secondsPerSubscribe || 0} onChange={(e) => setTimer({ ...timer, secondsPerSubscribe: parseInt(e.target.value) || 0 })} />
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid-3" style={{ marginTop: '15px' }}>
+                                                            <div className="form-group">
+                                                                <label>Segundos por Compartido (Share)</label>
+                                                                <input type="number" min="0" max="600" value={timer.secondsPerShare || 0} onChange={(e) => setTimer({ ...timer, secondsPerShare: parseInt(e.target.value) || 0 })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Segundos por Mensaje Chat</label>
+                                                                <input type="number" step="0.05" min="0" max="60" value={timer.secondsPerChatMessage || 0} onChange={(e) => setTimer({ ...timer, secondsPerChatMessage: parseFloat(e.target.value) || 0 })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Acción al Expirar (00:00)</label>
+                                                                <select value={timer.actionOnExpiry || '-'} onChange={(e) => setTimer({ ...timer, actionOnExpiry: e.target.value })}>
+                                                                    <option value="-">- (Ninguna)</option>
+                                                                    <option value="play_sound">🔊 Reproducir Sonido de Alerta</option>
+                                                                    <option value="send_chat">💬 Enviar Mensaje de Alerta</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="form-group" style={{ marginTop: '15px', padding: '10px 15px', border: '1px solid var(--border-glass)', borderRadius: '10px', background: 'rgba(255,255,255,0.02)' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0, fontWeight: 'bold' }}>
+                                                                    <input type="checkbox" checked={timer.multiplierEnabled === true} onChange={(e) => setTimer({ ...timer, multiplierEnabled: e.target.checked })} />
+                                                                    <span>Multiplicador de Tiempo Activo</span>
+                                                                </label>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Factor:</span>
+                                                                    <input 
+                                                                        type="number" 
+                                                                        step="0.1" 
+                                                                        min="0.1" 
+                                                                        max="10" 
+                                                                        disabled={!timer.multiplierEnabled} 
+                                                                        value={timer.multiplierValue || 1.5} 
+                                                                        onChange={(e) => setTimer({ ...timer, multiplierValue: parseFloat(e.target.value) || 1.0 })} 
+                                                                        style={{ width: '80px', padding: '4px 8px', borderRadius: '6px' }}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>Si se activa, todos los segundos añadidos por regalos, coins, likes, follows, etc. se multiplicarán por este factor.</span>
+                                                        </div>
+
+                                                        <button className="btn btn-secondary" onClick={handleSaveTimerConfigOnly} style={{ marginTop: '15px', width: '100%' }}>
+                                                            {renderIcon('save')} Guardar Configuración de Disparadores
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
 
                                         <div className="preview-panel">
@@ -7515,75 +7747,11 @@
                                         </div>
 
                                         <div className="form-group" style={{ marginTop: '20px' }}>
-                                            <label>Enlace de OBS (Browser Source — 320 × 150 px)</label>
+                                            <label>Enlace de OBS (Browser Source — Ajusta el tamaño según tu personalización)</label>
                                             <div className="copy-url-row">
                                                 <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/timer_overlay.html`} onClick={(e) => e.target.select()} />
                                                 <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/timer_overlay.html`)}>Copiar URL</button>
                                             </div>
-                                        </div>
-
-                                        <div className="grid-2" style={{ marginTop: '15px' }}>
-                                            <div className="form-group">
-                                                <label>Duración Inicial (minutos)</label>
-                                                <input type="number" min="1" max="360" value={timer.initialDuration} onChange={(e) => setTimer({ ...timer, initialDuration: parseInt(e.target.value) || 30 })} />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Segundos por cada Regalo (Modo Fijo)</label>
-                                                <input type="number" min="0" max="600" value={timer.secondsPerGift} onChange={(e) => setTimer({ ...timer, secondsPerGift: parseInt(e.target.value) || 0 })} />
-                                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginTop: '4px' }}>Suma fija sin importar el costo del regalo (Tikfinity desactivado)</span>
-                                            </div>
-                                        </div>
-
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginTop: '15px', marginBottom: '15px' }}>
-                                            <div className="form-group">
-                                                <label>Segundos por Moneda (Gifts)</label>
-                                                <input type="number" step="0.1" min="0" max="100" value={timer.secondsPerCoin || 0} onChange={(e) => setTimer({ ...timer, secondsPerCoin: parseFloat(e.target.value) || 0 })} />
-                                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginTop: '4px' }}>0 = desactivado. Ej: 2 = 2s por moneda del regalo</span>
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Segundos por Seguidor (Follow)</label>
-                                                <input type="number" min="0" max="600" value={timer.secondsPerFollow || 0} onChange={(e) => setTimer({ ...timer, secondsPerFollow: parseInt(e.target.value) || 0 })} />
-                                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginTop: '4px' }}>0 = desactivado. Suma fija por follow</span>
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Segundos por cada Like</label>
-                                                <input type="number" step="0.001" min="0" max="10" value={timer.secondsPerLike || 0} onChange={(e) => setTimer({ ...timer, secondsPerLike: parseFloat(e.target.value) || 0 })} />
-                                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginTop: '4px' }}>0 = desactivado. Ej: 0.01 = 1s cada 100 likes</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="grid-2">
-                                            <div className="form-group">
-                                                <label>Texto del Timer</label>
-                                                <input type="text" value={timer.label} onChange={(e) => setTimer({ ...timer, label: e.target.value })} />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>Color Principal</label>
-                                                <input 
-                                                    type="color" 
-                                                    value={timer.primaryColor} 
-                                                    onChange={(e) => setTimer({ ...timer, primaryColor: e.target.value })}
-                                                    style={{ width: '100%', height: '40px', cursor: 'pointer', border: '1px solid var(--border-glass)', borderRadius: '10px' }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {/* Status clock display */}
-                                        <div style={{ marginTop: '20px', padding: '12px 16px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-glass)', borderRadius: '10px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                                            {timerDisplay}
-                                        </div>
-
-                                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '15px' }}>
-                                            <button className="btn btn-green" onClick={startActiveTimer}>▶️ Iniciar/Reiniciar</button>
-                                            <button className="btn btn-orange" onClick={() => handleTimerAction('pause')}>⏸️ Pausar</button>
-                                            <button className="btn btn-blue" onClick={() => handleTimerAction('resume')}>▶️ Reanudar</button>
-                                            <button className="btn btn-red" onClick={() => handleTimerAction('stop')}>⏹️ Detener</button>
-                                        </div>
-
-                                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
-                                            <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 14px' }} onClick={() => handleTimerAction('extend', { seconds: 300 })}>+5 min</button>
-                                            <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 14px' }} onClick={() => handleTimerAction('extend', { seconds: 600 })}>+10 min</button>
-                                            <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 14px' }} onClick={() => handleTimerAction('extend', { seconds: 1800 })}>+30 min</button>
                                         </div>
                                     </div>
                                 )}
