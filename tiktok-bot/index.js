@@ -1796,13 +1796,16 @@ function startBot() {
         res.json({ ...timerState, remainingMs });
     });
 
-    // Configurar timer (label, color, secondsPerGift, opacity, radius, fontSize)
+    // Configurar timer (label, color, secondsPerGift, opacity, radius, fontSize, etc.)
     app.post('/api/timer/config', async (req, res) => {
         try {
-            const { label, primaryColor, secondsPerGift, timerOpacity, timerRadius, timerFontSize } = req.body || {};
+            const { label, primaryColor, secondsPerGift, timerOpacity, timerRadius, timerFontSize, secondsPerCoin, secondsPerFollow, secondsPerLike } = req.body || {};
             if (label)          timerState.label          = String(label).trim();
             if (primaryColor)   timerState.primaryColor   = String(primaryColor).trim();
-            if (secondsPerGift) timerState.secondsPerGift = Number(secondsPerGift) || 30;
+            if (secondsPerGift !== undefined) timerState.secondsPerGift = Number(secondsPerGift) || 0;
+            if (secondsPerCoin !== undefined) timerState.secondsPerCoin = Number(secondsPerCoin) || 0;
+            if (secondsPerFollow !== undefined) timerState.secondsPerFollow = Number(secondsPerFollow) || 0;
+            if (secondsPerLike !== undefined) timerState.secondsPerLike = Number(secondsPerLike) || 0;
             if (timerOpacity !== undefined)  timerState.timerOpacity  = parseFloat(timerOpacity);
             if (timerRadius !== undefined)   timerState.timerRadius   = parseInt(timerRadius);
             if (timerFontSize !== undefined) timerState.timerFontSize = parseInt(timerFontSize);
@@ -3639,11 +3642,29 @@ function setupListeners() {
 
             // ─── TIMER EXTENSION: extender el countdown por regalos ──────────────
             if (timerState.state === 'running' && timerState.endsAt) {
-                const secondsToAdd = Number(timerState.secondsPerGift || 30);
-                const msToAdd = secondsToAdd * 1000;
-                timerState.endsAt += msToAdd;
-                console.log(`⏱️ Timer extendido +${secondsToAdd}s por regalo de ${displayName} (termina en: ${Math.round((timerState.endsAt - Date.now()) / 1000)}s)`);
-                saveTimerToFirestore().catch(() => {});
+                let secondsToAdd = 0;
+                const coinsPerGift = Number(coins) || 0;
+                const repeatCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
+                const totalCoins = coinsPerGift * repeatCount;
+                
+                if (Number(timerState.secondsPerCoin) > 0) {
+                    // Modo Tikfinity: sumar proporcional a las monedas (monedas * segundos_por_moneda)
+                    secondsToAdd = totalCoins * Number(timerState.secondsPerCoin);
+                    console.log(`⏱️ [Tikfinity Mode] Regalo de ${displayName} (${totalCoins} monedas) → +${secondsToAdd}s al timer.`);
+                } else {
+                    // Modo Clásico: sumar un tiempo fijo por regalo recibido (si es > 0)
+                    secondsToAdd = Number(timerState.secondsPerGift || 0);
+                    if (secondsToAdd > 0) {
+                        console.log(`⏱️ [Classic Mode] Regalo de ${displayName} → +${secondsToAdd}s al timer.`);
+                    }
+                }
+                
+                if (secondsToAdd > 0) {
+                    const msToAdd = secondsToAdd * 1000;
+                    timerState.endsAt += msToAdd;
+                    console.log(`⏱️ Timer extendido +${secondsToAdd}s (termina en: ${Math.round((timerState.endsAt - Date.now()) / 1000)}s)`);
+                    saveTimerToFirestore().catch(() => {});
+                }
             }
         }
     });
@@ -3713,6 +3734,17 @@ function setupListeners() {
             currentTopLiker = { name: nickname, count: sessionTotal };
             updateGlobalTopLiker(nickname, sessionTotal);
         }
+
+        // ─── TIMER EXTENSION: extender el countdown por likes (Tikfinity Mode) ───
+        if (timerState.state === 'running' && timerState.endsAt && Number(timerState.secondsPerLike) > 0) {
+            const secondsToAdd = delta * Number(timerState.secondsPerLike);
+            const msToAdd = Math.round(secondsToAdd * 1000);
+            if (msToAdd > 0) {
+                timerState.endsAt += msToAdd;
+                console.log(`⏱️ Timer extendido +${secondsToAdd.toFixed(2)}s por ${delta} likes de @${nickname}`);
+                saveTimerToFirestore().catch(() => {});
+            }
+        }
     });
 
     // SEGUIDORES (FOLLOW)
@@ -3736,6 +3768,15 @@ function setupListeners() {
         // Acumular en contador de sesión para metas
         sessionFollows.set(uid, (sessionFollows.get(uid) || 0) + 1);
         syncSessionCountersToFirestore();
+
+        // ─── TIMER EXTENSION: extender el countdown por seguir (Tikfinity Mode) ───
+        if (timerState.state === 'running' && timerState.endsAt && Number(timerState.secondsPerFollow) > 0) {
+            const secondsToAdd = Number(timerState.secondsPerFollow);
+            const msToAdd = secondsToAdd * 1000;
+            timerState.endsAt += msToAdd;
+            console.log(`⏱️ Timer extendido +${secondsToAdd}s por nuevo seguidor @${uid}`);
+            saveTimerToFirestore().catch(() => {});
+        }
         
         console.log(`👤 @${uid} (${displayName}) comenzó a seguirte! — enableFollowAlert: ${overlayAlertsConfig.enableFollowAlert}`);
 
@@ -3889,6 +3930,9 @@ let timerState = {
     label: '⏳ Tiempo de stream',
     primaryColor: '#7c3aed',
     secondsPerGift: 30,
+    secondsPerCoin: 0,
+    secondsPerFollow: 0,
+    secondsPerLike: 0,
     timerOpacity: 0.85,
     timerRadius: 22,
     timerFontSize: 14
@@ -3898,15 +3942,18 @@ async function saveTimerToFirestore() {
     if (!db) return;
     try {
         await setDoc(doc(db, 'systemConfig', 'timerConfig'), {
-            state:          timerState.state,
-            endsAt:         timerState.endsAt,
-            label:          timerState.label,
-            primaryColor:   timerState.primaryColor,
-            secondsPerGift: timerState.secondsPerGift,
-            timerOpacity:   timerState.timerOpacity !== undefined ? timerState.timerOpacity : 0.85,
-            timerRadius:    timerState.timerRadius !== undefined ? timerState.timerRadius : 22,
-            timerFontSize:  timerState.timerFontSize !== undefined ? timerState.timerFontSize : 14,
-            updatedAt:      serverTimestamp()
+            state:            timerState.state,
+            endsAt:           timerState.endsAt,
+            label:            timerState.label,
+            primaryColor:     timerState.primaryColor,
+            secondsPerGift:   timerState.secondsPerGift,
+            secondsPerCoin:   timerState.secondsPerCoin !== undefined ? timerState.secondsPerCoin : 0,
+            secondsPerFollow: timerState.secondsPerFollow !== undefined ? timerState.secondsPerFollow : 0,
+            secondsPerLike:   timerState.secondsPerLike !== undefined ? timerState.secondsPerLike : 0,
+            timerOpacity:     timerState.timerOpacity !== undefined ? timerState.timerOpacity : 0.85,
+            timerRadius:      timerState.timerRadius !== undefined ? timerState.timerRadius : 22,
+            timerFontSize:    timerState.timerFontSize !== undefined ? timerState.timerFontSize : 14,
+            updatedAt:        serverTimestamp()
         }, { merge: true });
     } catch (e) {
         console.error('Error guardando timer en Firestore:', e);
