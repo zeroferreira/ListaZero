@@ -1799,13 +1799,19 @@ function startBot() {
     // Configurar timer (label, color, secondsPerGift, opacity, radius, fontSize, etc.)
     app.post('/api/timer/config', async (req, res) => {
         try {
-            const { label, primaryColor, secondsPerGift, timerOpacity, timerRadius, timerFontSize, secondsPerCoin, secondsPerFollow, secondsPerLike, timerTheme } = req.body || {};
+            const { label, primaryColor, secondsPerGift, timerOpacity, timerRadius, timerFontSize, secondsPerCoin, secondsPerFollow, secondsPerLike, secondsPerSubscribe, secondsPerShare, secondsPerChatMessage, multiplierEnabled, multiplierValue, actionOnExpiry, timerTheme } = req.body || {};
             if (label)          timerState.label          = String(label).trim();
             if (primaryColor)   timerState.primaryColor   = String(primaryColor).trim();
             if (secondsPerGift !== undefined) timerState.secondsPerGift = Number(secondsPerGift) || 0;
             if (secondsPerCoin !== undefined) timerState.secondsPerCoin = Number(secondsPerCoin) || 0;
             if (secondsPerFollow !== undefined) timerState.secondsPerFollow = Number(secondsPerFollow) || 0;
             if (secondsPerLike !== undefined) timerState.secondsPerLike = Number(secondsPerLike) || 0;
+            if (secondsPerSubscribe !== undefined) timerState.secondsPerSubscribe = Number(secondsPerSubscribe) || 0;
+            if (secondsPerShare !== undefined) timerState.secondsPerShare = Number(secondsPerShare) || 0;
+            if (secondsPerChatMessage !== undefined) timerState.secondsPerChatMessage = Number(secondsPerChatMessage) || 0;
+            if (multiplierEnabled !== undefined) timerState.multiplierEnabled = Boolean(multiplierEnabled);
+            if (multiplierValue !== undefined) timerState.multiplierValue = Number(multiplierValue) || 1.0;
+            if (actionOnExpiry !== undefined) timerState.actionOnExpiry = String(actionOnExpiry).trim();
             if (timerOpacity !== undefined)  timerState.timerOpacity  = parseFloat(timerOpacity);
             if (timerRadius !== undefined)   timerState.timerRadius   = parseInt(timerRadius);
             if (timerFontSize !== undefined) timerState.timerFontSize = parseInt(timerFontSize);
@@ -2707,6 +2713,18 @@ function setupListeners() {
             }
         }
 
+        // ─── TIMER EXTENSION: suscripción ───
+        if (timerState.state === 'running' && timerState.endsAt && Number(timerState.secondsPerSubscribe) > 0) {
+            let secondsToAdd = Number(timerState.secondsPerSubscribe);
+            if (timerState.multiplierEnabled && Number(timerState.multiplierValue) > 0) {
+                secondsToAdd *= Number(timerState.multiplierValue);
+            }
+            const msToAdd = Math.round(secondsToAdd * 1000);
+            timerState.endsAt += msToAdd;
+            console.log(`⏱️ Timer extendido +${secondsToAdd.toFixed(2)}s por suscripción de @${uid}`);
+            saveTimerToFirestore().catch(() => {});
+        }
+
         if (db) {
             try {
                 let msgTemplate = String(overlayAlertsConfig.subsAlertMsg || "¡gracias por suscribirte al canal! ⭐");
@@ -2932,6 +2950,18 @@ function setupListeners() {
 
         // Marcar presencia activa en el live
         markUserPresent(userId);
+
+        // ─── TIMER EXTENSION: mensaje de chat ───
+        if (timerState.state === 'running' && timerState.endsAt && Number(timerState.secondsPerChatMessage) > 0) {
+            let secondsToAdd = Number(timerState.secondsPerChatMessage);
+            if (timerState.multiplierEnabled && Number(timerState.multiplierValue) > 0) {
+                secondsToAdd *= Number(timerState.multiplierValue);
+            }
+            const msToAdd = Math.round(secondsToAdd * 1000);
+            timerState.endsAt += msToAdd;
+            console.log(`⏱️ Timer extendido +${secondsToAdd.toFixed(2)}s por mensaje de chat de @${userId}`);
+            saveTimerToFirestore().catch(() => {});
+        }
         
         // Actualizar foto de perfil (y datos de membresía) en segundo plano
         if (profilePic) {
@@ -3661,9 +3691,13 @@ function setupListeners() {
                 }
                 
                 if (secondsToAdd > 0) {
-                    const msToAdd = secondsToAdd * 1000;
+                    if (timerState.multiplierEnabled && Number(timerState.multiplierValue) > 0) {
+                        secondsToAdd *= Number(timerState.multiplierValue);
+                        console.log(`⏱️ Multiplicador de timer activo (x${timerState.multiplierValue}) → Sumando +${secondsToAdd.toFixed(2)}s.`);
+                    }
+                    const msToAdd = Math.round(secondsToAdd * 1000);
                     timerState.endsAt += msToAdd;
-                    console.log(`⏱️ Timer extendido +${secondsToAdd}s (termina en: ${Math.round((timerState.endsAt - Date.now()) / 1000)}s)`);
+                    console.log(`⏱️ Timer extendido +${secondsToAdd.toFixed(2)}s (termina en: ${Math.round((timerState.endsAt - Date.now()) / 1000)}s)`);
                     saveTimerToFirestore().catch(() => {});
                 }
             }
@@ -3738,7 +3772,10 @@ function setupListeners() {
 
         // ─── TIMER EXTENSION: extender el countdown por likes (Tikfinity Mode) ───
         if (timerState.state === 'running' && timerState.endsAt && Number(timerState.secondsPerLike) > 0) {
-            const secondsToAdd = delta * Number(timerState.secondsPerLike);
+            let secondsToAdd = delta * Number(timerState.secondsPerLike);
+            if (timerState.multiplierEnabled && Number(timerState.multiplierValue) > 0) {
+                secondsToAdd *= Number(timerState.multiplierValue);
+            }
             const msToAdd = Math.round(secondsToAdd * 1000);
             if (msToAdd > 0) {
                 timerState.endsAt += msToAdd;
@@ -3772,10 +3809,13 @@ function setupListeners() {
 
         // ─── TIMER EXTENSION: extender el countdown por seguir (Tikfinity Mode) ───
         if (timerState.state === 'running' && timerState.endsAt && Number(timerState.secondsPerFollow) > 0) {
-            const secondsToAdd = Number(timerState.secondsPerFollow);
-            const msToAdd = secondsToAdd * 1000;
+            let secondsToAdd = Number(timerState.secondsPerFollow);
+            if (timerState.multiplierEnabled && Number(timerState.multiplierValue) > 0) {
+                secondsToAdd *= Number(timerState.multiplierValue);
+            }
+            const msToAdd = Math.round(secondsToAdd * 1000);
             timerState.endsAt += msToAdd;
-            console.log(`⏱️ Timer extendido +${secondsToAdd}s por nuevo seguidor @${uid}`);
+            console.log(`⏱️ Timer extendido +${secondsToAdd.toFixed(2)}s por nuevo seguidor @${uid}`);
             saveTimerToFirestore().catch(() => {});
         }
         
@@ -3816,6 +3856,18 @@ function setupListeners() {
 
         // Marcar presencia activa en el live
         markUserPresent(uid);
+
+        // ─── TIMER EXTENSION: compartir live ───
+        if (timerState.state === 'running' && timerState.endsAt && Number(timerState.secondsPerShare) > 0) {
+            let secondsToAdd = Number(timerState.secondsPerShare);
+            if (timerState.multiplierEnabled && Number(timerState.multiplierValue) > 0) {
+                secondsToAdd *= Number(timerState.multiplierValue);
+            }
+            const msToAdd = Math.round(secondsToAdd * 1000);
+            timerState.endsAt += msToAdd;
+            console.log(`⏱️ Timer extendido +${secondsToAdd.toFixed(2)}s por compartir live @${uid}`);
+            saveTimerToFirestore().catch(() => {});
+        }
 
         // Acumular en contador de sesión para metas
         sessionShares.set(uid, (sessionShares.get(uid) || 0) + 1);
@@ -3934,6 +3986,12 @@ let timerState = {
     secondsPerCoin: 0,
     secondsPerFollow: 0,
     secondsPerLike: 0,
+    secondsPerSubscribe: 300,
+    secondsPerShare: 0,
+    secondsPerChatMessage: 0,
+    multiplierEnabled: false,
+    multiplierValue: 1.5,
+    actionOnExpiry: '-',
     timerOpacity: 0.85,
     timerRadius: 22,
     timerFontSize: 14,
@@ -3952,10 +4010,16 @@ async function saveTimerToFirestore() {
             secondsPerCoin:   timerState.secondsPerCoin !== undefined ? timerState.secondsPerCoin : 0,
             secondsPerFollow: timerState.secondsPerFollow !== undefined ? timerState.secondsPerFollow : 0,
             secondsPerLike:   timerState.secondsPerLike !== undefined ? timerState.secondsPerLike : 0,
+            secondsPerSubscribe: timerState.secondsPerSubscribe !== undefined ? timerState.secondsPerSubscribe : 300,
+            secondsPerShare:  timerState.secondsPerShare !== undefined ? timerState.secondsPerShare : 0,
+            secondsPerChatMessage: timerState.secondsPerChatMessage !== undefined ? timerState.secondsPerChatMessage : 0,
+            multiplierEnabled: timerState.multiplierEnabled !== undefined ? timerState.multiplierEnabled : false,
+            multiplierValue:  timerState.multiplierValue !== undefined ? timerState.multiplierValue : 1.5,
+            actionOnExpiry:   timerState.actionOnExpiry || '-',
             timerOpacity:     timerState.timerOpacity !== undefined ? timerState.timerOpacity : 0.85,
             timerRadius:      timerState.timerRadius !== undefined ? timerState.timerRadius : 22,
             timerFontSize:    timerState.timerFontSize !== undefined ? timerState.timerFontSize : 14,
-            timerTheme:       timerState.timerTheme || 'neon',
+            timerTheme:       timerState.theme || timerState.timerTheme || 'neon',
             updatedAt:        serverTimestamp()
         }, { merge: true });
     } catch (e) {
