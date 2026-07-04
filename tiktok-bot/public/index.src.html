@@ -1753,6 +1753,91 @@
                         registerDashboard();
                         interval = setInterval(registerDashboard, 10000); // Latido cada 10s
                         
+                        // Función unificada para determinar si este cliente debe reproducir audio/TTS
+                        const shouldPlayAudioHere = (currentHost, activeHost, activeTime) => {
+                            const now = Date.now();
+                            const isDashActive = (now - activeTime) < 25000; // Activo en los últimos 25s
+                            
+                            if (!isDashActive || !activeHost) {
+                                // Sin sesión activa remota: por defecto suena en localhost/OBS
+                                return (currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost);
+                            }
+                            
+                            // Si somos la misma IP o host que el dashboard activo, reproducimos
+                            if (currentHost === activeHost) {
+                                return true;
+                            }
+                            
+                            // Caso A: Si somos localhost (OBS) pero la sesión activa es una IP remota: silenciar
+                            const isIP = (h) => /^[0-9.]+$/.test(h) && h !== '127.0.0.1';
+                            if ((currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost) && isIP(activeHost)) {
+                                return false;
+                            }
+                            
+                            // Caso B: Si somos IP remota (OBS) pero la sesión activa es local (Mac local con localhost): silenciar
+                            if (isIP(currentHost) && (activeHost === 'localhost' || activeHost === '127.0.0.1')) {
+                                return false;
+                            }
+                            
+                            return false;
+                        };
+
+                        // Reproducción de alerta local (Sonido + TTS) en el dashboard
+                        const playLocalAlert = (data) => {
+                            try {
+                                let audioUrl = '';
+                                let audioVolume = 50;
+                                let playAudio = true;
+                                let ttsEnabled = false;
+                                let ttsText = '';
+                                const type = data.type;
+                                const user = data.user || data.uniqueId || 'Usuario';
+                                const config = overlaysRef.current || {};
+
+                                if (type === 'follow') {
+                                    playAudio = config.followPlayAudio !== undefined ? config.followPlayAudio : true;
+                                    audioVolume = config.followAudioVolume !== undefined ? config.followAudioVolume : 50;
+                                    audioUrl = config.followAudioUrl || 'https://www.soundjay.com/buttons/sounds/button-4.mp3';
+                                    ttsEnabled = config.followTtsEnabled || false;
+                                    ttsText = (config.followsAlertMsg || '¡gracias por seguir el canal!').replace('{user}', user);
+                                } else if (type === 'like') {
+                                    playAudio = config.likePlayAudio !== undefined ? config.likePlayAudio : true;
+                                    audioVolume = config.likeAudioVolume !== undefined ? config.likeAudioVolume : 50;
+                                    audioUrl = config.likeAudioUrl || 'https://www.myinstants.com/media/sounds/pop-sound.mp3';
+                                    ttsEnabled = config.likeTtsEnabled || false;
+                                    ttsText = (config.likesAlertMsg || '¡Envió {likes} likes!').replace('{user}', user).replace('{likes}', data.likes || '100');
+                                } else if (type === 'gift') {
+                                    playAudio = config.giftPlayAudio !== undefined ? config.giftPlayAudio : true;
+                                    audioVolume = config.giftAudioVolume !== undefined ? config.giftAudioVolume : 50;
+                                    audioUrl = config.giftAudioUrl || 'https://www.myinstants.com/media/sounds/gold-coins.mp3';
+                                    ttsEnabled = config.giftTtsEnabled !== undefined ? config.giftTtsEnabled : true;
+                                    ttsText = (config.giftsAlertMsg || '¡Gracias por {repeatCount}x {giftName}!').replace('{user}', user).replace('{giftName}', data.giftName || 'Regalo').replace('{repeatCount}', data.repeatCount || '1');
+                                } else if (type === 'subscribe') {
+                                    playAudio = config.subscribePlayAudio !== undefined ? config.subscribePlayAudio : true;
+                                    audioVolume = config.subscribeAudioVolume !== undefined ? config.subscribeAudioVolume : 50;
+                                    audioUrl = config.subscribeAudioUrl || 'https://www.myinstants.com/media/sounds/level-up-epic.mp3';
+                                    ttsEnabled = config.subscribeTtsEnabled !== undefined ? config.subscribeTtsEnabled : true;
+                                    ttsText = (config.subsAlertMsg || '¡gracias por suscribirte al canal!').replace('{user}', user);
+                                }
+
+                                if (playAudio && audioUrl) {
+                                    const localAudio = new Audio(audioUrl);
+                                    localAudio.volume = audioVolume / 100;
+                                    localAudio.play().catch(err => console.warn("Dashboard alert audio blocked:", err));
+                                }
+
+                                if (ttsEnabled && ttsText && 'speechSynthesis' in window) {
+                                    window.speechSynthesis.cancel();
+                                    const cleanText = ttsText.replace(/[👑⭐❤️👤🎁🔥👋]/g, '').trim();
+                                    const utterance = new SpeechSynthesisUtterance(cleanText);
+                                    utterance.lang = 'es-MX';
+                                    window.speechSynthesis.speak(utterance);
+                                }
+                            } catch (err) {
+                                console.error("Dashboard local alert play error:", err);
+                            }
+                        };
+
                         // Escuchar ruteo de sesión de audio activa del dashboard
                         window.activeDashboardHost = '';
                         window.activeDashboardTime = 0;
@@ -1773,40 +1858,29 @@
                             .onSnapshot(snap => {
                                 if (isInitialLoad) {
                                     isInitialLoad = false;
-                                    console.log("[Firebase Dashboard] Carga inicial de notificaciones de chat ignorada.");
+                                    console.log("[Firebase Dashboard] Carga inicial de notificaciones ignorada.");
                                     return;
                                 }
                                 snap.docChanges().forEach(change => {
                                     if (change.type === 'added') {
                                         const data = change.doc.data();
-                                        if (data.type === 'chat') {
-                                            // Verificar si este cliente debe reproducir el TTS
-                                            const now = Date.now();
-                                            const isIP = (h) => /^[0-9.]+$/.test(h) && h !== '127.0.0.1';
-                                            const activeHost = window.activeDashboardHost || '';
-                                            const activeTime = window.activeDashboardTime || 0;
-                                            const isDashActive = (now - activeTime) < 25000;
-                                            
-                                            let playHere = true;
-                                            if (isDashActive && isIP(activeHost)) {
-                                                // Si el dashboard activo está en una IP remota, reproducimos solo si somos esa IP
-                                                playHere = (window.location.hostname === activeHost);
-                                            } else {
-                                                // Si no hay dashboard activo en IP remota, reproducimos si somos local/host
-                                                playHere = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
-                                            }
+                                        const playHere = shouldPlayAudioHere(window.location.hostname, window.activeDashboardHost, window.activeDashboardTime);
 
-                                            if (playHere) {
+                                        if (playHere) {
+                                            if (data.type === 'chat') {
                                                 console.log("🗣️ Comentario TTS recibido localmente:", data.message);
                                                 enqueueLocalTts(data);
-                                            } else {
-                                                console.log("🗣️ TTS ignorado en dashboard local (reproduciendo en IP remota:", activeHost, ")");
+                                            } else if (['follow', 'like', 'gift', 'subscribe'].includes(data.type)) {
+                                                console.log(`🔔 Alerta [${data.type}] recibida localmente:`, data.user || data.uniqueId);
+                                                playLocalAlert(data);
                                             }
+                                        } else {
+                                            console.log(`🔇 Alerta [${data.type}] ignorada localmente (reproduciendo en host: ${window.activeDashboardHost})`);
                                         }
                                     }
                                 });
                             }, err => {
-                                console.error("Firestore listener error in local TTS:", err);
+                                console.error("Firestore listener error in local TTS/Alerts:", err);
                             });
                     } catch (e) {
                         console.error("Error setting up local TTS Firestore listener:", e);

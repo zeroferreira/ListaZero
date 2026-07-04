@@ -1043,6 +1043,34 @@
                     }, err => {
                         console.warn("[Firebase] Error al cargar overlayAlertsConfig:", err);
                     });
+                // Función unificada para determinar si este cliente debe reproducir audio/TTS
+                function shouldPlayAudioHere(currentHost, activeHost, activeTime) {
+                    const now = Date.now();
+                    const isDashActive = (now - activeTime) < 25000; // Activo en los últimos 25s
+                    
+                    if (!isDashActive || !activeHost) {
+                        // Sin sesión activa remota: por defecto suena en localhost/OBS
+                        return (currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost);
+                    }
+                    
+                    // Si somos la misma IP o host que el dashboard activo, reproducimos
+                    if (currentHost === activeHost) {
+                        return true;
+                    }
+                    
+                    // Caso A: Si somos localhost (OBS) pero la sesión activa es una IP remota: silenciar
+                    const isIP = (h) => /^[0-9.]+$/.test(h) && h !== '127.0.0.1';
+                    if ((currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost) && isIP(activeHost)) {
+                        return false;
+                    }
+                    
+                    // Caso B: Si somos IP remota (OBS) pero la sesión activa es local (Mac local con localhost): silenciar
+                    if (isIP(currentHost) && (activeHost === 'localhost' || activeHost === '127.0.0.1')) {
+                        return false;
+                    }
+                    
+                    return false;
+                }
 
                 // Escuchar sesión activa del dashboard para ruteo de audio
                 window.activeDashboardHost = '';
@@ -1088,31 +1116,10 @@
                             // Validar que sea un tipo de alerta soportado
                             if (!['follow', 'subscribe', 'gift', 'like', 'chat'].includes(data.type)) return;
 
-                            if (data.type === 'chat') {
-                                // Ruteo de audio para TTS de chat
-                                const now = Date.now();
-                                const isIP = (h) => /^[0-9.]+$/.test(h) && h !== '127.0.0.1';
-                                const activeHost = window.activeDashboardHost || '';
-                                const activeTime = window.activeDashboardTime || 0;
-                                const isDashActive = (now - activeTime) < 25000;
-                                
-                                let playHere = true;
-                                if (isDashActive && isIP(activeHost)) {
-                                    // Si el dashboard activo está en una IP remota, OBS (host local) no lo reproduce
-                                    const currentHost = window.location.hostname;
-                                    const currentHostIsLocal = (currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost);
-                                    if (currentHostIsLocal) {
-                                        playHere = false;
-                                    } else {
-                                        playHere = (currentHost === activeHost);
-                                    }
-                                } else {
-                                    // Si no hay dashboard remoto activo, suena en OBS (host local)
-                                    const currentHost = window.location.hostname;
-                                    playHere = (currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost);
-                                }
+                            const playAudioAndTts = shouldPlayAudioHere(window.location.hostname, window.activeDashboardHost, window.activeDashboardTime);
 
-                                if (playHere) {
+                            if (data.type === 'chat') {
+                                if (playAudioAndTts) {
                                     console.log("🗣️ TTS de chat reproducido en Overlay:", data.message);
                                     triggerTTS({
                                         ...data,
@@ -1121,7 +1128,7 @@
                                         pitch: data.pitchOverride
                                     }, true);
                                 } else {
-                                    console.log("🗣️ TTS de chat ignorado en Overlay (reproduciendo en Dashboard IP:", activeHost, ")");
+                                    console.log("🗣️ TTS de chat ignorado en Overlay (reproduciendo en Dashboard activo:", window.activeDashboardHost, ")");
                                 }
                                 return;
                             }
@@ -1129,8 +1136,11 @@
                             // Filtrar por tipo si está fijado en la URL
                             if (urlType !== 'all' && data.type !== urlType) return;
 
-                            console.log(`🔔 [${data.type}] ${data.user || data.uniqueId || '?'} — mostrando alerta`);
-                            addAlert(data);
+                            console.log(`🔔 [${data.type}] ${data.user || data.uniqueId || '?'} — mostrando alerta (reproducir sonido/TTS: ${playAudioAndTts})`);
+                            addAlert({
+                                ...data,
+                                playAudioAndTts: playAudioAndTts
+                            });
                         });
 
                         if (!initialSnapshotDone) {
@@ -1581,6 +1591,7 @@
             console.log("[alerts_overlay] playAlert llamada con data:", data);
             const config = window.overlayAlertsConfig || {};
             const type = data.type; // 'follow', 'like', 'gift', 'subscribe'
+            const playAudioAndTts = data.playAudioAndTts !== false;
             
             // Determinar si esta alerta específica está habilitada y cuáles son sus efectos
             // Nota: si urlType es 'all', forzamos enableAlert=true para no bloquear nada
@@ -2026,7 +2037,7 @@
             }
 
             // Reproducir Audio
-            if (playAudio) {
+            if (playAudio && playAudioAndTts) {
                 const $audio = $("#alertAudio");
                 let audioUrl = theme.audio || theme.defaultAudio;
                 if (type === 'follow' && config.followAudioUrl) audioUrl = config.followAudioUrl;
@@ -2046,7 +2057,7 @@
             spawnParticles(theme.color, type);
 
             // TTS (Text to Speech) - Leer mensaje en voz alta
-            triggerTTS(data, ttsEnabled);
+            triggerTTS(data, ttsEnabled && playAudioAndTts);
 
             // Mostrar el overlay con animación
             $wrapper.css("display", "flex").addClass("anim-enter");
