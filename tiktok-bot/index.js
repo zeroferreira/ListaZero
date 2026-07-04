@@ -2515,9 +2515,10 @@ startBot();
 
 // Cache para evitar escrituras redundantes de foto de perfil en la misma sesión
 const profilePicCache = new Set();
+const userMetadataCache = new Map(); // userId -> { memberLevel, gifterLevel, isSubscriber, displayName, profilePic }
 
 function extractUserLevels(data) {
-    let memberLevel = Number(data.teamMemberLevel || data.memberLevel || 0);
+    let memberLevel = Number(data.teamMemberLevel || data.memberLevel || (data.user && (data.user.teamMemberLevel || data.user.memberLevel)) || 0);
     let gifterLevel = Number(data.gifterLevel || (data.user && data.user.payGrade) || 0);
     
     const badgeSources = [];
@@ -2527,14 +2528,14 @@ function extractUserLevels(data) {
     for (const badge of badgeSources) {
         if (!badge) continue;
         
+        const badgeNameStr = (badge.name || badge.label || badge.title || badge.badgeName || '').toLowerCase();
+        
         // 1. Club de Fans (badgeSceneType 10 o nombre con 'fans'/'team'/'member')
         if (badge.badgeSceneType === 10 || 
             badge.type === 'member' || 
-            (badge.name && (
-                badge.name.toLowerCase().includes('team') || 
-                badge.name.toLowerCase().includes('fan') || 
-                badge.name.toLowerCase().includes('member')
-            )) ||
+            badgeNameStr.includes('team') || 
+            badgeNameStr.includes('fan') || 
+            badgeNameStr.includes('member') ||
             (badge.displayType && badge.displayType === 10)
         ) {
             if (badge.level > 0 && badge.level > memberLevel) {
@@ -2545,7 +2546,8 @@ function extractUserLevels(data) {
         // 2. Gifter Level (badgeSceneType 8 o nombre con 'gifter')
         if (badge.badgeSceneType === 8 || 
             badge.type === 'gifter' || 
-            (badge.name && badge.name.toLowerCase().includes('gift'))
+            badgeNameStr.includes('gift') ||
+            badgeNameStr.includes('gifter')
         ) {
             if (badge.level > 0 && badge.level > gifterLevel) {
                 gifterLevel = Number(badge.level);
@@ -2557,28 +2559,51 @@ function extractUserLevels(data) {
 }
 
 async function updateUserProfilePic(userId, displayName, url, extraFields = {}) {
-    if (!url || !db) return;
+    if (!db) return;
     
-    // Si ya actualizamos en esta sesión, saltar (ahorro de escrituras)
-    if (profilePicCache.has(userId)) return;
-
+    const cached = userMetadataCache.get(userId);
+    const hasMlChanged = extraFields.memberLevel !== undefined && (!cached || cached.memberLevel !== extraFields.memberLevel);
+    const hasGlChanged = extraFields.gifterLevel !== undefined && (!cached || cached.gifterLevel !== extraFields.gifterLevel);
+    const hasSubChanged = extraFields.isSubscriber !== undefined && (!cached || cached.isSubscriber !== extraFields.isSubscriber);
+    const hasNameChanged = !cached || cached.displayName !== displayName;
+    const hasPicChanged = url && (!cached || cached.profilePic !== url);
+    
+    // Si nada relevante ha cambiado y el usuario ya está cacheado, evitar escritura
+    if (cached && !hasMlChanged && !hasGlChanged && !hasSubChanged && !hasNameChanged && !hasPicChanged) {
+        return;
+    }
+    
     try {
         const { doc, setDoc, serverTimestamp } = require('firebase/firestore');
         const resolved = await getCanonicalUserKey(userId, displayName);
         const key = resolved.userKey || userId;
         
         const userRef = doc(db, 'userStats', key);
-        await setDoc(userRef, {
-            profilePic: url,
+        const updateData = {
             lastSeen: serverTimestamp(),
-            displayName: displayName, // Aprovechar para refrescar nombre
+            displayName: displayName,
             ...extraFields
-        }, { merge: true });
+        };
         
-        console.log(`📸 Foto de perfil guardada para ${displayName}`);
-        profilePicCache.add(userId);
+        if (url) {
+            updateData.profilePic = url;
+            profilePicCache.add(userId);
+        }
+        
+        await setDoc(userRef, updateData, { merge: true });
+        
+        // Actualizar cache local
+        userMetadataCache.set(userId, {
+            memberLevel: extraFields.memberLevel ?? cached?.memberLevel ?? 0,
+            gifterLevel: extraFields.gifterLevel ?? cached?.gifterLevel ?? 0,
+            isSubscriber: extraFields.isSubscriber ?? cached?.isSubscriber ?? false,
+            displayName: displayName,
+            profilePic: url || cached?.profilePic || ''
+        });
+        
+        console.log(`👤 Metadatos y nivel de miembro actualizados en DB para @${userId} (memberLevel: ${extraFields.memberLevel || 0})`);
     } catch (e) {
-        console.error(`Error actualizando foto de perfil de ${displayName}:`, e);
+        console.error(`Error actualizando metadatos de ${displayName}:`, e);
     }
 }
 
@@ -2968,16 +2993,13 @@ function setupListeners() {
             console.log(`⏱️ Timer extendido +${secondsToAdd.toFixed(2)}s por mensaje de chat de @${userId}`);
             saveTimerToFirestore().catch(() => {});
         }
-        
-        // Actualizar foto de perfil (y datos de membresía) en segundo plano
-        if (profilePic) {
-            const memberFields = {};
-            if (data.isSubscriber === true) memberFields.isSubscriber = true;
-            const { memberLevel: parsedMemberLevel, gifterLevel: parsedGifterLevel } = extractUserLevels(data);
-            if (parsedMemberLevel > 0) memberFields.memberLevel = parsedMemberLevel;
-            if (parsedGifterLevel > 0) memberFields.gifterLevel = parsedGifterLevel;
-            updateUserProfilePic(userId, displayName, profilePic, memberFields);
-        }
+        // Actualizar foto de perfil y metadatos de membresía en segundo plano
+        const memberFields = {};
+        if (data.isSubscriber === true) memberFields.isSubscriber = true;
+        const { memberLevel: parsedMemberLevel, gifterLevel: parsedGifterLevel } = extractUserLevels(data);
+        if (parsedMemberLevel > 0) memberFields.memberLevel = parsedMemberLevel;
+        if (parsedGifterLevel > 0) memberFields.gifterLevel = parsedGifterLevel;
+        updateUserProfilePic(userId, displayName, profilePic || null, memberFields);
 
         
         // DEBUG: Ver todos los mensajes para confirmar que llegan
