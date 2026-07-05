@@ -10,6 +10,14 @@ const firebaseConfig = {
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
+    const isOverlayMode = !!(
+      window.obsstudio ||
+      window.location.search.includes('mode=overlay') ||
+      window.location.search.includes('obs=true') ||
+      window.location.search.includes('overlay=true') ||
+      window.location.hash.includes('overlay')
+    );
+
     const safeStorage = {
       getItem: (key) => {
         try { return window.localStorage.getItem(key); } catch(e) { return null; }
@@ -377,7 +385,7 @@ const firebaseConfig = {
     }
 
     async function publishRouletteLiveState(payload) {
-      if (!db) return;
+      if (!db || isOverlayMode) return;
       try {
         await getRouletteLiveRef().set({
           ...payload,
@@ -569,7 +577,7 @@ const firebaseConfig = {
     }
 
     function startDrag(evt) {
-      if (evt.target.closest('.resize-handle') || isSpinning) return;
+      if (isOverlayMode || evt.target.closest('.resize-handle') || isSpinning) return;
       dragData = {
         startX: evt.clientX,
         startY: evt.clientY,
@@ -580,9 +588,10 @@ const firebaseConfig = {
     }
 
     function startResize(evt, corner) {
+      if (isOverlayMode || isSpinning) return;
       evt.stopPropagation();
       resizeData = {
-        corner,
+        corner: corner || '',
         startX: evt.clientX,
         startY: evt.clientY,
         startSize: wheelState.size
@@ -599,8 +608,8 @@ const firebaseConfig = {
       if (resizeData) {
         const dx = evt.clientX - resizeData.startX;
         const dy = evt.clientY - resizeData.startY;
-        const sx = resizeData.corner.includes('e') ? 1 : -1;
-        const sy = resizeData.corner.includes('s') ? 1 : -1;
+        const sx = (resizeData.corner || '').includes('e') ? 1 : -1;
+        const sy = (resizeData.corner || '').includes('s') ? 1 : -1;
         const delta = Math.max(dx * sx, dy * sy);
         wheelState.size = resizeData.startSize + delta;
         applyWheelState();
@@ -1721,12 +1730,20 @@ const firebaseConfig = {
 
     window.addEventListener('resize', () => {
       applyWheelState();
-      saveWheelState();
+      if (!isOverlayMode) {
+        saveWheelState();
+      }
     });
 
     subscribeToRequests();
     loadWheelState();
     setSourceTab('list');
+
+    if (isOverlayMode) {
+      const btn = document.getElementById('settings-btn');
+      if (btn) btn.style.display = 'none';
+      wrapper.querySelectorAll('.resize-handle').forEach(h => h.style.display = 'none');
+    }
 
     // Receptor de eventos de mensajería (postMessage) para actualización en tiempo real desde el Dashboard
     window.addEventListener('message', function(event) {

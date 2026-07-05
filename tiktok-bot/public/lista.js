@@ -17973,7 +17973,10 @@ function shouldShowStatsTicker() {
   // Utility for Admin Overlay Links
   window.copyOverlayLink = function (filename) {
     // Resolve URL relative to current location
-    const fullUrl = new URL(filename, window.location.href).href;
+    let fullUrl = new URL(filename, window.location.href).href;
+    if (filename === 'roulette_overlay.html') {
+      fullUrl += '?mode=overlay';
+    }
 
     navigator.clipboard.writeText(fullUrl).then(() => {
       alert('Enlace copiado al portapapeles:\n' + fullUrl);
