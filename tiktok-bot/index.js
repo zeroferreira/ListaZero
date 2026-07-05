@@ -2561,10 +2561,16 @@ function extractUserLevels(data) {
 async function updateUserProfilePic(userId, displayName, url, extraFields = {}) {
     if (!db) return;
     
+    const fields = { ...extraFields };
+    // Si es suscriptor, asegurar que su memberLevel sea al menos 1 para que no se filtre en las búsquedas
+    if (fields.isSubscriber === true) {
+        fields.memberLevel = Math.max(fields.memberLevel || 0, 1);
+    }
+    
     const cached = userMetadataCache.get(userId);
-    const hasMlChanged = extraFields.memberLevel !== undefined && (!cached || cached.memberLevel !== extraFields.memberLevel);
-    const hasGlChanged = extraFields.gifterLevel !== undefined && (!cached || cached.gifterLevel !== extraFields.gifterLevel);
-    const hasSubChanged = extraFields.isSubscriber !== undefined && (!cached || cached.isSubscriber !== extraFields.isSubscriber);
+    const hasMlChanged = fields.memberLevel !== undefined && (!cached || cached.memberLevel !== fields.memberLevel);
+    const hasGlChanged = fields.gifterLevel !== undefined && (!cached || cached.gifterLevel !== fields.gifterLevel);
+    const hasSubChanged = fields.isSubscriber !== undefined && (!cached || cached.isSubscriber !== fields.isSubscriber);
     const hasNameChanged = !cached || cached.displayName !== displayName;
     const hasPicChanged = url && (!cached || cached.profilePic !== url);
     
@@ -2582,7 +2588,7 @@ async function updateUserProfilePic(userId, displayName, url, extraFields = {}) 
         const updateData = {
             lastSeen: serverTimestamp(),
             displayName: displayName,
-            ...extraFields
+            ...fields
         };
         
         if (url) {
@@ -2594,14 +2600,14 @@ async function updateUserProfilePic(userId, displayName, url, extraFields = {}) 
         
         // Actualizar cache local
         userMetadataCache.set(userId, {
-            memberLevel: extraFields.memberLevel ?? cached?.memberLevel ?? 0,
-            gifterLevel: extraFields.gifterLevel ?? cached?.gifterLevel ?? 0,
-            isSubscriber: extraFields.isSubscriber ?? cached?.isSubscriber ?? false,
+            memberLevel: fields.memberLevel ?? cached?.memberLevel ?? 0,
+            gifterLevel: fields.gifterLevel ?? cached?.gifterLevel ?? 0,
+            isSubscriber: fields.isSubscriber ?? cached?.isSubscriber ?? false,
             displayName: displayName,
             profilePic: url || cached?.profilePic || ''
         });
         
-        console.log(`👤 Metadatos y nivel de miembro actualizados en DB para @${userId} (memberLevel: ${extraFields.memberLevel || 0})`);
+        console.log(`👤 Metadatos y nivel de miembro actualizados en DB para @${userId} (memberLevel: ${fields.memberLevel || 0})`);
     } catch (e) {
         console.error(`Error actualizando metadatos de ${displayName}:`, e);
     }
@@ -2731,14 +2737,14 @@ function setupListeners() {
                 const memberData = {
                     isSubscriber: true,
                     lastSeen: sts(),
-                    displayName
+                    displayName,
+                    memberLevel: Math.max(subLevel || 0, 1)
                 };
-                if (subLevel > 0) memberData.memberLevel = subLevel;
                 if (parsedGifterLevel > 0) memberData.gifterLevel = parsedGifterLevel;
                 if (profilePic) memberData.profilePic = profilePic;
                 await setDoc(userRef, memberData, { merge: true });
 
-                console.log(`💾 Membresía guardada para @${uid}`);
+                console.log(`💾 Membresía guardada para @${uid} (memberLevel: ${memberData.memberLevel})`);
             } catch (e) {
                 console.error('Error guardando membresía en userStats:', e);
             }
@@ -3545,7 +3551,16 @@ function setupListeners() {
         } catch (_) {}
 
         const isGiftFinal = (data.repeatEnd === undefined) ? true : (data.repeatEnd === true);
-        const isQuiereme = (giftKey === 'quiereme' || giftKey === 'loveme' || giftKey === 'communityheart' || giftKey === 'heartme' || giftKey === 'heart me' || giftKey.indexOf('quiereme') !== -1 || giftKey.indexOf('loveme') !== -1 || giftKey.indexOf('communityheart') !== -1 || giftKey.indexOf('heartme') !== -1 || giftKey.indexOf('heart me') !== -1);
+        const isQuiereme = (
+            giftKey.indexOf('quiereme') !== -1 ||
+            giftKey.indexOf('loveme') !== -1 ||
+            giftKey.indexOf('communityheart') !== -1 ||
+            giftKey.indexOf('heartme') !== -1 ||
+            giftKey.indexOf('corazon') !== -1 ||
+            giftKey.indexOf('heart') !== -1 ||
+            giftKey.indexOf('love') !== -1 ||
+            giftKey.indexOf('teamo') !== -1
+        );
         
         // ── Otorgar insignia z0-Fan (se hace en el primer envío o en el evento final) ──
         if (isQuiereme && (isGiftFinal || lastCount === 0)) {
