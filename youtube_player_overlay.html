@@ -108,21 +108,21 @@
     .card-inner {
       position: relative;
       z-index: 1;
-      padding: 20px 20px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-
-    /* ─── Top row: thumbnail + info ─────── */
-    .top-row {
-      display: flex;
-      gap: 16px;
-      align-items: flex-start;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-areas:
+        "artwork info"
+        "status status"
+        "progress progress"
+        "requester requester";
+      gap: 14px 16px;
+      transition: all 0.4s ease;
     }
 
     /* Thumbnail / Artwork */
     .artwork-wrap {
+      grid-area: artwork;
       flex-shrink: 0;
       width: 82px;
       height: 82px;
@@ -131,6 +131,7 @@
       box-shadow: 0 8px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1);
       position: relative;
       background: #111;
+      transition: all 0.4s ease;
     }
 
     .artwork-wrap img {
@@ -157,6 +158,7 @@
 
     /* Text info */
     .info-col {
+      grid-area: info;
       flex: 1;
       min-width: 0;
       display: flex;
@@ -197,6 +199,7 @@
 
     /* ─── Requester pill ────────────────── */
     .requester-row {
+      grid-area: requester;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -225,6 +228,7 @@
 
     /* ─── Progress bar ──────────────────── */
     .progress-section {
+      grid-area: progress;
       display: flex;
       flex-direction: column;
       gap: 6px;
@@ -293,10 +297,30 @@
     }
 
     .status-row {
+      grid-area: status;
       display: flex;
       align-items: center;
       gap: 6px;
       margin-top: -4px;
+    }
+
+    /* ─── Split Two-Columns Layout ───────── */
+    #player-card.layout-split-two-columns {
+      width: 520px;
+    }
+    #player-card.layout-split-two-columns .card-inner {
+      grid-template-columns: auto 1fr;
+      grid-template-areas:
+        "artwork info"
+        "artwork status"
+        "artwork progress"
+        "artwork requester";
+      gap: 8px 20px;
+      padding: 16px;
+      align-items: center;
+    }
+    #player-card.layout-split-two-columns .status-row {
+      margin-top: 0;
     }
     
     /* YouTube Player Container & responsive iframe */
@@ -340,28 +364,26 @@
     </div>
     <div class="card-inner">
 
-      <!-- Top: Artwork + Info -->
-      <div class="top-row">
-        <div class="artwork-wrap">
-          <img id="artwork" src="" alt="Thumbnail">
-          <div class="yt-badge">
-            <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-              <rect width="14" height="10" rx="2.5" fill="#FF0000"/>
-              <path d="M5.5 3L9.5 5L5.5 7V3Z" fill="white"/>
-            </svg>
+      <!-- Artwork + Info -->
+      <div class="artwork-wrap">
+        <img id="artwork" src="" alt="Thumbnail">
+        <div class="yt-badge">
+          <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+            <rect width="14" height="10" rx="2.5" fill="#FF0000"/>
+            <path d="M5.5 3L9.5 5L5.5 7V3Z" fill="white"/>
+          </svg>
+        </div>
+      </div>
+      <div class="info-col">
+        <div class="yt-label-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px;">
+          <div class="yt-label" style="margin-bottom: 0;">▶ YouTube — Zero FM</div>
+          <div id="req-badge" style="display: none; align-items: center; gap: 4px; background: rgba(255, 0, 60, 0.15); border: 1px solid rgba(255, 0, 60, 0.3); border-radius: 99px; padding: 2px 8px; font-size: 10px; font-weight: 700; color: #fff; max-width: 120px; overflow: hidden;">
+            <span class="req-badge-icon" style="font-size: 9px;">👤</span>
+            <span class="req-badge-name" id="req-badge-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">—</span>
           </div>
         </div>
-        <div class="info-col">
-          <div class="yt-label-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px;">
-            <div class="yt-label" style="margin-bottom: 0;">▶ YouTube — Zero FM</div>
-            <div id="req-badge" style="display: none; align-items: center; gap: 4px; background: rgba(255, 0, 60, 0.15); border: 1px solid rgba(255, 0, 60, 0.3); border-radius: 99px; padding: 2px 8px; font-size: 10px; font-weight: 700; color: #fff; max-width: 120px; overflow: hidden;">
-              <span class="req-badge-icon" style="font-size: 9px;">👤</span>
-              <span class="req-badge-name" id="req-badge-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">—</span>
-            </div>
-          </div>
-          <div class="song-title" id="song-title">Cargando...</div>
-          <div class="artist-name" id="artist-name">—</div>
-        </div>
+        <div class="song-title" id="song-title">Cargando...</div>
+        <div class="artist-name" id="artist-name">—</div>
       </div>
 
       <!-- Status row -->
@@ -845,10 +867,56 @@
     }
   }
 
+  function positionMiniatureVideo() {
+    const ytContainer = document.getElementById('yt-player-container');
+    const artWrap = document.querySelector('.artwork-wrap');
+    if (!ytContainer || !artWrap) return;
+    
+    const videoMode = window.currentVideoMode || 'audio_only';
+    if (videoMode !== 'miniature') return;
+    
+    const cfg = window.lastConfig || {};
+    const layoutMode = cfg.yt_card_layout_mode || 'standard';
+    const isSplit = layoutMode === 'split_two_columns';
+    const defaultArtSize = isSplit ? 130 : 82;
+    const artSize = cfg.yt_artwork_size || defaultArtSize;
+    
+    const cardRect = card.getBoundingClientRect();
+    const artRect = artWrap.getBoundingClientRect();
+    
+    if (cardRect.width > 0 && artRect.width > 0) {
+      const topOffset = artRect.top - cardRect.top;
+      const leftOffset = artRect.left - cardRect.left;
+      ytContainer.style.top = `${topOffset}px`;
+      ytContainer.style.left = `${leftOffset}px`;
+      ytContainer.style.width = `${artRect.width}px`;
+      ytContainer.style.height = `${artRect.height}px`;
+    } else {
+      const padding = isSplit ? 16 : 20;
+      ytContainer.style.top = `${padding}px`;
+      ytContainer.style.left = `${padding}px`;
+      ytContainer.style.width = `${artSize}px`;
+      ytContainer.style.height = `${artSize}px`;
+    }
+    
+    const radius = cfg.yt_card_radius !== undefined ? cfg.yt_card_radius : 22;
+    ytContainer.style.borderRadius = isSplit ? `${radius}px` : '14px';
+    const currentWidth = parseFloat(ytContainer.style.width) || artSize;
+    const miniatureScale = currentWidth / 180;
+    ytContainer.style.setProperty('--yt-miniature-scale', miniatureScale);
+  }
+
   // ─── Style Application ────────────────────────
   function applyCardStyles(cfg) {
     if (!cfg) return;
+    window.lastConfig = cfg;
     try {
+
+    // 0. Layout Mode
+    const layoutMode = cfg.yt_card_layout_mode || 'standard';
+    card.classList.remove('layout-standard', 'layout-split-two-columns');
+    card.classList.add(`layout-${layoutMode}`);
+    const isSplit = layoutMode === 'split_two_columns';
 
     // 1. Position
     const pos = cfg.yt_card_position || 'bottom-left';
@@ -873,7 +941,8 @@
     }
 
     // 2. Width
-    const width = cfg.yt_card_width || 380;
+    const defaultWidth = isSplit ? 520 : 380;
+    const width = cfg.yt_card_width || defaultWidth;
     card.style.width = `${width}px`;
 
     // 3. Radius
@@ -881,7 +950,8 @@
     card.style.borderRadius = `${radius}px`;
 
     // 4. Artwork Size
-    const artSize = cfg.yt_artwork_size || 82;
+    const defaultArtSize = isSplit ? 130 : 82;
+    const artSize = cfg.yt_artwork_size || defaultArtSize;
     const artWrap = document.querySelector('.artwork-wrap');
     if (artWrap) {
       artWrap.style.width = `${artSize}px`;
@@ -968,18 +1038,12 @@
         // Miniature Mode: Overlay on the artwork box (avoid freezing by scaling a 320x180 frame)
         ytContainer.classList.add('miniature-mode');
         ytContainer.style.position = 'absolute';
-        ytContainer.style.top = '20px'; // Matching .card-inner padding
-        ytContainer.style.left = '20px'; // Matching .card-inner padding
-        ytContainer.style.width = `${artSize}px`;
-        ytContainer.style.height = `${artSize}px`;
         ytContainer.style.opacity = '1';
         ytContainer.style.zIndex = '2'; // In front of standard artwork
-        ytContainer.style.borderRadius = '14px'; // Match artwork-wrap border-radius
         ytContainer.style.overflow = 'hidden';
         ytContainer.style.filter = '';
         
-        const miniatureScale = artSize / 180;
-        ytContainer.style.setProperty('--yt-miniature-scale', miniatureScale);
+        positionMiniatureVideo();
 
         if (artworkImg) artworkImg.style.opacity = '0'; // Hide static thumbnail
       } else if (videoMode === 'card_background') {
@@ -1039,6 +1103,7 @@
       reqBadge.style.background = reqBg;
       reqBadge.style.borderColor = reqBorder;
     }
+    positionMiniatureVideo();
     adjustIframeAspectRatio();
     } catch (err) {
       console.warn('[YT Overlay] Error applying styles:', err);
@@ -1142,6 +1207,10 @@
       hasSetInitialVolume = true;
       updatePlayerMuteState(currentVolume);
     }
+  });
+
+  window.addEventListener('resize', () => {
+    positionMiniatureVideo();
   });
 </script>
 </body>
