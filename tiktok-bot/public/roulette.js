@@ -931,9 +931,7 @@ const firebaseConfig = {
       const names = new Set();
       pending.forEach(req => {
         const u = (req.displayName || req.usuario || req.user || 'Anónimo').trim();
-        if (!excludedParticipants.has(normalizeParticipantName(u))) {
-           names.add(u);
-        }
+        names.add(u);
       });
 
       firebaseParticipants = Array.from(names);
