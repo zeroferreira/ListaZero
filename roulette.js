@@ -239,7 +239,7 @@ const firebaseConfig = {
     }
 
     function buildRouletteSongId(req) {
-      const explicit = String(req && (req.songId || req.requestId) || '').trim();
+      const explicit = String(req && (req.id || req.songId || req.requestId) || '').trim();
       if (explicit) return explicit.replace(/[^a-zA-Z0-9-]/g, '');
 
       const usuario = String(req && (req.usuario || req.displayName || req.user) || '').trim();
@@ -281,6 +281,18 @@ const firebaseConfig = {
       const current = getExtraDuplicateCount(name);
       setExtraDuplicateCount(name, current + Math.max(1, extra));
       recomputeParticipants();
+      saveWheelState();
+    }
+
+    function reduceDuplicateForName(name) {
+      const normalized = normalizeParticipantName(name);
+      if (!normalized) return;
+      const current = getExtraDuplicateCount(name);
+      if (current > 0) {
+        setExtraDuplicateCount(name, current - 1);
+        recomputeParticipants();
+        saveWheelState();
+      }
     }
 
     function getObsOverlayUrl() {
@@ -536,6 +548,7 @@ const firebaseConfig = {
           wheelState,
           manualParticipants,
           excludedParticipants: Array.from(excludedParticipants),
+          extraDuplicateCounts: Array.from(extraDuplicateCounts.entries()),
           activeSourceTab
         });
       } catch (_) {}
@@ -894,6 +907,9 @@ const firebaseConfig = {
           if (Array.isArray(data.excludedParticipants)) {
             excludedParticipants = new Set(data.excludedParticipants);
           }
+          if (Array.isArray(data.extraDuplicateCounts)) {
+            extraDuplicateCounts = new Map(data.extraDuplicateCounts);
+          }
           if (data.activeSourceTab && data.activeSourceTab !== activeSourceTab) {
             setSourceTab(data.activeSourceTab, { broadcast: false });
           }
@@ -1019,25 +1035,36 @@ const firebaseConfig = {
       participantsList.innerHTML = '';
       const visibleParticipants = getParticipantsForActiveTab();
       if (participantsCount) participantsCount.textContent = String(visibleParticipants.length);
-      const manualSet = new Set(manualParticipants.map(n => normalizeParticipantName(n)));
+
+      const counts = {};
       visibleParticipants.forEach(name => {
+        counts[name] = (counts[name] || 0) + 1;
+      });
+
+      const manualSet = new Set(manualParticipants.map(n => normalizeParticipantName(n)));
+      
+      Object.keys(counts).forEach(name => {
+        const count = counts[name];
         const source = manualSet.has(name.toLowerCase().trim()) ? 'manual' : 'firebase';
         const row = document.createElement('div');
         row.className = 'participant-row';
         const label = document.createElement('span');
         label.className = 'participant-name';
-        label.textContent = name;
+        label.textContent = count > 1 ? `${name} (x${count})` : name;
+        
         const actions = document.createElement('div');
         actions.className = 'participant-actions';
         const select = document.createElement('select');
         select.className = 'participant-action-select';
         select.innerHTML = `
           <option value="">Acción</option>
-          <option value="duplicate">Duplicado</option>
-          <option value="remove">Quitar</option>
+          <option value="duplicate">Duplicar (+1)</option>
+          <option value="reduce">Quitar Duplicado (-1)</option>
+          <option value="remove">Quitar Todo</option>
         `;
         select.addEventListener('change', () => {
           if (select.value === 'duplicate') addDuplicateForName(name, 1);
+          if (select.value === 'reduce') reduceDuplicateForName(name);
           if (select.value === 'remove') excludeParticipant(name, source);
           select.value = '';
         });
