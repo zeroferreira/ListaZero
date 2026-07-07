@@ -1246,6 +1246,18 @@
             const [activeProfile, setActiveProfile] = React.useState('zeroferreira');
             const [isEditingUsername, setIsEditingUsername] = React.useState(false);
             
+            const [muteDashboardAudio, setMuteDashboardAudio] = React.useState(() => {
+                try {
+                    return localStorage.getItem('mute_dashboard_audio') === 'true';
+                } catch (_) {
+                    return false;
+                }
+            });
+            const muteDashboardAudioRef = React.useRef(muteDashboardAudio);
+            React.useEffect(() => {
+                muteDashboardAudioRef.current = muteDashboardAudio;
+            }, [muteDashboardAudio]);
+            
             // System Configurations
             const [config, setConfig] = React.useState({
                 tiktokUsername: '',
@@ -1869,7 +1881,7 @@
                                         const data = change.doc.data();
                                         const playHere = shouldPlayAudioHere(window.location.hostname, window.activeDashboardHost, window.activeDashboardTime);
 
-                                        if (playHere) {
+                                        if (playHere && !muteDashboardAudioRef.current) {
                                             if (data.type === 'chat') {
                                                 console.log("🗣️ Comentario TTS recibido localmente:", data.message);
                                                 enqueueLocalTts(data);
@@ -1878,7 +1890,7 @@
                                                 playLocalAlert(data);
                                             }
                                         } else {
-                                            console.log(`🔇 Alerta [${data.type}] ignorada localmente (reproduciendo en host: ${window.activeDashboardHost})`);
+                                            console.log(`🔇 Alerta [${data.type}] ignorada/silenciada localmente (playHere: ${playHere}, silenciado: ${muteDashboardAudioRef.current})`);
                                         }
                                     }
                                 });
@@ -8195,11 +8207,11 @@
 
                                         <div style={{
                                             display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
+                                            flexDirection: 'column',
+                                            gap: '12px',
                                             padding: '12px 18px',
-                                            background: localAudioUnlocked ? 'rgba(34, 197, 94, 0.08)' : 'rgba(245, 158, 11, 0.08)',
-                                            border: `1px solid ${localAudioUnlocked ? 'rgba(34, 197, 94, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+                                            background: muteDashboardAudio ? 'rgba(255, 255, 255, 0.02)' : (localAudioUnlocked ? 'rgba(34, 197, 94, 0.08)' : 'rgba(245, 158, 11, 0.08)'),
+                                            border: `1px solid ${muteDashboardAudio ? 'var(--border-glass)' : (localAudioUnlocked ? 'rgba(34, 197, 94, 0.3)' : 'rgba(245, 158, 11, 0.3)')}`,
                                             borderRadius: '8px',
                                             marginBottom: '20px'
                                         }}>
