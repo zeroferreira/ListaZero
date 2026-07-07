@@ -1258,6 +1258,19 @@
                 localAudioEnabledRef.current = localAudioEnabled;
             }, [localAudioEnabled]);
 
+            const myClientId = React.useMemo(() => {
+                 try {
+                     let id = sessionStorage.getItem('dashboard_client_id');
+                     if (!id) {
+                         id = 'dash_' + Math.random().toString(36).substring(2, 11);
+                         sessionStorage.setItem('dashboard_client_id', id);
+                     }
+                     return id;
+                 } catch (_) {
+                     return 'dash_' + Math.random().toString(36).substring(2, 11);
+                 }
+             }, []);
+
             const playedNotificationIds = React.useRef(new Set());
             
             // System Configurations
@@ -1762,13 +1775,45 @@
                         
                         // Heartbeat: Registrar sesión activa del dashboard
                         const registerDashboard = () => {
-                            db.collection('systemConfig').doc('activeDashboardSession').set({
-                                hostname: window.location.hostname,
-                                timestamp: Date.now()
-                            }).catch(err => console.warn('Error setting active dashboard session:', err));
+                            const now = Date.now();
+                            const isVisible = document.visibilityState === 'visible';
+                            
+                            // Si localAudioEnabled no está activado en esta pestaña, no intentar adquirir el lock
+                            if (!localAudioEnabledRef.current) {
+                                // Si éramos el dueño actual, liberar el lock
+                                if (window.activeDashboardClientId === myClientId) {
+                                    db.collection('systemConfig').doc('activeDashboardSession').delete().catch(() => {});
+                                }
+                                return;
+                            }
+
+                            // Determinar si debemos reclamar/renovar el lock de audio:
+                            let shouldClaim = false;
+
+                            // Regla 1: Si ya somos el dueño actual, renovamos el heartbeat
+                            if (window.activeDashboardClientId === myClientId) {
+                                shouldClaim = true;
+                            }
+                            // Regla 2: Si el lock está libre o expirado (más de 10 segundos sin heartbeat)
+                            else if (!window.activeDashboardClientId || (now - window.activeDashboardTime > 10000)) {
+                                shouldClaim = true;
+                            }
+                            // Regla 3: Si el dueño actual no está visible, pero nosotros SÍ estamos visibles
+                            else if (isVisible && !window.activeDashboardVisible) {
+                                shouldClaim = true;
+                            }
+
+                            if (shouldClaim) {
+                                db.collection('systemConfig').doc('activeDashboardSession').set({
+                                    clientId: myClientId,
+                                    hostname: window.location.hostname,
+                                    timestamp: now,
+                                    isTabVisible: isVisible
+                                }).catch(err => console.warn('Error setting active dashboard session:', err));
+                            }
                         };
                         registerDashboard();
-                        interval = setInterval(registerDashboard, 10000); // Latido cada 10s
+                        interval = setInterval(registerDashboard, 3000); // Latido cada 3s
                         
                         // Función unificada para determinar si este cliente debe reproducir audio/TTS
                         const shouldPlayAudioHere = (currentHost, activeHost, activeTime) => {
@@ -1839,14 +1884,18 @@
                         };
 
                         // Escuchar ruteo de sesión de audio activa del dashboard
+                        window.activeDashboardClientId = '';
                         window.activeDashboardHost = '';
                         window.activeDashboardTime = 0;
+                        window.activeDashboardVisible = false;
                         unsubSession = db.collection('systemConfig').doc('activeDashboardSession')
                             .onSnapshot((doc) => {
                                 if (doc.exists && doc.data()) {
                                     const dData = doc.data();
+                                    window.activeDashboardClientId = dData.clientId || '';
                                     window.activeDashboardHost = dData.hostname || '';
                                     window.activeDashboardTime = dData.timestamp || 0;
+                                    window.activeDashboardVisible = dData.isTabVisible || false;
                                 }
                             }, err => console.warn("Error activeDashboardSession sub:", err));
 
@@ -1870,7 +1919,8 @@
                                         }
                                         playedNotificationIds.current.add(docId);
 
-                                        if (localAudioEnabledRef.current) {
+                                        const isAudioOwner = (window.activeDashboardClientId === myClientId);
+                                        if (localAudioEnabledRef.current && isAudioOwner) {
                                             if (data.type === 'chat') {
                                                 console.log("🗣️ Comentario TTS recibido localmente:", data.message);
                                                 enqueueLocalTts(data);
@@ -1879,7 +1929,7 @@
                                                 playLocalAlert(data);
                                             }
                                         } else {
-                                            console.log(`🔇 Alerta [${data.type}] ignorada (sonido local desactivado en esta pestaña)`);
+                                            console.log(`🔇 Alerta [${data.type}] ignorada (sonido local desactivado o no es la pestaña activa). Owner: ${window.activeDashboardClientId}`);
                                         }
                                     }
                                 });
