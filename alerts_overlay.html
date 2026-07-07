@@ -1077,12 +1077,19 @@
                 // overlayStartedAt = 2 minutos ANTES del inicio para tolerar desfases de reloj
                 const overlayStartedAt = new Date(overlayStartMs - 2 * 60 * 1000);
                 let initialSnapshotDone = false;
+                const playedNotificationIds = new Set();
 
                 db.collection('notifications')
                     .where('timestamp', '>', overlayStartedAt)
                     .onSnapshot(snap => {
                         snap.docChanges().forEach(change => {
                             if (change.type !== 'added') return;
+
+                            const docId = change.doc.id;
+                            if (playedNotificationIds.has(docId)) {
+                                return;
+                            }
+                            playedNotificationIds.add(docId);
 
                             const data = change.doc.data();
 

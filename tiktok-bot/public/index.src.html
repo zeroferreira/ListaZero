@@ -1246,17 +1246,19 @@
             const [activeProfile, setActiveProfile] = React.useState('zeroferreira');
             const [isEditingUsername, setIsEditingUsername] = React.useState(false);
             
-            const [muteDashboardAudio, setMuteDashboardAudio] = React.useState(() => {
+            const [localAudioEnabled, setLocalAudioEnabled] = React.useState(() => {
                 try {
-                    return localStorage.getItem('mute_dashboard_audio') === 'true';
+                    return localStorage.getItem('local_audio_enabled') === 'true';
                 } catch (_) {
                     return false;
                 }
             });
-            const muteDashboardAudioRef = React.useRef(muteDashboardAudio);
+            const localAudioEnabledRef = React.useRef(localAudioEnabled);
             React.useEffect(() => {
-                muteDashboardAudioRef.current = muteDashboardAudio;
-            }, [muteDashboardAudio]);
+                localAudioEnabledRef.current = localAudioEnabled;
+            }, [localAudioEnabled]);
+
+            const playedNotificationIds = React.useRef(new Set());
             
             // System Configurations
             const [config, setConfig] = React.useState({
@@ -1862,9 +1864,13 @@
                                 snap.docChanges().forEach(change => {
                                     if (change.type === 'added') {
                                         const data = change.doc.data();
-                                        const playHere = true;
+                                        const docId = change.doc.id;
+                                        if (playedNotificationIds.current.has(docId)) {
+                                            return;
+                                        }
+                                        playedNotificationIds.current.add(docId);
 
-                                        if (playHere && !muteDashboardAudioRef.current) {
+                                        if (localAudioEnabledRef.current) {
                                             if (data.type === 'chat') {
                                                 console.log("🗣️ Comentario TTS recibido localmente:", data.message);
                                                 enqueueLocalTts(data);
@@ -1873,7 +1879,7 @@
                                                 playLocalAlert(data);
                                             }
                                         } else {
-                                            console.log(`🔇 Alerta [${data.type}] ignorada/silenciada localmente (playHere: ${playHere}, silenciado: ${muteDashboardAudioRef.current})`);
+                                            console.log(`🔇 Alerta [${data.type}] ignorada (sonido local desactivado en esta pestaña)`);
                                         }
                                     }
                                 });
@@ -3431,8 +3437,8 @@
 
                 // Sincronizar audio y TTS directamente en el Dashboard (Parent Window) para evadir bloqueo de autoplay
                 try {
-                    if (muteDashboardAudioRef.current) {
-                        console.log("Simulated sound skipped because local audio is muted.");
+                    if (!localAudioEnabledRef.current) {
+                        console.log("Simulated sound skipped because local audio is disabled.");
                         triggerSaveBadge(`🧪 Test [${type}] simulado (silenciado)`);
                         return;
                     }
@@ -3825,17 +3831,17 @@
                             <button 
                                 type="button"
                                 onClick={() => {
-                                    const nextMute = !muteDashboardAudio;
-                                    setMuteDashboardAudio(nextMute);
+                                    const nextEnabled = !localAudioEnabled;
+                                    setLocalAudioEnabled(nextEnabled);
                                     try {
-                                        localStorage.setItem('mute_dashboard_audio', String(nextMute));
+                                        localStorage.setItem('local_audio_enabled', String(nextEnabled));
                                     } catch(_) {}
                                 }}
                                 style={{ 
                                     cursor: 'pointer', 
-                                    border: !muteDashboardAudio ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)', 
-                                    background: !muteDashboardAudio ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)' : 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.15) 100%)', 
-                                    color: !muteDashboardAudio ? '#4ade80' : '#f87171',
+                                    border: localAudioEnabled ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)', 
+                                    background: localAudioEnabled ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)' : 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.15) 100%)', 
+                                    color: localAudioEnabled ? '#4ade80' : '#f87171',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '6px',
@@ -3845,11 +3851,11 @@
                                     fontSize: '0.75rem',
                                     transition: 'all 0.3s ease',
                                     height: '36px',
-                                    boxShadow: !muteDashboardAudio ? '0 0 10px rgba(34, 197, 94, 0.15)' : 'none'
+                                    boxShadow: localAudioEnabled ? '0 0 10px rgba(34, 197, 94, 0.15)' : 'none'
                                 }}
-                                title={!muteDashboardAudio ? "Silenciar alertas y TTS en esta pestaña del navegador" : "Activar alertas y TTS en esta pestaña del navegador"}
+                                title={localAudioEnabled ? "Silenciar alertas y TTS en esta pestaña del navegador" : "Activar alertas y TTS en esta pestaña del navegador"}
                             >
-                                <span>{!muteDashboardAudio ? '🔊 Sonido Local: ON' : '🔇 Sonido Local: OFF'}</span>
+                                <span>{localAudioEnabled ? '🔊 Sonido Local: ON' : '🔇 Sonido Local: OFF'}</span>
                             </button>
 
                             <button 
@@ -8263,14 +8269,14 @@
                                             flexDirection: 'column',
                                             gap: '12px',
                                             padding: '12px 18px',
-                                            background: muteDashboardAudio ? 'rgba(255, 255, 255, 0.02)' : (localAudioUnlocked ? 'rgba(34, 197, 94, 0.08)' : 'rgba(245, 158, 11, 0.08)'),
-                                            border: `1px solid ${muteDashboardAudio ? 'var(--border-glass)' : (localAudioUnlocked ? 'rgba(34, 197, 94, 0.3)' : 'rgba(245, 158, 11, 0.3)')}`,
+                                            background: !localAudioEnabled ? 'rgba(255, 255, 255, 0.02)' : (localAudioUnlocked ? 'rgba(34, 197, 94, 0.08)' : 'rgba(245, 158, 11, 0.08)'),
+                                            border: `1px solid ${!localAudioEnabled ? 'var(--border-glass)' : (localAudioUnlocked ? 'rgba(34, 197, 94, 0.3)' : 'rgba(245, 158, 11, 0.3)')}`,
                                             borderRadius: '8px',
                                             marginBottom: '20px'
                                         }}>
                                             <span style={{ fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '8px', color: localAudioUnlocked ? '#4ade80' : '#fbbf24' }}>
                                                 {localAudioUnlocked ? '🟢' : '⚠️'} 
-                                                <strong>{localAudioUnlocked ? 'Sonido local activo (El TTS se reproducirá en esta pestaña)' : 'El sonido local requiere una interacción para activarse'}</strong>
+                                                <strong>{localAudioUnlocked ? 'Sonido local activado en esta pestaña (El TTS se reproducirá aquí)' : 'El sonido local requiere una interacción para activarse'}</strong>
                                             </span>
                                             {!localAudioUnlocked && (
                                                 <button className="btn btn-secondary btn-sm" onClick={unlockLocalAudio} style={{ padding: '4px 10px', fontSize: '0.78rem', height: 'auto' }}>Activar Sonido</button>
