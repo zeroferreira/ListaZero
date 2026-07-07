@@ -908,6 +908,14 @@ function pushSrEvent(evt) {
 
 function enqueueCider(item) {
     try {
+        if (item && item.docId) {
+            const exists = pendingCiderQueue.some(x => x.docId === item.docId);
+            if (exists) return;
+        }
+        if (item && item.id) {
+            const exists = pendingCiderQueue.some(x => x.id === item.id);
+            if (exists) return;
+        }
         pendingCiderQueue.push({ ...(item || {}), enqueuedAt: Date.now(), tries: (item && item.tries) ? item.tries : 0 });
         while (pendingCiderQueue.length > 50) pendingCiderQueue.shift();
     } catch (_) {}
@@ -4789,9 +4797,9 @@ async function handleSongRequest(user, query, options = {}) {
         let queueDocId = '';
         if (sendToQueue) {
             try {
-                const docRef = await addDoc(collection(db, 'solicitudes'), requestData);
+                await setDoc(docFn(db, 'solicitudes', songId), requestData);
                 queueSaved = true;
-                queueDocId = docRef && docRef.id ? docRef.id : '';
+                queueDocId = songId;
                 console.log(`✅ Agregada a la lista visual`);
             } catch (e) {
                 const code = String(e && (e.code || e.status) ? (e.code || e.status) : '').toLowerCase();
@@ -4803,9 +4811,9 @@ async function handleSongRequest(user, query, options = {}) {
                         const fresh = (freshStatus || liveCodeEnv || '').trim();
                         if (fresh && fresh !== String(requestData.liveCode || '')) {
                             requestData.liveCode = fresh;
-                            const docRef2 = await addDoc(collection(db, 'solicitudes'), requestData);
+                            await setDoc(docFn(db, 'solicitudes', songId), requestData);
                             queueSaved = true;
-                            queueDocId = docRef2 && docRef2.id ? docRef2.id : '';
+                            queueDocId = songId;
                             console.log(`✅ Agregada a la lista visual`);
                         } else {
                             console.warn(`🚫 Firestore rechazó escritura (permiso). liveCode usado=${maskLiveCode(requestData.liveCode)} liveCode status=${maskLiveCode(freshStatus)}`);
@@ -4848,7 +4856,9 @@ async function handleSongRequest(user, query, options = {}) {
                 }
             } else {
                 ciderQueued = true;
-                enqueueCider({ source: source || 'request', user, userId, query, songName, artistName, artworkUrl, appleMusicId, trackViewUrl, queueSaved, docId: queueDocId });
+                if (!queueSaved) {
+                    enqueueCider({ source: source || 'request', user, userId, query, songName, artistName, artworkUrl, appleMusicId, trackViewUrl, queueSaved, docId: queueDocId });
+                }
                 console.warn(`⚠️ Cider no conectado. Pedido en cola para reintento.`);
             }
         }
