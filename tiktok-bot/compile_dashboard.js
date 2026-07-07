@@ -140,7 +140,7 @@ function syncRootOverlays() {
     const destPedirHtml = path.join(publicDir, 'pedir.html');
     if (fs.existsSync(srcIndexHtml)) {
       let content = fs.readFileSync(srcIndexHtml, 'utf8');
-      content = content.replace('src="index.js"', 'src="pedir.js"');
+      content = content.replace(/src="index\.js[^"]*"/g, 'src="pedir.js"');
       fs.writeFileSync(destPedirHtml, content, 'utf8');
       console.log('  ✅ Synced root index.html to public/pedir.html (with pedir.js path update)');
     }
