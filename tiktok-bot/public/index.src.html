@@ -1770,39 +1770,14 @@
                         
                         // Función unificada para determinar si este cliente debe reproducir audio/TTS
                         const shouldPlayAudioHere = (currentHost, activeHost, activeTime) => {
-                             const route = overlaysRef.current?.route_audio_to || 'all';
-                             if (route === 'obs') {
-                                 return false; // Mute in Dashboard
+                             // Si es una dirección IP (el IP solo sera de control), silenciar completamente
+                             const isIP = (h) => /^[0-9.]+$/.test(h) && h !== '127.0.0.1';
+                             if (isIP(currentHost)) {
+                                 return false;
                              }
-                             if (route === 'dashboard') {
-                                 return true; // Force play in active Dashboard
-                             }
-
-                            const now = Date.now();
-                            const isDashActive = (now - activeTime) < 25000; // Activo en los últimos 25s
-                            
-                            if (!isDashActive || !activeHost) {
-                                // Sin sesión activa remota: por defecto suena en localhost/OBS
-                                return (currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost);
-                            }
-                            
-                            // Si somos la misma IP o host que el dashboard activo, reproducimos
-                            if (currentHost === activeHost) {
-                                return true;
-                            }
-                            
-                            // Caso A: Si somos localhost (OBS) pero la sesión activa es una IP remota: silenciar
-                            const isIP = (h) => /^[0-9.]+$/.test(h) && h !== '127.0.0.1';
-                            if ((currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost) && isIP(activeHost)) {
-                                return false;
-                            }
-                            
-                            // Caso B: Si somos IP remota (OBS) pero la sesión activa es local (Mac local con localhost): silenciar
-                            if (isIP(currentHost) && (activeHost === 'localhost' || activeHost === '127.0.0.1')) {
-                                return false;
-                            }
-                            
-                            return false;
+                             
+                             // Si es localhost o 127.0.0.1 o vacío (OBS/Dashboard local), reproducir
+                             return (currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost);
                         };
 
                         // Reproducción de alerta local (Sonido + TTS) en el dashboard
@@ -5056,26 +5031,6 @@
                                             </p>
                                         </div>
 
-                                        {/* Global Sound Routing Selector */}
-                                        <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid #3b82f6' }}>
-                                            <div className="form-group" style={{ margin: 0 }}>
-                                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', fontSize: '0.9rem', fontWeight: '600', color: '#e2e8f0' }}>
-                                                    <span>🔊</span> Ruta del Sonido de Alertas y TTS
-                                                </label>
-                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '12px' }}>
-                                                    Configura dónde quieres escuchar las alertas sonoras y la voz del chat (TTS). Para evitar eco o doble sonido, puedes desactivarlo en OBS o en el Panel.
-                                                </p>
-                                                <select 
-                                                    value={overlays.route_audio_to || 'all'}
-                                                    onChange={(e) => setOverlays({ ...overlays, route_audio_to: e.target.value })}
-                                                    style={{ width: '100%', height: '40px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '0 10px' }}
-                                                >
-                                                    <option value="all">🔊 Reproducir en ambos (OBS y Panel del Dashboard)</option>
-                                                    <option value="dashboard">💻 Reproducir SOLO en el Panel del Dashboard (Mac)</option>
-                                                    <option value="obs">📺 Reproducir SOLO en OBS (Transmisión)</option>
-                                                </select>
-                                            </div>
-                                        </div>
 
                                         {/* CARD 1: FOLLOWERS */}
                                         <div className="glass-card" style={{ borderLeft: '4px solid #ec4899' }}>
@@ -8280,22 +8235,6 @@
                                                     />
                                                     Activar Lector de Chat (TTS)
                                                 </label>
-                                            </div>
-
-                                            <div className="form-group" style={{ marginBottom: '20px' }}>
-                                                <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', fontWeight: '600', color: '#cbd5e1' }}>🔊 Salida de Sonido de Alertas y TTS</label>
-                                                <select 
-                                                    value={overlays.route_audio_to || 'all'}
-                                                    onChange={(e) => setOverlays({ ...overlays, route_audio_to: e.target.value })}
-                                                    style={{ width: '100%', height: '40px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '0 10px' }}
-                                                >
-                                                    <option value="all">🔊 Reproducir en ambos (OBS y Panel del Dashboard)</option>
-                                                    <option value="dashboard">💻 Reproducir SOLO en el Panel del Dashboard (Mac)</option>
-                                                    <option value="obs">📺 Reproducir SOLO en OBS (Transmisión)</option>
-                                                </select>
-                                                <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginTop: '4px', display: 'block' }}>
-                                                    Configura dónde quieres escuchar las alertas sonoras y la voz del chat (TTS). Para evitar eco o doble sonido, puedes desactivarlo en OBS o en el Panel.
-                                                </span>
                                             </div>
 
                                             <div className="grid-3" style={{ marginBottom: '15px' }}>

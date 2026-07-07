@@ -1045,37 +1045,14 @@
                     });
                 // Función unificada para determinar si este cliente debe reproducir audio/TTS
                 function shouldPlayAudioHere(currentHost, activeHost, activeTime) {
-                    const config = window.overlayAlertsConfig || {};
-                    const route = config.route_audio_to || 'all';
-                    if (route === 'dashboard') {
-                        return false; // Mute in OBS overlay
-                    }
-
-                    const now = Date.now();
-                    const isDashActive = (now - activeTime) < 25000; // Activo en los últimos 25s
-                    
-                    if (!isDashActive || !activeHost) {
-                        // Sin sesión activa remota: por defecto suena en localhost/OBS
-                        return (currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost);
-                    }
-                    
-                    // Si somos la misma IP o host que el dashboard activo, reproducimos
-                    if (currentHost === activeHost) {
-                        return true;
-                    }
-                    
-                    // Caso A: Si somos localhost (OBS) pero la sesión activa es una IP remota: silenciar
+                    // Si es una dirección IP (el IP solo sera de control/visual), silenciar completamente
                     const isIP = (h) => /^[0-9.]+$/.test(h) && h !== '127.0.0.1';
-                    if ((currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost) && isIP(activeHost)) {
+                    if (isIP(currentHost)) {
                         return false;
                     }
                     
-                    // Caso B: Si somos IP remota (OBS) pero la sesión activa es local (Mac local con localhost): silenciar
-                    if (isIP(currentHost) && (activeHost === 'localhost' || activeHost === '127.0.0.1')) {
-                        return false;
-                    }
-                    
-                    return false;
+                    // Si es localhost o 127.0.0.1 o vacío (local), reproducir
+                    return (currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost);
                 }
 
                 // Escuchar sesión activa del dashboard para ruteo de audio
