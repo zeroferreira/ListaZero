@@ -3807,6 +3807,660 @@
                 setOverlays({ ...overlays, chatTtsSpecialUsers: updatedList });
             };
 
+            const renderTtsPanelContent = () => {
+                return (
+                    <div className="glass-card animate-fade-in">
+                        <h3 style={{ marginBottom: '10px' }}>🗣️ Lector de Voz (TTS) para Chat y Comentarios</h3>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '20px' }}>
+                            Configura la lectura automática en voz alta de los comentarios de tu chat en vivo de TikTok, similar a Tikfinity.
+                        </p>
+
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px',
+                            padding: '12px 18px',
+                            background: !localAudioEnabled ? 'rgba(255, 255, 255, 0.02)' : (localAudioUnlocked ? 'rgba(34, 197, 94, 0.08)' : 'rgba(245, 158, 11, 0.08)'),
+                            border: `1px solid ${!localAudioEnabled ? 'var(--border-glass)' : (localAudioUnlocked ? 'rgba(34, 197, 94, 0.3)' : 'rgba(245, 158, 11, 0.3)')}`,
+                            borderRadius: '8px',
+                            marginBottom: '20px'
+                        }}>
+                            <span style={{ fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '8px', color: localAudioUnlocked ? '#4ade80' : '#fbbf24' }}>
+                                {localAudioUnlocked ? '🟢' : '⚠️'} 
+                                <strong>{localAudioUnlocked ? 'Sonido local activado en esta pestaña (El TTS se reproducirá aquí)' : 'El sonido local requiere una interacción para activarse'}</strong>
+                            </span>
+                            {!localAudioUnlocked && (
+                                <button className="btn btn-secondary btn-sm" onClick={unlockLocalAudio} style={{ padding: '4px 10px', fontSize: '0.78rem', height: 'auto' }}>Activar Sonido</button>
+                            )}
+                        </div>
+
+                        <div className="form-group" style={{ marginBottom: '20px', background: 'rgba(255,255,255,0.02)', padding: '15px', border: '1px dashed var(--border-glass)', borderRadius: '10px' }}>
+                            <label style={{ fontWeight: '600', color: 'var(--accent-primary)', display: 'block', marginBottom: '8px' }}>🔗 Enlace del Widget para OBS (Fuente de Navegador)</label>
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '10px' }}>
+                                Agrega este enlace en OBS como una <strong>Fuente de Navegador</strong>. Al ser de tipo TTS, no mostrará nada en pantalla (es invisible) pero reproducirá la voz de los comentarios de forma automatizada.
+                            </p>
+                            <div className="copy-url-row" style={{ display: 'flex', gap: '10px' }}>
+                                <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/alerts_overlay.html?type=chat`} onClick={(e) => e.target.select()} style={{ flex: 1 }} />
+                                <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/alerts_overlay.html?type=chat`)}>Copiar URL</button>
+                            </div>
+                        </div>
+
+                        {/* Row 1: General Settings */}
+                        <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '25px', paddingBottom: '25px' }}>
+                            <h4 style={{ marginBottom: '15px', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span>⚙️ Configuración General</span>
+                            </h4>
+                            
+                            <div className="form-group" style={{ marginBottom: '15px' }}>
+                                <label className="toggle-switch-label" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={overlays.chatTtsEnabled} 
+                                        onChange={(e) => setOverlays({ ...overlays, chatTtsEnabled: e.target.checked })} 
+                                        style={{ width: 'auto', marginRight: '10px' }}
+                                    />
+                                    Activar Lector de Chat (TTS)
+                                </label>
+                            </div>
+
+                            <div className="grid-3" style={{ marginBottom: '15px' }}>
+                                <div className="form-group">
+                                    <label>Idioma de la Voz</label>
+                                    <select 
+                                        value={overlays.chatTtsLanguage} 
+                                        onChange={(e) => {
+                                            const lang = e.target.value;
+                                            const filtered = voices.filter(v => v.lang.startsWith(lang));
+                                            const firstVoiceName = filtered.length > 0 ? filtered[0].name : 'Default Voice';
+                                            setOverlays({ 
+                                                ...overlays, 
+                                                chatTtsLanguage: lang,
+                                                chatTtsVoice: firstVoiceName
+                                            });
+                                        }}
+                                    >
+                                        <option value="es-MX">Español (México) [es-MX]</option>
+                                        <option value="es-ES">Español (España) [es-ES]</option>
+                                        <option value="es-US">Español (EE.UU.) [es-US]</option>
+                                        <option value="en-US">English (US) [en-US]</option>
+                                        <option value="en-GB">English (UK) [en-GB]</option>
+                                        <option value="pt-BR">Português (Brasil) [pt-BR]</option>
+                                        <option value="fr-FR">Français (France) [fr-FR]</option>
+                                        <option value="it-IT">Italiano (Italia) [it-IT]</option>
+                                    </select>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Voz Específica</label>
+                                    <select 
+                                        disabled={overlays.chatTtsRandomVoice}
+                                        value={overlays.chatTtsVoice} 
+                                        onChange={(e) => setOverlays({ ...overlays, chatTtsVoice: e.target.value })}
+                                    >
+                                        {voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage)).map(v => (
+                                            <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                                        ))}
+                                        {voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage)).length === 0 && (
+                                            <option value="Default Voice">Voz del sistema por defecto</option>
+                                        )}
+                                    </select>
+                                </div>
+
+                                <div className="form-group">
+                                    <label className="toggle-switch-label" style={{ marginTop: '30px', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={overlays.chatTtsRandomVoice} 
+                                            onChange={(e) => setOverlays({ ...overlays, chatTtsRandomVoice: e.target.checked })} 
+                                            style={{ width: 'auto', marginRight: '8px' }}
+                                        />
+                                        Voz Aleatoria (por idioma)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className="grid-3" style={{ marginBottom: '15px' }}>
+                                <div className="form-group">
+                                    <label>Velocidad (Speed): {overlays.chatTtsSpeed}%</label>
+                                    <input 
+                                        type="range" 
+                                        min="10" 
+                                        max="200" 
+                                        step="5" 
+                                        value={overlays.chatTtsSpeed} 
+                                        onChange={(e) => setOverlays({ ...overlays, chatTtsSpeed: parseInt(e.target.value) })} 
+                                    />
+                                </div>
+                                
+                                <div className="form-group">
+                                    <label>Tono (Pitch): {overlays.chatTtsPitch}%</label>
+                                    <input 
+                                        type="range" 
+                                        min="10" 
+                                        max="200" 
+                                        step="5" 
+                                        value={overlays.chatTtsPitch} 
+                                        onChange={(e) => setOverlays({ ...overlays, chatTtsPitch: parseInt(e.target.value) })} 
+                                    />
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Volumen: {overlays.chatTtsVolume}%</label>
+                                    <input 
+                                        type="range" 
+                                        min="0" 
+                                        max="100" 
+                                        step="5" 
+                                        value={overlays.chatTtsVolume} 
+                                        onChange={(e) => setOverlays({ ...overlays, chatTtsVolume: parseInt(e.target.value) })} 
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Row 2: Allowed Users & Voice Tester Grid */}
+                        <div className="grid-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '25px', paddingBottom: '25px' }}>
+                            
+                            {/* Column 1: Allowed Users */}
+                            <div>
+                                <h4 style={{ marginBottom: '15px', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>👥 Usuarios Generales Permitidos</span>
+                                </h4>
+                                
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 20px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', borderRadius: '10px' }}>
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0 }}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={overlays.chatTtsAllowAll} 
+                                            onChange={(e) => setOverlays({ ...overlays, chatTtsAllowAll: e.target.checked })} 
+                                            style={{ width: 'auto', marginRight: '10px' }} 
+                                        /> 
+                                        Cualquiera (Todos)
+                                    </label>
+                                    
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0, opacity: overlays.chatTtsAllowAll ? 0.5 : 1 }}>
+                                        <input 
+                                            disabled={overlays.chatTtsAllowAll}
+                                            type="checkbox" 
+                                            checked={overlays.chatTtsAllowAll ? true : overlays.chatTtsAllowSubscribers} 
+                                            onChange={(e) => setOverlays({ ...overlays, chatTtsAllowSubscribers: e.target.checked })} 
+                                            style={{ width: 'auto', marginRight: '10px' }} 
+                                        /> 
+                                        Suscriptores ⭐
+                                    </label>
+
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0, opacity: overlays.chatTtsAllowAll ? 0.5 : 1 }}>
+                                        <input 
+                                            disabled={overlays.chatTtsAllowAll}
+                                            type="checkbox" 
+                                            checked={overlays.chatTtsAllowAll ? true : overlays.chatTtsAllowModerators} 
+                                            onChange={(e) => setOverlays({ ...overlays, chatTtsAllowModerators: e.target.checked })} 
+                                            style={{ width: 'auto', marginRight: '10px' }} 
+                                        /> 
+                                        Moderadores 🛡️
+                                    </label>
+
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0, opacity: overlays.chatTtsAllowAll ? 0.5 : 1 }}>
+                                        <input 
+                                            disabled={overlays.chatTtsAllowAll}
+                                            type="checkbox" 
+                                            checked={overlays.chatTtsAllowAll ? true : overlays.chatTtsAllowTeam} 
+                                            onChange={(e) => setOverlays({ ...overlays, chatTtsAllowTeam: e.target.checked })} 
+                                            style={{ width: 'auto', marginRight: '10px' }} 
+                                        /> 
+                                        Miembros de Equipo/Super Fans 👥
+                                    </label>
+
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0, opacity: overlays.chatTtsAllowAll ? 0.5 : 1 }}>
+                                        <input 
+                                            disabled={overlays.chatTtsAllowAll}
+                                            type="checkbox" 
+                                            checked={overlays.chatTtsAllowAll ? true : overlays.chatTtsAllowTopGifters} 
+                                            onChange={(e) => setOverlays({ ...overlays, chatTtsAllowTopGifters: e.target.checked })} 
+                                            style={{ width: 'auto', marginRight: '10px' }} 
+                                        /> 
+                                        Top Gifters (Ranking) 🏆
+                                    </label>
+                                </div>
+                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '10px' }}>
+                                    💡 Nota: El Streamer/Creador siempre tiene permiso para usar el lector de chat sin importar estos filtros.
+                                </p>
+                            </div>
+
+                            {/* Column 2: Voice Tester */}
+                            <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
+                                <h4 style={{ color: 'var(--accent-primary)', marginBottom: '10px' }}>🔊 Probar Voz / TTS</h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, justifyContent: 'center' }}>
+                                    <input 
+                                        type="text" 
+                                        value={testerText} 
+                                        onChange={(e) => setTesterText(e.target.value)} 
+                                        placeholder="Escribe un mensaje de prueba..."
+                                        style={{ width: '100%', height: '38px', fontSize: '0.88rem' }}
+                                    />
+                                    <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+                                        <button 
+                                            className="btn btn-secondary" 
+                                            style={{ flex: 1, height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
+                                            onClick={() => {
+                                                if (typeof window !== 'undefined' && window.speechSynthesis) {
+                                                    window.speechSynthesis.cancel();
+                                                    const utterance = new SpeechSynthesisUtterance(testerText || "Hola, probando sonido local.");
+                                                    utterance.lang = overlays.chatTtsLanguage || 'es-MX';
+                                                    utterance.rate = (overlays.chatTtsSpeed || 50) / 50;
+                                                    utterance.pitch = (overlays.chatTtsPitch || 50) / 50;
+                                                    utterance.volume = (overlays.chatTtsVolume || 80) / 100;
+                                                    
+                                                    utterance.onerror = (e) => {
+                                                        console.error("Local SpeechSynthesis Error:", e);
+                                                        alert("Error de voz local: " + (e.error || "Desconocido"));
+                                                    };
+                                                    
+                                                    if (!overlays.chatTtsRandomVoice) {
+                                                        const selectedVoice = voices.find(v => v.name === overlays.chatTtsVoice);
+                                                        if (selectedVoice) {
+                                                            utterance.voice = selectedVoice;
+                                                        } else {
+                                                            const mainLang = (overlays.chatTtsLanguage || 'es-MX').split('-')[0].toLowerCase();
+                                                            const sameLangVoices = voices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith(mainLang));
+                                                            if (sameLangVoices.length > 0) {
+                                                                utterance.voice = sameLangVoices[0];
+                                                            }
+                                                        }
+                                                    } else {
+                                                        let filtered = voices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith((overlays.chatTtsLanguage || 'es-MX').toLowerCase()));
+                                                        if (filtered.length === 0) {
+                                                            const mainLang = (overlays.chatTtsLanguage || 'es-MX').split('-')[0].toLowerCase();
+                                                            filtered = voices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith(mainLang));
+                                                        }
+                                                        if (filtered.length > 0) {
+                                                            utterance.voice = filtered[Math.floor(Math.random() * filtered.length)];
+                                                        }
+                                                    }
+                                                    window.speechSynthesis.speak(utterance);
+                                                } else {
+                                                    alert("SpeechSynthesis no es soportado en este navegador.");
+                                                }
+                                            }}
+                                        >
+                                            🔊 Probar Voz Local
+                                        </button>
+                                        <button 
+                                            className="btn btn-secondary" 
+                                            style={{ flex: 1, height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', color: '#a855f7', borderColor: '#a855f7' }}
+                                            onClick={() => triggerOverlayTest('chat', testerText.trim() || undefined)}
+                                        >
+                                            🧪 Probar TTS en Overlay
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Row 3: Grid 2 Columns - Special Users | TTS Logs */}
+                        <div className="grid-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '25px', paddingBottom: '25px' }}>
+                            
+                            {/* Column 1: Special Users */}
+                            <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px' }}>
+                                <h4 style={{ color: 'var(--accent-primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>🌟 Special Users</span>
+                                </h4>
+                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '15px' }}>
+                                    Permite o bloquea usuarios específicos y asígnales sus propias voces, velocidades y tonos de lectura personalizados.
+                                </p>
+
+                                {/* Add Special User form */}
+                                <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Usuario (@handle)" 
+                                        value={newSpecialUser.username}
+                                        onChange={(e) => setNewSpecialUser({ ...newSpecialUser, username: e.target.value })}
+                                        style={{ flex: 1, height: '38px', fontSize: '0.88rem' }}
+                                    />
+                                    <button className="btn" onClick={addSpecialUser} style={{ height: '38px', padding: '0 15px', fontSize: '0.88rem' }}>
+                                        ➕ Agregar
+                                    </button>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                                    <input 
+                                        type="text" 
+                                        placeholder="🔍 Buscar usuario en la lista..." 
+                                        value={specialUserSearch}
+                                        onChange={(e) => setSpecialUserSearch(e.target.value)}
+                                        style={{ height: '32px', fontSize: '0.82rem' }}
+                                    />
+                                </div>
+
+                                {/* Special Users Table */}
+                                <div style={{ overflowX: 'auto', maxHeight: '250px', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                                        <thead>
+                                            <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                                <th style={{ padding: '8px', textAlign: 'left' }}>Usuario</th>
+                                                <th style={{ padding: '8px', textAlign: 'center' }}>Permitido</th>
+                                                <th style={{ padding: '8px', textAlign: 'left' }}>Voz</th>
+                                                <th style={{ padding: '8px', textAlign: 'center' }}>Vel / Tono</th>
+                                                <th style={{ padding: '8px', textAlign: 'center' }}>Acción</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(overlays.chatTtsSpecialUsers || [])
+                                                .filter(u => !specialUserSearch || u.username.toLowerCase().includes(specialUserSearch.toLowerCase()))
+                                                .map(u => (
+                                                    <tr key={u.username} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                        <td style={{ padding: '8px', fontWeight: 'bold', color: '#fff' }}>@{u.username}</td>
+                                                        <td style={{ padding: '8px', textAlign: 'center' }}>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={u.allowed} 
+                                                                onChange={(e) => updateSpecialUser(u.username, 'allowed', e.target.checked)} 
+                                                                style={{ width: 'auto' }}
+                                                            />
+                                                        </td>
+                                                        <td style={{ padding: '8px' }}>
+                                                            <select 
+                                                                value={u.voice} 
+                                                                disabled={!u.allowed}
+                                                                onChange={(e) => updateSpecialUser(u.username, 'voice', e.target.value)}
+                                                                style={{ padding: '4px', fontSize: '0.78rem', height: '28px', minWidth: '100px' }}
+                                                            >
+                                                                <option value="Default Voice">Default</option>
+                                                                {voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage)).map(v => (
+                                                                    <option key={v.name} value={v.name}>{v.name.substring(0, 15)}...</option>
+                                                                ))}
+                                                            </select>
+                                                        </td>
+                                                        <td style={{ padding: '8px', textAlign: 'center' }}>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                    <span>Vel:</span>
+                                                                    <input 
+                                                                        type="number" 
+                                                                        disabled={!u.allowed}
+                                                                        min="10" 
+                                                                        max="200" 
+                                                                        value={u.speed} 
+                                                                        onChange={(e) => updateSpecialUser(u.username, 'speed', parseInt(e.target.value) || 50)} 
+                                                                        style={{ width: '42px', padding: '2px', fontSize: '0.75rem', height: '20px' }}
+                                                                    />
+                                                                </div>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                    <span>Tono:</span>
+                                                                    <input 
+                                                                        type="number" 
+                                                                        disabled={!u.allowed}
+                                                                        min="10" 
+                                                                        max="200" 
+                                                                        value={u.pitch} 
+                                                                        onChange={(e) => updateSpecialUser(u.username, 'pitch', parseInt(e.target.value) || 50)} 
+                                                                        style={{ width: '42px', padding: '2px', fontSize: '0.75rem', height: '20px' }}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td style={{ padding: '8px', textAlign: 'center' }}>
+                                                            <button 
+                                                                className="btn btn-secondary btn-red" 
+                                                                onClick={() => deleteSpecialUser(u.username)}
+                                                                style={{ padding: '4px 8px', fontSize: '0.75rem', height: '26px' }}
+                                                            >
+                                                                🗑️
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                            ))}
+                                            {(overlays.chatTtsSpecialUsers || []).length === 0 && (
+                                                <tr>
+                                                    <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                                        No Special Users defined
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Column 2: TTS Logs */}
+                            <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+                                <h4 style={{ color: 'var(--accent-primary)', marginBottom: '10px' }}>TTS Logs</h4>
+                                <div style={{ 
+                                    flex: 1, 
+                                    background: 'rgba(0,0,0,0.3)', 
+                                    border: '1px solid rgba(255,255,255,0.06)', 
+                                    borderRadius: '8px', 
+                                    padding: '10px', 
+                                    fontFamily: 'monospace', 
+                                    fontSize: '0.8rem', 
+                                    minHeight: '260px',
+                                    maxHeight: '360px', 
+                                    overflowY: 'auto',
+                                    color: 'var(--text-secondary)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '4px'
+                                }}>
+                                    {ttsLogs.slice().reverse().map((log, idx) => (
+                                        <div key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
+                                            <span style={{ color: 'var(--accent-primary)' }}>[{log.timestamp}]</span>{' '}
+                                            <span style={{ color: '#fff', fontWeight: 'bold' }}>{log.user}:</span>{' '}
+                                            <span>{log.message}</span>
+                                        </div>
+                                    ))}
+                                    {ttsLogs.length === 0 && (
+                                        <div style={{ textAlign: 'center', padding: '20px', fontStyle: 'italic' }}>
+                                            No hay logs de TTS recientes
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                        </div>
+
+                        {/* Row 4: Grid 2 Columns - Spam Protection | Advanced */}
+                        <div className="grid-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '25px', paddingBottom: '25px' }}>
+                            
+                            {/* Spam Protection */}
+                            <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px' }}>
+                                <h4 style={{ color: 'var(--accent-primary)', marginBottom: '15px' }}>Spam Protection</h4>
+                                
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label>User Cooldown (seconds)</label>
+                                    <input 
+                                        type="number" 
+                                        min="0" 
+                                        max="3600" 
+                                        value={overlays.chatTtsUserCooldown} 
+                                        onChange={(e) => setOverlays({ ...overlays, chatTtsUserCooldown: parseInt(e.target.value) || 0 })} 
+                                    />
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label>Max Queue Length</label>
+                                    <input 
+                                        type="number" 
+                                        min="1" 
+                                        max="50" 
+                                        value={overlays.chatTtsMaxQueueLength} 
+                                        onChange={(e) => setOverlays({ ...overlays, chatTtsMaxQueueLength: parseInt(e.target.value) || 5 })} 
+                                    />
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label>Max Comment Length</label>
+                                    <input 
+                                        type="number" 
+                                        min="10" 
+                                        max="1000" 
+                                        value={overlays.chatTtsMaxCommentLength} 
+                                        onChange={(e) => setOverlays({ ...overlays, chatTtsMaxCommentLength: parseInt(e.target.value) || 300 })} 
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
+                                    <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={overlays.chatTtsFilterLetterSpam} 
+                                            onChange={(e) => setOverlays({ ...overlays, chatTtsFilterLetterSpam: e.target.checked })} 
+                                            style={{ width: 'auto', marginRight: '8px' }} 
+                                        /> 
+                                        Filter Letter Spam (ej. aaaaa -> aa)
+                                    </label>
+
+                                    <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={overlays.chatTtsFilterMentions} 
+                                            onChange={(e) => setOverlays({ ...overlays, chatTtsFilterMentions: e.target.checked })} 
+                                            style={{ width: 'auto', marginRight: '8px' }} 
+                                        /> 
+                                        Filter @mentions (remueve menciones)
+                                    </label>
+
+                                    <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={overlays.chatTtsFilterCommands} 
+                                            onChange={(e) => setOverlays({ ...overlays, chatTtsFilterCommands: e.target.checked })} 
+                                            style={{ width: 'auto', marginRight: '8px' }} 
+                                        /> 
+                                        Filter !commands (remueve palabras con prefijo !)
+                                    </label>
+                                </div>
+                            </div>
+
+                            {/* Advanced & Comment types */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                
+                                <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px' }}>
+                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: '15px' }}>Advanced</h4>
+                                    
+                                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                                        <label>Message Template</label>
+                                        <input 
+                                            type="text" 
+                                            value={overlays.chatTtsMessageTemplate} 
+                                            onChange={(e) => setOverlays({ ...overlays, chatTtsMessageTemplate: e.target.value })} 
+                                            placeholder="{nickname} dice {comment}"
+                                        />
+                                    </div>
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                                        <span style={{ fontWeight: 'bold', color: '#fff' }}>Placeholder Params:</span><br />
+                                        <code>{"{nickname}"}</code>: Nombre de pantalla de TikTok<br />
+                                        <code>{"{username}"}</code>: ID de usuario (@handle)<br />
+                                        <code>{"{comment}"}</code>: Mensaje de chat limpio<br />
+                                        <span style={{ fontStyle: 'italic', display: 'block', marginTop: '5px' }}>
+                                            Ejemplo: <code>{"{nickname} dice {comment}"}</code>
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px', flex: 1 }}>
+                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: '10px' }}>💬 Filtro de Tipo de Comentario</h4>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem' }}>
+                                        <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
+                                            <input 
+                                                type="radio" 
+                                                name="chatTtsType" 
+                                                checked={overlays.chatTtsType === 'any'} 
+                                                onChange={() => setOverlays({ ...overlays, chatTtsType: 'any' })} 
+                                                style={{ width: 'auto', marginRight: '8px' }} 
+                                            /> 
+                                            Cualquier comentario (excluye comandos)
+                                        </label>
+
+                                        <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
+                                            <input 
+                                                type="radio" 
+                                                name="chatTtsType" 
+                                                checked={overlays.chatTtsType === 'dot'} 
+                                                onChange={() => setOverlays({ ...overlays, chatTtsType: 'dot' })} 
+                                                style={{ width: 'auto', marginRight: '8px' }} 
+                                            /> 
+                                            Comienza con punto (ej. <code>.hola</code>)
+                                        </label>
+
+                                        <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
+                                            <input 
+                                                type="radio" 
+                                                name="chatTtsType" 
+                                                checked={overlays.chatTtsType === 'slash'} 
+                                                onChange={() => setOverlays({ ...overlays, chatTtsType: 'slash' })} 
+                                                style={{ width: 'auto', marginRight: '8px' }} 
+                                            /> 
+                                            Comienza con diagonal (ej. <code>/saludos</code>)
+                                        </label>
+
+                                        <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
+                                            <input 
+                                                type="radio" 
+                                                name="chatTtsType" 
+                                                checked={overlays.chatTtsType === 'command'} 
+                                                onChange={() => setOverlays({ ...overlays, chatTtsType: 'command' })} 
+                                                style={{ width: 'auto', marginRight: '8px' }} 
+                                            /> 
+                                            Comienza con Comando Personalizado
+                                        </label>
+
+                                        {overlays.chatTtsType === 'command' && (
+                                            <div className="form-group" style={{ margin: '5px 0 0 20px', maxWidth: '200px' }}>
+                                                <input 
+                                                    type="text" 
+                                                    value={overlays.chatTtsCommand} 
+                                                    placeholder="ej. !tts" 
+                                                    onChange={(e) => setOverlays({ ...overlays, chatTtsCommand: e.target.value })} 
+                                                    style={{ height: '30px', fontSize: '0.8rem' }}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+
+                        {/* Row 5: Charge Points */}
+                        <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px', marginBottom: '25px' }}>
+                            <h4 style={{ color: 'var(--accent-primary)', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span>🪙 Sistema de Cobro por Puntos</span>
+                            </h4>
+
+                            <div className="form-group" style={{ marginBottom: '15px' }}>
+                                <label className="toggle-switch-label" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={overlays.chatTtsChargePoints} 
+                                        onChange={(e) => setOverlays({ ...overlays, chatTtsChargePoints: e.target.checked })} 
+                                        style={{ width: 'auto', marginRight: '10px' }}
+                                    />
+                                    Cobrar puntos por lectura de voz (TTS)
+                                </label>
+                            </div>
+
+                            {overlays.chatTtsChargePoints && (
+                                <div className="form-group" style={{ maxWidth: '200px' }}>
+                                    <label>Costo en Puntos por Mensaje</label>
+                                    <input 
+                                        type="number" 
+                                        min="1" 
+                                        max="1000" 
+                                        value={overlays.chatTtsCost} 
+                                        onChange={(e) => setOverlays({ ...overlays, chatTtsCost: parseInt(e.target.value) || 5 })} 
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <button className="btn" onClick={() => handleSaveOverlaysConfigOnly('Chat TTS')}>{renderIcon('save')} Guardar Configuración</button>
+                        </div>
+                    </div>
+                );
+            };
+
             const showSaveBar = isConfigDirty || Object.keys(dirtyKeys).length > 0 || !!saveStatus;
 
             return (
@@ -8308,658 +8962,7 @@
                                 )}
 
                                 {/* SUBPANEL 11: CHAT TTS */}
-                                {activeSub === 'tts' && (
-                                    <div className="glass-card animate-fade-in">
-                                        <h3 style={{ marginBottom: '10px' }}>🗣️ Lector de Voz (TTS) para Chat y Comentarios</h3>
-                                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '20px' }}>
-                                            Configura la lectura automática en voz alta de los comentarios de tu chat en vivo de TikTok, similar a Tikfinity.
-                                        </p>
-
-                                        <div style={{
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '12px',
-                                            padding: '12px 18px',
-                                            background: !localAudioEnabled ? 'rgba(255, 255, 255, 0.02)' : (localAudioUnlocked ? 'rgba(34, 197, 94, 0.08)' : 'rgba(245, 158, 11, 0.08)'),
-                                            border: `1px solid ${!localAudioEnabled ? 'var(--border-glass)' : (localAudioUnlocked ? 'rgba(34, 197, 94, 0.3)' : 'rgba(245, 158, 11, 0.3)')}`,
-                                            borderRadius: '8px',
-                                            marginBottom: '20px'
-                                        }}>
-                                            <span style={{ fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '8px', color: localAudioUnlocked ? '#4ade80' : '#fbbf24' }}>
-                                                {localAudioUnlocked ? '🟢' : '⚠️'} 
-                                                <strong>{localAudioUnlocked ? 'Sonido local activado en esta pestaña (El TTS se reproducirá aquí)' : 'El sonido local requiere una interacción para activarse'}</strong>
-                                            </span>
-                                            {!localAudioUnlocked && (
-                                                <button className="btn btn-secondary btn-sm" onClick={unlockLocalAudio} style={{ padding: '4px 10px', fontSize: '0.78rem', height: 'auto' }}>Activar Sonido</button>
-                                            )}
-                                        </div>
-
-                                        <div className="form-group" style={{ marginBottom: '20px', background: 'rgba(255,255,255,0.02)', padding: '15px', border: '1px dashed var(--border-glass)', borderRadius: '10px' }}>
-                                            <label style={{ fontWeight: '600', color: 'var(--accent-primary)', display: 'block', marginBottom: '8px' }}>🔗 Enlace del Widget para OBS (Fuente de Navegador)</label>
-                                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '10px' }}>
-                                                Agrega este enlace en OBS como una <strong>Fuente de Navegador</strong>. Al ser de tipo TTS, no mostrará nada en pantalla (es invisible) pero reproducirá la voz de los comentarios de forma automatizada.
-                                            </p>
-                                            <div className="copy-url-row" style={{ display: 'flex', gap: '10px' }}>
-                                                <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/alerts_overlay.html?type=chat`} onClick={(e) => e.target.select()} style={{ flex: 1 }} />
-                                                <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/alerts_overlay.html?type=chat`)}>Copiar URL</button>
-                                            </div>
-                                        </div>
-
-                                        {/* Row 1: General Settings */}
-                                        <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '25px', paddingBottom: '25px' }}>
-                                            <h4 style={{ marginBottom: '15px', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span>⚙️ Configuración General</span>
-                                            </h4>
-                                            
-                                            <div className="form-group" style={{ marginBottom: '15px' }}>
-                                                <label className="toggle-switch-label" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={overlays.chatTtsEnabled} 
-                                                        onChange={(e) => setOverlays({ ...overlays, chatTtsEnabled: e.target.checked })} 
-                                                        style={{ width: 'auto', marginRight: '10px' }}
-                                                    />
-                                                    Activar Lector de Chat (TTS)
-                                                </label>
-                                            </div>
-
-                                            <div className="grid-3" style={{ marginBottom: '15px' }}>
-                                                <div className="form-group">
-                                                    <label>Idioma de la Voz</label>
-                                                    <select 
-                                                        value={overlays.chatTtsLanguage} 
-                                                        onChange={(e) => {
-                                                            const lang = e.target.value;
-                                                            const filtered = voices.filter(v => v.lang.startsWith(lang));
-                                                            const firstVoiceName = filtered.length > 0 ? filtered[0].name : 'Default Voice';
-                                                            setOverlays({ 
-                                                                ...overlays, 
-                                                                chatTtsLanguage: lang,
-                                                                chatTtsVoice: firstVoiceName
-                                                            });
-                                                        }}
-                                                    >
-                                                        <option value="es-MX">Español (México) [es-MX]</option>
-                                                        <option value="es-ES">Español (España) [es-ES]</option>
-                                                        <option value="es-US">Español (EE.UU.) [es-US]</option>
-                                                        <option value="en-US">English (US) [en-US]</option>
-                                                        <option value="en-GB">English (UK) [en-GB]</option>
-                                                        <option value="pt-BR">Português (Brasil) [pt-BR]</option>
-                                                        <option value="fr-FR">Français (France) [fr-FR]</option>
-                                                        <option value="it-IT">Italiano (Italia) [it-IT]</option>
-                                                    </select>
-                                                </div>
-
-                                                <div className="form-group">
-                                                    <label>Voz Específica</label>
-                                                    <select 
-                                                        disabled={overlays.chatTtsRandomVoice}
-                                                        value={overlays.chatTtsVoice} 
-                                                        onChange={(e) => setOverlays({ ...overlays, chatTtsVoice: e.target.value })}
-                                                    >
-                                                        {voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage)).map(v => (
-                                                            <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
-                                                        ))}
-                                                        {voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage)).length === 0 && (
-                                                            <option value="Default Voice">Voz del sistema por defecto</option>
-                                                        )}
-                                                    </select>
-                                                </div>
-
-                                                <div className="form-group">
-                                                    <label className="toggle-switch-label" style={{ marginTop: '30px', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={overlays.chatTtsRandomVoice} 
-                                                            onChange={(e) => setOverlays({ ...overlays, chatTtsRandomVoice: e.target.checked })} 
-                                                            style={{ width: 'auto', marginRight: '8px' }}
-                                                        />
-                                                        Voz Aleatoria (por idioma)
-                                                    </label>
-                                                </div>
-                                            </div>
-
-                                            <div className="grid-3" style={{ marginBottom: '15px' }}>
-                                                <div className="form-group">
-                                                    <label>Velocidad (Speed): {overlays.chatTtsSpeed}%</label>
-                                                    <input 
-                                                        type="range" 
-                                                        min="10" 
-                                                        max="200" 
-                                                        step="5" 
-                                                        value={overlays.chatTtsSpeed} 
-                                                        onChange={(e) => setOverlays({ ...overlays, chatTtsSpeed: parseInt(e.target.value) })} 
-                                                    />
-                                                </div>
-                                                
-                                                <div className="form-group">
-                                                    <label>Tono (Pitch): {overlays.chatTtsPitch}%</label>
-                                                    <input 
-                                                        type="range" 
-                                                        min="10" 
-                                                        max="200" 
-                                                        step="5" 
-                                                        value={overlays.chatTtsPitch} 
-                                                        onChange={(e) => setOverlays({ ...overlays, chatTtsPitch: parseInt(e.target.value) })} 
-                                                    />
-                                                </div>
-
-                                                <div className="form-group">
-                                                    <label>Volumen: {overlays.chatTtsVolume}%</label>
-                                                    <input 
-                                                        type="range" 
-                                                        min="0" 
-                                                        max="100" 
-                                                        step="5" 
-                                                        value={overlays.chatTtsVolume} 
-                                                        onChange={(e) => setOverlays({ ...overlays, chatTtsVolume: parseInt(e.target.value) })} 
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Row 2: Allowed Users & Voice Tester Grid */}
-                                        <div className="grid-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '25px', paddingBottom: '25px' }}>
-                                            
-                                            {/* Column 1: Allowed Users */}
-                                            <div>
-                                                <h4 style={{ marginBottom: '15px', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span>👥 Usuarios Generales Permitidos</span>
-                                                </h4>
-                                                
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 20px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', borderRadius: '10px' }}>
-                                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0 }}>
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={overlays.chatTtsAllowAll} 
-                                                            onChange={(e) => setOverlays({ ...overlays, chatTtsAllowAll: e.target.checked })} 
-                                                            style={{ width: 'auto', marginRight: '10px' }} 
-                                                        /> 
-                                                        Cualquiera (Todos)
-                                                    </label>
-                                                    
-                                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0, opacity: overlays.chatTtsAllowAll ? 0.5 : 1 }}>
-                                                        <input 
-                                                            disabled={overlays.chatTtsAllowAll}
-                                                            type="checkbox" 
-                                                            checked={overlays.chatTtsAllowAll ? true : overlays.chatTtsAllowSubscribers} 
-                                                            onChange={(e) => setOverlays({ ...overlays, chatTtsAllowSubscribers: e.target.checked })} 
-                                                            style={{ width: 'auto', marginRight: '10px' }} 
-                                                        /> 
-                                                        Suscriptores ⭐
-                                                    </label>
-
-                                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0, opacity: overlays.chatTtsAllowAll ? 0.5 : 1 }}>
-                                                        <input 
-                                                            disabled={overlays.chatTtsAllowAll}
-                                                            type="checkbox" 
-                                                            checked={overlays.chatTtsAllowAll ? true : overlays.chatTtsAllowModerators} 
-                                                            onChange={(e) => setOverlays({ ...overlays, chatTtsAllowModerators: e.target.checked })} 
-                                                            style={{ width: 'auto', marginRight: '10px' }} 
-                                                        /> 
-                                                        Moderadores 🛡️
-                                                    </label>
-
-                                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0, opacity: overlays.chatTtsAllowAll ? 0.5 : 1 }}>
-                                                        <input 
-                                                            disabled={overlays.chatTtsAllowAll}
-                                                            type="checkbox" 
-                                                            checked={overlays.chatTtsAllowAll ? true : overlays.chatTtsAllowTeam} 
-                                                            onChange={(e) => setOverlays({ ...overlays, chatTtsAllowTeam: e.target.checked })} 
-                                                            style={{ width: 'auto', marginRight: '10px' }} 
-                                                        /> 
-                                                        Miembros de Equipo/Super Fans 👥
-                                                    </label>
-
-                                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0, opacity: overlays.chatTtsAllowAll ? 0.5 : 1 }}>
-                                                        <input 
-                                                            disabled={overlays.chatTtsAllowAll}
-                                                            type="checkbox" 
-                                                            checked={overlays.chatTtsAllowAll ? true : overlays.chatTtsAllowTopGifters} 
-                                                            onChange={(e) => setOverlays({ ...overlays, chatTtsAllowTopGifters: e.target.checked })} 
-                                                            style={{ width: 'auto', marginRight: '10px' }} 
-                                                        /> 
-                                                        Top Gifters (Ranking) 🏆
-                                                    </label>
-                                                </div>
-                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '10px' }}>
-                                                    💡 Nota: El Streamer/Creador siempre tiene permiso para usar el lector de chat sin importar estos filtros.
-                                                </p>
-                                            </div>
-
-                                            {/* Column 2: Voice Tester */}
-                                            <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
-                                                <h4 style={{ color: 'var(--accent-primary)', marginBottom: '10px' }}>🔊 Probar Voz / TTS</h4>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, justifyContent: 'center' }}>
-                                                    <input 
-                                                        type="text" 
-                                                        value={testerText} 
-                                                        onChange={(e) => setTesterText(e.target.value)} 
-                                                        placeholder="Escribe un mensaje de prueba..."
-                                                        style={{ width: '100%', height: '38px', fontSize: '0.88rem' }}
-                                                    />
-                                                    <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-                                                        <button 
-                                                            className="btn btn-secondary" 
-                                                            style={{ flex: 1, height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
-                                                            onClick={() => {
-                                                                if (typeof window !== 'undefined' && window.speechSynthesis) {
-                                                                    window.speechSynthesis.cancel();
-                                                                    const utterance = new SpeechSynthesisUtterance(testerText || "Hola, probando sonido local.");
-                                                                    utterance.lang = overlays.chatTtsLanguage || 'es-MX';
-                                                                    utterance.rate = (overlays.chatTtsSpeed || 50) / 50;
-                                                                    utterance.pitch = (overlays.chatTtsPitch || 50) / 50;
-                                                                    utterance.volume = (overlays.chatTtsVolume || 80) / 100;
-                                                                    
-                                                                    utterance.onerror = (e) => {
-                                                                        console.error("Local SpeechSynthesis Error:", e);
-                                                                        alert("Error de voz local: " + (e.error || "Desconocido"));
-                                                                    };
-                                                                    
-                                                                    if (!overlays.chatTtsRandomVoice) {
-                                                                        const selectedVoice = voices.find(v => v.name === overlays.chatTtsVoice);
-                                                                        if (selectedVoice) {
-                                                                            utterance.voice = selectedVoice;
-                                                                        } else {
-                                                                            const mainLang = (overlays.chatTtsLanguage || 'es-MX').split('-')[0].toLowerCase();
-                                                                            const sameLangVoices = voices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith(mainLang));
-                                                                            if (sameLangVoices.length > 0) {
-                                                                                utterance.voice = sameLangVoices[0];
-                                                                            }
-                                                                        }
-                                                                    } else {
-                                                                        let filtered = voices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith((overlays.chatTtsLanguage || 'es-MX').toLowerCase()));
-                                                                        if (filtered.length === 0) {
-                                                                            const mainLang = (overlays.chatTtsLanguage || 'es-MX').split('-')[0].toLowerCase();
-                                                                            filtered = voices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith(mainLang));
-                                                                        }
-                                                                        if (filtered.length > 0) {
-                                                                            utterance.voice = filtered[Math.floor(Math.random() * filtered.length)];
-                                                                        }
-                                                                    }
-                                                                    window.speechSynthesis.speak(utterance);
-                                                                } else {
-                                                                    alert("SpeechSynthesis no es soportado en este navegador.");
-                                                                }
-                                                            }}
-                                                        >
-                                                            🔊 Probar Voz Local
-                                                        </button>
-                                                        <button 
-                                                            className="btn btn-secondary" 
-                                                            style={{ flex: 1, height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', color: '#a855f7', borderColor: '#a855f7' }}
-                                                            onClick={() => triggerOverlayTest('chat', testerText.trim() || undefined)}
-                                                        >
-                                                            🧪 Probar TTS en Overlay
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                        </div>
-
-                                        {/* Row 3: Grid 2 Columns - Special Users | TTS Logs */}
-                                        <div className="grid-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '25px', paddingBottom: '25px' }}>
-                                            
-                                            {/* Column 1: Special Users */}
-                                            <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px' }}>
-                                                <h4 style={{ color: 'var(--accent-primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span>🌟 Special Users</span>
-                                                </h4>
-                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '15px' }}>
-                                                    Permite o bloquea usuarios específicos y asígnales sus propias voces, velocidades y tonos de lectura personalizados.
-                                                </p>
-
-                                                {/* Add Special User form */}
-                                                <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                                                    <input 
-                                                        type="text" 
-                                                        placeholder="Usuario (@handle)" 
-                                                        value={newSpecialUser.username}
-                                                        onChange={(e) => setNewSpecialUser({ ...newSpecialUser, username: e.target.value })}
-                                                        style={{ flex: 1, height: '38px', fontSize: '0.88rem' }}
-                                                    />
-                                                    <button className="btn" onClick={addSpecialUser} style={{ height: '38px', padding: '0 15px', fontSize: '0.88rem' }}>
-                                                        ➕ Agregar
-                                                    </button>
-                                                </div>
-
-                                                <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                                                    <input 
-                                                        type="text" 
-                                                        placeholder="🔍 Buscar usuario en la lista..." 
-                                                        value={specialUserSearch}
-                                                        onChange={(e) => setSpecialUserSearch(e.target.value)}
-                                                        style={{ height: '32px', fontSize: '0.82rem' }}
-                                                    />
-                                                </div>
-
-                                                {/* Special Users Table */}
-                                                <div style={{ overflowX: 'auto', maxHeight: '250px', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px' }}>
-                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                                                        <thead>
-                                                            <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                                                                <th style={{ padding: '8px', textAlign: 'left' }}>Usuario</th>
-                                                                <th style={{ padding: '8px', textAlign: 'center' }}>Permitido</th>
-                                                                <th style={{ padding: '8px', textAlign: 'left' }}>Voz</th>
-                                                                <th style={{ padding: '8px', textAlign: 'center' }}>Vel / Tono</th>
-                                                                <th style={{ padding: '8px', textAlign: 'center' }}>Acción</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {(overlays.chatTtsSpecialUsers || [])
-                                                                .filter(u => !specialUserSearch || u.username.toLowerCase().includes(specialUserSearch.toLowerCase()))
-                                                                .map(u => (
-                                                                    <tr key={u.username} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                                                        <td style={{ padding: '8px', fontWeight: 'bold', color: '#fff' }}>@{u.username}</td>
-                                                                        <td style={{ padding: '8px', textAlign: 'center' }}>
-                                                                            <input 
-                                                                                type="checkbox" 
-                                                                                checked={u.allowed} 
-                                                                                onChange={(e) => updateSpecialUser(u.username, 'allowed', e.target.checked)} 
-                                                                                style={{ width: 'auto' }}
-                                                                            />
-                                                                        </td>
-                                                                        <td style={{ padding: '8px' }}>
-                                                                            <select 
-                                                                                value={u.voice} 
-                                                                                disabled={!u.allowed}
-                                                                                onChange={(e) => updateSpecialUser(u.username, 'voice', e.target.value)}
-                                                                                style={{ padding: '4px', fontSize: '0.78rem', height: '28px', minWidth: '100px' }}
-                                                                            >
-                                                                                <option value="Default Voice">Default</option>
-                                                                                {voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage)).map(v => (
-                                                                                    <option key={v.name} value={v.name}>{v.name.substring(0, 15)}...</option>
-                                                                                ))}
-                                                                            </select>
-                                                                        </td>
-                                                                        <td style={{ padding: '8px', textAlign: 'center' }}>
-                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
-                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                                                                    <span>Vel:</span>
-                                                                                    <input 
-                                                                                        type="number" 
-                                                                                        disabled={!u.allowed}
-                                                                                        min="10" 
-                                                                                        max="200" 
-                                                                                        value={u.speed} 
-                                                                                        onChange={(e) => updateSpecialUser(u.username, 'speed', parseInt(e.target.value) || 50)} 
-                                                                                        style={{ width: '42px', padding: '2px', fontSize: '0.75rem', height: '20px' }}
-                                                                                    />
-                                                                                </div>
-                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                                                                    <span>Tono:</span>
-                                                                                    <input 
-                                                                                        type="number" 
-                                                                                        disabled={!u.allowed}
-                                                                                        min="10" 
-                                                                                        max="200" 
-                                                                                        value={u.pitch} 
-                                                                                        onChange={(e) => updateSpecialUser(u.username, 'pitch', parseInt(e.target.value) || 50)} 
-                                                                                        style={{ width: '42px', padding: '2px', fontSize: '0.75rem', height: '20px' }}
-                                                                                    />
-                                                                                </div>
-                                                                            </div>
-                                                                        </td>
-                                                                        <td style={{ padding: '8px', textAlign: 'center' }}>
-                                                                            <button 
-                                                                                className="btn btn-secondary btn-red" 
-                                                                                onClick={() => deleteSpecialUser(u.username)}
-                                                                                style={{ padding: '4px 8px', fontSize: '0.75rem', height: '26px' }}
-                                                                            >
-                                                                                🗑️
-                                                                            </button>
-                                                                        </td>
-                                                                    </tr>
-                                                            ))}
-                                                            {(overlays.chatTtsSpecialUsers || []).length === 0 && (
-                                                                <tr>
-                                                                    <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                                                        No Special Users defined
-                                                                    </td>
-                                                                </tr>
-                                                            )}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-
-                                            {/* Column 2: TTS Logs */}
-                                            <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px', display: 'flex', flexDirection: 'column', height: '100%' }}>
-                                                <h4 style={{ color: 'var(--accent-primary)', marginBottom: '10px' }}>TTS Logs</h4>
-                                                <div style={{ 
-                                                    flex: 1, 
-                                                    background: 'rgba(0,0,0,0.3)', 
-                                                    border: '1px solid rgba(255,255,255,0.06)', 
-                                                    borderRadius: '8px', 
-                                                    padding: '10px', 
-                                                    fontFamily: 'monospace', 
-                                                    fontSize: '0.8rem', 
-                                                    minHeight: '260px',
-                                                    maxHeight: '360px', 
-                                                    overflowY: 'auto',
-                                                    color: 'var(--text-secondary)',
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    gap: '4px'
-                                                }}>
-                                                    {ttsLogs.slice().reverse().map((log, idx) => (
-                                                        <div key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
-                                                            <span style={{ color: 'var(--accent-primary)' }}>[{log.timestamp}]</span>{' '}
-                                                            <span style={{ color: '#fff', fontWeight: 'bold' }}>{log.user}:</span>{' '}
-                                                            <span>{log.message}</span>
-                                                        </div>
-                                                    ))}
-                                                    {ttsLogs.length === 0 && (
-                                                        <div style={{ textAlign: 'center', padding: '20px', fontStyle: 'italic' }}>
-                                                            No hay logs de TTS recientes
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                        </div>
-
-                                        {/* Row 4: Grid 2 Columns - Spam Protection | Advanced */}
-                                        <div className="grid-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '25px', paddingBottom: '25px' }}>
-                                            
-                                            {/* Spam Protection */}
-                                            <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px' }}>
-                                                <h4 style={{ color: 'var(--accent-primary)', marginBottom: '15px' }}>Spam Protection</h4>
-                                                
-                                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                                    <label>User Cooldown (seconds)</label>
-                                                    <input 
-                                                        type="number" 
-                                                        min="0" 
-                                                        max="3600" 
-                                                        value={overlays.chatTtsUserCooldown} 
-                                                        onChange={(e) => setOverlays({ ...overlays, chatTtsUserCooldown: parseInt(e.target.value) || 0 })} 
-                                                    />
-                                                </div>
-
-                                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                                    <label>Max Queue Length</label>
-                                                    <input 
-                                                        type="number" 
-                                                        min="1" 
-                                                        max="50" 
-                                                        value={overlays.chatTtsMaxQueueLength} 
-                                                        onChange={(e) => setOverlays({ ...overlays, chatTtsMaxQueueLength: parseInt(e.target.value) || 5 })} 
-                                                    />
-                                                </div>
-
-                                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                                    <label>Max Comment Length</label>
-                                                    <input 
-                                                        type="number" 
-                                                        min="10" 
-                                                        max="1000" 
-                                                        value={overlays.chatTtsMaxCommentLength} 
-                                                        onChange={(e) => setOverlays({ ...overlays, chatTtsMaxCommentLength: parseInt(e.target.value) || 300 })} 
-                                                    />
-                                                </div>
-
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
-                                                    <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={overlays.chatTtsFilterLetterSpam} 
-                                                            onChange={(e) => setOverlays({ ...overlays, chatTtsFilterLetterSpam: e.target.checked })} 
-                                                            style={{ width: 'auto', marginRight: '8px' }} 
-                                                        /> 
-                                                        Filter Letter Spam (ej. aaaaa -> aa)
-                                                    </label>
-
-                                                    <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={overlays.chatTtsFilterMentions} 
-                                                            onChange={(e) => setOverlays({ ...overlays, chatTtsFilterMentions: e.target.checked })} 
-                                                            style={{ width: 'auto', marginRight: '8px' }} 
-                                                        /> 
-                                                        Filter @mentions (remueve menciones)
-                                                    </label>
-
-                                                    <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={overlays.chatTtsFilterCommands} 
-                                                            onChange={(e) => setOverlays({ ...overlays, chatTtsFilterCommands: e.target.checked })} 
-                                                            style={{ width: 'auto', marginRight: '8px' }} 
-                                                        /> 
-                                                        Filter !commands (remueve palabras con prefijo !)
-                                                    </label>
-                                                </div>
-                                            </div>
-
-                                            {/* Advanced & Comment types */}
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                
-                                                <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px' }}>
-                                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: '15px' }}>Advanced</h4>
-                                                    
-                                                    <div className="form-group" style={{ marginBottom: '12px' }}>
-                                                        <label>Message Template</label>
-                                                        <input 
-                                                            type="text" 
-                                                            value={overlays.chatTtsMessageTemplate} 
-                                                            onChange={(e) => setOverlays({ ...overlays, chatTtsMessageTemplate: e.target.value })} 
-                                                            placeholder="{nickname} dice {comment}"
-                                                        />
-                                                    </div>
-                                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                                                        <span style={{ fontWeight: 'bold', color: '#fff' }}>Placeholder Params:</span><br />
-                                                        <code>{"{nickname}"}</code>: Nombre de pantalla de TikTok<br />
-                                                        <code>{"{username}"}</code>: ID de usuario (@handle)<br />
-                                                        <code>{"{comment}"}</code>: Mensaje de chat limpio<br />
-                                                        <span style={{ fontStyle: 'italic', display: 'block', marginTop: '5px' }}>
-                                                            Ejemplo: <code>{"{nickname} dice {comment}"}</code>
-                                                        </span>
-                                                    </div>
-                                                </div>
-
-                                                <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px', flex: 1 }}>
-                                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: '10px' }}>💬 Filtro de Tipo de Comentario</h4>
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem' }}>
-                                                        <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
-                                                            <input 
-                                                                type="radio" 
-                                                                name="chatTtsType" 
-                                                                checked={overlays.chatTtsType === 'any'} 
-                                                                onChange={() => setOverlays({ ...overlays, chatTtsType: 'any' })} 
-                                                                style={{ width: 'auto', marginRight: '8px' }} 
-                                                            /> 
-                                                            Cualquier comentario (excluye comandos)
-                                                        </label>
-
-                                                        <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
-                                                            <input 
-                                                                type="radio" 
-                                                                name="chatTtsType" 
-                                                                checked={overlays.chatTtsType === 'dot'} 
-                                                                onChange={() => setOverlays({ ...overlays, chatTtsType: 'dot' })} 
-                                                                style={{ width: 'auto', marginRight: '8px' }} 
-                                                            /> 
-                                                            Comienza con punto (ej. <code>.hola</code>)
-                                                        </label>
-
-                                                        <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
-                                                            <input 
-                                                                type="radio" 
-                                                                name="chatTtsType" 
-                                                                checked={overlays.chatTtsType === 'slash'} 
-                                                                onChange={() => setOverlays({ ...overlays, chatTtsType: 'slash' })} 
-                                                                style={{ width: 'auto', marginRight: '8px' }} 
-                                                            /> 
-                                                            Comienza con diagonal (ej. <code>/saludos</code>)
-                                                        </label>
-
-                                                        <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0 }}>
-                                                            <input 
-                                                                type="radio" 
-                                                                name="chatTtsType" 
-                                                                checked={overlays.chatTtsType === 'command'} 
-                                                                onChange={() => setOverlays({ ...overlays, chatTtsType: 'command' })} 
-                                                                style={{ width: 'auto', marginRight: '8px' }} 
-                                                            /> 
-                                                            Comienza con Comando Personalizado
-                                                        </label>
-
-                                                        {overlays.chatTtsType === 'command' && (
-                                                            <div className="form-group" style={{ margin: '5px 0 0 20px', maxWidth: '200px' }}>
-                                                                <input 
-                                                                    type="text" 
-                                                                    value={overlays.chatTtsCommand} 
-                                                                    placeholder="ej. !tts" 
-                                                                    onChange={(e) => setOverlays({ ...overlays, chatTtsCommand: e.target.value })} 
-                                                                    style={{ height: '30px', fontSize: '0.8rem' }}
-                                                                />
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                            </div>
-                                        </div>
-
-                                        {/* Row 5: Charge Points */}
-                                        <div className="glass-card" style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.05)', padding: '20px', marginBottom: '25px' }}>
-                                            <h4 style={{ color: 'var(--accent-primary)', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span>🪙 Sistema de Cobro por Puntos</span>
-                                            </h4>
-
-                                            <div className="form-group" style={{ marginBottom: '15px' }}>
-                                                <label className="toggle-switch-label" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={overlays.chatTtsChargePoints} 
-                                                        onChange={(e) => setOverlays({ ...overlays, chatTtsChargePoints: e.target.checked })} 
-                                                        style={{ width: 'auto', marginRight: '10px' }}
-                                                    />
-                                                    Cobrar puntos por lectura de voz (TTS)
-                                                </label>
-                                            </div>
-
-                                            {overlays.chatTtsChargePoints && (
-                                                <div className="form-group" style={{ maxWidth: '200px' }}>
-                                                    <label>Costo en Puntos por Mensaje</label>
-                                                    <input 
-                                                        type="number" 
-                                                        min="1" 
-                                                        max="1000" 
-                                                        value={overlays.chatTtsCost} 
-                                                        onChange={(e) => setOverlays({ ...overlays, chatTtsCost: parseInt(e.target.value) || 5 })} 
-                                                    />
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                            <button className="btn" onClick={() => handleSaveOverlaysConfigOnly('Chat TTS')}>{renderIcon('save')} Guardar Configuración</button>
-                                        </div>
-                                    </div>
-                                )}
+                                {activeSub === 'tts' && renderTtsPanelContent()}
 
                                  {/* SUBPANEL 12: YOUTUBE PLAYER */}
                                  {activeSub === 'ytplayer' && (
@@ -9440,6 +9443,9 @@
                                 <button className={`config-menu-item ${activeControlSub === 'roulette' ? 'active' : ''}`} onClick={() => setActiveControlSub('roulette')}>
                                     <span>{renderIcon('refresh-cw')} {!sidebarCollapsed && " 🎡 Control Ruleta"}</span>
                                 </button>
+                                <button className={`config-menu-item ${activeControlSub === 'tts' ? 'active' : ''}`} onClick={() => setActiveControlSub('tts')}>
+                                    <span>{renderIcon('volume-2')} {!sidebarCollapsed && " 🗣️ Control TTS"}</span>
+                                </button>
                             </div>
 
                             {/* Right Content Panel */}
@@ -9831,6 +9837,7 @@
                                         </div>
                                     </div>
                                 )}
+                                {activeControlSub === 'tts' && renderTtsPanelContent()}
                             </div>
                         </div>
                     {/* end persistent control tab */}

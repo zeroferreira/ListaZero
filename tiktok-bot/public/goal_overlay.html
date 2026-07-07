@@ -838,10 +838,17 @@
 
         try {
             if (typeof firebase !== 'undefined') {
-                firebase.initializeApp(firebaseConfig);
+                const localFirebaseConfig = window.ZERO_FM_FIREBASE || firebaseConfig;
+                let app;
+                if (firebase.apps && firebase.apps.length > 0) {
+                    app = firebase.apps[0];
+                    console.log('[Firebase] Reutilizando instancia existente ✓');
+                } else {
+                    app = firebase.initializeApp(localFirebaseConfig);
+                    console.log('[Firebase] Conectado ✓');
+                }
                 db = firebase.firestore();
                 hasFirebase = true;
-                console.log('[Firebase] Conectado ✓');
 
                 // Listen: systemConfig/goalOverlayConfig
                 db.collection('systemConfig').doc('goalOverlayConfig').onSnapshot(doc => {
@@ -921,6 +928,8 @@
             if (!cfg.enabled) {
                 card.style.display = 'none';
                 return;
+            } else {
+                card.style.display = 'block';
             }
 
             // Colors
@@ -1014,6 +1023,11 @@
             // Texts
             document.getElementById('goalLabel').textContent = labelForType(cfg.goalType);
             document.getElementById('rewardText').textContent = cfg.goalRewardText;
+            
+            const elTitle = document.getElementById('goalTitle');
+            if (elTitle && cfg.layoutMode !== 'minimalista') {
+                elTitle.textContent = cfg.goalLabel;
+            }
             
             // Minimalista label prefix setting
             const MINIMALISTA_LABELS = {

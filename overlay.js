@@ -472,7 +472,8 @@
     try {
       if (typeof firebase !== 'undefined' && firebase.apps) {
         if (!firebase.apps.length) {
-          firebase.initializeApp(firebaseConfig);
+          const localConfig = window.ZERO_FM_FIREBASE || firebaseConfig;
+          firebase.initializeApp(localConfig);
         }
         db = firebase.firestore();
       } else {

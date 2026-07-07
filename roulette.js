@@ -7,7 +7,12 @@ const firebaseConfig = {
       appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
     };
 
-    firebase.initializeApp(firebaseConfig);
+    const localConfig = window.ZERO_FM_FIREBASE || firebaseConfig;
+    if (firebase.apps && firebase.apps.length > 0) {
+        // Already initialized
+    } else {
+        firebase.initializeApp(localConfig);
+    }
     const db = firebase.firestore();
 
     const isOverlayMode = !!(
