@@ -925,6 +925,7 @@
     ytContainer.style.height = '100%';
     
     const cfg = window.lastConfig || {};
+    const artRatio = cfg.yt_artwork_aspect_ratio || '1:1';
     const rawLayout = cfg.yt_card_layout_mode || 'standard';
     const layoutMode = rawLayout.replace(/_/g, '-');
     const isSplit = layoutMode === 'split-two-columns';
@@ -932,11 +933,18 @@
     const defaultArtSize = isVideoLeft ? 180 : (isSplit ? 130 : 82);
     const artSize = cfg.yt_artwork_size || defaultArtSize;
     
+    let containerHeight = artSize;
+    if (artRatio === '16:9') {
+      containerHeight = Math.round(artSize * 9 / 16);
+    } else if (artRatio === '4:3') {
+      containerHeight = Math.round(artSize * 3 / 4);
+    }
+    
     const radius = cfg.yt_card_radius !== undefined ? cfg.yt_card_radius : 22;
     ytContainer.style.borderRadius = (isSplit || isVideoLeft) ? `${radius}px` : '14px';
     
-    const miniatureScale = artSize / 180;
-    ytContainer.style.setProperty('--yt-miniature-scale', miniatureScale);
+    const scale = Math.max(artSize / 320, containerHeight / 180);
+    ytContainer.style.setProperty('--yt-miniature-scale', scale);
   }
 
   // ─── Style Application ────────────────────────
@@ -987,10 +995,17 @@
     // 4. Artwork Size
     const defaultArtSize = isVideoLeft ? 180 : (isSplit ? 130 : 82);
     const artSize = cfg.yt_artwork_size || defaultArtSize;
+    const artRatio = cfg.yt_artwork_aspect_ratio || '1:1';
     const artWrap = document.querySelector('.artwork-wrap');
     if (artWrap) {
       artWrap.style.width = `${artSize}px`;
-      artWrap.style.height = `${artSize}px`;
+      if (artRatio === '16:9') {
+        artWrap.style.height = `${Math.round(artSize * 9 / 16)}px`;
+      } else if (artRatio === '4:3') {
+        artWrap.style.height = `${Math.round(artSize * 3 / 4)}px`;
+      } else {
+        artWrap.style.height = `${artSize}px`;
+      }
     }
 
     // 4.5. Preview Mode Auto-Scaling (fits inside 350px x 180px preview area in Dashboard)
