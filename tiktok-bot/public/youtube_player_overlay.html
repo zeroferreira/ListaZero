@@ -323,6 +323,25 @@
       margin-top: 0;
     }
     
+    /* ─── Split Video Left Layout ───────── */
+    #player-card.layout-split-video-left {
+      width: 580px;
+    }
+    #player-card.layout-split-video-left .card-inner {
+      grid-template-columns: auto 1fr;
+      grid-template-areas:
+        "artwork info"
+        "artwork status"
+        "artwork progress"
+        "artwork requester";
+      gap: 8px 20px;
+      padding: 16px;
+      align-items: center;
+    }
+    #player-card.layout-split-video-left .status-row {
+      margin-top: 0;
+    }
+    
     /* YouTube Player Container & responsive iframe */
     #yt-player-container {
       pointer-events: none;
@@ -876,9 +895,11 @@
     if (videoMode !== 'miniature') return;
     
     const cfg = window.lastConfig || {};
-    const layoutMode = cfg.yt_card_layout_mode || 'standard';
-    const isSplit = layoutMode === 'split_two_columns';
-    const defaultArtSize = isSplit ? 130 : 82;
+    const rawLayout = cfg.yt_card_layout_mode || 'standard';
+    const layoutMode = rawLayout.replace(/_/g, '-');
+    const isSplit = layoutMode === 'split-two-columns';
+    const isVideoLeft = layoutMode === 'split-video-left';
+    const defaultArtSize = isVideoLeft ? 180 : (isSplit ? 130 : 82);
     const artSize = cfg.yt_artwork_size || defaultArtSize;
     
     const cardRect = card.getBoundingClientRect();
@@ -892,7 +913,7 @@
       ytContainer.style.width = `${artRect.width}px`;
       ytContainer.style.height = `${artRect.height}px`;
     } else {
-      const padding = isSplit ? 16 : 20;
+      const padding = (isSplit || isVideoLeft) ? 16 : 20;
       ytContainer.style.top = `${padding}px`;
       ytContainer.style.left = `${padding}px`;
       ytContainer.style.width = `${artSize}px`;
@@ -900,7 +921,7 @@
     }
     
     const radius = cfg.yt_card_radius !== undefined ? cfg.yt_card_radius : 22;
-    ytContainer.style.borderRadius = isSplit ? `${radius}px` : '14px';
+    ytContainer.style.borderRadius = (isSplit || isVideoLeft) ? `${radius}px` : '14px';
     const currentWidth = parseFloat(ytContainer.style.width) || artSize;
     const miniatureScale = currentWidth / 180;
     ytContainer.style.setProperty('--yt-miniature-scale', miniatureScale);
@@ -913,10 +934,12 @@
     try {
 
     // 0. Layout Mode
-    const layoutMode = cfg.yt_card_layout_mode || 'standard';
-    card.classList.remove('layout-standard', 'layout-split-two-columns');
+    const rawLayoutMode = cfg.yt_card_layout_mode || 'standard';
+    const layoutMode = rawLayoutMode.replace(/_/g, '-');
+    card.classList.remove('layout-standard', 'layout-split-two-columns', 'layout-split-video-left');
     card.classList.add(`layout-${layoutMode}`);
-    const isSplit = layoutMode === 'split_two_columns';
+    const isSplit = layoutMode === 'split-two-columns';
+    const isVideoLeft = layoutMode === 'split-video-left';
 
     // 1. Position
     const pos = cfg.yt_card_position || 'bottom-left';
@@ -941,7 +964,7 @@
     }
 
     // 2. Width
-    const defaultWidth = isSplit ? 520 : 380;
+    const defaultWidth = isVideoLeft ? 580 : (isSplit ? 520 : 380);
     const width = cfg.yt_card_width || defaultWidth;
     card.style.width = `${width}px`;
 
@@ -950,7 +973,7 @@
     card.style.borderRadius = `${radius}px`;
 
     // 4. Artwork Size
-    const defaultArtSize = isSplit ? 130 : 82;
+    const defaultArtSize = isVideoLeft ? 180 : (isSplit ? 130 : 82);
     const artSize = cfg.yt_artwork_size || defaultArtSize;
     const artWrap = document.querySelector('.artwork-wrap');
     if (artWrap) {
