@@ -1862,7 +1862,7 @@
                                 snap.docChanges().forEach(change => {
                                     if (change.type === 'added') {
                                         const data = change.doc.data();
-                                        const playHere = shouldPlayAudioHere(window.location.hostname, window.activeDashboardHost, window.activeDashboardTime);
+                                        const playHere = true;
 
                                         if (playHere && !muteDashboardAudioRef.current) {
                                             if (data.type === 'chat') {
@@ -3431,6 +3431,11 @@
 
                 // Sincronizar audio y TTS directamente en el Dashboard (Parent Window) para evadir bloqueo de autoplay
                 try {
+                    if (muteDashboardAudioRef.current) {
+                        console.log("Simulated sound skipped because local audio is muted.");
+                        triggerSaveBadge(`🧪 Test [${type}] simulado (silenciado)`);
+                        return;
+                    }
                     let audioUrl = '';
                     let audioVolume = 50;
                     let playAudio = true;
@@ -3816,28 +3821,61 @@
                                 <span style={{ position: 'absolute', top: '-6px', right: '4px', background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', color: 'white', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '8px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Live</span>
                             </button>
                         </div>
-                        <button 
-                            onClick={() => setStreamerMode(!streamerMode)}
-                            style={{ 
-                                cursor: 'pointer', 
-                                border: streamerMode ? '1px solid rgba(236, 72, 153, 0.4)' : '1px solid var(--border-glass)', 
-                                background: streamerMode ? 'linear-gradient(135deg, rgba(236, 72, 153, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%)' : 'rgba(255,255,255,0.03)', 
-                                color: streamerMode ? '#f472b6' : '#fff',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                padding: '6px 12px',
-                                borderRadius: '10px',
-                                fontWeight: 'bold',
-                                fontSize: '0.75rem',
-                                transition: 'all 0.3s ease',
-                                height: '36px',
-                                boxShadow: streamerMode ? '0 0 10px rgba(139, 92, 246, 0.2)' : 'none'
-                            }}
-                            title={streamerMode ? "Desactivar vista compacta para stream" : "Activar vista compacta para stream"}
-                        >
-                            <span>🎬 {streamerMode ? 'Modo Streamer: Activo' : 'Modo Streamer'}</span>
-                        </button>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    const nextMute = !muteDashboardAudio;
+                                    setMuteDashboardAudio(nextMute);
+                                    try {
+                                        localStorage.setItem('mute_dashboard_audio', String(nextMute));
+                                    } catch(_) {}
+                                }}
+                                style={{ 
+                                    cursor: 'pointer', 
+                                    border: !muteDashboardAudio ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)', 
+                                    background: !muteDashboardAudio ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)' : 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.15) 100%)', 
+                                    color: !muteDashboardAudio ? '#4ade80' : '#f87171',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 12px',
+                                    borderRadius: '10px',
+                                    fontWeight: 'bold',
+                                    fontSize: '0.75rem',
+                                    transition: 'all 0.3s ease',
+                                    height: '36px',
+                                    boxShadow: !muteDashboardAudio ? '0 0 10px rgba(34, 197, 94, 0.15)' : 'none'
+                                }}
+                                title={!muteDashboardAudio ? "Silenciar alertas y TTS en esta pestaña del navegador" : "Activar alertas y TTS en esta pestaña del navegador"}
+                            >
+                                <span>{!muteDashboardAudio ? '🔊 Sonido Local: ON' : '🔇 Sonido Local: OFF'}</span>
+                            </button>
+
+                            <button 
+                                type="button"
+                                onClick={() => setStreamerMode(!streamerMode)}
+                                style={{ 
+                                    cursor: 'pointer', 
+                                    border: streamerMode ? '1px solid rgba(236, 72, 153, 0.4)' : '1px solid var(--border-glass)', 
+                                    background: streamerMode ? 'linear-gradient(135deg, rgba(236, 72, 153, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%)' : 'rgba(255,255,255,0.03)', 
+                                    color: streamerMode ? '#f472b6' : '#fff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 12px',
+                                    borderRadius: '10px',
+                                    fontWeight: 'bold',
+                                    fontSize: '0.75rem',
+                                    transition: 'all 0.3s ease',
+                                    height: '36px',
+                                    boxShadow: streamerMode ? '0 0 10px rgba(139, 92, 246, 0.2)' : 'none'
+                                }}
+                                title={streamerMode ? "Desactivar vista compacta para stream" : "Activar vista compacta para stream"}
+                            >
+                                <span>🎬 {streamerMode ? 'Modo Streamer: Activo' : 'Modo Streamer'}</span>
+                            </button>
+                        </div>
                     </div>
 
                     {/* TAB PANEL 2: ADVANCED CONFIG */}
@@ -5031,6 +5069,37 @@
                                             </p>
                                         </div>
 
+                                        {/* Global OBS Mute Control */}
+                                        <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid #ef4444' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div>
+                                                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem', margin: 0 }}>
+                                                        <span>📺</span> Sonido de Alertas en OBS
+                                                    </h3>
+                                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', margin: '4px 0 0 0' }}>
+                                                        Si desactivas esta opción, OBS no reproducirá sonido ni TTS (silencio total en la transmisión). Ideal si prefieres escuchar todo solo en este Dashboard.
+                                                    </p>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                                    <label className="switch">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={overlays.enableOverlayAudio !== undefined ? overlays.enableOverlayAudio : false} 
+                                                            onChange={(e) => setOverlays({ ...overlays, enableOverlayAudio: e.target.checked })} 
+                                                        />
+                                                        <span className="slider"></span>
+                                                    </label>
+                                                    <button 
+                                                        type="button" 
+                                                        className="btn btn-secondary btn-sm" 
+                                                        onClick={() => handleSaveOverlaysConfigOnly('Sonido OBS')}
+                                                        style={{ height: '32px', fontSize: '0.75rem', padding: '0 10px' }}
+                                                    >
+                                                        Guardar
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
 
                                         {/* CARD 1: FOLLOWERS */}
                                         <div className="glass-card" style={{ borderLeft: '4px solid #ec4899' }}>
