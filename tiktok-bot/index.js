@@ -2418,6 +2418,10 @@ function setupNotificationListener() {
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);
 
+        // Set para evitar procesar el mismo pedido dos veces en la misma sesión
+        // (protección contra duplicados en Firestore por múltiples instancias del bot)
+        const processedSolicitudIds = new Set();
+
         const solicitudesQuery = query(
             collection(db, 'solicitudes'),
             where('ts', '>=', startOfToday)
@@ -2432,7 +2436,15 @@ function setupNotificationListener() {
                     const isPending = data.status === 'pending';
                     const alreadySent = data.ciderSent === true;
 
+                    // Si ya procesamos un pedido con este mismo id en esta sesión, ignorar
+                    const solicitudId = data.id || docId;
+                    if (processedSolicitudIds.has(solicitudId)) {
+                        console.log(`🔁 [Firestore Listener] Pedido duplicado ignorado (id="${solicitudId}", docId="${docId}")`);
+                        return;
+                    }
+
                     if (isPending && !alreadySent) {
+                        processedSolicitudIds.add(solicitudId);
                         let appleMusicId = data.appleMusicId ? String(data.appleMusicId).trim() : '';
                         let songName = data.cancion ? String(data.cancion).trim() : '';
                         let artistName = data.artista ? String(data.artista).trim() : '';
@@ -4797,10 +4809,28 @@ async function handleSongRequest(user, query, options = {}) {
         let queueDocId = '';
         if (sendToQueue) {
             try {
-                await setDoc(docFn(db, 'solicitudes', songId), requestData);
-                queueSaved = true;
-                queueDocId = songId;
-                console.log(`✅ Agregada a la lista visual`);
+                // Verificar si ya existe un documento con el mismo id (evita duplicados entre instancias)
+                let alreadyExists = false;
+                try {
+                    const existingQ = queryFn(
+                        collectionFn(db, 'solicitudes'),
+                        whereFn('id', '==', songId)
+                    );
+                    const existingSnap = await getDocsFn(existingQ);
+                    if (!existingSnap.empty) {
+                        alreadyExists = true;
+                        queueDocId = existingSnap.docs[0].id;
+                        queueSaved = true;
+                        console.log(`⚠️ Solicitud duplicada detectada (ya existe id="${songId}"). Ignorando escritura.`);
+                    }
+                } catch (_) {}
+
+                if (!alreadyExists) {
+                    await setDoc(docFn(db, 'solicitudes', songId), requestData);
+                    queueSaved = true;
+                    queueDocId = songId;
+                    console.log(`✅ Agregada a la lista visual`);
+                }
             } catch (e) {
                 const code = String(e && (e.code || e.status) ? (e.code || e.status) : '').toLowerCase();
                 const msg = String(e && e.message ? e.message : e);
