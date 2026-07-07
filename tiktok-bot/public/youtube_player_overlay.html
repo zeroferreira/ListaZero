@@ -913,6 +913,17 @@
     const videoMode = window.currentVideoMode || 'audio_only';
     if (videoMode !== 'miniature') return;
     
+    // Move container inside the artwork wrap if it's not already there
+    if (ytContainer.parentElement !== artWrap) {
+      artWrap.appendChild(ytContainer);
+    }
+    
+    // Fill the cover box perfectly
+    ytContainer.style.top = '0';
+    ytContainer.style.left = '0';
+    ytContainer.style.width = '100%';
+    ytContainer.style.height = '100%';
+    
     const cfg = window.lastConfig || {};
     const rawLayout = cfg.yt_card_layout_mode || 'standard';
     const layoutMode = rawLayout.replace(/_/g, '-');
@@ -921,30 +932,10 @@
     const defaultArtSize = isVideoLeft ? 180 : (isSplit ? 130 : 82);
     const artSize = cfg.yt_artwork_size || defaultArtSize;
     
-    const cardRect = card.getBoundingClientRect();
-    const artRect = artWrap.getBoundingClientRect();
-    
-    const isPreview = (new URLSearchParams(window.location.search)).get('preview') === 'true';
-    if (cardRect.width > 0 && artRect.width > 0) {
-      const scale = isPreview ? (parseFloat(card.style.getPropertyValue('--preview-scale')) || 1) : 1;
-      const topOffset = (artRect.top - cardRect.top) / scale;
-      const leftOffset = (artRect.left - cardRect.left) / scale;
-      ytContainer.style.top = `${topOffset}px`;
-      ytContainer.style.left = `${leftOffset}px`;
-      ytContainer.style.width = `${artRect.width / scale}px`;
-      ytContainer.style.height = `${artRect.height / scale}px`;
-    } else {
-      const padding = (isSplit || isVideoLeft) ? 16 : 20;
-      ytContainer.style.top = `${padding}px`;
-      ytContainer.style.left = `${padding}px`;
-      ytContainer.style.width = `${artSize}px`;
-      ytContainer.style.height = `${artSize}px`;
-    }
-    
     const radius = cfg.yt_card_radius !== undefined ? cfg.yt_card_radius : 22;
     ytContainer.style.borderRadius = (isSplit || isVideoLeft) ? `${radius}px` : '14px';
-    const currentWidth = parseFloat(ytContainer.style.width) || artSize;
-    const miniatureScale = currentWidth / 180;
+    
+    const miniatureScale = artSize / 180;
     ytContainer.style.setProperty('--yt-miniature-scale', miniatureScale);
   }
 
@@ -1073,6 +1064,11 @@
     const artworkImg = document.getElementById('artwork');
 
     if (ytContainer) {
+      // If not in miniature mode, ensure the container is at the card root (sibling to card-inner)
+      if (videoMode !== 'miniature' && ytContainer.parentElement !== card) {
+        card.insertBefore(ytContainer, card.querySelector('.card-inner'));
+      }
+
       // Reset classes
       ytContainer.classList.remove('miniature-mode');
       cardBg.style.opacity = '1'; // Reset background artwork opacity
