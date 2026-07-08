@@ -1937,32 +1937,40 @@
                     if (giftName.includes('quiereme') || giftName.includes('quiéreme') || giftName.includes('community heart') || giftName.includes('communityheart') || giftName.includes('heart me') || giftName.includes('heartme') || giftName.includes('corazón') || giftName.includes('corazon') || giftName.includes('heart') || giftName.includes('te amo') || giftName.includes('teamo') || giftName.includes('love')) {
                         // Reproducir el video Quiéreme de forma discreta y elegante usando configuración
                         const config = window.overlayAlertsConfig || {};
-                        let videoUrl = config.quieremeVideoUrl || '/QUIEREME.mov';
-                        if (videoUrl === 'custom') {
-                            videoUrl = config.quieremeVideoCustomUrl || '/QUIEREME.mov';
+                        // Siempre usar la ruta universal /quiereme-video que sirve el archivo subido
+                        let videoUrl = '/quiereme-video';
+                        // Si hay una URL custom explícita (http o ruta distinta), usarla
+                        const cfgUrl = config.quieremeVideoUrl;
+                        if (cfgUrl && cfgUrl !== 'custom' && cfgUrl !== '/QUIEREME.mov' && cfgUrl !== '/QUIEREME.mp4' && (cfgUrl.startsWith('http') || cfgUrl.startsWith('/'))) {
+                            videoUrl = cfgUrl;
+                        } else if (cfgUrl === 'custom' && config.quieremeVideoCustomUrl && (config.quieremeVideoCustomUrl.startsWith('http') || config.quieremeVideoCustomUrl.startsWith('/'))) {
+                            videoUrl = config.quieremeVideoCustomUrl;
                         }
                         
-                        // Sanitizar ruta local de disco de Windows/Mac
-                        if (videoUrl.includes(':') || videoUrl.includes('\\') || (!videoUrl.startsWith('http') && !videoUrl.startsWith('/') && !videoUrl.startsWith('.'))) {
-                            videoUrl = '/QUIEREME.mov';
-                        }
+                        console.log('[Quiéreme] Reproduciendo video URL:', videoUrl, '| config.quieremeVideoUrl:', cfgUrl);
                         
-                        const isMov = String(videoUrl).toLowerCase().endsWith('.mov');
-                        const primaryType = isMov ? 'video/quicktime' : 'video/mp4';
-                        const fallbackUrl = isMov ? videoUrl.replace(/\.mov$/i, '.mp4') : videoUrl.replace(/\.mp4$/i, '.mov');
-                        const fallbackType = isMov ? 'video/mp4' : 'video/quicktime';
-
                         const $videoContainer = $("<div>").addClass("quiereme-video-container");
                         $videoContainer.html(`
-                            <video id="quieremeVideo" autoplay muted playsinline loop style="width: 100%; height: 100%; object-fit: cover;">
-                                <source src="${videoUrl}" type="${primaryType}">
-                                <source src="${fallbackUrl}" type="${fallbackType}">
+                            <video id="quieremeVideo" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;">
+                                <source src="${videoUrl}" type="video/mp4">
+                                <source src="${videoUrl}" type="video/quicktime">
                             </video>
                         `);
                         $mediaContainer.append($videoContainer);
+                        // Ajustar volumen y des-silenciar después de insertar
+                        setTimeout(() => {
+                            const vid = document.getElementById('quieremeVideo');
+                            if (vid) {
+                                const alertVol = (window.overlayAlertsConfig && window.overlayAlertsConfig.alertVolume != null) ? window.overlayAlertsConfig.alertVolume : 80;
+                                vid.volume = alertVol / 100;
+                                vid.muted = false;
+                                vid.play().catch(e => console.warn('[Quiéreme] Autoplay bloqueado:', e));
+                            }
+                        }, 100);
                         if (data.profilePic) {
                             $userAvatar.attr("src", data.profilePic).show();
                         }
+
                     } else {
                         // Cargar el SVG o imagen del regalo personalizado según su nombre o icono CDN
                         const $badgeContainer = $("<div>").addClass("gift-badge-container");

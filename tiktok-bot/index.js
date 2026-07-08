@@ -1235,6 +1235,21 @@ function startBot() {
         return null;
     };
 
+    // Ruta universal para video Quiéreme (sin importar extensión)
+    app.get('/quiereme-video', (req, res) => {
+        const filePath = findQuieremeFile();
+        console.log('[Quiéreme] Solicitud /quiereme-video, archivo encontrado:', filePath);
+        if (filePath && fs.existsSync(filePath)) {
+            const ext = path.extname(filePath).toLowerCase();
+            const mimeType = ext === '.mov' ? 'video/quicktime' : 'video/mp4';
+            res.setHeader('Content-Type', mimeType);
+            res.sendFile(filePath);
+        } else {
+            console.warn('[Quiéreme] Archivo no encontrado para /quiereme-video');
+            res.sendStatus(404);
+        }
+    });
+
     app.get('/QUIEREME.mov', (req, res) => {
         const filePath = findQuieremeFile();
         if (filePath && fs.existsSync(filePath)) {
