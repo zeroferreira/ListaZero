@@ -3275,6 +3275,7 @@
                 }
             };
 
+
             const handleUploadQuieremeVideo = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -3296,12 +3297,26 @@
                     });
                     const data = await res.json();
                     if (data.success) {
-                        triggerSaveBadge("✅ Video subido con éxito");
-                        setOverlays(prev => ({
-                            ...prev,
+                        // Actualizar estado local con el nuevo URL
+                        const newOverlays = {
+                            ...overlays,
                             quieremeVideoUrl: 'custom',
                             quieremeVideoCustomUrl: data.url
-                        }));
+                        };
+                        setOverlays(newOverlays);
+                        // Auto-guardar en Firestore para que el overlay de OBS lo detecte
+                        try {
+                            localStorage.setItem('offline_overlays_config', JSON.stringify(newOverlays));
+                            const saved = await saveOverlaysConfig(newOverlays);
+                            if (saved) {
+                                triggerSaveBadge("✅ Video subido y guardado");
+                            } else {
+                                triggerSaveBadge("✅ Video subido (guarda manualmente)");
+                            }
+                        } catch (saveErr) {
+                            console.error("Error guardando config tras subida:", saveErr);
+                            triggerSaveBadge("✅ Video subido (guarda manualmente)");
+                        }
                     } else {
                         alert("Error al subir el video: " + (data.error || 'Desconocido'));
                     }
@@ -3310,6 +3325,7 @@
                     alert("Error al conectar con el servidor para subir el video.");
                 }
             };
+
 
             // Custom specific Overlay config saves
             const handleSaveOverlaysConfigOnly = async (subpanel = '') => {
