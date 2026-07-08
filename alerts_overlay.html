@@ -1942,6 +1942,11 @@
                             videoUrl = config.quieremeVideoCustomUrl || '/QUIEREME.mov';
                         }
                         
+                        // Sanitizar ruta local de disco de Windows/Mac
+                        if (videoUrl.includes(':') || videoUrl.includes('\\') || (!videoUrl.startsWith('http') && !videoUrl.startsWith('/') && !videoUrl.startsWith('.'))) {
+                            videoUrl = '/QUIEREME.mov';
+                        }
+                        
                         const isMov = String(videoUrl).toLowerCase().endsWith('.mov');
                         const primaryType = isMov ? 'video/quicktime' : 'video/mp4';
                         const fallbackUrl = isMov ? videoUrl.replace(/\.mov$/i, '.mp4') : videoUrl.replace(/\.mp4$/i, '.mov');
@@ -2054,19 +2059,30 @@
 
             // Reproducir Audio
             if (playAudio && playAudioAndTts) {
-                const $audio = $("#alertAudio");
-                let audioUrl = theme.audio || theme.defaultAudio;
-                if (type === 'follow' && config.followAudioUrl) audioUrl = config.followAudioUrl;
-                else if (type === 'like' && config.likeAudioUrl) audioUrl = config.likeAudioUrl;
-                else if (type === 'gift' && config.giftAudioUrl) audioUrl = config.giftAudioUrl;
-                else if (type === 'subscribe' && config.subscribeAudioUrl) audioUrl = config.subscribeAudioUrl;
+                const isQuieremeVideoActive = $(".quiereme-video-container").length > 0;
                 
-                $audio.attr("src", audioUrl);
-                const audioEl = $audio[0];
-                audioEl.volume = alertVolume / 100;
-                
-                // Forzar play con manejo de políticas del navegador
-                audioEl.play().catch(e => console.warn("[Audio] Interacción bloqueada por el navegador:", e));
+                if (isQuieremeVideoActive) {
+                    const videoEl = document.getElementById("quieremeVideo");
+                    if (videoEl) {
+                        videoEl.muted = false; // Des-silenciar el video
+                        videoEl.volume = alertVolume / 100; // Ajustar volumen al de regalo
+                        console.log(`🔊 Audio de video Quiéreme des-silenciado con volumen: ${videoEl.volume}`);
+                    }
+                } else {
+                    const $audio = $("#alertAudio");
+                    let audioUrl = theme.audio || theme.defaultAudio;
+                    if (type === 'follow' && config.followAudioUrl) audioUrl = config.followAudioUrl;
+                    else if (type === 'like' && config.likeAudioUrl) audioUrl = config.likeAudioUrl;
+                    else if (type === 'gift' && config.giftAudioUrl) audioUrl = config.giftAudioUrl;
+                    else if (type === 'subscribe' && config.subscribeAudioUrl) audioUrl = config.subscribeAudioUrl;
+                    
+                    $audio.attr("src", audioUrl);
+                    const audioEl = $audio[0];
+                    audioEl.volume = alertVolume / 100;
+                    
+                    // Forzar play con manejo de políticas del navegador
+                    audioEl.play().catch(e => console.warn("[Audio] Interacción bloqueada por el navegador:", e));
+                }
             }
 
             // Disparar explosión de partículas de colores (Confeti)

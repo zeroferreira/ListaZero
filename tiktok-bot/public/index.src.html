@@ -3275,6 +3275,42 @@
                 }
             };
 
+            const handleUploadQuieremeVideo = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                if (file.size > 150 * 1024 * 1024) {
+                    alert("El archivo supera el límite permitido de 150MB.");
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('video', file);
+
+                try {
+                    triggerSaveBadge("⏳ Subiendo video...");
+                    const apiBase = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+                    const res = await fetch(`${apiBase}/api/upload/quiereme`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        triggerSaveBadge("✅ Video subido con éxito");
+                        setOverlays(prev => ({
+                            ...prev,
+                            quieremeVideoUrl: 'custom',
+                            quieremeVideoCustomUrl: data.url
+                        }));
+                    } else {
+                        alert("Error al subir el video: " + (data.error || 'Desconocido'));
+                    }
+                } catch (err) {
+                    console.error("Error al subir video:", err);
+                    alert("Error al conectar con el servidor para subir el video.");
+                }
+            };
+
             // Custom specific Overlay config saves
             const handleSaveOverlaysConfigOnly = async (subpanel = '') => {
                 localStorage.setItem('offline_overlays_config', JSON.stringify(overlays));
@@ -6739,8 +6775,20 @@
                                                                 >
                                                                     <option value="/QUIEREME.mov">QUIEREME.mov (Transparente - Recomendado)</option>
                                                                     <option value="/QUIEREME.mp4">QUIEREME.mp4 (Fondo Verde)</option>
-                                                                    <option value="custom">Otro (Ruta o URL Personalizada)...</option>
-                                                                </select>
+                                                                    <option value="custom">Otro (Ruta o URL Personalizada)...</option></select>
+                                                                
+                                                                <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.03)', padding: '10px', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.08)' }}>
+                                                                    <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>Sube tu propio video:</span>
+                                                                    <label className="btn" style={{ fontSize: '0.75rem', padding: '5px 12px', margin: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(168, 85, 247, 0.25)', border: '1px solid rgba(168, 85, 247, 0.4)', color: '#d8b4fe', borderRadius: '6px' }}>
+                                                                        📁 Seleccionar y Subir Video (.mov/.mp4)
+                                                                        <input 
+                                                                            type="file" 
+                                                                            accept="video/mp4,video/quicktime" 
+                                                                            onChange={handleUploadQuieremeVideo} 
+                                                                            style={{ display: 'none' }} 
+                                                                        />
+                                                                    </label>
+                                                                </div>
                                                             </div>
                                                             {(overlays.quieremeVideoUrl === 'custom' || (overlays.quieremeVideoUrl !== '/QUIEREME.mov' && overlays.quieremeVideoUrl !== '/QUIEREME.mp4')) && (
                                                                 <div className="form-group" style={{ marginTop: '10px', paddingLeft: '15px' }}>

@@ -43,14 +43,16 @@
       width: var(--card-w);
       overflow: hidden;
       opacity: 0;
-      transform: translateY(18px);
-      transition: all 0.5s cubic-bezier(0.16,1,0.3,1);
+      transform: translateY(18px) translate3d(0,0,0);
+      transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), opacity 0.5s cubic-bezier(0.16,1,0.3,1);
       pointer-events: none;
+      will-change: transform, opacity;
+      backface-visibility: hidden;
     }
 
     #player-card.visible {
       opacity: 1;
-      transform: translateY(0);
+      transform: translateY(0) translate3d(0,0,0);
     }
 
     /* ─── Premium Themes ────────────────────── */
@@ -100,7 +102,9 @@
       background-size: cover;
       background-position: center;
       filter: blur(60px) brightness(0.25) saturate(2);
-      transform: scale(1.3);
+      transform: scale(1.3) translate3d(0,0,0);
+      will-change: transform, opacity, filter;
+      backface-visibility: hidden;
       z-index: 0;
       transition: background-image 0.6s ease;
     }
@@ -117,7 +121,6 @@
         "progress progress"
         "requester requester";
       gap: 14px 16px;
-      transition: all 0.4s ease;
     }
 
     /* Thumbnail / Artwork */
@@ -131,7 +134,6 @@
       box-shadow: 0 8px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1);
       position: relative;
       background: #111;
-      transition: all 0.4s ease;
     }
 
     .artwork-wrap img {
@@ -247,19 +249,30 @@
       height: 100%;
       border-radius: 99px;
       background: linear-gradient(90deg, var(--accent), var(--accent2));
-      width: 0%;
-      transition: width 0.8s linear;
+      width: 100%;
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.8s linear;
+      will-change: transform;
+      position: relative;
+      overflow: hidden;
     }
 
-    /* Shimmer when "playing" */
-    @keyframes shimmer {
-      0% { background-position: -200% center; }
-      100% { background-position: 200% center; }
+    /* Shimmer using hardware-accelerated transform */
+    @keyframes shimmer-move {
+      0% { transform: translate3d(-100%, 0, 0); }
+      100% { transform: translate3d(100%, 0, 0); }
     }
-    .progress-fill.playing {
-      background: linear-gradient(90deg, #ff003c, #ff6b6b, #ff003c);
-      background-size: 200% 100%;
-      animation: shimmer 2s linear infinite;
+    .progress-fill.playing::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+      animation: shimmer-move 2s linear infinite;
+      will-change: transform;
     }
 
     .time-row {
@@ -345,7 +358,10 @@
     /* YouTube Player Container & responsive iframe */
     #yt-player-container {
       pointer-events: none;
-      transition: all 0.3s ease;
+      transition: transform 0.3s ease, opacity 0.3s ease, filter 0.3s ease;
+      will-change: transform, opacity, filter;
+      transform: translate3d(0,0,0);
+      backface-visibility: hidden;
     }
     #yt-player-container iframe {
       width: 100% !important;
@@ -353,6 +369,9 @@
       border: none;
       pointer-events: none;
       transition: transform 0.3s ease, width 0.3s ease, height 0.3s ease;
+      will-change: transform;
+      transform: translate3d(0,0,0);
+      backface-visibility: hidden;
     }
     /* Evitar congelamiento de iframe pequeño renderizando a tamaño real y escalando por CSS */
     #yt-player-container.miniature-mode iframe {
@@ -361,7 +380,7 @@
       position: absolute !important;
       top: 50% !important;
       left: 50% !important;
-      transform: translate(-50%, -50%) scale(var(--yt-miniature-scale, 0.455)) !important;
+      transform: translate(-50%, -50%) scale(var(--yt-miniature-scale, 0.455)) translate3d(0,0,0) !important;
       transform-origin: center !important;
     }
     
@@ -382,6 +401,28 @@
       transform-origin: center !important;
       margin: 0 !important;
       flex-shrink: 0 !important;
+    }
+
+    /* ─── Optimizaciones para OBS Studio ──────────────── */
+    /* En OBS Studio, las transparencias y filtros CSS pesados (como blur y backdrop-filter)
+       pueden saturar la GPU del software, causando que el video vaya lento (stutter).
+       Desactivamos backdrop-filter (que blurea pixeles vacíos en OBS) y usamos colores semi-sólidos visualmente idénticos. */
+    body.obs-mode #player-card.theme-standard {
+      background: rgba(10, 10, 15, 0.96) !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+    
+    body.obs-mode #player-card.theme-glassmorphism {
+      background: rgba(20, 20, 25, 0.90) !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+    
+    /* Reducir el radio de blur del fondo en OBS para ahorrar fill-rate de la GPU */
+    body.obs-mode .card-bg {
+      filter: blur(20px) brightness(0.25) saturate(1.8) !important;
+      transform: scale(1.15) translate3d(0, 0, 0) !important;
     }
   </style>
 </head>
@@ -484,6 +525,35 @@
   let hasSetInitialVolume = false;
   let lastUpdatedTimestamp = 0;
 
+  // Detect OBS environment and query params globally
+  const params = new URLSearchParams(window.location.search);
+  const isObs = window.obsstudio || window.navigator.userAgent.includes('OBS') || params.get('obs') === 'true';
+  if (isObs) {
+    document.body.classList.add('obs-mode');
+    console.log("🎥 OBS Studio detectado. Optimizaciones de rendimiento activadas.");
+  }
+
+  // Soporte de Chroma Key para capturar ventana en OBS desde Chrome u otro navegador
+  const chromaKey = params.get('chromakey');
+  if (chromaKey) {
+    const chromaColor = chromaKey === 'blue' ? '#0000ff' : '#00ff00';
+    document.body.style.setProperty('background-color', chromaColor, 'important');
+    document.body.style.setProperty('background', chromaColor, 'important');
+    console.log(`💚 Modo Chroma Key activado (${chromaKey}): ${chromaColor}`);
+  }
+
+  // Get suggested quality based on active display mode
+  function getSuggestedQuality() {
+    const mode = window.currentVideoMode || 'audio_only';
+    if (mode === 'audio_only' || mode === 'miniature') {
+      return 'small'; // 240p is perfect for small sizes or hidden player
+    }
+    if (mode === 'card_background') {
+      return 'medium'; // 360p is perfect for blurred background
+    }
+    return 'default'; // Let YouTube choose
+  }
+
   // ─── YouTube Iframe API Loader ────────────────
   const tag = document.createElement('script');
   tag.src = "https://www.youtube.com/iframe_api";
@@ -505,17 +575,25 @@
       return;
     }
 
-    const params = new URLSearchParams(window.location.search);
     const startState = targetState || 'playing';
+    const quality = getSuggestedQuality();
+    const isPreview = params.get('preview') === 'true';
+    const shouldMuteInitially = isObs || (params.get('mute') === 'true') || (!isPreview);
 
     if (ytPlayer) {
       try {
         if (startState === 'paused') {
-          ytPlayer.cueVideoById(videoId);
+          ytPlayer.cueVideoById({
+            videoId: videoId,
+            suggestedQuality: quality
+          });
           updatePlayerMuteState(currentVolume);
-          console.log(`🎥 Video cued (paused) on reload: ${videoId}`);
+          console.log(`🎥 Video cued (paused) on reload: ${videoId} (${quality})`);
         } else {
-          ytPlayer.loadVideoById(videoId);
+          ytPlayer.loadVideoById({
+            videoId: videoId,
+            suggestedQuality: quality
+          });
           updatePlayerMuteState(currentVolume);
           ytPlayer.playVideo();
         }
@@ -539,7 +617,10 @@
         'iv_load_policy': 3,
         'enablejsapi': 1,
         'origin': window.location.origin,
-        'mute': params.get('mute') === 'true' ? 1 : 0
+        'mute': shouldMuteInitially ? 1 : 0,
+        'modestbranding': 1,
+        'autohide': 1,
+        'cc_load_policy': 0
       },
       events: {
         'onReady': (event) => {
@@ -548,6 +629,9 @@
             event.target.playVideo();
           } else {
             event.target.pauseVideo();
+          }
+          if (typeof event.target.setPlaybackQuality === 'function') {
+            event.target.setPlaybackQuality(quality);
           }
           adjustIframeAspectRatio();
         },
@@ -578,6 +662,13 @@
     const params = new URLSearchParams(window.location.search);
     const isPreview = params.get('preview') === 'true';
 
+    // Si es OBS o se abre en OBS, silenciar incondicionalmente
+    if (isObs) {
+      ytPlayer.mute();
+      console.log(`🔇 Audio silenciado de forma absoluta por ser OBS.`);
+      return;
+    }
+
     // Si se solicita silenciado forzoso por parámetro (por ejemplo, en vistas previas secundarias)
     if (params.get('mute') === 'true') {
       ytPlayer.mute();
@@ -585,10 +676,10 @@
       return;
     }
 
-    // Si NO es la vista previa (osea, es el overlay de OBS), se silencia el audio 100%
+    // Si NO es la vista previa (osea, es el overlay de OBS u otra pantalla no-preview), se silencia
     if (!isPreview) {
       ytPlayer.mute();
-      console.log(`🔇 Audio silenciado forzosamente por ser overlay de OBS.`);
+      console.log(`🔇 Audio silenciado por no ser vista previa.`);
       return;
     }
 
@@ -782,7 +873,7 @@
     stopTimer();
     currentVideoId = null;
     elapsedSec = 0;
-    progressFill.style.width = '0%';
+    progressFill.style.transform = 'scaleX(0)';
     timeElapsed.textContent = '0:00';
     timeTotal.textContent   = '—';
     currentState = 'idle';
@@ -794,10 +885,7 @@
       } catch (e) {}
     }
 
-    const params = new URLSearchParams(window.location.search);
     const isPreview = params.get('preview') === 'true';
-    const isObs = window.obsstudio || window.navigator.userAgent.includes('OBS') || params.get('obs') === 'true';
-    
     const idlePreview = document.getElementById('idle-preview');
     
     if (isPreview) {
@@ -816,7 +904,7 @@
       artwork.src = defaultThumb;
       cardBg.style.backgroundImage = `url('${defaultThumb}')`;
       timeTotal.textContent   = '3:33';
-      progressFill.style.width = '35%';
+      progressFill.style.transform = 'scaleX(0.35)';
       timeElapsed.textContent = '1:14';
       
       stateDot.className = 'state-dot playing';
@@ -852,10 +940,10 @@
   function updateProgress() {
     timeElapsed.textContent = fmtTime(elapsedSec);
     if (durationSec > 0) {
-      progressFill.style.width = Math.min(100, (elapsedSec / durationSec) * 100) + '%';
+      const pct = Math.min(1, elapsedSec / durationSec);
+      progressFill.style.transform = `scaleX(${pct})`;
     } else {
-      // Indeterminate pulse when no duration known
-      progressFill.style.width = '0%';
+      progressFill.style.transform = 'scaleX(0)';
     }
   }
 
@@ -1081,6 +1169,7 @@
       cardBg.style.opacity = '1'; // Reset background artwork opacity
 
       if (videoMode === 'audio_only') {
+        ytContainer.style.display = 'none'; // Desactivar renderizado completamente para ahorrar GPU
         ytContainer.style.position = 'absolute';
         ytContainer.style.top = '0';
         ytContainer.style.left = '-9999px';
@@ -1092,49 +1181,56 @@
         ytContainer.style.filter = '';
         
         if (artworkImg) artworkImg.style.opacity = '1';
-      } else if (videoMode === 'miniature') {
-        // Miniature Mode: Overlay on the artwork box (avoid freezing by scaling a 320x180 frame)
-        ytContainer.classList.add('miniature-mode');
-        ytContainer.style.position = 'absolute';
-        ytContainer.style.opacity = '1';
-        ytContainer.style.zIndex = '2'; // In front of standard artwork
-        ytContainer.style.overflow = 'hidden';
-        ytContainer.style.filter = '';
+      } else {
+        ytContainer.style.display = 'block'; // Asegurar que sea visible
         
-        positionMiniatureVideo();
+        if (videoMode === 'miniature') {
+          // Miniature Mode: Overlay on the artwork box (avoid freezing by scaling a 320x180 frame)
+          ytContainer.classList.add('miniature-mode');
+          ytContainer.style.position = 'absolute';
+          ytContainer.style.opacity = '1';
+          ytContainer.style.zIndex = '2'; // In front of standard artwork
+          ytContainer.style.overflow = 'hidden';
+          ytContainer.style.filter = '';
+          
+          positionMiniatureVideo();
 
-        if (artworkImg) artworkImg.style.opacity = '1'; // Keep static thumbnail visible under the video overlay
-      } else if (videoMode === 'card_background') {
-        // Card Background Mode: Covers the whole card behind content (blurred & low opacity)
-        ytContainer.style.position = 'absolute';
-        ytContainer.style.top = '0';
-        ytContainer.style.left = '0';
-        ytContainer.style.width = '100%';
-        ytContainer.style.height = '100%';
-        ytContainer.style.opacity = cfg.yt_bg_video_opacity !== undefined ? cfg.yt_bg_video_opacity : 0.25;
-        ytContainer.style.zIndex = '0'; // Sibling to card-bg, behind card-inner
-        ytContainer.style.borderRadius = `${radius}px`;
-        ytContainer.style.overflow = 'hidden';
-        
-        const bgBlur = cfg.yt_bg_video_blur !== undefined ? cfg.yt_bg_video_blur : 4;
-        ytContainer.style.filter = bgBlur > 0 ? `blur(${bgBlur}px)` : '';
-        
-        if (artworkImg) artworkImg.style.opacity = '1'; // Show standard artwork thumbnail
-      } else if (videoMode === 'card_cover') {
-        // Card Cover Mode: Full-size sharp video as background of the card (100% opacity, no blur)
-        ytContainer.style.position = 'absolute';
-        ytContainer.style.top = '0';
-        ytContainer.style.left = '0';
-        ytContainer.style.width = '100%';
-        ytContainer.style.height = '100%';
-        ytContainer.style.opacity = '1';
-        ytContainer.style.zIndex = '0'; // Sibling to card-bg, behind card-inner
-        ytContainer.style.borderRadius = `${radius}px`;
-        ytContainer.style.overflow = 'hidden';
-        ytContainer.style.filter = ''; // No blur!
-        cardBg.style.opacity = '0'; // Hide static blurred background art to show sharp video
-        
-        if (artworkImg) artworkImg.style.opacity = '1'; // Keep artwork thumbnail visible in info col
+          if (artworkImg) artworkImg.style.opacity = '1'; // Keep static thumbnail visible under the video overlay
+        } else if (videoMode === 'card_background') {
+          // Card Background Mode: Covers the whole card behind content (blurred & low opacity)
+          ytContainer.style.position = 'absolute';
+          ytContainer.style.top = '0';
+          ytContainer.style.left = '0';
+          ytContainer.style.width = '100%';
+          ytContainer.style.height = '100%';
+          ytContainer.style.opacity = cfg.yt_bg_video_opacity !== undefined ? cfg.yt_bg_video_opacity : 0.25;
+          ytContainer.style.zIndex = '0'; // Sibling to card-bg, behind card-inner
+          ytContainer.style.borderRadius = `${radius}px`;
+          ytContainer.style.overflow = 'hidden';
+          
+          let bgBlur = cfg.yt_bg_video_blur !== undefined ? cfg.yt_bg_video_blur : 4;
+          if (isObs && bgBlur > 8) {
+            bgBlur = 8; // Cap blur in OBS to prevent extreme stutter
+          }
+          ytContainer.style.filter = bgBlur > 0 ? `blur(${bgBlur}px)` : '';
+          
+          if (artworkImg) artworkImg.style.opacity = '1'; // Show standard artwork thumbnail
+        } else if (videoMode === 'card_cover') {
+          // Card Cover Mode: Full-size sharp video as background of the card (100% opacity, no blur)
+          ytContainer.style.position = 'absolute';
+          ytContainer.style.top = '0';
+          ytContainer.style.left = '0';
+          ytContainer.style.width = '100%';
+          ytContainer.style.height = '100%';
+          ytContainer.style.opacity = '1';
+          ytContainer.style.zIndex = '0'; // Sibling to card-bg, behind card-inner
+          ytContainer.style.borderRadius = `${radius}px`;
+          ytContainer.style.overflow = 'hidden';
+          ytContainer.style.filter = ''; // No blur!
+          cardBg.style.opacity = '0'; // Hide static blurred background art to show sharp video
+          
+          if (artworkImg) artworkImg.style.opacity = '1'; // Keep artwork thumbnail visible in info col
+        }
       }
     }
 
@@ -1163,6 +1259,11 @@
     }
     positionMiniatureVideo();
     adjustIframeAspectRatio();
+
+    // Aplicar cambio de calidad en tiempo real si el reproductor está listo
+    if (ytPlayer && typeof ytPlayer.setPlaybackQuality === 'function') {
+      ytPlayer.setPlaybackQuality(getSuggestedQuality());
+    }
     } catch (err) {
       console.warn('[YT Overlay] Error applying styles:', err);
     }

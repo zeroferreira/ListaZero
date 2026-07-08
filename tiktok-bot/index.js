@@ -1142,16 +1142,71 @@ function startBot() {
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
     app.use('/gifts', express.static(path.join(__dirname, '..', 'REGALOS DE TIK TOK PNG By Adbra')));
+
+    // Configuración de Multer para subir video de Quiéreme
+    const multer = require('multer');
+    const storage = multer.diskStorage({
+        destination: (req, file, cb) => {
+            cb(null, path.join(__dirname, '..')); // Guardar en la raíz del proyecto
+        },
+        filename: (req, file, cb) => {
+            const ext = path.extname(file.originalname).toLowerCase();
+            cb(null, 'QUIEREME' + ext); // Guardar siempre como QUIEREME.ext para consistencia
+        }
+    });
+    const upload = multer({
+        storage: storage,
+        limits: { fileSize: 150 * 1024 * 1024 } // Límite de 150 MB
+    });
+
+    app.post('/api/upload/quiereme', upload.single('video'), (req, res) => {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No se subió ningún archivo.' });
+        }
+        const ext = path.extname(req.file.originalname).toLowerCase();
+        console.log(`📤 Video Quiéreme subido con éxito: ${req.file.filename}`);
+        res.json({ 
+            success: true, 
+            url: `/QUIEREME${ext}`
+        });
+    });
+
+    const findQuieremeFile = () => {
+        const parentDir = path.join(__dirname, '..');
+        if (!fs.existsSync(parentDir)) return null;
+        try {
+            const files = fs.readdirSync(parentDir);
+            const normalize = (str) => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "");
+            
+            // 1. Buscar coincidencia en archivos .mov
+            const movMatch = files.find(f => normalize(f).includes("quiereme") && f.endsWith(".mov"));
+            if (movMatch) return path.join(parentDir, movMatch);
+            
+            // 2. Buscar coincidencia en archivos .mp4
+            const mp4Match = files.find(f => normalize(f).includes("quiereme") && f.endsWith(".mp4"));
+            if (mp4Match) return path.join(parentDir, mp4Match);
+        } catch (e) {
+            console.error("Error buscando archivo de Quiéreme:", e);
+        }
+        return null;
+    };
+
     app.get('/QUIEREME.mov', (req, res) => {
-        const mp4Path = path.join(__dirname, '..', 'QUIEREME.mp4');
-        if (fs.existsSync(mp4Path)) {
-            res.sendFile(mp4Path);
+        const filePath = findQuieremeFile();
+        if (filePath && fs.existsSync(filePath)) {
+            res.sendFile(filePath);
         } else {
-            res.sendFile(path.join(__dirname, '..', 'QUIEREME.mov'));
+            // Fallback a cualquier archivo quiereme por si acaso
+            res.sendStatus(404);
         }
     });
     app.get('/QUIEREME.mp4', (req, res) => {
-        res.sendFile(path.join(__dirname, '..', 'QUIEREME.mp4'));
+        const filePath = findQuieremeFile();
+        if (filePath && fs.existsSync(filePath)) {
+            res.sendFile(filePath);
+        } else {
+            res.sendStatus(404);
+        }
     });
 
     // Endpoint dinámico para servir configuración de Firebase a los overlays

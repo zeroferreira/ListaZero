@@ -7269,6 +7269,7 @@ function shouldShowStatsTicker() {
           const doc = await window.db.collection('systemConfig').doc('rewardsConfig').get();
           if (doc.exists) {
             const data = doc.data();
+            window.rewardsCooldownType = data.cooldownType || '36_hours';
             if (Array.isArray(data.list)) {
               console.log('📦 Configuración de recompensas cargada desde Firestore');
               const remote = data.list;
@@ -15025,6 +15026,11 @@ function shouldShowStatsTicker() {
       // ===== FUNCIONES PARA CONFIGURACIÓN DE RECOMPENSAS =====
 
       function renderRewardsConfig() {
+        const cooldownSelect = document.getElementById('rewards-cooldown-type');
+        if (cooldownSelect) {
+          cooldownSelect.value = window.rewardsCooldownType || '36_hours';
+        }
+
         const container = document.getElementById('rewards-config-list');
         if (!container) return;
 
@@ -15070,14 +15076,19 @@ function shouldShowStatsTicker() {
             throw new Error("No se pudieron leer los datos del formulario.");
           }
 
+          const cooldownSelect = document.getElementById('rewards-cooldown-type');
+          const selectedCooldown = cooldownSelect ? cooldownSelect.value : '36_hours';
+
           if (window.db) {
             await window.db.collection('systemConfig').doc('rewardsConfig').set({
               list: newRewards,
+              cooldownType: selectedCooldown,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
               updatedBy: getCurrentUser()
             });
             // Actualizar localmente también
             REWARDS = newRewards;
+            window.rewardsCooldownType = selectedCooldown;
             alert('✅ Configuración guardada exitosamente.');
           } else {
             alert('❌ Error: No hay conexión a base de datos.');
@@ -15218,7 +15229,7 @@ function shouldShowStatsTicker() {
         rewardsContainer.innerHTML = '';
 
         const now = Date.now();
-        const COOLDOWN_MS = 36 * 60 * 60 * 1000; // 36 Horas
+        const cooldownType = window.rewardsCooldownType || '36_hours';
 
         REWARDS.forEach(reward => {
           const canAfford = effectivePoints >= reward.cost;
@@ -15226,13 +15237,33 @@ function shouldShowStatsTicker() {
           // Lógica de Cooldown
           let isOnCooldown = false;
           let remainingHours = 0;
+          let cooldownLabel = '';
+          let cooldownDetailMsg = '36 horas entre usos.';
 
           if (userStatsDoc && userStatsDoc.lastRedeemedAt && userStatsDoc.lastRedeemedAt[reward.id]) {
-            const lastTime = new Date(userStatsDoc.lastRedeemedAt[reward.id]).getTime();
-            const elapsed = now - lastTime;
-            if (elapsed < COOLDOWN_MS) {
-              isOnCooldown = true;
-              remainingHours = Math.ceil((COOLDOWN_MS - elapsed) / (1000 * 60 * 60));
+            const lastRedeemStr = userStatsDoc.lastRedeemedAt[reward.id];
+            
+            if (cooldownType === 'once_per_day') {
+              const lastDate = new Date(lastRedeemStr);
+              const today = new Date();
+              const isSameDay = lastDate.getFullYear() === today.getFullYear() &&
+                                lastDate.getMonth() === today.getMonth() &&
+                                lastDate.getDate() === today.getDate();
+              if (isSameDay) {
+                isOnCooldown = true;
+                cooldownLabel = 'Vuelve mañana';
+                cooldownDetailMsg = '1 vez al día (reinicia a medianoche).';
+              }
+            } else if (cooldownType === '36_hours') {
+              const lastTime = new Date(lastRedeemStr).getTime();
+              const elapsed = now - lastTime;
+              const COOLDOWN_MS = 36 * 60 * 60 * 1000;
+              if (elapsed < COOLDOWN_MS) {
+                isOnCooldown = true;
+                remainingHours = Math.ceil((COOLDOWN_MS - elapsed) / (1000 * 60 * 60));
+                cooldownLabel = `Espera ${remainingHours}h`;
+                cooldownDetailMsg = '36 horas entre usos.';
+              }
             }
           }
 
@@ -15244,9 +15275,9 @@ function shouldShowStatsTicker() {
           let extraInfo = '';
 
           if (isOnCooldown) {
-            btnText = `Espera ${remainingHours}h`;
+            btnText = cooldownLabel || 'En espera';
             btnDisabled = true;
-            extraInfo = `<div class="reward-cooldown-info">⚠️ Esta recompensa tiene un tiempo de espera de 36 horas entre usos.</div>`;
+            extraInfo = `<div class="reward-cooldown-info">⚠️ Esta recompensa tiene un tiempo de espera de ${cooldownDetailMsg}</div>`;
           } else if (reward.description && (reward.description.includes('prioridad') || reward.description.includes('siguiente'))) {
             extraInfo = `<div class="reward-hint-info">ℹ️ Esta acción puede tardar unos minutos en procesarse.</div>`;
           }
@@ -15299,14 +15330,29 @@ function shouldShowStatsTicker() {
             currentPoints = localData.points || 0;
           }
 
-          // Validación de Cooldown en el momento del canje (doble check)
-          const COOLDOWN_MS = 36 * 60 * 60 * 1000;
+          // Validación de Cooldown dinámico en el momento del canje (doble check)
+          const cooldownType = window.rewardsCooldownType || '36_hours';
           if (userLastRedeemed[rewardId]) {
-            const lastTime = new Date(userLastRedeemed[rewardId]).getTime();
-            if (Date.now() - lastTime < COOLDOWN_MS) {
-              showErrorNotification('Debes esperar 36 horas antes de canjear esto nuevamente.');
-              if (btn) { btn.disabled = true; btn.textContent = 'En espera...'; }
-              return;
+            const lastRedeemStr = userLastRedeemed[rewardId];
+            if (cooldownType === 'once_per_day') {
+              const lastDate = new Date(lastRedeemStr);
+              const today = new Date();
+              const isSameDay = lastDate.getFullYear() === today.getFullYear() &&
+                                lastDate.getMonth() === today.getMonth() &&
+                                lastDate.getDate() === today.getDate();
+              if (isSameDay) {
+                showErrorNotification('Ya has canjeado esta recompensa hoy. Inténtalo de nuevo mañana.');
+                if (btn) { btn.disabled = true; btn.textContent = 'Canjeado hoy'; }
+                return;
+              }
+            } else if (cooldownType === '36_hours') {
+              const lastTime = new Date(lastRedeemStr).getTime();
+              const COOLDOWN_MS = 36 * 60 * 60 * 1000;
+              if (Date.now() - lastTime < COOLDOWN_MS) {
+                showErrorNotification('Debes esperar 36 horas antes de canjear esto nuevamente.');
+                if (btn) { btn.disabled = true; btn.textContent = 'En espera...'; }
+                return;
+              }
             }
           }
 
