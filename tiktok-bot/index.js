@@ -1143,33 +1143,77 @@ function startBot() {
     app.use(express.static(path.join(__dirname, 'public')));
     app.use('/gifts', express.static(path.join(__dirname, '..', 'REGALOS DE TIK TOK PNG By Adbra')));
 
-    // Configuración de Multer para subir video de Quiéreme
-    const multer = require('multer');
-    const storage = multer.diskStorage({
-        destination: (req, file, cb) => {
-            cb(null, path.join(__dirname, '..')); // Guardar en la raíz del proyecto
-        },
-        filename: (req, file, cb) => {
-            const ext = path.extname(file.originalname).toLowerCase();
-            cb(null, 'QUIEREME' + ext); // Guardar siempre como QUIEREME.ext para consistencia
+    // Subida de video Quiéreme sin dependencias externas (solo módulos nativos de Node.js)
+    app.post('/api/upload/quiereme', (req, res) => {
+        const contentType = req.headers['content-type'] || '';
+        if (!contentType.includes('multipart/form-data')) {
+            return res.status(400).json({ error: 'Se requiere multipart/form-data' });
         }
-    });
-    const upload = multer({
-        storage: storage,
-        limits: { fileSize: 150 * 1024 * 1024 } // Límite de 150 MB
-    });
 
-    app.post('/api/upload/quiereme', upload.single('video'), (req, res) => {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No se subió ningún archivo.' });
+        // Extraer el boundary del header
+        const boundaryMatch = contentType.match(/boundary=(.+)$/);
+        if (!boundaryMatch) {
+            return res.status(400).json({ error: 'No se encontró el boundary del formulario.' });
         }
-        const ext = path.extname(req.file.originalname).toLowerCase();
-        console.log(`📤 Video Quiéreme subido con éxito: ${req.file.filename}`);
-        res.json({ 
-            success: true, 
-            url: `/QUIEREME${ext}`
+        const boundary = '--' + boundaryMatch[1];
+
+        const chunks = [];
+        req.on('data', chunk => chunks.push(chunk));
+        req.on('end', () => {
+            try {
+                const body = Buffer.concat(chunks);
+                const boundaryBuf = Buffer.from(boundary);
+
+                // Encontrar el bloque del archivo en los datos multipart
+                const headerEnd = Buffer.from('\r\n\r\n');
+                let start = body.indexOf(boundaryBuf);
+                let savedFile = null;
+                let savedExt = '.mp4';
+
+                while (start !== -1) {
+                    const headerStart = start + boundaryBuf.length + 2; // skip \r\n
+                    const headerFinish = body.indexOf(headerEnd, headerStart);
+                    if (headerFinish === -1) break;
+
+                    const headerStr = body.slice(headerStart, headerFinish).toString();
+                    const dataStart = headerFinish + headerEnd.length;
+
+                    const nextBoundary = body.indexOf(boundaryBuf, dataStart);
+                    const dataEnd = nextBoundary === -1 ? body.length : nextBoundary - 2; // -2 para \r\n
+
+                    // Solo procesar partes que sean archivos de video
+                    if (headerStr.includes('filename=') && (headerStr.includes('video') || headerStr.includes('.mp4') || headerStr.includes('.mov'))) {
+                        const filenameMatch = headerStr.match(/filename="([^"]+)"/);
+                        if (filenameMatch) {
+                            const originalName = filenameMatch[1];
+                            savedExt = path.extname(originalName).toLowerCase() || '.mp4';
+                            const destPath = path.join(__dirname, '..', 'QUIEREME' + savedExt);
+                            const fileData = body.slice(dataStart, dataEnd);
+                            fs.writeFileSync(destPath, fileData);
+                            savedFile = 'QUIEREME' + savedExt;
+                            console.log(`📤 Video Quiéreme subido con éxito: ${savedFile} (${fileData.length} bytes)`);
+                        }
+                    }
+
+                    start = nextBoundary;
+                }
+
+                if (savedFile) {
+                    res.json({ success: true, url: `/QUIEREME${savedExt}` });
+                } else {
+                    res.status(400).json({ error: 'No se encontró el archivo de video en la solicitud.' });
+                }
+            } catch (e) {
+                console.error('Error procesando subida de video:', e);
+                res.status(500).json({ error: 'Error interno al guardar el video.' });
+            }
+        });
+        req.on('error', err => {
+            console.error('Error en stream de subida:', err);
+            res.status(500).json({ error: 'Error en la transferencia del archivo.' });
         });
     });
+
 
     const findQuieremeFile = () => {
         const parentDir = path.join(__dirname, '..');
