@@ -6,6 +6,58 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meta — Zero FM</title>
+    
+    <script>
+        (function() {
+            const P_TYPE = new URLSearchParams(location.search).get('type') || 'unknown';
+            const logSource = 'goal_overlay_' + P_TYPE;
+            
+            function sendLog(level, args) {
+                const message = Array.from(args).map(arg => {
+                    if (arg instanceof Error) return arg.message + '\n' + arg.stack;
+                    if (typeof arg === 'object') {
+                        try { return JSON.stringify(arg); } catch(e) { return String(arg); }
+                    }
+                    return String(arg);
+                }).join(' ');
+                
+                fetch('/api/client-log', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ level, message, source: logSource })
+                }).catch(() => {});
+            }
+            
+            const originalLog = console.log;
+            const originalWarn = console.warn;
+            const originalError = console.error;
+            
+            console.log = function() {
+                originalLog.apply(console, arguments);
+                sendLog('log', arguments);
+            };
+            console.warn = function() {
+                originalWarn.apply(console, arguments);
+                sendLog('warn', arguments);
+            };
+            console.error = function() {
+                originalError.apply(console, arguments);
+                sendLog('error', arguments);
+            };
+            
+            window.onerror = function(message, source, lineno, colno, error) {
+                const errStr = `${message} at ${source}:${lineno}:${colno}` + (error ? '\n' + error.stack : '');
+                sendLog('uncaught-error', [errStr]);
+                return false;
+            };
+            
+            window.onunhandledrejection = function(event) {
+                sendLog('unhandled-rejection', [event.reason]);
+            };
+            
+            console.log('[RemoteLog] Initialized remote logging for goal_overlay ' + P_TYPE);
+        })();
+    </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&family=Montserrat:wght@400;500;600;700;800;900&family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -824,7 +876,7 @@
         // =============================================
         //  FIREBASE INIT
         // =============================================
-        const firebaseConfig = {
+        const localFirebaseConfigFallback = {
             apiKey:            'AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU',
             authDomain:        'zero-strom-web.firebaseapp.com',
             projectId:         'zero-strom-web',
@@ -838,7 +890,7 @@
 
         try {
             if (typeof firebase !== 'undefined') {
-                const localFirebaseConfig = window.ZERO_FM_FIREBASE || firebaseConfig;
+                const localFirebaseConfig = window.ZERO_FM_FIREBASE || localFirebaseConfigFallback;
                 let app;
                 if (firebase.apps && firebase.apps.length > 0) {
                     app = firebase.apps[0];
@@ -1412,6 +1464,9 @@
                 if (event.data.action === 'triggerTestGoal') {
                     console.log("[goal_overlay] Progreso de prueba recibido:", event.data.payload);
                     window.isTestActive = true;
+                    // Make card visible for preview
+                    const card = document.getElementById('goalCard');
+                    if (card) card.classList.add('visible');
                     updateProgress(Number(event.data.payload.value));
                     
                     if (window.testGoalTimeout) clearTimeout(window.testGoalTimeout);
@@ -1420,6 +1475,9 @@
                         console.log("[goal_overlay] Test finished. Restoring real progress...");
                         if (window.lastRealProgress !== undefined) {
                             updateProgress(window.lastRealProgress);
+                        } else if (!hasFirebase) {
+                            // No real data; hide card again
+                            if (card) card.classList.remove('visible');
                         }
                     }, 8000);
                 } else if (event.data.action === 'updateConfig') {
@@ -1428,6 +1486,9 @@
                     if (window.testGoalTimeout) clearTimeout(window.testGoalTimeout);
                     Object.assign(cfg, event.data.payload);
                     applyConfig();
+                    // Make card visible so preview shows immediately after config update
+                    const card = document.getElementById('goalCard');
+                    if (card) card.classList.add('visible');
                     
                     if (window.lastRealProgress !== undefined) {
                         updateProgress(window.lastRealProgress);

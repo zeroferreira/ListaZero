@@ -1715,6 +1715,20 @@ function startBot() {
         }
     });
 
+    app.post('/api/client-log', (req, res) => {
+        const { level, message, source } = req.body;
+        console.log(`\x1b[33m[CLIENT-LOG][${source || 'unknown'}][${level || 'log'}]\x1b[0m`, message);
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const logLine = `[${new Date().toISOString()}][${source || 'unknown'}][${level || 'log'}] ${message}\n`;
+            fs.appendFileSync(path.join(__dirname, 'client_logs.txt'), logLine, 'utf8');
+        } catch (e) {
+            console.error("Error writing client log to file:", e);
+        }
+        res.json({ success: true });
+    });
+
     // ═══════════════════════════════════════════════════════════════════════════
     //  GOAL OVERLAYS API
     // ═══════════════════════════════════════════════════════════════════════════
