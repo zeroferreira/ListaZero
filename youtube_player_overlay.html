@@ -597,8 +597,7 @@
 
     const startState = targetState || 'playing';
     const quality = getSuggestedQuality();
-    const isPreview = params.get('preview') === 'true';
-    const shouldMuteInitially = isObs || (params.get('mute') === 'true') || (!isPreview);
+    const shouldMuteInitially = params.get('mute') === 'true';
 
     if (ytPlayer) {
       try {
@@ -681,37 +680,20 @@
     if (!ytPlayer || typeof ytPlayer.mute !== 'function') return;
     
     const params = new URLSearchParams(window.location.search);
-    const isPreview = params.get('preview') === 'true';
+    const isMuteParam = params.get('mute') === 'true';
 
-    // Si es OBS o se abre en OBS, silenciar incondicionalmente
-    if (isObs) {
+    if (isMuteParam) {
       ytPlayer.mute();
-      console.log(`🔇 Audio silenciado de forma absoluta por ser OBS.`);
+      console.log(`🔇 Audio silenciado por parámetro de URL (?mute=true).`);
       return;
     }
 
-    // Si se solicita silenciado forzoso por parámetro (por ejemplo, en vistas previas secundarias)
-    if (params.get('mute') === 'true') {
-      ytPlayer.mute();
-      console.log(`🔇 Audio silenciado forzosamente por parámetro de URL (?mute=true).`);
-      return;
-    }
-
-    // Si NO es la vista previa (osea, es el overlay de OBS u otra pantalla no-preview), se silencia
-    if (!isPreview) {
-      ytPlayer.mute();
-      console.log(`🔇 Audio silenciado por no ser vista previa.`);
-      return;
-    }
-
-    // Si está silenciado porque hay otra sesión del bot activa en la IP de la Mac
     if (window.isMutedByIP) {
       ytPlayer.mute();
-      console.log(`🔇 Audio silenciado en vista previa localhost debido a sesión activa en IP.`);
+      console.log(`🔇 Audio silenciado debido a otra sesión activa.`);
       return;
     }
 
-    // Si es la vista previa del dashboard local (en la Mac del bot), reproducimos con sonido
     const targetVolume = (typeof customVolume === 'number') ? customVolume : (hasSetInitialVolume ? currentVolume : 100);
     
     if (targetVolume > 0) {
@@ -1230,8 +1212,8 @@
           ytContainer.style.overflow = 'hidden';
           
           let bgBlur = cfg.yt_bg_video_blur !== undefined ? cfg.yt_bg_video_blur : 4;
-          if (isObs && bgBlur > 8) {
-            bgBlur = 8; // Cap blur in OBS to prevent extreme stutter
+          if (isObs) {
+            bgBlur = 0; // Force 0 blur in OBS to prevent CEF/Chromium video freezes and GPU lag
           }
           ytContainer.style.filter = bgBlur > 0 ? `blur(${bgBlur}px)` : '';
           
@@ -1278,6 +1260,29 @@
       reqBadge.style.background = reqBg;
       reqBadge.style.borderColor = reqBorder;
     }
+    // Fullscreen URL parameter override
+    const isFullscreenParam = params.get('fullscreen') === 'true';
+    if (ytContainer && isFullscreenParam) {
+      if (ytContainer.parentElement !== document.body) {
+        document.body.insertBefore(ytContainer, document.body.firstChild);
+      }
+      ytContainer.style.display = 'block';
+      ytContainer.style.position = 'fixed';
+      ytContainer.style.top = '0';
+      ytContainer.style.left = '0';
+      ytContainer.style.width = '100vw';
+      ytContainer.style.height = '100vh';
+      ytContainer.style.opacity = '1';
+      ytContainer.style.zIndex = '-1';
+      ytContainer.style.borderRadius = '0';
+      ytContainer.style.filter = '';
+      ytContainer.style.overflow = 'hidden';
+      ytContainer.style.pointerEvents = 'none';
+      
+      // Hide static blurred background art to show sharp video
+      cardBg.style.opacity = '0';
+    }
+
     positionMiniatureVideo();
     adjustIframeAspectRatio();
 
