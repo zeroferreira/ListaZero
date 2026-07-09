@@ -496,6 +496,25 @@
   
 
 <script>
+  // Global error logger for debugging in OBS
+  window.addEventListener('error', function(event) {
+    const debugDiv = document.getElementById('debug-log') || document.createElement('div');
+    debugDiv.id = 'debug-log';
+    debugDiv.style.position = 'fixed';
+    debugDiv.style.bottom = '10px';
+    debugDiv.style.left = '10px';
+    debugDiv.style.background = 'rgba(255, 0, 0, 0.85)';
+    debugDiv.style.color = 'white';
+    debugDiv.style.padding = '10px';
+    debugDiv.style.borderRadius = '5px';
+    debugDiv.style.fontSize = '12px';
+    debugDiv.style.zIndex = '99999';
+    debugDiv.style.maxWidth = '90vw';
+    debugDiv.style.wordBreak = 'break-all';
+    debugDiv.textContent = `Error: ${event.message} at ${event.filename}:${event.lineno}`;
+    document.body.appendChild(debugDiv);
+  });
+
   // ─── DOM refs ────────────────────────────────
   const card       = document.getElementById('player-card');
   const cardBg     = document.getElementById('card-bg');
@@ -616,7 +635,7 @@
         'showinfo': 0,
         'iv_load_policy': 3,
         'enablejsapi': 1,
-        'origin': window.location.origin,
+        'origin': (window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null') ? 'http://localhost:3000' : window.location.origin,
         'mute': shouldMuteInitially ? 1 : 0,
         'modestbranding': 1,
         'autohide': 1,
@@ -1283,6 +1302,11 @@
     try {
       firebase.initializeApp(fbConfig);
       db = firebase.firestore();
+      try {
+        db.settings({ experimentalForceLongPolling: true });
+      } catch (e) {
+        console.warn('Could not set experimentalForceLongPolling:', e);
+      }
 
       // Listen to active video in both preview and OBS mode to keep them in sync
       db.collection('systemConfig').doc('activeYoutubeVideo')
