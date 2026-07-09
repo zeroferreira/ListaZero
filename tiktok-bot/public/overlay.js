@@ -1,3 +1,22 @@
+    // Safe safeLocalStorage fallback wrapper for sandboxed iframes or file:// protocol restrictions
+    const safeLocalStorage = (function() {
+        const testKey = '__test_local_storage__';
+        try {
+            window.localStorage.setItem(testKey, testKey);
+            window.localStorage.removeItem(testKey);
+            return window.localStorage;
+        } catch (e) {
+            console.warn("safeLocalStorage is not accessible, using in-memory fallback:", e);
+            const store = {};
+            return {
+                getItem: (key) => store[key] || null,
+                setItem: (key, val) => { store[key] = String(val); },
+                removeItem: (key) => { delete store[key]; },
+                clear: () => { for (const k in store) delete store[k]; }
+            };
+        }
+    })();
+
 // --- Configuración / Settings Logic ---
     const defaultSettings = {
       layoutMode: 'default', // default | glass
@@ -76,7 +95,7 @@
     let displayDuration = 10000;
 
     function loadSettings() {
-      const saved = localStorage.getItem('overlay_settings');
+      const saved = safeLocalStorage.getItem('overlay_settings');
       // Merge saved with default to ensure new keys exist
       let settings = saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
       
@@ -411,7 +430,7 @@
     function saveSettings() {
       const settings = getSettingsFromInputs();
       console.log('Saving settings:', settings);
-      localStorage.setItem('overlay_settings', JSON.stringify(settings));
+      safeLocalStorage.setItem('overlay_settings', JSON.stringify(settings));
       applySettings(settings);
       
       // Sync to Firestore
@@ -444,7 +463,7 @@
     function resetSettings() {
       if(confirm('¿Restablecer valores por defecto?')) {
         applySettings(defaultSettings);
-        localStorage.removeItem('overlay_settings');
+        safeLocalStorage.removeItem('overlay_settings');
         loadSettings(); // reload inputs
         toggleSettings();
       }
@@ -882,7 +901,7 @@
             const remoteSettings = doc.data();
             const settings = { ...defaultSettings, ...remoteSettings };
             
-            localStorage.setItem('overlay_settings', JSON.stringify(settings));
+            safeLocalStorage.setItem('overlay_settings', JSON.stringify(settings));
             applySettings(settings);
             
             if (document.getElementById('inp-width')) {
@@ -1113,17 +1132,6 @@
     if (!db) {
       console.warn("Firestore no disponible. Overlay no podrá escuchar solicitudes.");
       isInitialLoad = false;
-    } else if (typeof firebase !== 'undefined' && firebase.auth) {
-      firebase.auth().onAuthStateChanged((user) => {
-        if (!user) {
-          firebase.auth().signInAnonymously().catch((err) => {
-            console.warn('Overlay: error al iniciar sesión anónima:', err);
-            startOverlayRealtime();
-          });
-          return;
-        }
-        startOverlayRealtime();
-      });
     } else {
       startOverlayRealtime();
     }
@@ -1237,7 +1245,7 @@
 
       const storageKey = `widget_btn_pos:${location.pathname}:${elementId}`;
       try {
-        const saved = localStorage.getItem(storageKey);
+        const saved = safeLocalStorage.getItem(storageKey);
         if (saved) {
           const pos = JSON.parse(saved);
           if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
@@ -1294,7 +1302,7 @@
           el.style.left = `${left}px`;
           el.style.top = `${top}px`;
           try {
-            localStorage.setItem(storageKey, JSON.stringify({ left, top }));
+            safeLocalStorage.setItem(storageKey, JSON.stringify({ left, top }));
           } catch (_) {}
         }
       });

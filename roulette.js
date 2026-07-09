@@ -31,15 +31,7 @@ const firebaseConfig = {
         try { window.localStorage.setItem(key, val); } catch(e) {}
       }
     };
-    if (firebase.auth) {
-      firebase.auth().onAuthStateChanged((user) => {
-        if (!user) {
-          firebase.auth().signInAnonymously().catch((err) => {
-            console.error('Error en auth anónima de ruleta:', err);
-          });
-        }
-      });
-    }
+
 
     const ROULETTE_SPIN_AGAIN_LABEL = '🎡 Vuelve a tirar';
     let allRequests = [];
