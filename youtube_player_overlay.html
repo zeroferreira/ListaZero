@@ -613,33 +613,27 @@
 
     const startState = targetState || 'playing';
     const quality = getSuggestedQuality();
-    const shouldMuteInitially = params.get('mute') === 'true';
 
+    // Destroy existing player to avoid CEF cross-origin iframe recycling bugs in OBS
     if (ytPlayer) {
       try {
-        if (startState === 'paused') {
-          ytPlayer.cueVideoById({
-            videoId: videoId,
-            suggestedQuality: quality
-          });
-          updatePlayerMuteState(currentVolume);
-          console.log(`🎥 Video cued (paused) on reload: ${videoId} (${quality})`);
-        } else {
-          ytPlayer.loadVideoById({
-            videoId: videoId,
-            suggestedQuality: quality
-          });
-          updatePlayerMuteState(currentVolume);
-          ytPlayer.playVideo();
+        if (typeof ytPlayer.destroy === 'function') {
+          ytPlayer.destroy();
         }
-        return;
       } catch (e) {
-        console.warn("Error re-using player, re-creating...", e);
+        console.warn("Error destroying player:", e);
       }
+      ytPlayer = null;
+    }
+
+    // Recreate the div container element
+    const container = document.getElementById('yt-player-container');
+    if (container) {
+      container.innerHTML = '<div id="yt-player"></div>';
     }
 
     ytPlayer = new YT.Player('yt-player', {
-      host: 'https://www.youtube-nocookie.com',
+      host: 'https://www.youtube.com',
       height: '100%',
       width: '100%',
       videoId: videoId,
@@ -653,14 +647,17 @@
         'iv_load_policy': 3,
         'enablejsapi': 1,
         'origin': (window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null') ? 'http://localhost:3000' : window.location.origin,
-        'mute': shouldMuteInitially ? 1 : 0,
+        'mute': 1, // Start MUTED to bypass OBS autoplay blocking
         'modestbranding': 1,
         'autohide': 1,
         'cc_load_policy': 0
       },
       events: {
         'onReady': (event) => {
-          updatePlayerMuteState(currentVolume);
+          isYtReady = true;
+          const params = new URLSearchParams(window.location.search);
+          const isMuteParam = params.get('mute') === 'true';
+
           if (startState === 'playing') {
             event.target.playVideo();
           } else {
@@ -670,10 +667,25 @@
             event.target.setPlaybackQuality(quality);
           }
           adjustIframeAspectRatio();
+
+          // Delay unmute to ensure autoplay registry accepts it
+          setTimeout(() => {
+            if (!isMuteParam && !window.isMutedByIP) {
+              event.target.unMute();
+              event.target.setVolume(currentVolume);
+              console.log("🔊 Autounmute triggered after load.");
+            }
+          }, 150);
         },
         'onStateChange': (event) => {
           // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
           if (event.data === 1) {
+            const params = new URLSearchParams(window.location.search);
+            const isMuteParam = params.get('mute') === 'true';
+            if (!isMuteParam && !window.isMutedByIP) {
+              event.target.unMute();
+              event.target.setVolume(currentVolume);
+            }
             if (currentState !== 'playing') {
               applyState('playing');
             }
