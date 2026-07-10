@@ -243,15 +243,23 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
+      pointer-events: auto;
     }
 
     .progress-track {
       width: 100%;
-      height: 3px;
+      height: 4px;
       background: rgba(255,255,255,0.1);
       border-radius: 99px;
       overflow: hidden;
       position: relative;
+      pointer-events: auto;
+      cursor: pointer;
+      transition: height 0.15s ease;
+    }
+    
+    .progress-track:hover {
+      height: 7px;
     }
 
     .progress-fill {
@@ -545,6 +553,35 @@
   const timeTotal    = document.getElementById('time-total');
   const reqName    = document.getElementById('req-name');
 
+  // Interactive Progress Bar seeking support
+  const progressTrack = document.querySelector('.progress-track');
+  if (progressTrack) {
+    progressTrack.addEventListener('click', (event) => {
+      if (durationSec <= 0) return;
+      const rect = progressTrack.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const pct = Math.max(0, Math.min(1, clickX / rect.width));
+      const targetSec = Math.floor(pct * durationSec);
+      
+      console.log(`[YT Overlay] Seeking to ${targetSec}s (${Math.round(pct * 100)}%)`);
+      
+      // Update locally
+      elapsedSec = targetSec;
+      updateProgress();
+      if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
+        ytPlayer.seekTo(targetSec, true);
+      }
+      
+      // Sync to Firestore for remote overlays (like OBS)
+      if (typeof db !== 'undefined' && db) {
+        db.collection('systemConfig').doc('activeYoutubeVideo').update({
+          elapsed: targetSec,
+          timestamp: Date.now()
+        }).catch(err => console.warn('[YT Overlay] Seek Firestore update failed:', err));
+      }
+    });
+  }
+
   // ─── State ───────────────────────────────────
   let currentVideoId  = null;
   let currentState    = 'idle';   // idle | playing | paused | ended
@@ -758,9 +795,20 @@
     }
     if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
       const ytState = ytPlayer.getPlayerState();
-      if (state === 'playing' && ytState !== 1 && ytState !== 3) {
-        updatePlayerMuteState(currentVolume);
-        ytPlayer.playVideo();
+      if (state === 'playing') {
+        if (ytState !== 1 && ytState !== 3) {
+          updatePlayerMuteState(currentVolume);
+          ytPlayer.playVideo();
+        }
+        // Sync seek position if drift is larger than 4 seconds
+        if (typeof ytPlayer.getCurrentTime === 'function' && typeof elapsedSec === 'number' && elapsedSec > 0) {
+          const ytCurrent = ytPlayer.getCurrentTime();
+          const drift = Math.abs(ytCurrent - elapsedSec);
+          if (drift > 4) {
+            console.log(`⏰ Seek drift detected: local=${Math.round(ytCurrent)}s, Firestore target=${elapsedSec}s. Seeking player...`);
+            ytPlayer.seekTo(elapsedSec, true);
+          }
+        }
       } else if (state === 'paused' && ytState !== 2) {
         ytPlayer.pauseVideo();
       } else if ((state === 'ended' || state === 'idle') && ytState !== 0 && ytState !== 5) {
@@ -1059,16 +1107,24 @@
     const videoMode = window.currentVideoMode || 'audio_only';
     if (videoMode !== 'miniature') return;
     
-    // Move container inside the artwork wrap if it's not already there
-    if (ytContainer.parentElement !== artWrap) {
-      artWrap.appendChild(ytContainer);
-    }
+    // Position ytContainer absolutely relative to player-card by checking rects
+    const cardRect = card.getBoundingClientRect();
+    const artRect = artWrap.getBoundingClientRect();
     
-    // Fill the cover box perfectly
-    ytContainer.style.top = '0';
-    ytContainer.style.left = '0';
-    ytContainer.style.width = '100%';
-    ytContainer.style.height = '100%';
+    if (cardRect.width > 0 && artRect.width > 0) {
+      const top = artRect.top - cardRect.top;
+      const left = artRect.left - cardRect.left;
+      const w = artRect.width;
+      const h = artRect.height;
+      
+      ytContainer.style.top = `${top}px`;
+      ytContainer.style.left = `${left}px`;
+      ytContainer.style.width = `${w}px`;
+      ytContainer.style.height = `${h}px`;
+    } else {
+      // Retry once visible
+      setTimeout(positionMiniatureVideo, 100);
+    }
     
     const cfg = window.lastConfig || {};
     const artRatio = cfg.yt_artwork_aspect_ratio || '1:1';
@@ -1225,11 +1281,6 @@
     const artworkImg = document.getElementById('artwork');
 
     if (ytContainer) {
-      // If not in miniature mode, ensure the container is at the card root (sibling to card-inner)
-      if (videoMode !== 'miniature' && ytContainer.parentElement !== card) {
-        card.insertBefore(ytContainer, card.querySelector('.card-inner'));
-      }
-
       // Reset classes
       ytContainer.classList.remove('miniature-mode');
       cardBg.style.opacity = '1'; // Reset background artwork opacity
