@@ -295,6 +295,7 @@ let TIKTOK_USERNAME = config.tiktokUsername;
 let tiktokLiveConnection;
 let isConnecting = false;
 let isRetrying = false;       // true durante el timeout de 10s antes del reintento
+let retryTimeoutEnd = 0;      // timestamp cuando terminará el reintento
 let lastConnectionError = ''; // último mensaje de error de conexión TikTok
 let manualDisconnect = false;
 let retryTimeoutId = null;
@@ -1307,6 +1308,7 @@ function startBot() {
             tiktokState: (tiktokLiveConnection && tiktokLiveConnection.isConnected) ? 'connected' : 'disconnected',
             isConnecting: !!isConnecting,
             isRetrying: !!isRetrying,
+            retrySecondsRemaining: isRetrying ? Math.max(0, Math.ceil((retryTimeoutEnd - Date.now()) / 1000)) : 0,
             lastConnectionError: lastConnectionError || '',
             ciderConnected: !!(ciderSocket && ciderSocket.connected),
             pendingCider: pendingCiderQueue.length,
@@ -4612,6 +4614,7 @@ async function connectToLive() {
             if (!manualDisconnect) {
                 console.log('🔄 Reintentando en 10 segundos...');
                 isRetrying = true;
+                retryTimeoutEnd = Date.now() + 10000;
                 if (retryTimeoutId) clearTimeout(retryTimeoutId);
                 retryTimeoutId = setTimeout(() => {
                     if (manualDisconnect) {

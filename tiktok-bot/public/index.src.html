@@ -2134,6 +2134,7 @@
                 tiktokState: 'unknown',
                 isConnecting: false,
                 isRetrying: false,
+                retrySecondsRemaining: 0,
                 lastConnectionError: '',
                 mockCiderActive: false,
                 mockCiderPort: 10767,
@@ -2141,6 +2142,17 @@
                 localIps: [],
                 dashboardPort: 3000
             });
+
+            const [retryCount, setRetryCount] = React.useState(0);
+
+            React.useEffect(() => {
+                if (retryCount > 0) {
+                    const timer = setTimeout(() => {
+                        setRetryCount(prev => Math.max(0, prev - 1));
+                    }, 1000);
+                    return () => clearTimeout(timer);
+                }
+            }, [retryCount]);
 
             const [timerDisplay, setTimerDisplay] = React.useState('Cargando...');
 
@@ -3106,6 +3118,7 @@
                             tiktokState: data.tiktokState || 'unknown',
                             isConnecting: !!data.isConnecting,
                             isRetrying: !!data.isRetrying,
+                            retrySecondsRemaining: Number(data.retrySecondsRemaining || 0),
                             lastConnectionError: data.lastConnectionError || '',
                             mockCiderActive: !!data.mockCiderActive,
                             mockCiderPort: data.mockCiderPort || 10767,
@@ -3113,6 +3126,18 @@
                             localIps: data.localIps || [],
                             dashboardPort: data.dashboardPort || 3000
                         });
+
+                        if (!!data.isRetrying) {
+                            setRetryCount(prev => {
+                                const serverVal = Number(data.retrySecondsRemaining || 0);
+                                if (Math.abs(prev - serverVal) > 1 || prev === 0) {
+                                    return serverVal;
+                                }
+                                return prev;
+                            });
+                        } else {
+                            setRetryCount(0);
+                        }
                     } catch (_) {}
                 };
 
@@ -3312,24 +3337,33 @@
                     '¿Estás seguro de que quieres reiniciar el bot?\n\nEl bot se apagará y se volverá a iniciar de forma automática en 5 segundos. Esta página se recargará automáticamente.',
                     async () => {
                         try {
-                            const res = await fetch('/api/server/restart', { method: 'POST' });
-                            const d = await res.json();
-                            if (d.ok) {
-                                showAlert('Reiniciando Bot', 'El bot se está reiniciando. La página se recargará automáticamente en 8 segundos.', () => {
+                            await fetch('/api/server/restart', { method: 'POST' });
+                        } catch (e) {}
+
+                        let secondsLeft = 8;
+                        const updateDialog = () => {
+                            setDialog({
+                                isOpen: true,
+                                type: 'alert',
+                                title: 'Reiniciando Bot',
+                                message: `El bot se está reiniciando. La página se recargará automáticamente en ${secondsLeft} segundos.`,
+                                onConfirm: () => {
                                     window.location.reload();
-                                });
-                                setTimeout(() => {
-                                    window.location.reload();
-                                }, 8000);
-                            }
-                        } catch (e) {
-                            showAlert('Reiniciando Bot', 'El bot se está reiniciando. La página se recargará automáticamente en 8 segundos.', () => {
-                                window.location.reload();
+                                },
+                                onCancel: null
                             });
-                            setTimeout(() => {
+                        };
+
+                        updateDialog();
+                        const intervalId = setInterval(() => {
+                            secondsLeft--;
+                            if (secondsLeft <= 0) {
+                                clearInterval(intervalId);
                                 window.location.reload();
-                            }, 8000);
-                        }
+                            } else {
+                                updateDialog();
+                            }
+                        }, 1000);
                     }
                 );
             };
@@ -4671,7 +4705,7 @@
                             <div className={`badge ${status.tiktokState === 'connected' ? 'active' : (status.isConnecting || status.isRetrying) ? 'pending' : 'inactive'}`} style={{ paddingRight: '6px', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <div className="badge-dot"></div>
-                                    <span>TikTok: {status.isConnecting ? 'Conectando...' : status.isRetrying ? 'Reintentando en 10s...' : status.tiktokState === 'connected' ? 'Conectado' : 'Inactivo'}</span>
+                                    <span>TikTok: {status.isConnecting ? 'Conectando...' : status.isRetrying ? `Reintentando en ${retryCount || status.retrySecondsRemaining || 10}s...` : status.tiktokState === 'connected' ? 'Conectado' : 'Inactivo'}</span>
                                     <button 
                                         onClick={handleToggleTikTok}
                                         style={{
