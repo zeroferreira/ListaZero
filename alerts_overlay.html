@@ -957,9 +957,16 @@
         if (urlType === 'likes') urlType = 'like';
         if (urlType === 'follows') urlType = 'follow';
         if (urlType === 'subscribes' || urlType === 'subscribe' || urlType === 'subscription' || urlType === 'subscriptions' || urlType === 'subs') urlType = 'subscribe';
+        if (urlType === 'rewards' || urlType === 'reward' || urlType === 'canje' || urlType === 'canjes') urlType = 'reward';
 
         // Recursos multimedia premium (Lottie y Sonidos libres)
         const ALERT_THEMES = {
+            reward: {
+                title: "Recompensa Canjeada",
+                lottie: "https://assets6.lottiefiles.com/packages/lf20_LevelUp.json", // Coins and stars explosion
+                audio: "https://www.myinstants.com/media/sounds/level-up-epic.mp3", // Epic upgrade chime
+                color: "#a855f7"
+            },
             follow: {
                 title: "Nuevo Seguidor",
                 lottie: "https://assets9.lottiefiles.com/packages/lf20_q45qp1.json",
@@ -1119,7 +1126,7 @@
                             }
 
                             // Validar que sea un tipo de alerta soportado
-                            if (!['follow', 'subscribe', 'gift', 'like', 'chat'].includes(data.type)) return;
+                            if (!['follow', 'subscribe', 'gift', 'like', 'chat', 'reward'].includes(data.type)) return;
 
                             const playAudioAndTts = shouldPlayAudioHere(window.location.hostname, window.activeDashboardHost, window.activeDashboardTime);
 
@@ -1265,6 +1272,13 @@
                     showCard = data.subscribeShowCard !== undefined ? data.subscribeShowCard : true;
                     fontFamily = data.subscribeFontFamily !== undefined ? data.subscribeFontFamily : 'Outfit';
                     textShadow = data.subscribeTextShadow !== undefined ? data.subscribeTextShadow : '3d-retro';
+                } else if (urlType === 'reward') {
+                    opacity = data.rewardOpacity !== undefined ? data.rewardOpacity : 0.76;
+                    radius = data.rewardRadius !== undefined ? data.rewardRadius : 28;
+                    fontSize = data.rewardFontSize !== undefined ? data.rewardFontSize : 16;
+                    showCard = data.rewardShowCard !== undefined ? data.rewardShowCard : true;
+                    fontFamily = data.rewardFontFamily !== undefined ? data.rewardFontFamily : 'Outfit';
+                    textShadow = data.rewardTextShadow !== undefined ? data.rewardTextShadow : '3d-retro';
                 }
                 
                 let borderWidth = 1;
@@ -1292,6 +1306,11 @@
                     borderColor = data.subscribeBorderColor || '#ffffff';
                     borderOpacity = data.subscribeBorderOpacity !== undefined ? data.subscribeBorderOpacity : 8;
                     borderStyle = data.subscribeBorderStyle || 'solid';
+                } else if (urlType === 'reward') {
+                    borderWidth = data.rewardBorderWidth !== undefined ? data.rewardBorderWidth : 1;
+                    borderColor = data.rewardBorderColor || '#ffffff';
+                    borderOpacity = data.rewardBorderOpacity !== undefined ? data.rewardBorderOpacity : 8;
+                    borderStyle = data.rewardBorderStyle || 'solid';
                 }
                 
                 const brVal = parseInt(borderColor.substr(1,2), 16) || 255;
@@ -1324,7 +1343,7 @@
                 }
 
                 // Cargar estilo de sombra
-                const themeColors = { follow: '#ec4899', gift: '#eab308', subscribe: '#06b6d4', like: '#ef4444' };
+                const themeColors = { follow: '#ec4899', gift: '#eab308', subscribe: '#06b6d4', like: '#ef4444', reward: '#a855f7' };
                 applyTextShadow(textShadow, themeColors[urlType] || '#fff');
             } else {
                 // Si es general, cargamos la configuración clásica
@@ -1659,6 +1678,17 @@
                 showCard = config.subscribeShowCard !== undefined ? config.subscribeShowCard : true;
                 fontFamily = config.subscribeFontFamily !== undefined ? config.subscribeFontFamily : 'Outfit';
                 textShadow = config.subscribeTextShadow !== undefined ? config.subscribeTextShadow : '3d-retro';
+            } else if (type === 'reward') {
+                enableAlert = urlType === 'all' ? true : (config.enableRewardAlert !== undefined ? config.enableRewardAlert : true);
+                playAudio = config.rewardPlayAudio !== undefined ? config.rewardPlayAudio : true;
+                alertVolume = config.rewardAudioVolume !== undefined ? config.rewardAudioVolume : 50;
+                showLottie = config.rewardShowLottie !== undefined ? config.rewardShowLottie : true;
+                ttsEnabled = config.rewardTtsEnabled !== undefined ? config.rewardTtsEnabled : true;
+                rainbowText = config.rewardRainbowText !== undefined ? config.rewardRainbowText : true;
+                bounceText = config.rewardBounceText !== undefined ? config.rewardBounceText : true;
+                showCard = config.rewardShowCard !== undefined ? config.rewardShowCard : true;
+                fontFamily = config.rewardFontFamily !== undefined ? config.rewardFontFamily : 'Outfit';
+                textShadow = config.rewardTextShadow !== undefined ? config.rewardTextShadow : '3d-retro';
             } else if (type === 'chat') {
                 enableAlert = config.chatTtsEnabled !== undefined ? config.chatTtsEnabled : false;
                 playAudio = false;
@@ -2074,6 +2104,28 @@
                     if (data.profilePic) {
                         $userAvatar.attr("src", data.profilePic).show();
                     }
+                } else if (type === 'reward') {
+                    // SVG fallback para canje (Caja de regalo violeta premium con lazo)
+                    const $badgeContainer = $("<div>").addClass("fallback-badge-container");
+                    $badgeContainer.html(`
+                        <svg class="reward-badge-svg" viewBox="0 0 100 100" fill="none" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <linearGradient id="rewardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stop-color="#a855f7" />
+                                    <stop offset="100%" stop-color="#c084fc" />
+                                </linearGradient>
+                            </defs>
+                            <rect x="25" y="40" width="50" height="42" rx="6" fill="url(#rewardGrad)" stroke="#f3e8ff" stroke-width="2" />
+                            <rect x="20" y="32" width="60" height="12" rx="3" fill="url(#rewardGrad)" stroke="#f3e8ff" stroke-width="2" />
+                            <rect x="44" y="32" width="12" height="50" fill="#f59e0b" />
+                            <rect x="20" y="44" width="60" height="10" fill="#f59e0b" />
+                            <path d="M50 32C42 22 52 14 50 25C48 14 58 22 50 32Z" fill="#f59e0b" stroke="#fef08a" stroke-width="1.5" />
+                        </svg>
+                    `);
+                    $mediaContainer.append($badgeContainer);
+                    if (data.profilePic) {
+                        $userAvatar.attr("src", data.profilePic).show();
+                    }
                 }
             } else {
                 // Si no se muestra Lottie, solo mostramos el avatar si existe
@@ -2100,6 +2152,7 @@
                     else if (type === 'like' && config.likeAudioUrl) audioUrl = config.likeAudioUrl;
                     else if (type === 'gift' && config.giftAudioUrl) audioUrl = config.giftAudioUrl;
                     else if (type === 'subscribe' && config.subscribeAudioUrl) audioUrl = config.subscribeAudioUrl;
+                    else if (type === 'reward' && config.rewardAudioUrl) audioUrl = config.rewardAudioUrl;
                     
                     $audio.attr("src", audioUrl);
                     const audioEl = $audio[0];
@@ -2159,7 +2212,8 @@
             follow:    ['⭐', '✨', '💫', '🌟'],
             gift:      ['🪙', '💰', '✨', '💛'],
             subscribe: ['✨', '💎', '⚡', '🌀'],
-            like:      ['❤️', '💗', '💖', '💝']
+            like:      ['❤️', '💗', '💖', '💝'],
+            reward:    ['🎁', '⭐', '✨', '💜']
         };
 
         function spawnParticles(color, type) {

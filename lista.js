@@ -15321,11 +15321,13 @@ function shouldShowStatsTicker() {
 
           let currentPoints = 0;
           let userLastRedeemed = {};
+          let profilePic = '';
 
           if (userDoc.exists) {
             const data = userDoc.data();
             currentPoints = Number(data.totalPoints || 0);
             userLastRedeemed = data.lastRedeemedAt || {};
+            profilePic = data.profilePic || '';
           } else {
             // Fallback a local si no existe en DB (aunque debería)
             const localData = getGamificationDataForUser(username);
@@ -15436,6 +15438,18 @@ function shouldShowStatsTicker() {
           updatePayload[`lastRedeemedAt.${rewardId}`] = new Date().toISOString();
 
           batch.set(userDocRef, updatePayload, { merge: true });
+
+          // 3. Crear alerta de notificación para streaming en vivo
+          const notificationRef = db.collection('notifications').doc();
+          const notificationData = {
+            type: 'reward',
+            user: username,
+            uniqueId: normUser,
+            profilePic: profilePic || '',
+            message: `¡Canjeó ${reward.name}! 🎁`,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+          };
+          batch.set(notificationRef, notificationData);
 
           await batch.commit();
 
@@ -18104,6 +18118,15 @@ function shouldShowStatsTicker() {
           uniqueId: 'musiccollector',
           profilePic: avatarUrl,
           message: subsMsg.replace(/{user}/g, 'MusicCollector'),
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        };
+      } else if (type === 'reward') {
+        mockData = {
+          type: 'reward',
+          user: 'DonadorPro',
+          uniqueId: 'donadorpro',
+          profilePic: avatarUrl,
+          message: '¡Canjeó Ruleta de 3 giros! 🎁',
           timestamp: firebase.firestore.FieldValue.serverTimestamp()
         };
       }
