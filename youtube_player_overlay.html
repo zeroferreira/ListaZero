@@ -665,6 +665,13 @@
           if (typeof event.target.setPlaybackQuality === 'function') {
             event.target.setPlaybackQuality(quality);
           }
+          if (typeof event.target.getDuration === 'function') {
+            const ytDuration = event.target.getDuration();
+            if (ytDuration > 0) {
+              durationSec = ytDuration;
+              timeTotal.textContent = fmtTime(durationSec);
+            }
+          }
           adjustIframeAspectRatio();
 
           // Delay unmute to ensure autoplay registry accepts it
@@ -685,9 +692,16 @@
               event.target.unMute();
               event.target.setVolume(currentVolume);
             }
-            if (currentState !== 'playing') {
-              applyState('playing');
-            }
+             if (typeof event.target.getDuration === 'function') {
+               const ytDuration = event.target.getDuration();
+               if (ytDuration > 0 && durationSec !== ytDuration) {
+                 durationSec = ytDuration;
+                 timeTotal.textContent = fmtTime(durationSec);
+               }
+             }
+             if (currentState !== 'playing') {
+               applyState('playing');
+             }
           } else if (event.data === 2) {
             if (currentState !== 'paused') {
               applyState('paused');
@@ -950,9 +964,31 @@
 
   // ─── Progress timer (visual only, no audio) ──
   function startTimer() {
+    stopTimer();
     timerInterval = setInterval(() => {
       if (currentState !== 'playing') return;
-      elapsedSec++;
+
+      // 1. Query duration from API if not loaded yet
+      if (ytPlayer && typeof ytPlayer.getDuration === 'function') {
+        const ytDuration = ytPlayer.getDuration();
+        if (ytDuration > 0 && durationSec !== ytDuration) {
+          durationSec = ytDuration;
+          timeTotal.textContent = fmtTime(durationSec);
+        }
+      }
+
+      // 2. Query exact current time from API
+      if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+        const ytCurrent = ytPlayer.getCurrentTime();
+        if (typeof ytCurrent === 'number') {
+          elapsedSec = Math.floor(ytCurrent);
+        } else {
+          elapsedSec++;
+        }
+      } else {
+        elapsedSec++;
+      }
+
       if (durationSec > 0 && elapsedSec >= durationSec) {
         elapsedSec = durationSec;
         applyState('ended');
