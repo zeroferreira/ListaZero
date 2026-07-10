@@ -669,6 +669,13 @@
       container.innerHTML = '<div id="yt-player"></div>';
     }
 
+    // Determine the origin for YouTube Iframe handshake.
+    let originParam = window.location.origin;
+    if (originParam === 'null' || originParam.startsWith('file:')) {
+      console.warn("⚠️ Advertencia: Estás ejecutando el overlay desde un archivo local (file://). YouTube bloqueará la reproducción de videos protegidos. Por favor, usa tu enlace HTTPS de Vercel en OBS.");
+      originParam = 'https://www.youtube.com'; 
+    }
+
     ytPlayer = new YT.Player('yt-player', {
       host: 'https://www.youtube.com',
       height: '100%',
@@ -686,7 +693,8 @@
         'mute': 1, // Start MUTED to bypass OBS autoplay blocking
         'modestbranding': 1,
         'autohide': 1,
-        'cc_load_policy': 0
+        'cc_load_policy': 0,
+        'origin': originParam
       },
       events: {
         'onReady': (event) => {
@@ -748,6 +756,31 @@
               applyState('ended');
               reportEndedToFirestore();
             }
+          }
+        },
+        'onError': (event) => {
+          console.error("❌ Error de YouTube Player:", event.data);
+          let errText = "⚠️ Error de reproducción";
+          if (event.data === 101 || event.data === 150) {
+            errText = "⚠️ Video bloqueado (Copyright)";
+          } else if (event.data === 100) {
+            errText = "⚠️ Video no encontrado / privado";
+          } else if (event.data === 2) {
+            errText = "⚠️ ID de video inválido";
+          }
+          
+          songTitle.textContent = errText;
+          stateLabel.textContent = "Error";
+          stateDot.className = "state-dot paused";
+          
+          const params = new URLSearchParams(window.location.search);
+          const isPreview = params.get('preview') === 'true';
+          if (!isPreview) {
+            console.warn("⏱️ Saltando canción bloqueada en 5 segundos...");
+            setTimeout(() => {
+              applyState('ended');
+              reportEndedToFirestore();
+            }, 5000);
           }
         }
       }
