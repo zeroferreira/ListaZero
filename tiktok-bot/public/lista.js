@@ -2288,10 +2288,12 @@
           const wrapLink = (text, url) => url ? `<a href="${url}" target="_blank" style="color:inherit; text-decoration:underline; text-decoration-style:dotted;">${text}</a>` : text;
 
           li.innerHTML = `
-            <span class="col col-time">${it.hora || ''}</span>
-            <span class="col col-usuario usuario">
-               <span class="uname-text">${cleanUser}</span>
-               ${rewardIconHtml}
+            <span class="col col-time-usuario usuario">
+               <div class="time-text">${it.hora || ''}</div>
+               <div class="user-text-row">
+                  <span class="uname-text">${cleanUser}</span>
+                  ${rewardIconHtml}
+               </div>
             </span>
             <span class="col col-cancion">
               <span class="text">${wrapLink(cleanCancion, cleanLink)}</span>
