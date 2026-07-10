@@ -2354,13 +2354,27 @@ function startBot() {
                     pitchOverride: null,
                     timestamp: serverTimestampFn()
                 };
-            } else if (type === 'join') {
+            } else if (type === 'join' || type.startsWith('join_')) {
+                const role = type.startsWith('join_') ? type.split('_')[1] : 'default';
+                const roles = role !== 'default' ? [role] : [];
+                
+                const roleNames = {
+                    streamer: 'Creador (Tú)',
+                    moderator: 'Moderador Pro 🛡️',
+                    subscriber: 'Suscriptor VIP ⚡',
+                    vip: 'Usuario Estrella ⭐',
+                    donador: 'Súper Donador 💎',
+                    follower: 'Seguidor Leal ✨',
+                    default: 'Seguidor Pro 🔥'
+                };
+                
                 mockData = {
                     type: 'join',
-                    user: 'Seguidor Pro 🔥',
-                    uniqueId: 'seguidorpro',
+                    user: roleNames[role] || 'Seguidor Pro 🔥',
+                    uniqueId: role === 'default' ? 'seguidorpro' : `test_${role}`,
                     profilePic: `https://i.pravatar.cc/100?img=${Math.floor(Math.random() * 70) + 1}`,
-                    message: overlayConfig.welcomeOverlayGreetingTemplate || '¡Acaba de entrar al Live! 👋',
+                    message: '¡Acaba de entrar al Live! 👋',
+                    roles: roles,
                     timestamp: serverTimestampFn()
                 };
             } else {
@@ -3100,12 +3114,46 @@ function setupListeners() {
                         const avatarUrl = data.profilePictureUrl || `https://i.pravatar.cc/100?img=${Math.floor(Math.random() * 70) + 1}`;
                         const nickname = data.nickname || uid;
                         
+                        // Determinar los roles del usuario para bienvenidas personalizadas
+                        const roles = [];
+                        if (isStreamer) roles.push('streamer');
+                        if (isModerator) roles.push('moderator');
+                        if (isSubscriber) roles.push('subscriber');
+                        
+                        const hasVipBadge = badgeSets && badgeSets.vip && (badgeSets.vip.has(uid) || badgeSets.z0Vip.has(uid));
+                        const hasTempVip = typeof tempVipUsers !== 'undefined' && tempVipUsers.has(uid);
+                        if (hasVipBadge || hasTempVip) {
+                            roles.push('vip');
+                        }
+                        
+                        if (badgeSets && badgeSets.donador && badgeSets.donador.has(uid)) {
+                            roles.push('donador');
+                        }
+                        if (isFollower) roles.push('follower');
+                        
+                        // Guardar/Actualizar el registro en liveUsers para el registro histórico del mes
+                        const { doc, setDoc, serverTimestamp, increment } = require('firebase/firestore');
+                        const now = new Date();
+                        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                        
+                        await setDoc(doc(db, 'liveUsers', uid), {
+                            uniqueId: uid,
+                            nickname: nickname,
+                            profilePic: avatarUrl,
+                            roles: roles,
+                            joinCount: increment(1),
+                            lastJoined: serverTimestamp(),
+                            monthJoined: currentMonth
+                        }, { merge: true });
+
+                        // Enviar notificación en tiempo real para el overlay
                         await addDoc(collection(db, 'notifications'), {
                             type: 'join',
                             user: nickname,
                             uniqueId: uid,
                             profilePic: avatarUrl,
                             message: '¡Entró al Live!',
+                            roles: roles,
                             timestamp: serverTimestamp()
                         });
                     } catch (e) {

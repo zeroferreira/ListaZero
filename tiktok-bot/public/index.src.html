@@ -1246,6 +1246,12 @@
             const [activeProfile, setActiveProfile] = React.useState('zeroferreira');
             const [isEditingUsername, setIsEditingUsername] = React.useState(false);
             
+            // Bienvenidas Personalizadas & Registro de Entradas
+            const [liveUsers, setLiveUsers] = React.useState([]);
+            const [liveUsersSearchQuery, setLiveUsersSearchQuery] = React.useState('');
+            const [liveUsersActiveFilter, setLiveUsersActiveFilter] = React.useState('all');
+            const [activeWelcomeTab, setActiveWelcomeTab] = React.useState('general');
+            
             const [localAudioEnabled, setLocalAudioEnabled] = React.useState(() => {
                 try {
                     return localStorage.getItem('local_audio_enabled') === 'true';
@@ -1397,6 +1403,9 @@
                 welcomeOverlayAllowFollowers: false,
                 welcomeOverlayAllowSubscribers: false,
                 welcomeOverlayAllowModerators: false,
+                welcomeOverlayTemplates: {},
+                welcomeOverlayColors: {},
+                welcomeOverlaySounds: {},
                 
                 // Chat TTS Config
                 chatTtsEnabled: false,
@@ -2303,6 +2312,7 @@
                 let unsubPlayed = () => {};
                 let unsubRequests = () => {};
                 let unsubActiveVideo = () => {};
+                let unsubLiveUsers = () => {};
 
                 if (typeof window !== 'undefined' && window.firebase && window.ZERO_FM_FIREBASE) {
                     try {
@@ -2380,6 +2390,26 @@
                             console.warn("Error loading active video status:", err);
                         });
 
+                        // 4. Escuchar liveUsers (usuarios del mes)
+                        const now = new Date();
+                        const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                        unsubLiveUsers = db.collection('liveUsers')
+                            .where('monthJoined', '==', currentMonthStr)
+                            .onSnapshot((snap) => {
+                                const users = [];
+                                snap.forEach(doc => {
+                                    users.push({ id: doc.id, ...doc.data() });
+                                });
+                                users.sort((a, b) => {
+                                    const tA = a.lastJoined ? (a.lastJoined.seconds || a.lastJoined._seconds || 0) : 0;
+                                    const tB = b.lastJoined ? (b.lastJoined.seconds || b.lastJoined._seconds || 0) : 0;
+                                    return tB - tA;
+                                });
+                                setLiveUsers(users);
+                            }, err => {
+                                console.warn("Error loading live users:", err);
+                            });
+
                     } catch (e) {
                         console.error("Error setting up React listeners:", e);
                     }
@@ -2389,6 +2419,7 @@
                     unsubPlayed();
                     unsubRequests();
                     unsubActiveVideo();
+                    unsubLiveUsers();
                 };
             }, [activeProfile]);
 
@@ -3484,14 +3515,23 @@
             };
 
             // Event simulation triggers
-            const triggerOverlayTest = async (type, customText) => {
+            const triggerOverlayTest = async (type, customText, userData) => {
                 // Petición al bot en segundo plano (para que OBS también lo capte si está online)
                 try {
                     const apiBase = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
                     fetch(`${apiBase}/api/overlays/test`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ type, customText })
+                        body: JSON.stringify({ 
+                            type: userData ? `join_${userData.roles?.[0] || 'default'}` : type, 
+                            customText,
+                            userData: userData ? {
+                                uniqueId: userData.uniqueId,
+                                nickname: userData.nickname,
+                                profilePic: userData.profilePic,
+                                roles: userData.roles
+                            } : undefined
+                        })
                     }).catch(() => {});
                 } catch (e) {}
 
@@ -3504,7 +3544,7 @@
                 else if (type === 'like_lock_blocked') iframeId = 'iframe-alerts-like';
                 else if (type === 'topgifters') iframeId = 'iframe-topgifters';
                 else if (type === 'toplikers') iframeId = 'iframe-toplikers';
-                else if (type === 'join') iframeId = 'iframe-welcome';
+                else if (type === 'join' || type.startsWith('join_')) iframeId = 'iframe-welcome';
 
                 const iframe = document.getElementById(iframeId);
                 if (iframe && iframe.contentWindow) {
@@ -3526,8 +3566,38 @@
                             subscribe: { type: 'subscribe', user: 'PruebaSubs', message: overlays.subsAlertMsg || '¡gracias por suscribirte al canal! ⭐', profilePic: 'https://i.pravatar.cc/100?img=33' },
                             like_lock_blocked: { type: 'like', user: 'YouTube Link', message: overlays.likesLockAlertMsg || '🔒 Enlaces bloqueados: Faltan {faltan} likes en el Live (llevamos {llevamos}/{meta}) ❤️', profilePic: '' },
                             chat: { type: 'chat', user: 'TesterChat', message: customText || '¡Hola! Este es un mensaje de prueba leído por el lector de chat.' },
-                            join: { type: 'join', uniqueId: 'zero_fm', user: 'Zero FM', profilePic: 'https://p16-sign-va.tiktokcdn.com/tos-maliva-avt-0068/7343292376918818822~tplv-tiktok-shrink:100x100.webp' }
+                            join: { type: 'join', uniqueId: 'zero_fm', user: 'Zero FM', profilePic: 'https://p16-sign-va.tiktokcdn.com/tos-maliva-avt-0068/7343292376918818822~tplv-tiktok-shrink:100x100.webp', roles: [] }
                         };
+
+                        if (type.startsWith('join_')) {
+                            const role = type.split('_')[1];
+                            const roleLabels = {
+                                streamer: 'Creador (Tú)',
+                                moderator: 'Moderador Pro 🛡️',
+                                subscriber: 'Suscriptor VIP ⚡',
+                                vip: 'Usuario Estrella ⭐',
+                                donador: 'Súper Donador 💎',
+                                follower: 'Seguidor Leal ✨'
+                            };
+                            payloads[type] = {
+                                type: 'join',
+                                uniqueId: `test_${role}`,
+                                user: roleLabels[role] || 'Seguidor Pro 🔥',
+                                profilePic: `https://i.pravatar.cc/100?img=${Math.floor(Math.random() * 70) + 1}`,
+                                roles: [role]
+                            };
+                        }
+
+                        if (userData) {
+                            payloads[type] = {
+                                type: 'join',
+                                uniqueId: userData.uniqueId,
+                                user: userData.nickname,
+                                profilePic: userData.profilePic,
+                                roles: userData.roles || []
+                            };
+                        }
+
                         const payload = payloads[type];
                         if (payload) {
                             iframe.contentWindow.postMessage({
@@ -8822,37 +8892,215 @@
 
                                 {/* SUBPANEL 11: WELCOME OVERLAY */}
                                 {activeSub === 'welcome' && (
-                                    <div className="glass-card">
+                                    <div className="glass-card animate-fade-in" style={{ padding: '20px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                                             <h3 style={{ margin: 0 }}>👋 Alerta de Bienvenida (Join Alert)</h3>
                                             <div style={{ display: 'flex', gap: '10px' }}>
                                                 <button className="btn btn-secondary" onClick={() => { setShowWelcomePersonalize(true); }} style={{ padding: '6px 12px', fontSize: '0.82rem', borderColor: '#a855f7', color: '#c084fc', background: 'rgba(168, 85, 247, 0.05)' }}>
                                                     ⚙️ Personalizar Alerta
                                                 </button>
-                                                <button className="btn btn-green" onClick={() => triggerOverlayTest('join')} style={{ padding: '6px 12px', fontSize: '0.82rem' }}>
-                                                    🧪 Simular Entrada
-                                                </button>
+                                                <select 
+                                                    className="btn btn-secondary" 
+                                                    style={{ padding: '6px 12px', fontSize: '0.82rem', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid var(--border-glass)', borderRadius: '6px', cursor: 'pointer' }}
+                                                    onChange={(e) => {
+                                                        if (e.target.value) {
+                                                            triggerOverlayTest(e.target.value);
+                                                            e.target.value = '';
+                                                        }
+                                                    }}
+                                                >
+                                                    <option value="">🧪 Simular Rol...</option>
+                                                    <option value="join">Seguidor (Por Defecto) 🔥</option>
+                                                    <option value="join_streamer">Creador 👑</option>
+                                                    <option value="join_moderator">Moderador 🛡️</option>
+                                                    <option value="join_subscriber">Suscriptor ⚡</option>
+                                                    <option value="join_vip">VIP ⭐</option>
+                                                    <option value="join_donador">Donador 💎</option>
+                                                    <option value="join_follower">Seguidor ✨</option>
+                                                </select>
                                             </div>
                                         </div>
                                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '20px' }}>
-                                            Muestra un saludo en pantalla con el avatar y nombre del usuario cuando entra al Live.
+                                            Muestra un saludo premium en pantalla con efectos, sonidos y colores personalizados según el rol del usuario que ingresa.
                                         </p>
 
-                                        <div className="preview-panel">
-                                            <div className="preview-header">
-                                                <span>📺 Vista Previa en Vivo</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                    <div className="preview-live-dot"></div> Join Alert Overlay
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.1fr', gap: '24px', alignItems: 'start' }}>
+                                            {/* Columna 1: Vista Previa y OBS */}
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                                <div className="preview-panel" style={{ margin: 0 }}>
+                                                    <div className="preview-header">
+                                                        <span>📺 Vista Previa en Vivo</span>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                            <div className="preview-live-dot"></div> Join Alert Overlay
+                                                        </div>
+                                                    </div>
+                                                    <iframe id="iframe-welcome" src="./welcome_overlay.html" className="preview-iframe" style={{ height: '320px', background: 'transparent' }}></iframe>
+                                                </div>
+
+                                                <div className="form-group" style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', border: '1px dashed var(--border-glass)', borderRadius: '10px' }}>
+                                                    <label style={{ fontWeight: '600', color: 'var(--accent-primary)', display: 'block', marginBottom: '8px' }}>🔗 Enlace del Widget para OBS (Fuente de Navegador)</label>
+                                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '10px' }}>
+                                                        Agrega este enlace en OBS como <strong>Fuente de Navegador</strong>. Ajusta el tamaño a 600 × 300 px.
+                                                    </p>
+                                                    <div className="copy-url-row" style={{ display: 'flex', gap: '10px' }}>
+                                                        <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/welcome_overlay.html`} onClick={(e) => e.target.select()} style={{ flex: 1 }} />
+                                                        <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/welcome_overlay.html`)}>Copiar URL</button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <iframe id="iframe-welcome" src="./welcome_overlay.html" className="preview-iframe" style={{ height: '350px', background: 'transparent' }}></iframe>
-                                        </div>
 
-                                        <div className="form-group" style={{ marginTop: '20px' }}>
-                                            <label>Enlace de OBS (Browser Source — 600 × 300 px)</label>
-                                            <div className="copy-url-row">
-                                                <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/welcome_overlay.html`} onClick={(e) => e.target.select()} />
-                                                <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/welcome_overlay.html`)}>Copiar URL</button>
+                                            {/* Columna 2: Registro de Entradas del Mes */}
+                                            <div className="preview-panel" style={{ margin: 0, height: '495px', display: 'flex', flexDirection: 'column' }}>
+                                                <div className="preview-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span>📅 Registro de Entradas del Mes</span>
+                                                    <span style={{ fontSize: '0.72rem', opacity: 0.6, background: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '10px' }}>
+                                                        {liveUsers.length} total
+                                                    </span>
+                                                </div>
+                                                
+                                                {/* Smart Search & Filter pills */}
+                                                <div style={{ padding: '12px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                    <div style={{ position: 'relative' }}>
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder="🔍 Buscar por nombre o usuario..."
+                                                            value={liveUsersSearchQuery} 
+                                                            onChange={(e) => setLiveUsersSearchQuery(e.target.value)}
+                                                            style={{
+                                                                width: '100%',
+                                                                padding: '8px 12px 8px 12px',
+                                                                background: 'rgba(0,0,0,0.3)',
+                                                                border: '1px solid var(--border-glass)',
+                                                                borderRadius: '8px',
+                                                                fontSize: '0.82rem',
+                                                                color: '#fff'
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    
+                                                    {/* Filter Pills */}
+                                                    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
+                                                        {[
+                                                            { id: 'all', label: 'Todos' },
+                                                            { id: 'frequent', label: '🔥 Frecuentes' },
+                                                            { id: 'vip', label: '⭐ VIPs' },
+                                                            { id: 'moderator', label: '🛡️ Mods' },
+                                                            { id: 'subscriber', label: '⚡ Subs' }
+                                                        ].map((p) => (
+                                                            <button
+                                                                key={p.id}
+                                                                type="button"
+                                                                className={`btn ${liveUsersActiveFilter === p.id ? 'btn-primary' : 'btn-secondary'}`}
+                                                                onClick={() => setLiveUsersActiveFilter(p.id)}
+                                                                style={{ padding: '4px 8px', fontSize: '0.72rem', whiteSpace: 'nowrap', borderRadius: '15px' }}
+                                                            >
+                                                                {p.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* User entries scroll list */}
+                                                <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+                                                    {(() => {
+                                                        // Filter logic
+                                                        const filtered = liveUsers.filter(u => {
+                                                            const query = liveUsersSearchQuery.toLowerCase();
+                                                            const matchSearch = (u.nickname || '').toLowerCase().includes(query) || (u.uniqueId || '').toLowerCase().includes(query);
+                                                            if (!matchSearch) return false;
+                                                            
+                                                            if (liveUsersActiveFilter === 'frequent') return (u.joinCount || 0) >= 3;
+                                                            if (liveUsersActiveFilter === 'vip') return u.roles?.includes('vip');
+                                                            if (liveUsersActiveFilter === 'moderator') return u.roles?.includes('moderator');
+                                                            if (liveUsersActiveFilter === 'subscriber') return u.roles?.includes('subscriber');
+                                                            return true;
+                                                        });
+
+                                                        if (filtered.length === 0) {
+                                                            return (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', opacity: 0.4, padding: '20px' }}>
+                                                                    <span style={{ fontSize: '1.8rem' }}>👥</span>
+                                                                    <span style={{ fontSize: '0.8rem', marginTop: '5px' }}>No se encontraron usuarios</span>
+                                                                </div>
+                                                            );
+                                                        }
+
+                                                        return filtered.map((u) => {
+                                                            const date = u.lastJoined ? new Date(u.lastJoined.seconds * 1000 || u.lastJoined._seconds * 1000) : null;
+                                                            const timeString = date ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+                                                            
+                                                            return (
+                                                                <div 
+                                                                    key={u.id}
+                                                                    style={{
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'space-between',
+                                                                        padding: '10px 12px',
+                                                                        background: 'rgba(255, 255, 255, 0.02)',
+                                                                        border: '1px solid rgba(255, 255, 255, 0.04)',
+                                                                        borderRadius: '8px',
+                                                                        marginBottom: '8px',
+                                                                        transition: 'all 0.2s ease'
+                                                                    }}
+                                                                >
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                                                                        <img 
+                                                                            src={u.profilePic || 'https://i.pravatar.cc/100?img=1'} 
+                                                                            style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid rgba(255,255,255,0.1)' }} 
+                                                                            alt="Avatar"
+                                                                        />
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                                                                            <span style={{ fontWeight: 'bold', fontSize: '0.82rem', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                                {u.nickname}
+                                                                            </span>
+                                                                            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                                @{u.uniqueId}
+                                                                            </span>
+                                                                            <div style={{ display: 'flex', gap: '4px', marginTop: '3px', flexWrap: 'wrap' }}>
+                                                                                {(u.roles || []).map(r => {
+                                                                                    const badges = {
+                                                                                        streamer: { label: 'Creador 👑', color: '#d8b4fe', bg: 'rgba(168,85,247,0.15)' },
+                                                                                        moderator: { label: 'Mod 🛡️', color: '#93c5fd', bg: 'rgba(59,130,246,0.15)' },
+                                                                                        subscriber: { label: 'Sub ⚡', color: '#fbcfe8', bg: 'rgba(236,72,153,0.15)' },
+                                                                                        vip: { label: 'VIP ⭐', color: '#fef08a', bg: 'rgba(234,179,8,0.15)' },
+                                                                                        donador: { label: 'Donador 💎', color: '#a5f3fc', bg: 'rgba(6,182,212,0.15)' },
+                                                                                        follower: { label: 'Seguidor ✨', color: '#a7f3d0', bg: 'rgba(16,185,129,0.15)' }
+                                                                                    };
+                                                                                    const info = badges[r] || { label: r, color: '#fff', bg: 'rgba(255,255,255,0.1)' };
+                                                                                    return (
+                                                                                        <span key={r} style={{ fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', color: info.color, background: info.bg }}>
+                                                                                            {info.label}
+                                                                                        </span>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', marginLeft: '12px' }}>
+                                                                        <span style={{ fontSize: '0.7rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                            🕒 {timeString}
+                                                                        </span>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                            <span style={{ fontSize: '0.72rem', color: '#facc15', background: 'rgba(250,204,21,0.08)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                                                                                🔥 {u.joinCount || 1}
+                                                                            </span>
+                                                                            <button 
+                                                                                type="button"
+                                                                                className="btn btn-green"
+                                                                                onClick={() => triggerOverlayTest('join', undefined, u)}
+                                                                                style={{ padding: '2px 8px', fontSize: '0.7rem', borderRadius: '4px' }}
+                                                                                title="Simular bienvenida para este usuario"
+                                                                            >
+                                                                                🧪 Sim
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        });
+                                                    })()}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -8948,74 +9196,177 @@
                                                 </div>
                                             </div>
 
+                                            {/* Visual Theme Selector */}
                                             <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '20px', paddingBottom: '20px' }}>
-                                                <h4 style={{ marginBottom: '15px', color: '#a855f7' }}>⚙️ Efectos y Visibilidad</h4>
-                                                <div className="grid-2">
-                                                    <div className="form-group">
-                                                        <label>Mostrar Imagen de Perfil</label>
-                                                        <select value={String(overlays.welcomeOverlayShowAvatar !== false)} onChange={(e) => setOverlays({ ...overlays, welcomeOverlayShowAvatar: e.target.value === 'true' })}>
-                                                            <option value="true">✅ Sí, mostrar avatar</option>
-                                                            <option value="false">❌ No, ocultar avatar</option>
-                                                        </select>
+                                                <h4 style={{ marginBottom: '15px', color: '#a855f7' }}>🎭 Tema de la Tarjeta</h4>
+                                                <div className="theme-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+                                                    {[
+                                                        { id: 'standard', label: 'Estándar', desc: 'Neón clásico con brillo', bg: 'rgba(10, 8, 20, 0.9)', border: 'rgba(168, 85, 247, 0.4)' },
+                                                        { id: 'minimalist', label: 'Minimalista', desc: 'Compacto y rectangular', bg: '#18181b', border: 'rgba(255,255,255,0.1)' },
+                                                        { id: 'glassmorphism', label: 'Glassmorphism', desc: 'Efecto cristal translúcido', bg: 'rgba(255,255,255,0.05)', border: 'rgba(255, 255, 255, 0.2)' },
+                                                        { id: 'cyberpunk', label: 'Cyberpunk', desc: 'Bordes sólidos y retro', bg: '#030712', border: '#ff0050' }
+                                                    ].map((t) => {
+                                                        const isSelected = (overlays.welcomeOverlayCardTheme || 'standard') === t.id;
+                                                        return (
+                                                            <div 
+                                                                key={t.id}
+                                                                onClick={() => setOverlays({ ...overlays, welcomeOverlayCardTheme: t.id })}
+                                                                style={{
+                                                                    padding: '12px',
+                                                                    borderRadius: '10px',
+                                                                    background: t.bg,
+                                                                    border: `2px solid ${isSelected ? 'var(--primary)' : t.border}`,
+                                                                    cursor: 'pointer',
+                                                                    position: 'relative',
+                                                                    boxShadow: isSelected ? '0 0 10px var(--primary-glow)' : 'none',
+                                                                    transition: 'all 0.2s ease',
+                                                                    display: 'flex',
+                                                                    flexDirection: 'column',
+                                                                    gap: '4px'
+                                                                }}
+                                                            >
+                                                                <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: isSelected ? 'var(--primary)' : '#fff' }}>
+                                                                    {t.label}
+                                                                </span>
+                                                                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                                                                    {t.desc}
+                                                                </span>
+                                                                {isSelected && (
+                                                                    <span style={{ position: 'absolute', top: '8px', right: '8px', fontSize: '0.75rem', color: 'var(--primary)' }}>✓</span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            {/* Role Customization Tabs */}
+                                            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '20px', paddingBottom: '20px' }}>
+                                                <h4 style={{ marginBottom: '12px', color: '#a855f7' }}>👑 Bienvenidas por Rango</h4>
+                                                <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '15px' }}>
+                                                    {[
+                                                        { id: 'general', label: 'General' },
+                                                        { id: 'streamer', label: 'Creador 👑' },
+                                                        { id: 'moderator', label: 'Mod 🛡️' },
+                                                        { id: 'subscriber', label: 'Sub ⚡' },
+                                                        { id: 'vip', label: 'VIP ⭐' },
+                                                        { id: 'donador', label: 'Donador 💎' },
+                                                        { id: 'follower', label: 'Seguidor ✨' }
+                                                    ].map((tab) => (
+                                                        <button
+                                                            key={tab.id}
+                                                            type="button"
+                                                            className={`btn ${activeWelcomeTab === tab.id ? 'btn-primary' : 'btn-secondary'}`}
+                                                            onClick={() => setActiveWelcomeTab(tab.id)}
+                                                            style={{ padding: '6px 12px', fontSize: '0.75rem', whiteSpace: 'nowrap', borderRadius: '20px' }}
+                                                        >
+                                                            {tab.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                {activeWelcomeTab === 'general' ? (
+                                                    <div>
+                                                        <div className="grid-2">
+                                                            <div className="form-group">
+                                                                <label>Activar Alerta de Bienvenida</label>
+                                                                <select value={String(overlays.welcomeOverlayEnabled)} onChange={(e) => setOverlays({ ...overlays, welcomeOverlayEnabled: e.target.value === 'true' })}>
+                                                                    <option value="true">✅ Activar</option>
+                                                                    <option value="false">❌ Desactivar</option>
+                                                                </select>
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Plantilla de Saludo General</label>
+                                                                <input type="text" value={overlays.welcomeOverlayGreetingTemplate || ''} onChange={(e) => setOverlays({ ...overlays, welcomeOverlayGreetingTemplate: e.target.value })} />
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid-2" style={{ marginTop: '12px' }}>
+                                                            <div className="form-group">
+                                                                <label>Efecto de Sonido</label>
+                                                                <select value={String(overlays.welcomeOverlaySoundEnabled)} onChange={(e) => setOverlays({ ...overlays, welcomeOverlaySoundEnabled: e.target.value === 'true' })}>
+                                                                    <option value="true">🔊 Habilitar Sonido</option>
+                                                                    <option value="false">🔇 Deshabilitar Sonido</option>
+                                                                </select>
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Volumen del Sonido: {overlays.welcomeOverlaySoundVolume || 40}%</label>
+                                                                <input type="range" min="0" max="100" step="5" value={overlays.welcomeOverlaySoundVolume || 40} onChange={(e) => setOverlays({ ...overlays, welcomeOverlaySoundVolume: parseInt(e.target.value) })} />
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid-2" style={{ marginTop: '12px' }}>
+                                                            <div className="form-group">
+                                                                <label>Color de Contorno / Brillo General</label>
+                                                                <input type="color" value={overlays.welcomeOverlayColor || '#a855f7'} onChange={(e) => setOverlays({ ...overlays, welcomeOverlayColor: e.target.value })} style={{ height: '40px', padding: '2px', border: '1px solid rgba(255,255,255,0.1)' }} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Sonido Predeterminado</label>
+                                                                <select 
+                                                                    value={overlays.welcomeOverlaySoundUrl || 'mixkit-2017'} 
+                                                                    onChange={(e) => setOverlays({ ...overlays, welcomeOverlaySoundUrl: e.target.value })}
+                                                                >
+                                                                    <option value="mixkit-2017">🔔 Campana Elegante</option>
+                                                                    <option value="retro-arcade">🕹️ Retro Arcade</option>
+                                                                    <option value="sci-fi-reveal">🚀 Sci-Fi Reveal</option>
+                                                                    <option value="soft-bubble">🫧 Soft Bubble</option>
+                                                                    <option value="none">🔇 Sin Sonido</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div className="form-group">
-                                                        <label>Mostrar Onda de Pulso Neón</label>
-                                                        <select value={String(overlays.welcomeOverlayShowPulseWave !== false)} onChange={(e) => setOverlays({ ...overlays, welcomeOverlayShowPulseWave: e.target.value === 'true' })}>
-                                                            <option value="true">✅ Sí, animar onda</option>
-                                                            <option value="false">❌ No, desactivar onda</option>
-                                                        </select>
+                                                ) : (
+                                                    <div>
+                                                        <div className="form-group">
+                                                            <label>Plantilla de Saludo Personalizada (usa {"{nickname}"} o {"{user}"})</label>
+                                                            <input 
+                                                                type="text" 
+                                                                placeholder="Ej: 👑 ¡El creador {nickname} ha entrado! 👑"
+                                                                value={overlays.welcomeOverlayTemplates?.[activeWelcomeTab] || ''} 
+                                                                onChange={(e) => {
+                                                                    const t = { ...(overlays.welcomeOverlayTemplates || {}) };
+                                                                    t[activeWelcomeTab] = e.target.value;
+                                                                    setOverlays({ ...overlays, welcomeOverlayTemplates: t });
+                                                                }} 
+                                                            />
+                                                        </div>
+                                                        <div className="grid-2" style={{ marginTop: '12px' }}>
+                                                            <div className="form-group">
+                                                                <label>Color de Brillo del Rango</label>
+                                                                <input 
+                                                                    type="color" 
+                                                                    value={overlays.welcomeOverlayColors?.[activeWelcomeTab] || '#a855f7'} 
+                                                                    onChange={(e) => {
+                                                                        const c = { ...(overlays.welcomeOverlayColors || {}) };
+                                                                        c[activeWelcomeTab] = e.target.value;
+                                                                        setOverlays({ ...overlays, welcomeOverlayColors: c });
+                                                                    }} 
+                                                                    style={{ height: '40px', padding: '2px', border: '1px solid rgba(255,255,255,0.1)' }} 
+                                                                />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Efecto de Sonido del Rango</label>
+                                                                <select 
+                                                                    value={overlays.welcomeOverlaySounds?.[activeWelcomeTab] || 'mixkit-2017'} 
+                                                                    onChange={(e) => {
+                                                                        const s = { ...(overlays.welcomeOverlaySounds || {}) };
+                                                                        s[activeWelcomeTab] = e.target.value;
+                                                                        setOverlays({ ...overlays, welcomeOverlaySounds: s });
+                                                                    }}
+                                                                >
+                                                                    <option value="mixkit-2017">🔔 Campana Elegante</option>
+                                                                    <option value="retro-arcade">🕹️ Retro Arcade</option>
+                                                                    <option value="sci-fi-reveal">🚀 Sci-Fi Reveal</option>
+                                                                    <option value="soft-bubble">🫧 Soft Bubble</option>
+                                                                    <option value="none">🔇 Sin Sonido</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ marginTop: '12px', padding: '10px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                                                💡 Si se deja en blanco, usará la configuración general como fallback.
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="grid-2" style={{ marginTop: '15px' }}>
-                                                <div className="form-group">
-                                                    <label>Activar Alerta de Bienvenida</label>
-                                                    <select value={String(overlays.welcomeOverlayEnabled)} onChange={(e) => setOverlays({ ...overlays, welcomeOverlayEnabled: e.target.value === 'true' })}>
-                                                        <option value="true">✅ Activar</option>
-                                                        <option value="false">❌ Desactivar</option>
-                                                    </select>
-                                                </div>
-                                                <div className="form-group">
-                                                    <label>Plantilla de Saludo (usa {"{user}"} o {"{nickname}"})</label>
-                                                    <input type="text" value={overlays.welcomeOverlayGreetingTemplate || ''} onChange={(e) => setOverlays({ ...overlays, welcomeOverlayGreetingTemplate: e.target.value })} />
-                                                </div>
-                                            </div>
-
-                                            <div className="grid-2" style={{ marginTop: '15px' }}>
-                                                <div className="form-group">
-                                                    <label>Efecto de Sonido</label>
-                                                    <select value={String(overlays.welcomeOverlaySoundEnabled)} onChange={(e) => setOverlays({ ...overlays, welcomeOverlaySoundEnabled: e.target.value === 'true' })}>
-                                                        <option value="true">🔊 Habilitar Sonido</option>
-                                                        <option value="false">🔇 Deshabilitar Sonido</option>
-                                                    </select>
-                                                </div>
-                                                <div className="form-group">
-                                                    <label>Volumen del Sonido: {overlays.welcomeOverlaySoundVolume || 40}%</label>
-                                                    <input type="range" min="0" max="100" step="5" value={overlays.welcomeOverlaySoundVolume || 40} onChange={(e) => setOverlays({ ...overlays, welcomeOverlaySoundVolume: parseInt(e.target.value) })} />
-                                                </div>
-                                            </div>
-
-                                            <div style={{ marginTop: '15px', marginBottom: '20px' }}>
-                                                <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '10px' }}>¿Quién activa esta alerta al entrar?</label>
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', padding: '12px 16px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', borderRadius: '10px' }}>
-                                                    <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0, alignItems: 'center', gap: '4px' }}>
-                                                        <input type="checkbox" id="welcomeOverlayAllowAll" checked={!!overlays.welcomeOverlayAllowAll} onChange={(e) => setOverlays({ ...overlays, welcomeOverlayAllowAll: e.target.checked })} style={{ width: 'auto', margin: 0 }} />
-                                                        <label htmlFor="welcomeOverlayAllowAll" style={{ cursor: 'pointer', margin: 0, paddingLeft: '4px' }}>Todos</label>
-                                                    </label>
-                                                    <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0, alignItems: 'center', gap: '4px' }}>
-                                                        <input type="checkbox" id="welcomeOverlayAllowFollowers" checked={!!overlays.welcomeOverlayAllowFollowers} onChange={(e) => setOverlays({ ...overlays, welcomeOverlayAllowFollowers: e.target.checked })} style={{ width: 'auto', margin: 0 }} />
-                                                        <label htmlFor="welcomeOverlayAllowFollowers" style={{ cursor: 'pointer', margin: 0, paddingLeft: '4px' }}>Seguidores</label>
-                                                    </label>
-                                                    <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0, alignItems: 'center', gap: '4px' }}>
-                                                        <input type="checkbox" id="welcomeOverlayAllowSubscribers" checked={!!overlays.welcomeOverlayAllowSubscribers} onChange={(e) => setOverlays({ ...overlays, welcomeOverlayAllowSubscribers: e.target.checked })} style={{ width: 'auto', margin: 0 }} />
-                                                        <label htmlFor="welcomeOverlayAllowSubscribers" style={{ cursor: 'pointer', margin: 0, paddingLeft: '4px' }}>Suscriptores</label>
-                                                    </label>
-                                                    <label style={{ display: 'inline-flex', cursor: 'pointer', margin: 0, alignItems: 'center', gap: '4px' }}>
-                                                        <input type="checkbox" id="welcomeOverlayAllowModerators" checked={!!overlays.welcomeOverlayAllowModerators} onChange={(e) => setOverlays({ ...overlays, welcomeOverlayAllowModerators: e.target.checked })} style={{ width: 'auto', margin: 0 }} />
-                                                        <label htmlFor="welcomeOverlayAllowModerators" style={{ cursor: 'pointer', margin: 0, paddingLeft: '4px' }}>Moderadores</label>
-                                                    </label>
-                                                </div>
+                                                )}
                                             </div>
                                         </div>
 
