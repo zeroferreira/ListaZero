@@ -2516,7 +2516,7 @@
         const clickableItems = solicitudesList.querySelectorAll('.item');
         console.log(`✅ Renderizadas ${clickableItems.length} canciones clickeables`);
 
-        try { applySelectedBadgeToAll(); } catch (_) { }
+        try { if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll(); } catch (_) { }
 
         // Forzar estilos en canciones reproducidas después del renderizado
         setTimeout(() => {
@@ -3875,7 +3875,7 @@
             }
           });
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
-          applySelectedBadgeToAll();
+          if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll();
           refreshBadgeSelectUI();
           try { renderVipHierarchyIfOpen(); } catch (_) { }
         }, (err) => console.error('❌ Error suscripción Superfan:', err));
@@ -3936,7 +3936,7 @@
           }, 1000);
 
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
-          applySelectedBadgeToAll();
+          if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll();
           refreshBadgeSelectUI();
           try { renderVipHierarchyIfOpen(); } catch (_) { }
         }, (err) => {
@@ -3982,7 +3982,7 @@
           }, 1000);
 
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
-          applySelectedBadgeToAll();
+          if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll();
           refreshBadgeSelectUI();
           try { renderVipHierarchyIfOpen(); } catch (_) { }
         }, (err) => {
@@ -4041,7 +4041,7 @@
           }, 1000);
 
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
-          applySelectedBadgeToAll();
+          if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll();
           refreshBadgeSelectUI();
           try { renderVipHierarchyIfOpen(); } catch (_) { }
         }, (err) => {
@@ -4081,7 +4081,7 @@
           }, 1000);
 
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
-          applySelectedBadgeToAll();
+          if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll();
           refreshBadgeSelectUI();
           try { renderVipHierarchyIfOpen(); } catch (_) { }
         }, (err) => { console.error('❌ Error suscripción z0-Fan:', err); });
@@ -4119,7 +4119,7 @@
           }, 1000);
 
           if (daySelect.value) subscribeSolicitudesForDay(daySelect.value);
-          applySelectedBadgeToAll();
+          if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll();
           refreshBadgeSelectUI();
           try { renderVipHierarchyIfOpen(); } catch (_) { }
         }, (err) => { console.error('❌ Error suscripción z0-Platino:', err); });
@@ -4968,7 +4968,7 @@
             const m = JSON.parse(rawSel);
             if (m && typeof m === 'object') {
               window.selectedBadgeMap = m;
-              try { if (typeof applySelectedBadgeToAll === 'function') applySelectedBadgeToAll(); } catch (_) { }
+              try { if (typeof applySelectedBadgeToAll === 'function') if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll(); } catch (_) { }
             }
           }
         } catch (_) { }
@@ -14342,9 +14342,12 @@ function shouldShowStatsTicker() {
         });
       }
 
-      function applySelectedBadgeToAll() {
+      window.applySelectedBadgeToAll = function() {
         const map = window.selectedBadgeMap || {};
         Object.keys(map).forEach(username => applySelectedBadgeToItems(username));
+      };
+      function applySelectedBadgeToAll() {
+        if (typeof window.applySelectedBadgeToAll === 'function') window.if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll();
       }
 
       function subscribeSelectedBadges() {
@@ -14359,7 +14362,7 @@ function shouldShowStatsTicker() {
           });
           window.selectedBadgeMap = m;
           try { localStorage.setItem('selectedBadges', JSON.stringify(m)); } catch (_) { }
-          applySelectedBadgeToAll();
+          if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll();
           refreshBadgeSelectUI();
         }, (err) => { console.error('Error suscripción selectedBadges:', err); });
       }
@@ -17291,8 +17294,11 @@ function shouldShowStatsTicker() {
         if (titleEl) {
           // El título se actualiza ahora de forma unificada en setCalendarTitle o renderMonthGrid
           // Pero para esta función específica (SimpleCalendar), usamos la fecha del objeto actual
-          const monthName = monthNamesEs[month];
-          titleEl.innerHTML = `🗓️ Actividad de Usuario - ${monthName} de ${year}`;
+          const mNum = today.getMonth()
+          const yNum = today.getFullYear()
+          const mNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+          const monthName = mNames[mNum]
+          titleEl.innerHTML = `🗓️ Actividad de Usuario - ${monthName} de ${yNum}`;
         }
 
         console.log(`✅ CALENDARIO DE ${currentUser}: ${container.children.length} días mostrados`);

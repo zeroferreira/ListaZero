@@ -2445,14 +2445,19 @@
                         unsubActiveVideo = db.collection('systemConfig').doc('activeYoutubeVideo').onSnapshot((doc) => {
                             if (doc.exists && doc.data()) {
                                 const data = doc.data();
+                                const vid = data.videoId || '';
+                                const coverUrl = vid ? `https://img.youtube.com/vi/${vid.length === 11 ? vid : (vid.match(/(?:v=|youtu\.be\/)([^&?]{11})/)?.[1] || vid)}/hqdefault.jpg` : '';
                                 setActiveVideo({
                                     state: data.state || 'ended',
-                                    videoId: data.videoId || '',
+                                    videoId: vid,
                                     title: data.title || '',
+                                    artist: data.artist || 'YouTube Creator',
+                                    cover: data.cover || coverUrl,
+                                    requester: data.requester || '',
                                     volume: typeof data.volume === 'number' ? data.volume : 100
                                 });
                             } else {
-                                setActiveVideo({ state: 'ended', videoId: '', title: '', volume: 100 });
+                                setActiveVideo({ state: 'ended', videoId: '', title: '', artist: '', cover: '', requester: '', volume: 100 });
                             }
                         }, err => {
                             console.warn("Error loading active video status:", err);
@@ -3368,6 +3373,71 @@
                                 updateDialog();
                             }
                         }, 1000);
+                    }
+                );
+            };
+
+            const handleRunUpdate = () => {
+                showConfirm(
+                    '📦 Actualizar Bot desde GitHub',
+                    '¿Quieres descargar e instalar la última versión del bot desde GitHub?\n\n✅ Tu config.json y firebase-config.js se conservan.\n⚠️ El bot se reiniciará automáticamente al terminar.\n\nEsto puede tardar 30-60 segundos dependiendo de tu internet.',
+                    async () => {
+                        let dots = 0;
+                        const interval = setInterval(() => {
+                            dots = (dots + 1) % 4;
+                            setDialog(prev => ({
+                                ...prev,
+                                message: `Descargando la última versión de GitHub${'.'.repeat(dots)}\n\nEsto puede tardar 30-60 segundos. El bot se reiniciará al terminar.`
+                            }));
+                        }, 600);
+
+                        try {
+                            const res = await fetch('/api/server/update', { method: 'POST' });
+                            const data = await res.json();
+                            clearInterval(interval);
+                            if (data.ok) {
+                                let secondsLeft = 40;
+                                const reloadDialog = () => {
+                                    setDialog({
+                                        isOpen: true,
+                                        type: 'alert',
+                                        title: '✅ Actualización Iniciada',
+                                        message: `La actualización está en progreso. El bot descargará los archivos nuevos y se reiniciará. La página se recargará en ${secondsLeft}s.`,
+                                        onConfirm: () => window.location.reload(),
+                                        onCancel: null
+                                    });
+                                };
+                                reloadDialog();
+                                const reloadInterval = setInterval(() => {
+                                    secondsLeft--;
+                                    if (secondsLeft <= 0) {
+                                        clearInterval(reloadInterval);
+                                        window.location.reload();
+                                    } else {
+                                        reloadDialog();
+                                    }
+                                }, 1000);
+                            } else {
+                                setDialog({
+                                    isOpen: true,
+                                    type: 'alert',
+                                    title: '❌ Error al actualizar',
+                                    message: data.error || 'No se pudo ejecutar ACTUALIZAR.bat. Asegúrate de que el bot esté corriendo localmente en Windows.',
+                                    onConfirm: () => setDialog(prev => ({ ...prev, isOpen: false })),
+                                    onCancel: null
+                                });
+                            }
+                        } catch (err) {
+                            clearInterval(interval);
+                            setDialog({
+                                isOpen: true,
+                                type: 'alert',
+                                title: '❌ Error de Conexión',
+                                message: 'No se pudo conectar con el servidor local. Asegúrate de que el bot esté corriendo en tu PC.',
+                                onConfirm: () => setDialog(prev => ({ ...prev, isOpen: false })),
+                                onCancel: null
+                            });
+                        }
                     }
                 );
             };
@@ -4824,6 +4894,30 @@
                             >
                                 <span>🎬 {streamerMode ? 'Modo Streamer: Activo' : 'Modo Streamer'}</span>
                             </button>
+
+                            <button 
+                                type="button"
+                                onClick={handleRunUpdate}
+                                style={{ 
+                                    cursor: 'pointer', 
+                                    border: '1px solid rgba(16, 185, 129, 0.4)', 
+                                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(52, 211, 153, 0.15) 100%)', 
+                                    color: '#34d399',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 12px',
+                                    borderRadius: '10px',
+                                    fontWeight: 'bold',
+                                    fontSize: '0.75rem',
+                                    transition: 'all 0.3s ease',
+                                    height: '36px',
+                                    boxShadow: '0 0 10px rgba(16, 185, 129, 0.15)'
+                                }}
+                                title="Actualizar bot desde GitHub ejecutando ACTUALIZAR.bat silenciosamente"
+                            >
+                                <span>📦 Actualizar Bot</span>
+                            </button>
                         </div>
                     </div>
 
@@ -5229,6 +5323,36 @@
                                                     </button>
                                                 </div>
                                             </div>
+                                        </div>
+
+                                        {/* Actualizar Bot desde GitHub */}
+                                        <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '10px' }}>
+                                            <h4 style={{ color: '#34d399', marginTop: 0, marginBottom: '8px', fontSize: '0.95rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                {renderIcon('download', 16, '#34d399')} Actualizar Bot desde GitHub
+                                            </h4>
+                                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '15px', lineHeight: 1.5 }}>
+                                                Ejecuta <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 6px', borderRadius: '4px' }}>ACTUALIZAR.bat</code> en silencio, sin abrir ninguna ventana.
+                                                Descarga la última versión del bot desde GitHub y reinicia automáticamente. Tu <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 6px', borderRadius: '4px' }}>config.json</code> y Firebase se conservan intactos.
+                                            </p>
+                                            <button
+                                                onClick={handleRunUpdate}
+                                                style={{
+                                                    background: 'rgba(16, 185, 129, 0.15)',
+                                                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                                                    color: '#34d399',
+                                                    fontWeight: 'bold',
+                                                    padding: '10px 24px',
+                                                    cursor: 'pointer',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.9rem',
+                                                    transition: 'all 0.2s ease',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px'
+                                                }}
+                                            >
+                                                {renderIcon('download')} Actualizar Bot
+                                            </button>
                                         </div>
 
                                         {/* IP de acceso a la red */}
@@ -6166,7 +6290,7 @@
                                                     
                                                     <div className="personalize-modal-body">
                                                         {/* 1. Opacidad, Redondeado, Letra */}
-                                                        <details name="follow-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
+                                                        <details open name="follow-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
                                                             <summary className="collapsible-config-summary" style={{ cursor: 'pointer',  marginBottom: '15px', color: '#a855f7' }}><span>🎨 Personalización Visual Independiente</span></summary>
                                                             <div style={{ marginTop: '15px' }}>
                                                             <div className="form-group">
@@ -6180,6 +6304,10 @@
                                                             <div className="form-group">
                                                                 <label>Tamaño Letra: {overlays.followFontSize}px</label>
                                                                 <input type="range" min="10" max="24" step="1" value={overlays.followFontSize} onChange={(e) => setOverlays({ ...overlays, followFontSize: parseInt(e.target.value) })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>🎬 Separación Multimedia: {overlays.followMediaSpacing !== undefined ? overlays.followMediaSpacing : -40}px</label>
+                                                                <input type="range" min="-120" max="80" step="2" value={overlays.followMediaSpacing !== undefined ? overlays.followMediaSpacing : -40} onChange={(e) => setOverlays({ ...overlays, followMediaSpacing: parseInt(e.target.value) })} />
                                                             </div>
                                                             </div>
                                                         </details>
@@ -6475,7 +6603,7 @@
                                                     
                                                     <div className="personalize-modal-body">
                                                         {/* 1. Opacidad, Redondeado, Letra */}
-                                                        <details name="like-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
+                                                        <details open name="like-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
                                                             <summary className="collapsible-config-summary" style={{ cursor: 'pointer',  marginBottom: '15px', color: '#a855f7' }}><span>🎨 Personalización Visual Independiente</span></summary>
                                                             <div style={{ marginTop: '15px' }}>
                                                             <div className="form-group">
@@ -6489,6 +6617,10 @@
                                                             <div className="form-group">
                                                                 <label>Tamaño Letra Base: {overlays.likeFontSize}px</label>
                                                                 <input type="range" min="10" max="24" step="1" value={overlays.likeFontSize} onChange={(e) => setOverlays({ ...overlays, likeFontSize: parseInt(e.target.value) })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>🎬 Separación Multimedia: {overlays.likeMediaSpacing !== undefined ? overlays.likeMediaSpacing : -30}px</label>
+                                                                <input type="range" min="-120" max="80" step="2" value={overlays.likeMediaSpacing !== undefined ? overlays.likeMediaSpacing : -30} onChange={(e) => setOverlays({ ...overlays, likeMediaSpacing: parseInt(e.target.value) })} />
                                                             </div>
                                                             </div>
                                                         </details>
@@ -6870,7 +7002,7 @@
                                                     
                                                     <div className="personalize-modal-body">
                                                         {/* 1. Opacidad, Redondeado, Letra */}
-                                                        <details name="gift-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
+                                                        <details open name="gift-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
                                                             <summary className="collapsible-config-summary" style={{ cursor: 'pointer',  marginBottom: '15px', color: '#a855f7' }}><span>🎨 Personalización Visual Independiente</span></summary>
                                                             <div style={{ marginTop: '15px' }}>
                                                             <div className="form-group">
@@ -6884,6 +7016,27 @@
                                                             <div className="form-group">
                                                                 <label>Tamaño Letra: {overlays.giftFontSize}px</label>
                                                                 <input type="range" min="10" max="24" step="1" value={overlays.giftFontSize} onChange={(e) => setOverlays({ ...overlays, giftFontSize: parseInt(e.target.value) })} />
+                                                            </div>
+                                                            </div>
+                                                        </details>
+
+                                                        {/* 1b. Dimensiones y Tamaños */}
+                                                        <details name="gift-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
+                                                            <summary className="collapsible-config-summary" style={{ cursor: 'pointer',  marginBottom: '15px', color: '#a855f7' }}><span>📐 Dimensiones y Tamaños</span></summary>
+                                                            <div style={{ marginTop: '15px' }}>
+                                                            <div className="form-group">
+                                                                <label>Tamaño de Animación (GIF): {overlays.giftLottieSize || 260}px</label>
+                                                                <input type="range" min="80" max="400" step="10" value={overlays.giftLottieSize || 260} onChange={(e) => setOverlays({ ...overlays, giftLottieSize: parseInt(e.target.value) })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Alto del Contenedor (Overlay): {overlays.giftWrapperHeight || 320}px</label>
+                                                                <input type="range" min="150" max="550" step="10" value={overlays.giftWrapperHeight || 320} onChange={(e) => setOverlays({ ...overlays, giftWrapperHeight: parseInt(e.target.value) })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>Desplazamiento Vertical Texto: {overlays.giftTextTopOffset !== undefined ? overlays.giftTextTopOffset : 0}px
+                                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '6px' }}>(negativo = sube, positivo = baja)</span>
+                                                                </label>
+                                                                <input type="range" min="-150" max="150" step="5" value={overlays.giftTextTopOffset !== undefined ? overlays.giftTextTopOffset : 0} onChange={(e) => setOverlays({ ...overlays, giftTextTopOffset: parseInt(e.target.value) })} />
                                                             </div>
                                                             </div>
                                                         </details>
@@ -7218,7 +7371,7 @@
                                                     
                                                     <div className="personalize-modal-body">
                                                         {/* 1. Opacidad, Redondeado, Letra */}
-                                                        <details name="subscribe-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
+                                                        <details open name="subscribe-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
                                                             <summary className="collapsible-config-summary" style={{ cursor: 'pointer',  marginBottom: '15px', color: '#a855f7' }}><span>🎨 Personalización Visual Independiente</span></summary>
                                                             <div style={{ marginTop: '15px' }}>
                                                             <div className="form-group">
@@ -7232,6 +7385,10 @@
                                                             <div className="form-group">
                                                                 <label>Tamaño Letra: {overlays.subscribeFontSize}px</label>
                                                                 <input type="range" min="10" max="24" step="1" value={overlays.subscribeFontSize} onChange={(e) => setOverlays({ ...overlays, subscribeFontSize: parseInt(e.target.value) })} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>🎬 Separación Multimedia: {overlays.subscribeMediaSpacing !== undefined ? overlays.subscribeMediaSpacing : -40}px</label>
+                                                                <input type="range" min="-120" max="80" step="2" value={overlays.subscribeMediaSpacing !== undefined ? overlays.subscribeMediaSpacing : -40} onChange={(e) => setOverlays({ ...overlays, subscribeMediaSpacing: parseInt(e.target.value) })} />
                                                             </div>
                                                             </div>
                                                         </details>
@@ -7547,7 +7704,7 @@
                                                 
                                                 <div className="personalize-modal-body">
                                                     {/* 1. Opacidad, Redondeado, Letra */}
-                                                    <details name="topgifter-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
+                                                    <details open name="topgifter-config-group" className="collapsible-config-details" style={{ marginBottom: '25px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
                                                         <summary className="collapsible-config-summary" style={{ cursor: 'pointer',  marginBottom: '15px', color: '#a855f7' }}><span>🎨 Personalización Visual Independiente</span></summary>
                                                         <div style={{ marginTop: '15px' }}>
                                                         <div className="form-group">
@@ -7561,6 +7718,10 @@
                                                         <div className="form-group">
                                                             <label>Tamaño Letra: {overlays.topgifterFontSize}px</label>
                                                             <input type="range" min="10" max="24" step="1" value={overlays.topgifterFontSize} onChange={(e) => setOverlays({ ...overlays, topgifterFontSize: parseInt(e.target.value) })} />
+                                                        </div>
+                                                        <div className="form-group">
+                                                            <label>🎬 Separación Multimedia: {overlays.topgifterMediaSpacing !== undefined ? overlays.topgifterMediaSpacing : -40}px</label>
+                                                            <input type="range" min="-120" max="80" step="2" value={overlays.topgifterMediaSpacing !== undefined ? overlays.topgifterMediaSpacing : -40} onChange={(e) => setOverlays({ ...overlays, topgifterMediaSpacing: parseInt(e.target.value) })} />
                                                         </div>
                                                         </div>
                                                     </details>
@@ -10291,9 +10452,49 @@
                                                     📺 Reproductor en OBS
                                                 </h4>
                                                 
-                                                <div className="preview-panel" style={{ marginBottom: 0 }}>
-                                                    <iframe id="iframe-control-ytplayer" src="./youtube_player_overlay.html?v=3&preview=true" className="preview-iframe" style={{ height: '260px', width: '100%', border: 'none', borderRadius: '8px', background: '#000' }} allow="autoplay"></iframe>
-                                                </div>
+                                                {/* Now Playing Card - sin iframe duplicado */}
+                                                {activeVideo && activeVideo.videoId ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', background: 'linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(236,72,153,0.05) 100%)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: '14px', overflow: 'hidden', position: 'relative' }}>
+                                                        {/* Blurred thumbnail background */}
+                                                        {activeVideo.cover && (
+                                                            <div style={{ position: 'absolute', inset: 0, backgroundImage: `url('${activeVideo.cover}')`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'blur(40px) brightness(0.15) saturate(2)', zIndex: 0, transform: 'scale(1.2)' }} />
+                                                        )}
+                                                        {/* Thumbnail */}
+                                                        <div style={{ position: 'relative', zIndex: 1, flexShrink: 0, width: '72px', height: '72px', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 6px 20px rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                                            {activeVideo.cover ? (
+                                                                <img src={activeVideo.cover} alt="cover" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                                            ) : (
+                                                                <div style={{ width: '100%', height: '100%', background: 'rgba(168,85,247,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.6rem' }}>🎵</div>
+                                                            )}
+                                                            {/* State badge overlay */}
+                                                            <div style={{ position: 'absolute', bottom: '3px', right: '3px', background: activeVideo.state === 'playing' ? 'rgba(16,185,129,0.9)' : 'rgba(245,158,11,0.9)', borderRadius: '50%', width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem' }}>
+                                                                {activeVideo.state === 'playing' ? '▶' : '⏸'}
+                                                            </div>
+                                                        </div>
+                                                        {/* Info */}
+                                                        <div style={{ position: 'relative', zIndex: 1, flex: 1, minWidth: 0 }}>
+                                                            <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#a78bfa', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '3px' }}>
+                                                                ▶ YouTube — Zero FM
+                                                            </div>
+                                                            <div style={{ fontSize: '0.92rem', fontWeight: '800', color: '#fff', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', lineHeight: '1.25' }}>
+                                                                {activeVideo.title || 'Sin título'}
+                                                            </div>
+                                                            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', marginTop: '2px' }}>
+                                                                {activeVideo.artist || 'YouTube Creator'}
+                                                            </div>
+                                                            {activeVideo.requester && (
+                                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '6px', background: 'rgba(255,0,60,0.12)', border: '1px solid rgba(255,0,60,0.25)', borderRadius: '99px', padding: '2px 8px', fontSize: '0.68rem', fontWeight: '700', color: '#fff' }}>
+                                                                    👤 {activeVideo.requester}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ padding: '20px', textAlign: 'center', background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '12px', color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem' }}>
+                                                        <div style={{ fontSize: '1.8rem', marginBottom: '6px' }}>📺</div>
+                                                        Sin video activo en este momento
+                                                    </div>
+                                                )}
 
                                                 {/* Unified Media Player Controls (Spotify-style) */}
                                                 <div className="media-player-controls-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 15px', background: 'rgba(0,0,0,0.3)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)', gap: '15px', width: '100%' }}>

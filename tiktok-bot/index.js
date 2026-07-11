@@ -1129,11 +1129,17 @@ function startBot() {
     const app = express();
     const PORT = Number(process.env.PORT || config.dashboardPort || 3000) || 3000;
 
-    // CORS Middleware - Permite solicitudes desde file:// locales
+    // CORS & No-Cache Middleware - Permite solicitudes locales y evita caché en desarrollo
     app.use((req, res, next) => {
         res.header('Access-Control-Allow-Origin', '*');
         res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
         res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+        
+        // Evitar caché de archivos estáticos y APIs en el panel
+        res.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.header('Pragma', 'no-cache');
+        res.header('Expires', '0');
+
         if (req.method === 'OPTIONS') {
             return res.sendStatus(200);
         }
@@ -1480,6 +1486,34 @@ function startBot() {
             }, 1000);
         } catch (err) {
             console.error('Error al reiniciar el servidor:', err);
+            res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
+    // Endpoint para ejecutar ACTUALIZAR.bat (actualización desde GitHub)
+    app.post('/api/server/update', (req, res) => {
+        try {
+            const { spawn } = require('child_process');
+            const batPath = path.join(__dirname, 'ACTUALIZAR.bat');
+            const fs = require('fs');
+
+            if (!fs.existsSync(batPath)) {
+                return res.status(404).json({ ok: false, error: 'ACTUALIZAR.bat no encontrado en la carpeta del bot.' });
+            }
+
+            // Lanzar ACTUALIZAR.bat en modo silencioso para que no abra ventana
+            const child = spawn('cmd.exe', ['/c', `"${batPath}" /silent`], {
+                detached: true,
+                stdio: 'ignore',
+                windowsHide: true,
+                shell: false
+            });
+            child.unref();
+
+            console.log('📦 Ejecutando ACTUALIZAR.bat /silent — el bot se reiniciará cuando termine...');
+            res.json({ ok: true, message: 'Actualización iniciada. El bot descargará la última versión y se reiniciará automáticamente.' });
+        } catch (err) {
+            console.error('Error al ejecutar ACTUALIZAR.bat:', err);
             res.status(500).json({ ok: false, error: err.message });
         }
     });
