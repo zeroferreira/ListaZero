@@ -215,6 +215,12 @@ async function run() {
       .replace('https://unpkg.com/react-dom@18/umd/react-dom.production.min.js', 'js/react-dom.production.min.js')
       .replace('https://unpkg.com/lucide@latest', 'js/lucide.min.js');
 
+    // Asegurarse de que siempre haya meta tags no-cache en el HTML generado
+    const noCacheMetas = `    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">\n    <meta http-equiv="Pragma" content="no-cache">\n    <meta http-equiv="Expires" content="0">\n    `;
+    if (!optimizedHtml.includes('Cache-Control')) {
+      optimizedHtml = optimizedHtml.replace('<meta charset="UTF-8">', '<meta charset="UTF-8">\n' + noCacheMetas);
+    }
+
     // Save the optimized HTML
     fs.writeFileSync(htmlPath, optimizedHtml);
     console.log('✅ Successfully compiled! Created optimized index.html and public/dashboard.js.');

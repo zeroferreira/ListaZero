@@ -34,12 +34,27 @@ if [ $? -eq 0 ]; then
         echo ""
         echo "⏳ [INFO] Sincronizando dependencias en la carpeta tiktok-bot..."
         cd tiktok-bot
-        npm install
+        npm install --silent
         cd ..
     fi
-    
+
+    # ─── REINICIAR EL BOT para que cargue los nuevos archivos ───
     echo ""
-    echo "🎉 ¡Todo listo y al día!"
+    echo "🔄 Reiniciando el Bot para aplicar los cambios..."
+    # Matar el proceso node que está en la carpeta tiktok-bot
+    BOT_PID=$(pgrep -f "node index.js" | head -1)
+    if [ -n "$BOT_PID" ]; then
+        echo "   ⏹  Deteniendo proceso anterior (PID $BOT_PID)..."
+        kill "$BOT_PID"
+        sleep 2
+        echo "   ✅ Bot detenido. El INICIAR_BOT lo reiniciará automáticamente."
+    else
+        echo "   ℹ️  No se encontró un proceso del bot corriendo. No hay nada que reiniciar."
+        echo "      Abre INICIAR_BOT.command para arrancar el bot con los cambios nuevos."
+    fi
+
+    echo ""
+    echo "🎉 ¡Todo listo y al día! Recuerda recargar el Dashboard en el navegador (Cmd+Shift+R)."
 else
     echo ""
     echo "❌ [ERROR] Hubo un problema al sincronizar con GitHub."
