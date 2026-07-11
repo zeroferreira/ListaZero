@@ -42,7 +42,7 @@ if exist "firebase-config.js" copy /Y "firebase-config.js" "%BACKUP_FIREBASE%" >
 where git >nul 2>&1
 if errorlevel 1 goto zip
 
-echo [INFO] Descargando TODO con Git (como antes)...
+echo [INFO] Descargando TODO con Git...
 set "TMP=%TEMP%\zero_fm_update_git_%RANDOM%"
 rd /s /q "%TMP%" >nul 2>&1
 git clone --depth 1 "%REPO_URL%" "%TMP%"
@@ -64,10 +64,10 @@ if not exist "%TMP%\tiktok-bot\package.json" (
     exit /b 1
 )
 
-echo [INFO] Copiando archivos al bot local (descarga completa)...
+echo [INFO] Copiando archivos del bot (tiktok-bot/)...
 attrib -R "%DEST%\*.*" /S /D >nul 2>&1
 if /I "%TMP%"=="%DEST%" (
-    echo [ERROR] Seguridad: TMP y DEST coinciden. Abortando para evitar borrar/copiar mal.
+    echo [ERROR] Seguridad: TMP y DEST coinciden. Abortando.
     if "%SILENT%"=="0" pause
     exit /b 1
 )
@@ -77,6 +77,16 @@ if %RC% geq 8 (
     echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
     if "%SILENT%"=="0" pause
     exit /b 1
+)
+
+REM --- Copiar overlays del root del repo a la carpeta padre del bot ---
+set "ROOT_DEST=%DEST%\.."
+echo [INFO] Copiando overlays del root al directorio padre...
+for %%F in (alerts_overlay.html goal_overlay.html welcome_overlay.html topgifter_overlay.html topliker_overlay.html youtube_player_overlay.html stats_ticker_widget.html overlay.html overlay.js overlay.css queue_overlay.html queue.js queue.css roulette_overlay.html roulette.js roulette.css particles.js tops.html lista.html lista.js lista.css styles.css) do (
+    if exist "%TMP%\%%F" (
+        copy /Y "%TMP%\%%F" "%ROOT_DEST%\%%F" >nul 2>&1
+        echo   Actualizado: %%F
+    )
 )
 
 if defined TMP if exist "%TMP%" rd /s /q "%TMP%" >nul 2>&1
@@ -124,10 +134,10 @@ if not exist "%TMP%\ListaZero-main\tiktok-bot\package.json" (
     exit /b 1
 )
 
-echo [INFO] Copiando archivos al bot local...
+echo [INFO] Copiando archivos del bot (tiktok-bot/)...
 attrib -R "%DEST%\*.*" /S /D >nul 2>&1
 if /I "%TMP%"=="%DEST%" (
-    echo [ERROR] Seguridad: TMP y DEST coinciden. Abortando para evitar borrar/copiar mal.
+    echo [ERROR] Seguridad: TMP y DEST coinciden. Abortando.
     if "%SILENT%"=="0" pause
     exit /b 1
 )
@@ -137,6 +147,16 @@ if %RC% geq 8 (
     echo [ERROR] No se pudo copiar la actualizacion. Codigo: %RC%
     if "%SILENT%"=="0" pause
     exit /b 1
+)
+
+REM --- Copiar overlays del root del repo a la carpeta padre del bot ---
+set "ROOT_DEST=%DEST%\.."
+echo [INFO] Copiando overlays del root al directorio padre...
+for %%F in (alerts_overlay.html goal_overlay.html welcome_overlay.html topgifter_overlay.html topliker_overlay.html youtube_player_overlay.html stats_ticker_widget.html overlay.html overlay.js overlay.css queue_overlay.html queue.js queue.css roulette_overlay.html roulette.js roulette.css particles.js tops.html lista.html lista.js lista.css styles.css) do (
+    if exist "%TMP%\ListaZero-main\%%F" (
+        copy /Y "%TMP%\ListaZero-main\%%F" "%ROOT_DEST%\%%F" >nul 2>&1
+        echo   Actualizado: %%F
+    )
 )
 
 :restorecfg
@@ -151,8 +171,25 @@ if exist "%BACKUP_FIREBASE%" (
 echo.
 if defined TMP if exist "%TMP%" rd /s /q "%TMP%" >nul 2>&1
 if defined ZIP if exist "%ZIP%" del /q "%ZIP%" >nul 2>&1
+
 echo.
 echo [EXITO] Todo actualizado. (config.json se conserva)
+echo.
+
+REM --- REINICIAR EL BOT automaticamente ---
+echo [INFO] Reiniciando el Bot para aplicar los cambios...
+taskkill /F /IM node.exe /FI "WINDOWTITLE eq Zero FM TikTok Bot" >nul 2>&1
+taskkill /F /IM node.exe /T >nul 2>&1
+if errorlevel 1 (
+    echo   Bot no estaba corriendo. No hay nada que reiniciar.
+    echo   Abre INICIAR_BOT.bat para arrancar el bot con los cambios nuevos.
+) else (
+    echo   Bot detenido. Se reiniciara automaticamente si INICIAR_BOT.bat esta abierto.
+    echo   Si no esta abierto, abrelo ahora.
+)
+echo.
+echo [LISTO] Recarga el Dashboard en el navegador con Ctrl+Shift+R para ver los cambios.
+echo.
 
 :done
 echo.
