@@ -2410,7 +2410,44 @@
         }
 
         function triggerTTS(data, ttsEnabled, onEndCallback) {
-            if (!('speechSynthesis' in window) || !ttsEnabled) {
+            if (!ttsEnabled) {
+                if (onEndCallback) onEndCallback();
+                return;
+            }
+
+            if (data.audioData) {
+                try {
+                    const audio = new Audio(data.audioData);
+                    let calledEnd = false;
+                    const done = () => {
+                        if (calledEnd) return;
+                        calledEnd = true;
+                        if (onEndCallback) onEndCallback();
+                    };
+                    
+                    audio.onended = done;
+                    audio.onerror = (e) => {
+                        console.error("[TTS] Error de reproducción de audio:", e);
+                        done();
+                    };
+                    
+                    const config = window.overlayAlertsConfig || {};
+                    const volume = config.chatTtsVolume !== undefined ? config.chatTtsVolume : 80;
+                    audio.volume = volume / 100;
+                    
+                    setTimeout(done, 12000);
+                    
+                    audio.play().catch(err => {
+                        console.error("[TTS] No se pudo iniciar reproducción de audio:", err);
+                        done();
+                    });
+                    return;
+                } catch (audioErr) {
+                    console.error("[TTS] Falló la instanciación de Audio, usando SpeechSynthesis como respaldo:", audioErr);
+                }
+            }
+
+            if (!('speechSynthesis' in window)) {
                 if (onEndCallback) onEndCallback();
                 return;
             }

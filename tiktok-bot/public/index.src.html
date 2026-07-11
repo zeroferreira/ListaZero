@@ -1689,6 +1689,38 @@
                 ttsPlayingRef.current = true;
                 const data = ttsQueueRef.current.shift();
                 
+                if (data.audioData) {
+                    try {
+                        const audio = new Audio(data.audioData);
+                        const volume = config.chatTtsVolume !== undefined ? config.chatTtsVolume : 80;
+                        audio.volume = volume / 100;
+                        
+                        let calledEnd = false;
+                        const done = () => {
+                            if (calledEnd) return;
+                            calledEnd = true;
+                            ttsPlayingRef.current = false;
+                            setTimeout(processLocalTtsQueue, 100);
+                        };
+                        
+                        audio.onended = done;
+                        audio.onerror = (e) => {
+                            console.error("Local TikTok TTS Audio error:", e);
+                            done();
+                        };
+                        
+                        setTimeout(done, 12000);
+                        
+                        audio.play().catch(err => {
+                            console.error("Local TikTok TTS Audio play failed:", err);
+                            done();
+                        });
+                        return;
+                    } catch (audioErr) {
+                        console.error("Failed to play local audio TTS, falling back to SpeechSynthesis:", audioErr);
+                    }
+                }
+                
                 const text = data.message || "";
                 if (!text.trim()) {
                     ttsPlayingRef.current = false;
@@ -4205,6 +4237,28 @@
                                         value={overlays.chatTtsVoice} 
                                         onChange={(e) => setOverlays({ ...overlays, chatTtsVoice: e.target.value })}
                                     >
+                                        {/* Voces oficiales de TikTok */}
+                                        {overlays.chatTtsLanguage === 'es-MX' && (
+                                            <>
+                                                <option value="tiktok:es_mx_002">🗣️ [TikTok] Voz de Julio (es_mx_002)</option>
+                                                <option value="tiktok:es_female_f6">🗣️ [TikTok] Voz de Alejandra (es_female_f6)</option>
+                                            </>
+                                        )}
+                                        {overlays.chatTtsLanguage === 'es-ES' && (
+                                            <option value="tiktok:es_002">🗣️ [TikTok] Voz de Julio (es_002)</option>
+                                        )}
+                                        {overlays.chatTtsLanguage === 'en-US' && (
+                                            <>
+                                                <option value="tiktok:en_us_ghostface">🎬 [TikTok] Ghostface / Scream</option>
+                                                <option value="tiktok:en_us_c3po">🤖 [TikTok] C-3PO (Star Wars)</option>
+                                                <option value="tiktok:en_us_stormtrooper">🤖 [TikTok] Stormtrooper (Star Wars)</option>
+                                                <option value="tiktok:en_us_stitch">👽 [TikTok] Stitch (Disney)</option>
+                                                <option value="tiktok:en_us_006">🗣️ [TikTok] Narrador Masculino (en_us_006)</option>
+                                                <option value="tiktok:en_us_001">🗣️ [TikTok] Voz Femenina (en_us_001)</option>
+                                            </>
+                                        )}
+
+                                        {/* Voces de sistema local */}
                                         {voices.filter(v => v.lang.startsWith(overlays.chatTtsLanguage)).map(v => (
                                             <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
                                         ))}

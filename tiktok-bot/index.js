@@ -2380,12 +2380,37 @@ function startBot() {
                 };
             } else if (type === 'chat') {
                 const customMsg = req.body.customText || "¡Hola! Este es un mensaje de prueba leído por el lector de chat.";
+                
+                let audioData = null;
+                const activeVoice = overlayConfig.chatTtsVoice;
+                if (activeVoice && activeVoice.startsWith('tiktok:')) {
+                    const voiceCode = activeVoice.replace('tiktok:', '');
+                    try {
+                        console.log(`🗣️ [TTS Test] Solicitando voz de TikTok (${voiceCode}) para prueba: "${customMsg}"`);
+                        const ttsRes = await axios.post('https://tiktok-tts.weilnet.workers.dev/api/generation', {
+                            text: customMsg.substring(0, 290),
+                            voice: voiceCode
+                        }, {
+                            headers: { 'Content-Type': 'application/json' },
+                            timeout: 7000
+                        });
+
+                        if (ttsRes.data && ttsRes.data.success && ttsRes.data.data) {
+                            audioData = `data:audio/mp3;base64,${ttsRes.data.data}`;
+                            console.log(`🗣️ [TTS Test] Voz de TikTok de prueba generada exitosamente`);
+                        }
+                    } catch (ttsErr) {
+                        console.error(`🗣️ [TTS Test] Error generando voz de TikTok para prueba:`, ttsErr.message);
+                    }
+                }
+
                 mockData = {
                     type: 'chat',
                     user: 'TesterChat',
                     uniqueId: 'testerchat',
                     message: customMsg,
                     voiceOverride: null,
+                    audioData: audioData,
                     speedOverride: null,
                     pitchOverride: null,
                     timestamp: serverTimestampFn()
@@ -3422,6 +3447,32 @@ function setupListeners() {
                                 .replace(/{username}/g, userId)
                                 .replace(/{comment}/g, cleanedMsg);
 
+                            let audioData = null;
+                            const activeVoice = voiceOverride || overlayAlertsConfig.chatTtsVoice;
+                            if (activeVoice && activeVoice.startsWith('tiktok:')) {
+                                const voiceCode = activeVoice.replace('tiktok:', '');
+                                try {
+                                    const textToSpeak = speechText.substring(0, 290);
+                                    console.log(`🗣️ [TTS] Solicitando voz de TikTok (${voiceCode}) para: "${textToSpeak}"`);
+                                    const ttsRes = await axios.post('https://tiktok-tts.weilnet.workers.dev/api/generation', {
+                                        text: textToSpeak,
+                                        voice: voiceCode
+                                    }, {
+                                        headers: { 'Content-Type': 'application/json' },
+                                        timeout: 7000
+                                    });
+
+                                    if (ttsRes.data && ttsRes.data.success && ttsRes.data.data) {
+                                        audioData = `data:audio/mp3;base64,${ttsRes.data.data}`;
+                                        console.log(`🗣️ [TTS] Voz de TikTok generada exitosamente (${ttsRes.data.data.length} bytes)`);
+                                    } else {
+                                        console.warn(`🗣️ [TTS] Error de la API de TikTok:`, ttsRes.data);
+                                    }
+                                } catch (ttsErr) {
+                                    console.error(`🗣️ [TTS] Error solicitando voz de TikTok:`, ttsErr.message);
+                                }
+                            }
+
                             try {
                                 await addDoc(collection(db, 'notifications'), {
                                     type: 'chat',
@@ -3429,6 +3480,7 @@ function setupListeners() {
                                     uniqueId: userId,
                                     message: speechText,
                                     voiceOverride: voiceOverride,
+                                    audioData: audioData,
                                     speedOverride: speedOverride !== null && speedOverride !== undefined ? Number(speedOverride) : null,
                                     pitchOverride: pitchOverride !== null && pitchOverride !== undefined ? Number(pitchOverride) : null,
                                     timestamp: serverTimestamp()
