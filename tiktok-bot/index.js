@@ -1223,13 +1223,13 @@ function startBot() {
             const files = fs.readdirSync(parentDir);
             const normalize = (str) => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "");
             
-            // 1. Buscar coincidencia en archivos .mov
-            const movMatch = files.find(f => normalize(f).includes("quiereme") && f.endsWith(".mov"));
-            if (movMatch) return path.join(parentDir, movMatch);
-            
-            // 2. Buscar coincidencia en archivos .mp4
+            // 1. Buscar coincidencia en archivos .mp4 (máxima compatibilidad universal)
             const mp4Match = files.find(f => normalize(f).includes("quiereme") && f.endsWith(".mp4"));
             if (mp4Match) return path.join(parentDir, mp4Match);
+            
+            // 2. Buscar coincidencia en archivos .mov (segunda opción)
+            const movMatch = files.find(f => normalize(f).includes("quiereme") && f.endsWith(".mov"));
+            if (movMatch) return path.join(parentDir, movMatch);
         } catch (e) {
             console.error("Error buscando archivo de Quiéreme:", e);
         }
