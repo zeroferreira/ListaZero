@@ -218,7 +218,9 @@ const firebaseConfig = {
     }
 
     function normalizeParticipantName(name) {
-      return String(name || '').trim().replace(/^@/, '').toLowerCase();
+      let n = String(name || '').trim().replace(/^@/, '').toLowerCase();
+      n = n.replace(/\s*\(\d+g\)$/, '');
+      return n;
     }
 
     function toHour(ts) {
@@ -953,7 +955,7 @@ const firebaseConfig = {
 
     function recomputeParticipants() {
       // Hallazgo 3: La ruleta solo gira con los participantes de la pestaña activa.
-      // Si estás en "Canjes" → solo canjes. En "Lista" → solo lista de espera.
+      // Si estás en "Canjes" → solo canjes. En "Lista" → solo lista de espera + canjes automáticos.
       // En "Ruleta nueva" (manual) → solo los que copiaste manualmente.
       // Esto evita que usuarios borrados de una pestaña "reaparezcan" desde otra.
       const merged = [];
@@ -971,16 +973,26 @@ const firebaseConfig = {
         manualParticipants.forEach(name => addName(name, 1));
       } else if (activeSourceTab === 'rewards') {
         rouletteRewardRequests.forEach(request => {
-          const name = String(request.userId || request.displayName || '').trim();
-          const baseTickets = config.allowDuplicates
-            ? getRewardRequestRemainingSpins(request)
-            : (getRewardRequestRemainingSpins(request) > 0 ? 1 : 0);
-          if (!name || baseTickets <= 0) return;
-          addName(name, baseTickets);
+          const uName = String(request.displayName || request.userId || '').trim();
+          const spins = getRewardRequestRemainingSpins(request);
+          if (!uName || spins <= 0) return;
+          const baseTickets = config.allowDuplicates ? spins : 1;
+          const displayNameWithSpins = `${uName} (${spins}G)`;
+          addName(displayNameWithSpins, baseTickets);
         });
       } else {
-        // 'list' tab: solo participantes de Firebase (canciones en espera)
+        // 'list' tab: solo participantes de Firebase (canciones en espera) + Canjes activos
         firebaseParticipants.forEach(name => addName(name, 1));
+        
+        // Cargar también Canjes activos automáticamente en la ruleta principal (Lista)
+        rouletteRewardRequests.forEach(request => {
+          const uName = String(request.displayName || request.userId || '').trim();
+          const spins = getRewardRequestRemainingSpins(request);
+          if (!uName || spins <= 0) return;
+          const baseTickets = config.allowDuplicates ? spins : 1;
+          const displayNameWithSpins = `${uName} (${spins}G)`;
+          addName(displayNameWithSpins, baseTickets);
+        });
       }
 
       rouletteParticipants = merged;
@@ -993,11 +1005,14 @@ const firebaseConfig = {
     function getRewardParticipantNames() {
       const rewardEntries = [];
       rouletteRewardRequests.forEach(request => {
-        const name = String(request.userId || request.displayName || '').trim();
-        const normalized = normalizeParticipantName(name);
-        const baseTickets = config.allowDuplicates ? getRewardRequestRemainingSpins(request) : (getRewardRequestRemainingSpins(request) > 0 ? 1 : 0);
-        if (!normalized || excludedParticipants.has(normalized) || baseTickets <= 0) return;
-        rewardEntries.push(...expandNameCopies(name, baseTickets));
+        const uName = String(request.userId || request.displayName || '').trim();
+        const spins = getRewardRequestRemainingSpins(request);
+        if (!uName || spins <= 0) return;
+        const displayNameWithSpins = `${uName} (${spins}G)`;
+        const normalized = normalizeParticipantName(displayNameWithSpins);
+        const baseTickets = config.allowDuplicates ? spins : 1;
+        if (!normalized || excludedParticipants.has(normalized)) return;
+        rewardEntries.push(...expandNameCopies(displayNameWithSpins, baseTickets));
       });
       return rewardEntries;
     }
@@ -1016,14 +1031,33 @@ const firebaseConfig = {
       if (activeSourceTab === 'rewards') {
         return getRewardParticipantNames();
       }
+      
       const seen = new Set();
-      return firebaseParticipants.flatMap(name => {
+      const listParticipants = firebaseParticipants.flatMap(name => {
         const normalized = normalizeParticipantName(name);
         if (!normalized || excludedParticipants.has(normalized)) return [];
         if (!config.allowDuplicates && seen.has(normalized)) return [];
         seen.add(normalized);
         return expandNameCopies(name, 1);
       });
+
+      if (activeSourceTab === 'list') {
+        const rewardEntries = [];
+        rouletteRewardRequests.forEach(request => {
+          const uName = String(request.displayName || request.userId || '').trim();
+          const spins = getRewardRequestRemainingSpins(request);
+          if (!uName || spins <= 0) return;
+          const baseTickets = config.allowDuplicates ? spins : 1;
+          const displayNameWithSpins = `${uName} (${spins}G)`;
+          const normalized = normalizeParticipantName(displayNameWithSpins);
+          if (!normalized || excludedParticipants.has(normalized)) return;
+          if (!config.allowDuplicates && seen.has(normalized)) return;
+          seen.add(normalized);
+          rewardEntries.push(...expandNameCopies(displayNameWithSpins, baseTickets));
+        });
+        return [...listParticipants, ...rewardEntries];
+      }
+      return listParticipants;
     }
 
     function renderParticipantsList() {
