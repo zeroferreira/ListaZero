@@ -3334,9 +3334,9 @@ function setupListeners() {
                         cleanedMsg = msg.substring(1).trim();
                     }
 
-                    // SPAM PROTECTION: Filter letter spam
+                    // SPAM PROTECTION: Filter letter spam (exclude digits and whitespace)
                     if (overlayAlertsConfig.chatTtsFilterLetterSpam !== false) {
-                        cleanedMsg = cleanedMsg.replace(/(.)\1{2,}/gi, '$1$1');
+                        cleanedMsg = cleanedMsg.replace(/([^\d\s])\1{2,}/gi, '$1$1');
                     }
 
                     // SPAM PROTECTION: Filter @mentions
