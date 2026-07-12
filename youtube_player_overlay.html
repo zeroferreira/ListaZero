@@ -604,6 +604,7 @@
   let currentVideoId  = null;
   let currentState    = 'idle';   // idle | playing | paused | ended
   let elapsedSec      = 0;
+  let lastFirestoreElapsed = null; // Evita saltos de canción involuntarios
   let durationSec     = 0;
   let timerInterval   = null;
   let isVisible       = false;
@@ -932,14 +933,18 @@
       timeTotal.textContent = '—';
     }
 
+    const videoChanged = currentVideoId !== vid;
+
     // Elapsed / seek
     if (typeof data.elapsed === 'number') {
-      elapsedSec = data.elapsed;
-    } else if (data.state === 'playing' && currentVideoId !== vid) {
+      if (videoChanged || lastFirestoreElapsed !== data.elapsed) {
+        elapsedSec = data.elapsed;
+        lastFirestoreElapsed = data.elapsed;
+      }
+    } else if (data.state === 'playing' && videoChanged) {
       elapsedSec = 0;
+      lastFirestoreElapsed = null;
     }
-
-    const videoChanged = currentVideoId !== vid;
     
     applyState(data.state || 'playing');
     
