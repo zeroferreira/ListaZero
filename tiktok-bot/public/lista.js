@@ -14347,7 +14347,7 @@ function shouldShowStatsTicker() {
         Object.keys(map).forEach(username => applySelectedBadgeToItems(username));
       };
       function applySelectedBadgeToAll() {
-        if (typeof window.applySelectedBadgeToAll === 'function') window.if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll();
+        if (typeof window.applySelectedBadgeToAll === 'function') window.applySelectedBadgeToAll();
       }
 
       function subscribeSelectedBadges() {

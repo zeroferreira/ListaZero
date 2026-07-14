@@ -2753,12 +2753,15 @@ function extractUserLevels(data) {
         
         const badgeNameStr = (badge.name || badge.label || badge.title || badge.badgeName || '').toLowerCase();
         
-        // 1. Club de Fans (badgeSceneType 10 o nombre con 'fans'/'team'/'member')
+        // 1. Club de Fans o Suscriptor (badgeSceneType 10, type 'member'/'subscriber', o nombre con 'fans'/'team'/'member'/'subscriber'/'suscriptor')
         if (badge.badgeSceneType === 10 || 
             badge.type === 'member' || 
+            badge.type === 'subscriber' ||
             badgeNameStr.includes('team') || 
             badgeNameStr.includes('fan') || 
             badgeNameStr.includes('member') ||
+            badgeNameStr.includes('subscriber') ||
+            badgeNameStr.includes('suscriptor') ||
             (badge.displayType && badge.displayType === 10)
         ) {
             if (badge.level > 0 && badge.level > memberLevel) {
@@ -2785,9 +2788,11 @@ async function updateUserProfilePic(userId, displayName, url, extraFields = {}) 
     if (!db) return;
     
     const fields = { ...extraFields };
-    // Si es suscriptor, asegurar que su memberLevel sea al menos 1 para que no se filtre en las búsquedas
+    // Si es suscriptor, asegurar que su memberLevel sea al menos 1, pero sin sobreescribir con 1 si no viene en extraFields
     if (fields.isSubscriber === true) {
-        fields.memberLevel = Math.max(fields.memberLevel || 0, 1);
+        if (fields.memberLevel !== undefined) {
+            fields.memberLevel = Math.max(fields.memberLevel, 1);
+        }
     }
     
     const cached = userMetadataCache.get(userId);
@@ -2957,11 +2962,13 @@ function setupListeners() {
                 const { doc, setDoc, serverTimestamp: sts } = require('firebase/firestore');
                 const resolved = await getCanonicalUserKey(uid, displayName);
                 const userRef = doc(db, 'userStats', resolved.userKey || uid);
+                const cached = userMetadataCache.get(resolved.userKey || uid);
+                const currentMemberLvl = cached?.memberLevel || 0;
                 const memberData = {
                     isSubscriber: true,
                     lastSeen: sts(),
                     displayName,
-                    memberLevel: Math.max(subLevel || 0, 1)
+                    memberLevel: Math.max(subLevel || 0, currentMemberLvl, 1)
                 };
                 if (parsedGifterLevel > 0) memberData.gifterLevel = parsedGifterLevel;
                 if (profilePic) memberData.profilePic = profilePic;
@@ -3836,14 +3843,14 @@ function setupListeners() {
 
         const isGiftFinal = (data.repeatEnd === undefined) ? true : (data.repeatEnd === true);
         const isQuiereme = (
-            giftKey.indexOf('quiereme') !== -1 ||
-            giftKey.indexOf('loveme') !== -1 ||
-            giftKey.indexOf('communityheart') !== -1 ||
-            giftKey.indexOf('heartme') !== -1 ||
-            giftKey.indexOf('corazon') !== -1 ||
-            giftKey.indexOf('heart') !== -1 ||
-            giftKey.indexOf('love') !== -1 ||
-            giftKey.indexOf('teamo') !== -1
+            giftKey === 'quiereme' ||
+            giftKey === 'loveme' ||
+            giftKey === 'communityheart' ||
+            giftKey === 'heartme' ||
+            giftKey === 'corazon' ||
+            giftKey === 'heart' ||
+            giftKey === 'love' ||
+            giftKey === 'teamo'
         );
         
         // ── Otorgar insignia z0-Fan (se hace en el primer envío o en el evento final) ──
@@ -3875,7 +3882,16 @@ function setupListeners() {
                 
                 // Mapear nivel de miembro de TikTok usando la función robusta extractUserLevels
                 const { memberLevel: parsedMemberLevel, gifterLevel: parsedGifterLevel } = extractUserLevels(data);
-                quiereData.memberLevel = Math.max(1, parsedMemberLevel || 1);
+                const cached = userMetadataCache.get(userKey);
+                const currentMemberLvl = cached?.memberLevel || 0;
+                
+                if (parsedMemberLevel > 0) {
+                    quiereData.memberLevel = Math.max(parsedMemberLevel, currentMemberLvl, 1);
+                } else if (currentMemberLvl > 0) {
+                    quiereData.memberLevel = currentMemberLvl;
+                } else {
+                    quiereData.memberLevel = 1;
+                }
                 if (parsedGifterLevel > 0) quiereData.gifterLevel = parsedGifterLevel;
                 
                 await setDoc(quiereRef, quiereData, { merge: true });
