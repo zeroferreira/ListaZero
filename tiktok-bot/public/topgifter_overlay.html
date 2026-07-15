@@ -698,6 +698,13 @@
 
         let db = null;
         let hasFirebaseData = false;
+        
+        // Firestore Unsubscribe references
+        let unsubGifters = null;
+        let unsubConfig = null;
+        
+        // Timer references
+        let initialPreviewTimeout = null;
 
         try {
             if (typeof firebase !== 'undefined') {
@@ -707,13 +714,20 @@
                 db = firebase.firestore();
                 console.log("[Firebase] Conectado exitosamente en TopGifter ✓");
                 
+                // Desuscribir listener anterior si existe
+                if (unsubGifters) unsubGifters();
+
                 // Escuchar cambios en tiempo real del ranking del bot
-                db.collection('globalStats').doc('topGifters').onSnapshot(doc => {
+                unsubGifters = db.collection('globalStats').doc('topGifters').onSnapshot(doc => {
                     if (doc.exists) {
                         const data = doc.data();
                         if (data && Array.isArray(data.list)) {
                             console.log("[Firebase] Ranking Top Gifters actualizado ✓");
                             hasFirebaseData = true;
+                            if (initialPreviewTimeout) {
+                                clearTimeout(initialPreviewTimeout);
+                                initialPreviewTimeout = null;
+                            }
                             window.lastRealRanking = data.list;
                             if (!window.isTestActive) {
                                 updateRanking(data.list);
@@ -724,8 +738,11 @@
                     console.warn("[Firebase] Error en onSnapshot de topGifters:", err);
                 });
 
+                // Desuscribir listener anterior si existe
+                if (unsubConfig) unsubConfig();
+
                 // Escuchar configuraciones de estilo de overlays desde el panel de control
-                db.collection('systemConfig').doc('overlayAlertsConfig').onSnapshot(doc => {
+                unsubConfig = db.collection('systemConfig').doc('overlayAlertsConfig').onSnapshot(doc => {
                     if (doc.exists) {
                         const data = doc.data();
                         console.log("[Firebase] Configuración de estilo de Top Gifter actualizada ✓");
@@ -1012,7 +1029,9 @@
             updateSettings(false);
 
             // Si no hay datos del bot en Firebase, iniciar preview
-            setTimeout(function() {
+            if (initialPreviewTimeout) clearTimeout(initialPreviewTimeout);
+            initialPreviewTimeout = setTimeout(function() {
+                initialPreviewTimeout = null;
                 if (!hasFirebaseData) {
                     window.preview && window.preview();
                 }

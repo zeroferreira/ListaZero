@@ -495,6 +495,9 @@
       };
 
       let db = null;
+      let unsubConfig = null;
+      let unsubAlerts = null;
+      let unsubGeneral = null;
       try {
         if (typeof firebase !== 'undefined' && firebase.apps) {
           const localConfig = window.ZERO_FM_FIREBASE || firebaseConfig;
@@ -507,7 +510,8 @@
 
       if (db) {
         try {
-          db.collection('userSettings').doc('global_stats_ticker_config').onSnapshot((doc) => {
+          if (unsubConfig) unsubConfig();
+          unsubConfig = db.collection('userSettings').doc('global_stats_ticker_config').onSnapshot((doc) => {
             if (!doc || !doc.exists) return;
             const data = doc.data() || {};
             remoteSettings = normalizeSettings(data);
@@ -516,7 +520,8 @@
             if (isConfig) updateConfigUI(currentSettings);
           }, () => {});
 
-          db.collection('systemConfig').doc('overlayAlertsConfig').onSnapshot((doc) => {
+          if (unsubAlerts) unsubAlerts();
+          unsubAlerts = db.collection('systemConfig').doc('overlayAlertsConfig').onSnapshot((doc) => {
             if (!doc || !doc.exists) return;
             const data = doc.data() || {};
             if (data.tickerOpacity !== undefined) window.tickerOpacityOverride = data.tickerOpacity;
@@ -542,7 +547,8 @@
           setUnavailable();
         }
 
-        ref.onSnapshot({ includeMetadataChanges: true }, (doc) => {
+        if (unsubGeneral) unsubGeneral();
+        unsubGeneral = ref.onSnapshot({ includeMetadataChanges: true }, (doc) => {
           if (!doc || !doc.exists) return;
           if (doc.metadata && doc.metadata.fromCache) return;
           setFromDoc(doc.data() || {});

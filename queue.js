@@ -1027,6 +1027,15 @@
     const queueFirebaseConfig = window.ZERO_FM_FIREBASE;
 
     let db = null;
+    let unsubConfig = null;
+    let unsubAlerts = null;
+    let unsubStatus = null;
+    let unsubPlayedYesterday = null;
+    let unsubPlayedToday = null;
+    let unsubManualYesterday = null;
+    let unsubManualToday = null;
+    let intervalSuperfans = null;
+    let intervalAliases = null;
     try {
       if (typeof firebase !== 'undefined' && firebase.apps) {
         if (!firebase.apps.length) {
@@ -1044,7 +1053,8 @@
     }
 
     if (db) {
-      db.collection('userSettings').doc('global_queue_config')
+      if (unsubConfig) unsubConfig();
+      unsubConfig = db.collection('userSettings').doc('global_queue_config')
         .onSnapshot((doc) => {
           if (doc.exists) {
             console.log("Configuración remota recibida");
@@ -1093,7 +1103,8 @@
         });
 
       // Escuchar personalización visual de la cola desde el panel de control
-      db.collection('systemConfig').doc('overlayAlertsConfig')
+      if (unsubAlerts) unsubAlerts();
+      unsubAlerts = db.collection('systemConfig').doc('overlayAlertsConfig')
         .onSnapshot((doc) => {
           if (doc.exists) {
             const data = doc.data();
@@ -2816,17 +2827,20 @@
 
       try {
         pollSuperfanUsersOnce();
-        setInterval(pollSuperfanUsersOnce, 60000);
+        if (intervalSuperfans) clearInterval(intervalSuperfans);
+        intervalSuperfans = setInterval(pollSuperfanUsersOnce, 60000);
       } catch (_) {}
 
       try {
         pollUserAliasesOnce();
-        setInterval(pollUserAliasesOnce, 60000);
+        if (intervalAliases) clearInterval(intervalAliases);
+        intervalAliases = setInterval(pollUserAliasesOnce, 60000);
       } catch (_) {}
 
       try {
         // Sincronización en tiempo real del modo de cola
-        db.collection('system').doc('status').onSnapshot((doc) => {
+        if (unsubStatus) unsubStatus();
+        unsubStatus = db.collection('system').doc('status').onSnapshot((doc) => {
           if (doc.exists) {
             const data = doc.data();
             const mode = String(data.queueMode || '').trim();
@@ -2871,31 +2885,58 @@
         renderQueue();
       };
 
-      const setupSyncListeners = (day) => {
-        db.collection('playedSongs').doc(day).onSnapshot((doc) => {
-          if (doc.exists) {
-            const data = doc.data();
-            playedByDay[day] = Array.isArray(data.songs) ? data.songs : (Array.isArray(data.list) ? data.list : []);
-            skippedByDay[day] = Array.isArray(data.skipped) ? data.skipped : [];
-          } else {
-            playedByDay[day] = [];
-            skippedByDay[day] = [];
-          }
-          syncPlayedAndManual();
-        }, (err) => console.warn(`Error playedSongs ${day}:`, err));
+      const setupSyncListeners = (day, isToday) => {
+        if (isToday) {
+          if (unsubPlayedToday) unsubPlayedToday();
+          unsubPlayedToday = db.collection('playedSongs').doc(day).onSnapshot((doc) => {
+            if (doc.exists) {
+              const data = doc.data();
+              playedByDay[day] = Array.isArray(data.songs) ? data.songs : (Array.isArray(data.list) ? data.list : []);
+              skippedByDay[day] = Array.isArray(data.skipped) ? data.skipped : [];
+            } else {
+              playedByDay[day] = [];
+              skippedByDay[day] = [];
+            }
+            syncPlayedAndManual();
+          }, (err) => console.warn(`Error playedSongs ${day}:`, err));
 
-        db.collection('manualOrders').doc(day).onSnapshot((doc) => {
-          if (doc.exists) {
-            manualOrdersByDay[day] = Array.isArray(doc.data().order) ? doc.data().order : [];
-          } else {
-            manualOrdersByDay[day] = [];
-          }
-          syncPlayedAndManual();
-        }, (err) => console.warn(`Error manualOrders ${day}:`, err));
+          if (unsubManualToday) unsubManualToday();
+          unsubManualToday = db.collection('manualOrders').doc(day).onSnapshot((doc) => {
+            if (doc.exists) {
+              manualOrdersByDay[day] = Array.isArray(doc.data().order) ? doc.data().order : [];
+            } else {
+              manualOrdersByDay[day] = [];
+            }
+            syncPlayedAndManual();
+          }, (err) => console.warn(`Error manualOrders ${day}:`, err));
+        } else {
+          if (unsubPlayedYesterday) unsubPlayedYesterday();
+          unsubPlayedYesterday = db.collection('playedSongs').doc(day).onSnapshot((doc) => {
+            if (doc.exists) {
+              const data = doc.data();
+              playedByDay[day] = Array.isArray(data.songs) ? data.songs : (Array.isArray(data.list) ? data.list : []);
+              skippedByDay[day] = Array.isArray(data.skipped) ? data.skipped : [];
+            } else {
+              playedByDay[day] = [];
+              skippedByDay[day] = [];
+            }
+            syncPlayedAndManual();
+          }, (err) => console.warn(`Error playedSongs ${day}:`, err));
+
+          if (unsubManualYesterday) unsubManualYesterday();
+          unsubManualYesterday = db.collection('manualOrders').doc(day).onSnapshot((doc) => {
+            if (doc.exists) {
+              manualOrdersByDay[day] = Array.isArray(doc.data().order) ? doc.data().order : [];
+            } else {
+              manualOrdersByDay[day] = [];
+            }
+            syncPlayedAndManual();
+          }, (err) => console.warn(`Error manualOrders ${day}:`, err));
+        }
       };
 
-      setupSyncListeners(yesterday);
-      setupSyncListeners(currentDay);
+      setupSyncListeners(yesterday, false);
+      setupSyncListeners(currentDay, true);
 
       // Timeout de seguridad para carga inicial
       setTimeout(() => {

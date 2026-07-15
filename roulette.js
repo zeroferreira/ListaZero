@@ -15,6 +15,22 @@ const firebaseConfig = {
     }
     const db = firebase.firestore();
 
+    // Firestore Unsubscribe references
+    let unsubSolicitudes = null;
+    let unsubPlayedSongs = null;
+    let unsubRewardRequests = null;
+    let unsubNotifications = null;
+    let unsubAlertsConfig = null;
+    let unsubSystemStatus = null;
+    let unsubRouletteLive = null;
+
+    // Timeout references
+    let bounceTimeout1 = null;
+    let bounceTimeout2 = null;
+    let autoFollowTimeout = null;
+    let spinAgainRestoreTimerNested = null;
+    let shakeTimeout = null;
+
     const isOverlayMode = !!(
       window.obsstudio ||
       window.location.search.includes('mode=overlay') ||
@@ -727,14 +743,16 @@ const firebaseConfig = {
 
     // Load participants from Firebase
     function subscribeToRequests() {
-      db.collection('solicitudes').where('day', '==', currentDay)
+      if (unsubSolicitudes) unsubSolicitudes();
+      unsubSolicitudes = db.collection('solicitudes').where('day', '==', currentDay)
         .onSnapshot(snap => {
           allRequests = [];
           snap.forEach(doc => allRequests.push({ ...doc.data(), id: doc.id, __rouletteSongId: buildRouletteSongId({ ...doc.data(), id: doc.id }) }));
           updateParticipants();
         });
 
-      db.collection('playedSongs').doc(currentDay)
+      if (unsubPlayedSongs) unsubPlayedSongs();
+      unsubPlayedSongs = db.collection('playedSongs').doc(currentDay)
         .onSnapshot(doc => {
           if (doc.exists) {
             const d = doc.data() || {};
@@ -749,7 +767,8 @@ const firebaseConfig = {
         });
 
 
-      db.collection('rewardRequests')
+      if (unsubRewardRequests) unsubRewardRequests();
+      unsubRewardRequests = db.collection('rewardRequests')
         .where('status', '==', 'approved')
         .onSnapshot(snap => {
           rouletteRewardRequests = [];
@@ -765,7 +784,8 @@ const firebaseConfig = {
         });
 
       // Listener para comandos remotos (bot)
-      db.collection('notifications')
+      if (unsubNotifications) unsubNotifications();
+      unsubNotifications = db.collection('notifications')
         .where('timestamp', '>', firebase.firestore.Timestamp.now())
         .onSnapshot(snap => {
           snap.docChanges().forEach(change => {
@@ -788,7 +808,8 @@ const firebaseConfig = {
         });
 
       // Escuchar personalización visual de la ruleta desde el panel de control
-      db.collection('systemConfig').doc('overlayAlertsConfig')
+      if (unsubAlertsConfig) unsubAlertsConfig();
+      unsubAlertsConfig = db.collection('systemConfig').doc('overlayAlertsConfig')
         .onSnapshot((doc) => {
           if (doc.exists) {
             const data = doc.data();
@@ -839,7 +860,8 @@ const firebaseConfig = {
         });
 
       // Conexión Remota Realtime: Reemplazo de polling por onSnapshot (Hallazgo 1)
-      db.collection('system').doc('status').onSnapshot(doc => {
+      if (unsubSystemStatus) unsubSystemStatus();
+      unsubSystemStatus = db.collection('system').doc('status').onSnapshot(doc => {
         const data = doc && doc.exists ? (doc.data() || {}) : {};
         if (typeof data.rouletteOverlayEnabled === 'boolean') {
           if (lastHandledSystemOverlayEnabled !== data.rouletteOverlayEnabled) {
@@ -849,7 +871,8 @@ const firebaseConfig = {
         }
       });
 
-      getRouletteLiveRef().onSnapshot(doc => {
+      if (unsubRouletteLive) unsubRouletteLive();
+      unsubRouletteLive = getRouletteLiveRef().onSnapshot(doc => {
         if (!doc.exists) return;
         const data = doc.data() || {};
         if (data.themeKey && THEMES[data.themeKey] && data.updatedBy !== rouletteLiveClientId) {
@@ -1427,9 +1450,11 @@ const firebaseConfig = {
         } else {
           // Final bounce animation for the wheel
           wrapper.style.transform = 'scale(1) rotateX(0deg) rotate(5deg)';
-          setTimeout(() => {
+          if (bounceTimeout1) clearTimeout(bounceTimeout1);
+          bounceTimeout1 = setTimeout(() => {
             wrapper.style.transform = 'scale(1) rotateX(0deg) rotate(-3deg)';
-            setTimeout(() => {
+            if (bounceTimeout2) clearTimeout(bounceTimeout2);
+            bounceTimeout2 = setTimeout(() => {
               wrapper.style.transform = 'scale(1) rotateX(0deg) rotate(0deg)';
               wrapper.classList.remove('spinning');
               isSpinning = false;
@@ -1465,7 +1490,8 @@ const firebaseConfig = {
       if (winner === ROULETTE_SPIN_AGAIN_LABEL) {
         showSpinAgainFeedback();
         if (options.autoFollowSpinAgain !== false) {
-          setTimeout(() => spinWheel(), 1200);
+          if (autoFollowTimeout) clearTimeout(autoFollowTimeout);
+          autoFollowTimeout = setTimeout(() => spinWheel(), 1200);
         }
         return;
       }
@@ -1681,7 +1707,8 @@ const firebaseConfig = {
       
       // Screen shake
       document.body.style.animation = 'none';
-      setTimeout(() => {
+      if (shakeTimeout) clearTimeout(shakeTimeout);
+      shakeTimeout = setTimeout(() => {
         document.body.style.animation = 'screen-shake 0.5s ease-out';
       }, 10);
     }
@@ -1725,7 +1752,9 @@ const firebaseConfig = {
       spinAgainRestoreTimer = setTimeout(() => {
         spinAgainRestoreTimer = null;
         winnerOverlay.classList.remove('show');
-        setTimeout(() => {
+        if (spinAgainRestoreTimerNested) clearTimeout(spinAgainRestoreTimerNested);
+        spinAgainRestoreTimerNested = setTimeout(() => {
+          spinAgainRestoreTimerNested = null;
           // Solo restaurar si el ganador no sobrescribió el overlay
           if (!winnerOverlay.classList.contains('show')) {
             title.innerText = title.dataset.defaultTitle || oldTitle;
@@ -1737,6 +1766,11 @@ const firebaseConfig = {
     }
 
     function resetWinner(options = {}) {
+      if (spinAgainRestoreTimer) { clearTimeout(spinAgainRestoreTimer); spinAgainRestoreTimer = null; }
+      if (spinAgainRestoreTimerNested) { clearTimeout(spinAgainRestoreTimerNested); spinAgainRestoreTimerNested = null; }
+      if (bounceTimeout1) { clearTimeout(bounceTimeout1); bounceTimeout1 = null; }
+      if (bounceTimeout2) { clearTimeout(bounceTimeout2); bounceTimeout2 = null; }
+      if (autoFollowTimeout) { clearTimeout(autoFollowTimeout); autoFollowTimeout = null; }
       winnerOverlay.classList.remove('show');
       if (options.broadcast !== false) {
         const closeToken = `close_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;

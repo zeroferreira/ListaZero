@@ -387,6 +387,11 @@
         let welcomeQueue = [];
         let isCardPlaying = false;
         let playTimeout = null;
+        let playExitTimeout = null;
+
+        // Unsubscribe references
+        let unsubConfig = null;
+        let unsubNotifications = null;
            // Configuración por defecto
         const config = {
             welcomeOverlayEnabled: true,
@@ -426,12 +431,19 @@
         // Inicializar Firebase
         try {
             if (typeof firebase !== 'undefined') {
-                firebase.initializeApp(configFirebase);
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(configFirebase);
+                } else {
+                    firebase.app();
+                }
                 db = firebase.firestore();
                 console.log("[Firebase] Bienvenidas conectadas correctamente ✓");
 
+                // Desuscribir listener anterior si existe
+                if (unsubConfig) unsubConfig();
+
                 // 1. Escuchar configuraciones en tiempo real
-                db.collection('systemConfig').doc('overlayAlertsConfig')
+                unsubConfig = db.collection('systemConfig').doc('overlayAlertsConfig')
                     .onSnapshot(doc => {
                         if (doc.exists) {
                             const data = doc.data();
@@ -466,9 +478,12 @@
                         }
                     });
 
+                // Desuscribir listener anterior si existe
+                if (unsubNotifications) unsubNotifications();
+
                 // 2. Escuchar la colección de notificaciones del Bot
                 let isInitialLoad = true;
-                db.collection('notifications')
+                unsubNotifications = db.collection('notifications')
                     .where('timestamp', '>', startedAt)
                     .onSnapshot(snap => {
                         if (isInitialLoad) {
@@ -720,12 +735,16 @@
             // Tiempo de espera antes de ocultar
             const durationMs = (config.welcomeOverlayDuration || 5) * 1000;
             
+            if (playTimeout) clearTimeout(playTimeout);
+            if (playExitTimeout) clearTimeout(playExitTimeout);
+
             playTimeout = setTimeout(() => {
                 // Iniciar animación de salida
                 container.className = 'exit';
                 
                 // Esperar a que acabe la animación de salida para liberar
-                setTimeout(() => {
+                playExitTimeout = setTimeout(() => {
+                    playExitTimeout = null;
                     container.className = '';
                     isCardPlaying = false;
                     // Llamar recursivamente para el siguiente en cola

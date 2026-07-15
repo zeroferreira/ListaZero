@@ -53,6 +53,7 @@
             align-items: center;
             text-align: center;
             z-index: 100;
+            contain: layout style;
         }
 
         /* =============================================
@@ -1077,8 +1078,14 @@
         let isAlertPlaying = false;
         let activeAlertTimeout = null;
         let activeAlertExitTimeout = null;
+        let watchdogTimer = null;
         let likeStormInterval = null;
         const HEART_COLORS = ['#ff3366', '#ff66b2', '#b366ff', '#33ccff', '#ffcc33', '#ff9933'];
+
+        // Firestore Unsubscribe references
+        let unsubConfig = null;
+        let unsubAudio = null;
+        let unsubNotifications = null;
 
         // =============================================
         //  INICIALIZAR FIREBASE
@@ -1100,8 +1107,11 @@
                 db = firebase.firestore();
                 console.log("[Firebase] Alertas conectadas ✓ [Tipo URL: " + urlType + "]");
 
+                // Desuscribir anteriores si existen
+                if (unsubConfig) unsubConfig();
+                
                 // Escuchar personalización visual de alertas premium
-                db.collection('systemConfig').doc('overlayAlertsConfig')
+                unsubConfig = db.collection('systemConfig').doc('overlayAlertsConfig')
                     .onSnapshot(doc => {
                         if (doc.exists) {
                             const data = doc.data();
@@ -1142,10 +1152,13 @@
                     return (currentHost === 'localhost' || currentHost === '127.0.0.1' || !currentHost);
                 }
 
+                // Desuscribir anteriores si existen
+                if (unsubAudio) unsubAudio();
+
                 // Escuchar sesión activa del dashboard para ruteo de audio
                 window.activeDashboardHost = '';
                 window.activeDashboardTime = 0;
-                db.collection('systemConfig').doc('activeDashboardSession')
+                unsubAudio = db.collection('systemConfig').doc('activeDashboardSession')
                     .onSnapshot(doc => {
                         if (doc.exists && doc.data()) {
                             const dData = doc.data();
@@ -1154,13 +1167,16 @@
                         }
                     }, err => console.warn('[Firebase] Error activeDashboardSession:', err));
 
+                // Desuscribir anteriores si existen
+                if (unsubNotifications) unsubNotifications();
+
                 // Escuchar la colección de notificaciones del Bot
                 // overlayStartedAt = 2 minutos ANTES del inicio para tolerar desfases de reloj
                 const overlayStartedAt = new Date(overlayStartMs - 2 * 60 * 1000);
                 let initialSnapshotDone = false;
                 const playedNotificationIds = new Set();
 
-                db.collection('notifications')
+                unsubNotifications = db.collection('notifications')
                     .where('timestamp', '>', overlayStartedAt)
                     .onSnapshot(snap => {
                         snap.docChanges().forEach(change => {
@@ -2445,7 +2461,8 @@
             $wrapper.css("display", "flex").addClass("anim-enter");
 
             // Watchdog de seguridad: desbloquea la cola si algo falla inesperadamente
-            const watchdogTimer = setTimeout(() => {
+            if (watchdogTimer) clearTimeout(watchdogTimer);
+            watchdogTimer = setTimeout(() => {
                 if (isAlertPlaying) {
                     console.warn('[ZeroFM Watchdog] Cola desbloqueada por timeout de seguridad (12s)');
                     $wrapper.hide();
@@ -2909,6 +2926,7 @@
                     // Prolongar la duración de la alerta mientras el usuario configure cosas
                     if (activeAlertTimeout) clearTimeout(activeAlertTimeout);
                     if (activeAlertExitTimeout) clearTimeout(activeAlertExitTimeout);
+                    if (watchdogTimer) clearTimeout(watchdogTimer);
                     
                     const $wrapper = $("#alertWrapper");
                     $wrapper.removeClass("anim-exit"); // Evitar animación de salida durante edición

@@ -753,6 +753,13 @@
 
         let db = null;
         let hasFirebaseData = false;
+        
+        // Firestore Unsubscribe references
+        let unsubLikers = null;
+        let unsubConfig = null;
+        
+        // Scanner Interval reference
+        let inactivityScannerInterval = null;
 
         try {
             if (typeof firebase !== 'undefined') {
@@ -762,8 +769,11 @@
                 db = firebase.firestore();
                 console.log("[Firebase] Conectado exitosamente en TopLiker ✓");
                 
+                // Desuscribir listener anterior si existe
+                if (unsubLikers) unsubLikers();
+
                 // Escuchar cambios en tiempo real del ranking del bot
-                db.collection('globalStats').doc('topLikers').onSnapshot(doc => {
+                unsubLikers = db.collection('globalStats').doc('topLikers').onSnapshot(doc => {
                     if (doc.exists) {
                         const data = doc.data();
                         if (data && Array.isArray(data.list)) {
@@ -779,8 +789,11 @@
                     console.warn("[Firebase] Error en onSnapshot de topLikers:", err);
                 });
 
+                // Desuscribir listener anterior si existe
+                if (unsubConfig) unsubConfig();
+
                 // Escuchar configuraciones de estilo de overlays desde el panel de control
-                db.collection('systemConfig').doc('overlayAlertsConfig').onSnapshot(doc => {
+                unsubConfig = db.collection('systemConfig').doc('overlayAlertsConfig').onSnapshot(doc => {
                     if (doc.exists) {
                         const data = doc.data();
                         console.log("[Firebase] Configuración de estilo de Top Liker actualizada ✓");
@@ -1093,7 +1106,8 @@
             }, 1500);
 
             // Inactivity scanner interval
-            setInterval(() => {
+            if (inactivityScannerInterval) clearInterval(inactivityScannerInterval);
+            inactivityScannerInterval = setInterval(() => {
                 $(".rankUser:not(#rankTemplate)").each(function() {
                     const lastActive = parseInt($(this).attr("data-last-active")) || Date.now();
                     const threshold = (parseInt(settings.topliker_inactivity_threshold) || 90) * 1000;

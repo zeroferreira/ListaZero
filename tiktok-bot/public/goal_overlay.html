@@ -239,7 +239,9 @@
         #progressBar {
             height: 100%;
             border-radius: var(--bar-radius, 100px);
-            width: 0%;
+            width: 100%;
+            transform: scaleX(0);
+            transform-origin: left;
             background: linear-gradient(90deg,
                 var(--bar-start, #be185d),
                 var(--primary-color, #ec4899),
@@ -248,7 +250,7 @@
             box-shadow:
                 0 0 14px var(--primary-shadow, rgba(236,72,153,0.6)),
                 inset 0 1px 0 rgba(255,255,255,0.25);
-            transition: width 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+            transition: transform 1.2s cubic-bezier(0.25, 1, 0.5, 1);
             position: relative;
         }
 
@@ -909,6 +911,14 @@
 
         let db             = null;
         let hasFirebase    = false;
+        
+        // Timer references
+        let confettiTimeout = null;
+        let completeTimeout = null;
+
+        // Unsubscribe references
+        let unsubConfig     = null;
+        let unsubGeneral    = null;
 
         try {
             if (typeof firebase !== 'undefined') {
@@ -924,8 +934,11 @@
                 db = firebase.firestore();
                 hasFirebase = true;
 
+                // Desuscribir listener anterior si existe
+                if (unsubConfig) unsubConfig();
+
                 // Listen: systemConfig/goalOverlayConfig
-                db.collection('systemConfig').doc('goalOverlayConfig').onSnapshot(doc => {
+                unsubConfig = db.collection('systemConfig').doc('goalOverlayConfig').onSnapshot(doc => {
                     if (doc.exists) {
                         const d = doc.data();
                         console.log('[Firebase] goalOverlayConfig actualizado ✓', d);
@@ -981,8 +994,11 @@
                     }
                 }, err => console.warn('[Firebase] goalOverlayConfig error:', err));
 
+                // Desuscribir listener anterior si existe
+                if (unsubGeneral) unsubGeneral();
+
                 // Listen: globalStats/general
-                db.collection('globalStats').doc('general').onSnapshot(doc => {
+                unsubGeneral = db.collection('globalStats').doc('general').onSnapshot(doc => {
                     if (doc.exists) {
                         const d = doc.data();
                         const params = new URLSearchParams(window.location.search);
@@ -1251,8 +1267,8 @@
                 displayVal
             );
 
-            // Bar (limitado al 100% para evitar desbordes visuales)
-            document.getElementById('progressBar').style.width = Math.min(100, pct) + '%';
+            // Bar (usar GPU transform scaleX en lugar de reflow de width)
+            document.getElementById('progressBar').style.transform = 'scaleX(' + (Math.min(100, pct) / 100) + ')';
 
             // Percentage bubble
             const bubble = document.getElementById('pctBubble');
@@ -1327,7 +1343,11 @@
                 const level = currentValue > 0 ? Math.floor((currentValue - 1) / target) : 0;
                 if (level > prevLevel) {
                     card.classList.add('complete');
-                    setTimeout(() => card.classList.remove('complete'), 2500);
+                    if (completeTimeout) clearTimeout(completeTimeout);
+                    completeTimeout = setTimeout(() => {
+                        completeTimeout = null;
+                        card.classList.remove('complete');
+                    }, 2500);
                 }
             }
         }
@@ -1398,11 +1418,19 @@
             }
 
             // Auto-stop after 4 s
-            setTimeout(stopConfetti, 4000);
+            if (confettiTimeout) clearTimeout(confettiTimeout);
+            confettiTimeout = setTimeout(() => {
+                confettiTimeout = null;
+                stopConfetti();
+            }, 4000);
             drawConfetti();
         }
 
         function stopConfetti() {
+            if (confettiTimeout) {
+                clearTimeout(confettiTimeout);
+                confettiTimeout = null;
+            }
             confettiRunning = false;
             cancelAnimationFrame(confettiRaf);
             confetti = [];
