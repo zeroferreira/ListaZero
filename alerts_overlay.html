@@ -84,7 +84,7 @@
             border: 4px solid #fff;
             object-fit: cover;
             box-shadow: 0 8px 30px rgba(0,0,0,0.5);
-            z-index: 3;
+            z-index: 2;
             animation: avatarPulse 2s infinite ease-in-out;
         }
 
@@ -632,7 +632,13 @@
         .type-gift .media-container {
             width: var(--gift-lottie-size, 260px) !important;
             height: var(--gift-lottie-size, 260px) !important;
-            transform: translate(var(--gift-x-offset, 0px), var(--gift-y-offset, 0px)) scale(var(--gift-scale, 1)) !important;
+            /* La foto de perfil queda en la capa 2: detrás de mensajes e ícono */
+            z-index: 2;
+        }
+        /* Mensajes en la capa 3: sobre la foto, bajo el ícono del regalo */
+        .type-gift .alert-frame {
+            position: relative;
+            z-index: 3;
         }
         .type-gift .alert-box {
             margin-top: var(--gift-text-offset, 0px);
@@ -902,15 +908,15 @@
         /* Contenedor del regalo personalizado (desplazado hacia abajo para no tapar avatar) */
         .gift-badge-container {
             position: absolute;
-            top: 88%;
-            left: 50%;
+            top: calc(88% + var(--gift-y-offset, 0px));
+            left: calc(50% + var(--gift-x-offset, 0px));
             transform: translate(-50%, -50%);
-            width: 120px;
-            height: 120px;
+            width: calc(120px * var(--gift-scale, 1));
+            height: calc(120px * var(--gift-scale, 1));
             display: flex;
             justify-content: center;
             align-items: center;
-            z-index: 4; /* Sobre el avatar (z-index 3) */
+            z-index: 4; /* Capa superior: sobre foto (2) y mensajes (3) */
             animation: giftFloat 3.2s ease-in-out infinite alternate, badgeEntry 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
             filter: drop-shadow(0 6px 15px rgba(0,0,0,0.5));
         }
@@ -1013,6 +1019,10 @@
         if (urlType === 'follows') urlType = 'follow';
         if (urlType === 'subscribes' || urlType === 'subscribe' || urlType === 'subscription' || urlType === 'subscriptions' || urlType === 'subs') urlType = 'subscribe';
         if (urlType === 'rewards' || urlType === 'reward' || urlType === 'canje' || urlType === 'canjes') urlType = 'reward';
+        if (urlType === 'quiereme' || urlType === 'heartme' || urlType === 'qui\u00e9reme') urlType = 'quiereme';
+        // ?exclude=quiereme → evita que ?type=all duplique la animación cuando tienes ambas fuentes en OBS
+        var urlExcludeRaw = (new URLSearchParams(document.location.search).get("exclude") || "").toLowerCase();
+        var excludeQuiereme = urlExcludeRaw === 'quiereme' || urlExcludeRaw === 'heartme';
 
         // Recursos multimedia premium (Lottie y Sonidos libres)
         const ALERT_THEMES = {
@@ -1201,7 +1211,24 @@
                             }
 
                             // Filtrar por tipo si está fijado en la URL
-                            if (urlType !== 'all' && data.type !== urlType) return;
+                            const _giftKey = String(data.giftName || '').toLowerCase()
+                                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                                .replace(/[^a-z0-9]+/g, '').trim();
+                            const _isQuiereme = (data.type === 'gift' && _giftKey === 'heartme');
+
+                            if (urlType === 'quiereme') {
+                                // Solo Quiéreme exacto
+                                if (!_isQuiereme) return;
+                            } else if (urlType === 'gift') {
+                                // Regalos normales — excluye Quiéreme (tiene su propia fuente)
+                                if (data.type !== 'gift') return;
+                                if (_isQuiereme) return;
+                            } else if (urlType !== 'all') {
+                                if (data.type !== urlType) return;
+                            } else {
+                                // urlType === 'all': respetar &exclude=quiereme si el usuario usa dos fuentes
+                                if (excludeQuiereme && _isQuiereme) return;
+                            }
 
                             console.log(`🔔 [${data.type}] ${data.user || data.uniqueId || '?'} — mostrando alerta (reproducir sonido/TTS: ${playAudioAndTts})`);
                             addAlert({
@@ -1359,6 +1386,27 @@
                     root.style.setProperty('--reward-gift-scale', rewardGiftScale);
                     root.style.setProperty('--reward-gift-x-offset', rewardGiftOffsetX + 'px');
                     root.style.setProperty('--reward-gift-y-offset', rewardGiftOffsetY + 'px');
+                } else if (urlType === 'quiereme') {
+                    // Quiéreme hereda configuración visual del tipo gift
+                    opacity = data.giftOpacity !== undefined ? data.giftOpacity : 0.76;
+                    radius = data.giftRadius !== undefined ? data.giftRadius : 28;
+                    fontSize = data.giftFontSize !== undefined ? data.giftFontSize : 16;
+                    showCard = data.giftShowCard !== undefined ? data.giftShowCard : true;
+                    fontFamily = data.giftFontFamily !== undefined ? data.giftFontFamily : 'Outfit';
+                    textShadow = data.giftTextShadow !== undefined ? data.giftTextShadow : '3d-retro';
+                    mediaSpacing = data.giftMediaSpacing !== undefined ? data.giftMediaSpacing : -40;
+                    const qWrapperHeight = data.giftWrapperHeight !== undefined ? data.giftWrapperHeight : 320;
+                    const qLottieSize = data.giftLottieSize !== undefined ? data.giftLottieSize : 260;
+                    const qTextTopOffset = data.giftTextTopOffset !== undefined ? data.giftTextTopOffset : 0;
+                    const qIconScale = data.giftIconScale !== undefined ? data.giftIconScale : 1.0;
+                    const qIconOffsetX = data.giftIconOffsetX !== undefined ? data.giftIconOffsetX : 0;
+                    const qIconOffsetY = data.giftIconOffsetY !== undefined ? data.giftIconOffsetY : 0;
+                    root.style.setProperty('--gift-wrapper-height', qWrapperHeight + 'px');
+                    root.style.setProperty('--gift-lottie-size', qLottieSize + 'px');
+                    root.style.setProperty('--gift-text-offset', qTextTopOffset + 'px');
+                    root.style.setProperty('--gift-scale', qIconScale);
+                    root.style.setProperty('--gift-x-offset', qIconOffsetX + 'px');
+                    root.style.setProperty('--gift-y-offset', qIconOffsetY + 'px');
                 }
                 
                 let borderWidth = 1;
@@ -1391,6 +1439,12 @@
                     borderColor = data.rewardBorderColor || '#ffffff';
                     borderOpacity = data.rewardBorderOpacity !== undefined ? data.rewardBorderOpacity : 8;
                     borderStyle = data.rewardBorderStyle || 'solid';
+                } else if (urlType === 'quiereme') {
+                    // Quiéreme hereda estilo de borde de gift
+                    borderWidth = data.giftBorderWidth !== undefined ? data.giftBorderWidth : 1;
+                    borderColor = data.giftBorderColor || '#ffffff';
+                    borderOpacity = data.giftBorderOpacity !== undefined ? data.giftBorderOpacity : 8;
+                    borderStyle = data.giftBorderStyle || 'solid';
                 }
                 
                 const brVal = parseInt(borderColor.substr(1,2), 16) || 255;
@@ -1424,7 +1478,7 @@
                 }
 
                 // Cargar estilo de sombra
-                const themeColors = { follow: '#ec4899', gift: '#eab308', subscribe: '#06b6d4', like: '#ef4444', reward: '#a855f7' };
+                const themeColors = { follow: '#ec4899', gift: '#eab308', subscribe: '#06b6d4', like: '#ef4444', reward: '#a855f7', quiereme: '#f472b6' };
                 applyTextShadow(textShadow, themeColors[urlType] || '#fff');
             } else {
                 // Si es general, cargamos la configuración clásica
@@ -1780,7 +1834,8 @@
                 fontFamily = config.likeFontFamily !== undefined ? config.likeFontFamily : 'Outfit';
                 textShadow = config.likeTextShadow !== undefined ? config.likeTextShadow : '3d-retro';
             } else if (type === 'gift') {
-                enableAlert = urlType === 'all' ? true : (config.enableGiftAlert !== undefined ? config.enableGiftAlert : true);
+                // Si esta fuente es exclusiva de Quiéreme, verificar habilitado
+                enableAlert = (urlType === 'all' || urlType === 'quiereme') ? true : (config.enableGiftAlert !== undefined ? config.enableGiftAlert : true);
                 playAudio = config.giftPlayAudio !== undefined ? config.giftPlayAudio : true;
                 alertVolume = config.giftAudioVolume !== undefined ? config.giftAudioVolume : 50;
                 showLottie = config.giftShowLottie !== undefined ? config.giftShowLottie : true;
@@ -2138,7 +2193,7 @@
                 } else if (type === 'gift') {
                     const giftName = String(data.giftName || '').toLowerCase().trim();
                     const giftKey = giftName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '').trim();
-                    const isQuiereme = ['quiereme', 'loveme', 'communityheart', 'heartme', 'corazon', 'heart', 'love', 'teamo'].includes(giftKey);
+                    const isQuiereme = (giftKey === 'heartme');
                     if (isQuiereme) {
                         // Reproducir el video Quiéreme de forma discreta y elegante usando configuración
                         const config = window.overlayAlertsConfig || {};

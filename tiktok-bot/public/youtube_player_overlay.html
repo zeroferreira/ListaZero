@@ -41,6 +41,7 @@
 
     /* ─── PLAYER CARD ──────────────────────── */
     #player-card {
+      position: relative;
       width: var(--card-w);
       overflow: hidden;
       opacity: 0;
@@ -408,15 +409,14 @@
       transform: translate3d(0,0,0);
       backface-visibility: hidden;
     }
-    /* Evitar congelamiento de iframe pequeño renderizando a tamaño real y escalando por CSS */
+    /* Evitar congelamiento de iframe pequeño renderizando a tamaño real */
     #yt-player-container.miniature-mode iframe {
-      width: 320px !important;
-      height: 180px !important;
+      width: 100% !important;
+      height: 100% !important;
       position: absolute !important;
-      top: 50% !important;
-      left: 50% !important;
-      transform: translate(-50%, -50%) scale(var(--yt-miniature-scale, 0.455)) translate3d(0,0,0) !important;
-      transform-origin: center !important;
+      top: 0 !important;
+      left: 0 !important;
+      transform: none !important;
     }
     
     /* Preview Mode styles for Dashboard */
@@ -739,6 +739,7 @@
             }
           }
           adjustIframeAspectRatio();
+          positionMiniatureVideo();
 
           // Delay unmute to ensure autoplay registry accepts it
           setTimeout(() => {
@@ -967,7 +968,10 @@
 
     currentVideoId = vid;
     showCard();
-    setTimeout(adjustIframeAspectRatio, 150);
+    setTimeout(() => {
+      adjustIframeAspectRatio();
+      positionMiniatureVideo();
+    }, 150);
   }
 
   function showCard() {
@@ -1059,6 +1063,12 @@
       
       stateDot.className = 'state-dot playing';
       stateLabel.textContent = 'En espera (Vista Previa)';
+      
+      // Load default video in preview mode to showcase display modes (miniature, background, cover)
+      if (!ytPlayer || currentVideoId !== 'dQw4w9WgXcQ') {
+        currentVideoId = 'dQw4w9WgXcQ';
+        createOrLoadPlayer('dQw4w9WgXcQ', 'playing');
+      }
     } else {
       hideCard();
       card.style.display = 'none';
@@ -1123,18 +1133,6 @@
     const iframe = document.querySelector('#yt-player-container iframe');
     if (!iframe) return;
     
-    // Si estamos en modo miniatura, el tamaño de iframe se controla por CSS escalado
-    const videoMode = window.currentVideoMode || 'audio_only';
-    if (videoMode === 'miniature') {
-      iframe.style.position = '';
-      iframe.style.top = '';
-      iframe.style.left = '';
-      iframe.style.transform = '';
-      iframe.style.width = '';
-      iframe.style.height = '';
-      return;
-    }
-    
     const container = document.getElementById('yt-player-container');
     if (container) {
       void container.offsetWidth; // Force layout recalculation
@@ -1169,21 +1167,26 @@
     if (videoMode !== 'miniature') return;
     
     // Position ytContainer absolutely relative to player-card by checking rects
-    const cardRect = card.getBoundingClientRect();
-    const artRect = artWrap.getBoundingClientRect();
+    // Calculate unscaled offsets and dimensions using offsetParent chain relative to #player-card
+    let top = 0;
+    let left = 0;
+    let curr = artWrap;
+    while (curr && curr !== card) {
+      top += curr.offsetTop;
+      left += curr.offsetLeft;
+      curr = curr.offsetParent;
+    }
     
-    if (cardRect.width > 0 && artRect.width > 0) {
-      const top = artRect.top - cardRect.top;
-      const left = artRect.left - cardRect.left;
-      const w = artRect.width;
-      const h = artRect.height;
-      
+    const w = artWrap.offsetWidth;
+    const h = artWrap.offsetHeight;
+    
+    if (w > 0 && h > 0) {
       ytContainer.style.top = `${top}px`;
       ytContainer.style.left = `${left}px`;
       ytContainer.style.width = `${w}px`;
       ytContainer.style.height = `${h}px`;
     } else {
-      // Retry once visible
+      // Retry once visible and layout is calculated
       setTimeout(positionMiniatureVideo, 100);
     }
     
@@ -1340,6 +1343,7 @@
     window.currentVideoMode = videoMode;
     const ytContainer = document.getElementById('yt-player-container');
     const artworkImg = document.getElementById('artwork');
+    const ytBadge = document.querySelector('.yt-badge');
 
     if (ytContainer) {
       // Reset classes
@@ -1360,6 +1364,7 @@
         ytContainer.style.filter = '';
         
         if (artworkImg) artworkImg.style.opacity = '1';
+        if (ytBadge) ytBadge.style.display = 'flex';
       } else {
         ytContainer.style.display = 'block'; // Asegurar que sea visible
         
@@ -1372,9 +1377,10 @@
           ytContainer.style.overflow = 'hidden';
           ytContainer.style.filter = '';
           
-          positionMiniatureVideo();
+          // Defer layout updates to the end of applyCardStyles
 
-          if (artworkImg) artworkImg.style.opacity = '1'; // Keep static thumbnail visible under the video overlay
+          if (artworkImg) artworkImg.style.opacity = '0'; // HIDE static thumbnail so only video shows
+          if (ytBadge) ytBadge.style.display = 'none'; // HIDE badge to avoid overlay clutter
         } else if (videoMode === 'card_background') {
           // Card Background Mode: Covers the whole card behind content (blurred & low opacity)
           ytContainer.classList.add('bg-mode');
@@ -1396,6 +1402,7 @@
           ytContainer.style.transform = bgBlur > 0 ? 'scale(1.08) translate3d(0,0,0)' : 'translate3d(0,0,0)';
           
           if (artworkImg) artworkImg.style.opacity = '1'; // Show standard artwork thumbnail
+          if (ytBadge) ytBadge.style.display = 'flex';
         } else if (videoMode === 'card_cover') {
           // Card Cover Mode: Full-size sharp video as background of the card (100% opacity, no blur)
           ytContainer.classList.add('cover-mode');
@@ -1412,6 +1419,7 @@
           cardBg.style.opacity = '0'; // Hide static blurred background art to show sharp video
           
           if (artworkImg) artworkImg.style.opacity = '1'; // Keep artwork thumbnail visible in info col
+          if (ytBadge) ytBadge.style.display = 'flex';
         }
       }
     }
@@ -1462,8 +1470,10 @@
       cardBg.style.opacity = '0';
     }
 
-    positionMiniatureVideo();
-    adjustIframeAspectRatio();
+    setTimeout(() => {
+      positionMiniatureVideo();
+      adjustIframeAspectRatio();
+    }, 0);
 
     // Aplicar cambio de calidad en tiempo real si el reproductor está listo
     if (ytPlayer && typeof ytPlayer.setPlaybackQuality === 'function') {
@@ -1555,10 +1565,12 @@
 
   // ─── postMessage (from dashboard panel) ──────
   window.addEventListener('message', (evt) => {
+    console.log('[YT Overlay] Received postMessage:', evt.data);
     if (!evt.data) return;
     const { action, payload } = evt.data;
 
     if (action === 'updateConfig' || action === 'updateLiveConfig') {
+      console.log('[YT Overlay] Applying card styles:', payload);
       applyCardStyles(payload);
     }
 
