@@ -1697,6 +1697,12 @@
   <script>
     /* ─── Firebase ────────────────────────────── */
     let db = null;
+    let unsubLikes = null;
+    let unsubCoins = null;
+    let unsubQuiere = null;
+    let unsubSubscribers = null;
+    let unsubLevel = null;
+    let unsubLive = null;
 
     // Config con fallback hardcodeado (igual que los overlays que sí funcionan)
     const FIREBASE_CFG = window.ZERO_FM_FIREBASE || {
@@ -1960,7 +1966,8 @@
       setDebug('Conectando a base de datos...');
 
       /* Top Likers - Consultar base de datos real de usuarios (userStats) */
-      db.collection('userStats')
+      if (unsubLikes) unsubLikes();
+      unsubLikes = db.collection('userStats')
         .orderBy('totalLikes', 'desc')
         .limit(100)
         .onSnapshot(snap=>{
@@ -1993,7 +2000,8 @@
         });
 
       /* Top Gifters - Consultar base de datos real de usuarios (userStats) */
-      db.collection('userStats')
+      if (unsubCoins) unsubCoins();
+      unsubCoins = db.collection('userStats')
         .orderBy('totalCoinsDonated', 'desc')
         .limit(100)
         .onSnapshot(snap=>{
@@ -2021,7 +2029,8 @@
         });
 
       /* Top Quiéreme — consulta histórica y en tiempo real desde userStats */
-      db.collection('userStats')
+      if (unsubQuiere) unsubQuiere();
+      unsubQuiere = db.collection('userStats')
         .orderBy('quiereCount', 'desc')
         .limit(100)
         .onSnapshot(snap => {
@@ -2077,7 +2086,8 @@
       }
 
       // Query 1: Suscriptores
-      db.collection('userStats')
+      if (unsubSubscribers) unsubSubscribers();
+      unsubSubscribers = db.collection('userStats')
         .where('isSubscriber', '==', true)
         .onSnapshot(snap => {
           subList = [];
@@ -2100,7 +2110,8 @@
         });
 
       // Query 2: Usuarios con nivel de miembro alto (simple orderBy)
-      db.collection('userStats')
+      if (unsubLevel) unsubLevel();
+      unsubLevel = db.collection('userStats')
         .orderBy('memberLevel', 'desc')
         .limit(50)
         .onSnapshot(snap => {
@@ -2129,7 +2140,8 @@
 
 
       /* Live status */
-      db.collection('systemConfig').doc('liveStatus').onSnapshot(snap=>{
+      if (unsubLive) unsubLive();
+      unsubLive = db.collection('systemConfig').doc('liveStatus').onSnapshot(snap=>{
         const badge=document.getElementById('live-status');
         const socialSection=document.getElementById('social-section');
         if(!badge) return;
@@ -2144,9 +2156,11 @@
 
     } else {
       setDebug('ERROR: Firebase no pudo inicializar. Abre la consola para más info.');
-      ['likers','gifters'].forEach(t=>{
-        document.getElementById(t+'-loading').style.display='none';
-        document.getElementById(t+'-error').hidden=false;
+      ['likers','gifters','quiereme','members'].forEach(t=>{
+        const loadingEl = document.getElementById(t+'-loading');
+        const errorEl = document.getElementById(t+'-error');
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (errorEl) errorEl.hidden = false;
       });
     }
 
