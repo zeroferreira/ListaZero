@@ -4505,48 +4505,66 @@
 
       async function renderAllUsersSelect() {
         const allUsersSelect = document.getElementById('all-users-select');
-        const allUsersSelectDonador = document.getElementById('all-users-select-donador');
-        // Si no existen los elementos en el DOM, no hacer nada
         if (!allUsersSelect) return;
 
         const userMap = new Map();
-        const addUser = (rawName) => {
+        const addUser = (rawName, displayName) => {
           const u = String(rawName || '').trim();
           if (!u) return;
           const key = u.toLowerCase();
-          // Estrategia: si no existe, lo agregamos.
-          // Si existe, podríamos reemplazar si el nuevo tiene mejor capitalización, 
-          // pero por simplicidad y estabilidad, nos quedamos con el primero (o el último).
+          
+          let disp = String(displayName || '').trim();
+          const handle = u.replace(/^@/, '');
+          
           if (!userMap.has(key)) {
-            userMap.set(key, u);
+            userMap.set(key, {
+              username: handle,
+              displayName: disp && disp !== handle ? disp : ''
+            });
+          } else {
+            const existing = userMap.get(key);
+            if (!existing.displayName && disp && disp !== handle) {
+              existing.displayName = disp;
+            }
           }
         };
 
         try {
           const items = Array.isArray(window.__dayItems) ? window.__dayItems : [];
-          items.forEach(it => addUser(it?.usuario));
+          items.forEach(it => addUser(it?.usuario, it?.displayName));
         } catch (_) { }
 
         try {
           const all = await getAllCombinedSolicitudes();
-          (all || []).forEach(s => addUser(s?.usuario));
+          (all || []).forEach(s => addUser(s?.usuario, s?.displayName));
         } catch (_) { }
 
         try {
           const byDay = JSON.parse(localStorage.getItem('solicitudes_by_day') || '{}');
-          Object.values(byDay).forEach(arr => (arr || []).forEach(it => addUser(it.usuario)));
+          Object.values(byDay).forEach(arr => (arr || []).forEach(it => addUser(it.usuario, it.displayName)));
         } catch (error) { }
 
         try {
           const cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
-          cached.forEach(name => addUser(name));
+          cached.forEach(item => {
+            if (typeof item === 'string') {
+              addUser(item);
+            } else if (item && item.username) {
+              addUser(item.username, item.displayName);
+            }
+          });
         } catch (_) { }
 
         try {
           const dbRef = window.db || db;
           if (dbRef) {
             const statsSnap = await dbRef.collection('userStats').get();
-            statsSnap.forEach(doc => { if (doc.id) addUser(doc.id); });
+            statsSnap.forEach(doc => {
+              if (doc.id) {
+                const d = doc.data() || {};
+                addUser(doc.id, d.displayName);
+              }
+            });
           }
         } catch (_) { }
 
@@ -4556,43 +4574,42 @@
             const usersSnap = await dbRef.collection('users').get();
             usersSnap.forEach(doc => {
               const d = doc.data() || {};
-              if (d.name) addUser(d.name);
+              if (d.name) addUser(d.name, d.displayName);
             });
           }
         } catch (_) { }
 
-        const list = Array.from(userMap.values()).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        const list = Array.from(userMap.values()).sort((a, b) => {
+          const nameA = a.displayName || a.username;
+          const nameB = b.displayName || b.username;
+          return nameA.toLowerCase().localeCompare(nameB.toLowerCase());
+        });
+        
         try { localStorage.setItem('knownUsers', JSON.stringify(list)); } catch (_) { }
 
-        // Función helper para llenar selects
-        const fillSelect = (el) => {
-          if (!el) return;
-          const currentVal = el.value; // Preservar valor si ya tenía algo
-          el.innerHTML = '<option value="">Selecciona un usuario</option>';
-          list.forEach(name => {
+        // Poblar la datalist de autocompletado compartida
+        const datalist = document.getElementById('all-users-list');
+        if (datalist) {
+          datalist.innerHTML = '';
+          list.forEach(u => {
             const opt = document.createElement('option');
-            opt.value = name;
-            opt.textContent = name;
-            el.appendChild(opt);
+            opt.value = u.username;
+            opt.textContent = u.displayName ? `${u.displayName} (@${u.username})` : `@${u.username}`;
+            datalist.appendChild(opt);
           });
-          if (currentVal && list.includes(currentVal)) {
-            el.value = currentVal;
-          }
-        };
-
-        fillSelect(allUsersSelect);
-        fillSelect(document.getElementById('all-users-select-z0'));
-        fillSelect(document.getElementById('all-users-select-donador'));
-        fillSelect(document.getElementById('all-users-select-z0-fan'));
-        fillSelect(document.getElementById('all-users-select-z0-platino'));
-        fillSelect(document.getElementById('all-users-select-superfan'));
+        }
       }
       window.renderAllUsersSelect = renderAllUsersSelect;
 
+      const getCleanUsername = (val) => {
+        return String(val || '').trim().replace(/^@/, '').toLowerCase();
+      };
+
       vipAddBtn?.addEventListener('click', async () => {
-        const name = allUsersSelect.value.trim();
+        const rawName = allUsersSelect.value.trim();
+        const name = getCleanUsername(rawName);
         if (!name) {
-          alert('Selecciona un usuario del listado.');
+          alert('Escribe o selecciona un usuario.');
           return;
         }
         try {
@@ -4600,6 +4617,7 @@
             name,
             activatedAt: firebase.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
+          allUsersSelect.value = '';
         } catch (err) {
           console.error('Error al agregar VIP:', err);
           alert('No se pudo agregar el usuario a VIP. Revisa reglas/permisos.');
@@ -4609,13 +4627,15 @@
       const superfanAddBtn = document.getElementById('superfan-add');
       superfanAddBtn?.addEventListener('click', async () => {
         const sel = document.getElementById('all-users-select-superfan');
-        const name = sel?.value.trim();
+        const rawName = sel?.value.trim();
+        const name = getCleanUsername(rawName);
         if (!name) {
-          alert('Selecciona un usuario del listado.');
+          alert('Escribe o selecciona un usuario.');
           return;
         }
         try {
           await db.collection('superfanUsers').doc(name).set({ name }, { merge: true });
+          if (sel) sel.value = '';
         } catch (err) {
           console.error('Error al agregar Superfan:', err);
           alert('No se pudo agregar el usuario a Superfan. Revisa reglas/permisos.');
@@ -4627,13 +4647,15 @@
       const z0PlatinoAddBtn = document.getElementById('z0-platino-add');
       z0VipAddBtn?.addEventListener('click', async () => {
         const allUsersSelectZ0 = document.getElementById('all-users-select-z0');
-        const name = allUsersSelectZ0?.value.trim();
+        const rawName = allUsersSelectZ0?.value.trim();
+        const name = getCleanUsername(rawName);
         if (!name) {
-          alert('Selecciona un usuario del listado.');
+          alert('Escribe o selecciona un usuario.');
           return;
         }
         try {
           await db.collection('z0VipUsers').doc(name).set({ name }, { merge: true });
+          if (allUsersSelectZ0) allUsersSelectZ0.value = '';
         } catch (err) {
           console.error('Error al agregar Z0-VIP:', err);
           alert('No se pudo agregar el usuario a Z0-VIP. Revisa reglas/permisos.');
@@ -4641,9 +4663,10 @@
       });
 
       donadorAddBtn?.addEventListener('click', async () => {
-        const name = allUsersSelectDonador?.value.trim();
+        const rawName = allUsersSelectDonador?.value.trim();
+        const name = getCleanUsername(rawName);
         if (!name) {
-          alert('Selecciona un usuario del listado.');
+          alert('Escribe o selecciona un usuario.');
           return;
         }
 
@@ -4671,16 +4694,30 @@
 
       z0FanAddBtn?.addEventListener('click', async () => {
         const sel = document.getElementById('all-users-select-z0-fan');
-        const name = sel?.value.trim();
-        if (!name) { alert('Selecciona un usuario del listado.'); return; }
-        try { await db.collection('z0FanUsers').doc(name).set({ name }, { merge: true }); sel.value = ''; } catch (err) { console.error('Error z0-Fan:', err); alert('No se pudo agregar z0-Fan.'); }
+        const rawName = sel?.value.trim();
+        const name = getCleanUsername(rawName);
+        if (!name) { alert('Escribe o selecciona un usuario.'); return; }
+        try {
+          await db.collection('z0FanUsers').doc(name).set({ name }, { merge: true });
+          if (sel) sel.value = '';
+        } catch (err) {
+          console.error('Error z0-Fan:', err);
+          alert('No se pudo agregar z0-Fan.');
+        }
       });
 
       z0PlatinoAddBtn?.addEventListener('click', async () => {
         const sel = document.getElementById('all-users-select-z0-platino');
-        const name = sel?.value.trim();
-        if (!name) { alert('Selecciona un usuario del listado.'); return; }
-        try { await db.collection('z0PlatinumUsers').doc(name).set({ name }, { merge: true }); sel.value = ''; } catch (err) { console.error('Error z0-Platino:', err); alert('No se pudo agregar z0-Platino.'); }
+        const rawName = sel?.value.trim();
+        const name = getCleanUsername(rawName);
+        if (!name) { alert('Escribe o selecciona un usuario.'); return; }
+        try {
+          await db.collection('z0PlatinumUsers').doc(name).set({ name }, { merge: true });
+          if (sel) sel.value = '';
+        } catch (err) {
+          console.error('Error z0-Platino:', err);
+          alert('No se pudo agregar z0-Platino.');
+        }
       });
 
       vipListEl?.addEventListener('click', (e) => {
