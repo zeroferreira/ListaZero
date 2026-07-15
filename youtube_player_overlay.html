@@ -608,15 +608,20 @@
   let durationSec     = 0;
   let timerInterval   = null;
   let isVisible       = false;
+  // ID del timeout del setIdle — guardado para poder cancelarlo si llega nueva canción
+  let idleTimeoutId   = null;
 
   // YouTube Player instance state
-  let ytPlayer = null;
-  let isYtApiReady = false;
-  let isYtReady = false;
-  let pendingVideoId = null;
-  let currentVolume = 100;
-  let hasSetInitialVolume = false;
-  let lastUpdatedTimestamp = 0;
+  let ytPlayer        = null;
+  let isYtApiReady    = false;
+  let isYtReady       = false;
+  // pendingVideoId y pendingTargetState: usados cuando el API de YT aún no está lista
+  let pendingVideoId  = null;
+  let pendingTargetState = null;
+  let currentVolume   = 100;
+
+  // Debounce handle para applyCardStyles layout recalculation
+  let _layoutDebounce = null;
 
   // Detect OBS environment and query params globally
   const params = new URLSearchParams(window.location.search);
@@ -657,8 +662,10 @@
     isYtApiReady = true;
     console.log("🎥 API de YouTube lista");
     if (pendingVideoId) {
-      createOrLoadPlayer(pendingVideoId);
+      // Usar el estado guardado en pendingTargetState (no siempre 'playing')
+      createOrLoadPlayer(pendingVideoId, pendingTargetState || 'playing');
       pendingVideoId = null;
+      pendingTargetState = null;
     }
   };
 
@@ -666,6 +673,7 @@
     isYtReady = false; // Reset player ready state
     if (!isYtApiReady) {
       pendingVideoId = videoId;
+      pendingTargetState = targetState || 'playing'; // Guardar estado para cuando la API esté lista
       return;
     }
 
@@ -720,7 +728,7 @@
       events: {
         'onReady': (event) => {
           isYtReady = true;
-          const params = new URLSearchParams(window.location.search);
+          // Usar params cacheado del scope global (evita redeclaración)
           const isMuteParam = params.get('mute') === 'true';
 
           if (startState === 'playing') {
@@ -753,7 +761,7 @@
         'onStateChange': (event) => {
           // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
           if (event.data === 1) {
-            const params = new URLSearchParams(window.location.search);
+            // Usar params cacheado del scope global
             const isMuteParam = params.get('mute') === 'true';
             if (!isMuteParam && !window.isMutedByIP) {
               event.target.unMute();
@@ -794,8 +802,8 @@
           songTitle.textContent = errText;
           stateLabel.textContent = "Error";
           stateDot.className = "state-dot paused";
-          
-          const params = new URLSearchParams(window.location.search);
+
+          // Usar params cacheado del scope global
           const isPreview = params.get('preview') === 'true';
           if (!isPreview) {
             console.warn("⏱️ Saltando canción bloqueada en 5 segundos...");
@@ -855,11 +863,11 @@
           updatePlayerMuteState(currentVolume);
           ytPlayer.playVideo();
         }
-        // Sync seek position if drift is larger than 4 seconds
+        // Sync seek position solo si el drift es mayor a 10s (evita falsos positivos por latencia de red)
         if (typeof ytPlayer.getCurrentTime === 'function' && typeof elapsedSec === 'number' && elapsedSec > 0) {
           const ytCurrent = ytPlayer.getCurrentTime();
           const drift = Math.abs(ytCurrent - elapsedSec);
-          if (drift > 4) {
+          if (drift > 10) {
             console.log(`⏰ Seek drift detected: local=${Math.round(ytCurrent)}s, Firestore target=${elapsedSec}s. Seeking player...`);
             ytPlayer.seekTo(elapsedSec, true);
           }
@@ -908,11 +916,26 @@
   function applyData(data) {
     if (!data || !data.videoId) { setIdle(); return; }
 
+    // Cancelar cualquier setIdle() pendiente — evita que una canción nueva
+    // sea detenida por el timeout de 4s de la canción anterior.
+    if (idleTimeoutId) {
+      clearTimeout(idleTimeoutId);
+      idleTimeoutId = null;
+    }
+
     const idlePreview = document.getElementById('idle-preview');
     if (idlePreview) idlePreview.style.display = 'none';
 
     const vid = getYoutubeVideoId(data.videoId) || data.videoId;
     const thumb = getThumbnailUrl(vid);
+
+    // Resetear duración al detectar cambio de video — evita que el timer
+    // marque 'ended' con la duración heredada de la canción anterior.
+    const videoChanged = currentVideoId !== vid;
+    if (videoChanged) {
+      durationSec = 0;
+      timeTotal.textContent = '—';
+    }
 
     // Artwork + blurred BG
     artwork.src = thumb;
@@ -925,16 +948,11 @@
     const reqBadgeName = document.getElementById('req-badge-name');
     if (reqBadgeName) reqBadgeName.textContent = reqText;
 
-    // Duration
+    // Duration (puede llegar en data.duration o ser consultada al player luego)
     if (data.duration) {
       durationSec = parseFloat(data.duration);
       timeTotal.textContent = fmtTime(durationSec);
-    } else {
-      durationSec = 0;
-      timeTotal.textContent = '—';
     }
-
-    const videoChanged = currentVideoId !== vid;
 
     // Elapsed / seek
     if (typeof data.elapsed === 'number') {
@@ -947,31 +965,32 @@
       lastFirestoreElapsed = null;
     }
     
-    applyState(data.state || 'playing');
-    
-    if (data.timestamp) {
-      lastUpdatedTimestamp = data.timestamp;
+    // Actualizar volumen ANTES de applyState para que syncPlayerState use el valor correcto
+    if (typeof data.volume === 'number') {
+      currentVolume = data.volume;
     }
-    
-    // Sync YT audio player state
+
+    // FIX: applyState actualiza solo la UI (dot, timer, label).
+    // syncPlayerState se llama UNA sola vez abajo — no dentro de applyState.
+    applyState(data.state || 'playing');
+
+    // Sync YT audio player state (una sola vez, evita race conditions)
     if (videoChanged) {
       createOrLoadPlayer(vid, data.state || 'playing');
     } else {
       syncPlayerState(data.state || 'playing', vid);
-    }
-    
-    if (typeof data.volume === 'number') {
-      currentVolume = data.volume;
-      hasSetInitialVolume = true;
       updatePlayerMuteState(currentVolume);
     }
 
     currentVideoId = vid;
     showCard();
-    setTimeout(() => {
-      adjustIframeAspectRatio();
-      positionMiniatureVideo();
-    }, 150);
+    // Layout recalc solo si el modo miniatura está activo
+    if (window.currentVideoMode === 'miniature') {
+      setTimeout(() => {
+        adjustIframeAspectRatio();
+        positionMiniatureVideo();
+      }, 150);
+    }
   }
 
   function showCard() {
@@ -1014,13 +1033,18 @@
       stateLabel.textContent = 'Terminado';
       elapsedSec = durationSec;
       updateProgress();
-      // Auto-hide after 4s
-      setTimeout(() => setIdle(), 4000);
+      // Auto-hide after 4s — guardamos el ID para poder cancelarlo si llega nueva canción
+      if (idleTimeoutId) clearTimeout(idleTimeoutId);
+      idleTimeoutId = setTimeout(() => {
+        idleTimeoutId = null;
+        setIdle();
+      }, 4000);
     } else {
       stateDot.classList.add('idle');
       stateLabel.textContent = 'En espera';
     }
-    syncPlayerState(state, currentVideoId);
+    // FIX: syncPlayerState eliminado de applyState.
+    // Solo applyData debe llamar syncPlayerState para evitar doble sincronización.
   }
 
   function setIdle() {
@@ -1470,14 +1494,21 @@
       cardBg.style.opacity = '0';
     }
 
-    setTimeout(() => {
+    // FIX: debounce de 400ms para recálculos de layout — evita modificar el iframe
+    // del player activo en cada actualización de config, lo que causaba micro-paradas.
+    clearTimeout(_layoutDebounce);
+    _layoutDebounce = setTimeout(() => {
       positionMiniatureVideo();
       adjustIframeAspectRatio();
-    }, 0);
+    }, 400);
 
-    // Aplicar cambio de calidad en tiempo real si el reproductor está listo
+    // FIX: solo cambiar calidad si el player NO está en estado PLAYING (1)
+    // Llamar setPlaybackQuality durante reproducción causa rebuffering.
     if (ytPlayer && typeof ytPlayer.setPlaybackQuality === 'function') {
-      ytPlayer.setPlaybackQuality(getSuggestedQuality());
+      const _ytState = typeof ytPlayer.getPlayerState === 'function' ? ytPlayer.getPlayerState() : -1;
+      if (_ytState !== 1) { // 1 = PLAYING
+        ytPlayer.setPlaybackQuality(getSuggestedQuality());
+      }
     }
     } catch (err) {
       console.warn('[YT Overlay] Error applying styles:', err);
