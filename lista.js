@@ -18233,3 +18233,73 @@ function shouldShowStatsTicker() {
       alert('❌ Error al simular Top Gifters: ' + e.message);
     }
   };
+
+  // ─── Watchdog Logs real-time listener ───
+  let unsubWatchdogLogs = null;
+  function startListeningToWatchdogLogs() {
+    if (!window.db) return;
+    if (unsubWatchdogLogs) unsubWatchdogLogs();
+
+    const logsContainer = document.getElementById('watchdog-logs-container');
+    if (!logsContainer) return;
+
+    // Listen to latest 15 logs
+    unsubWatchdogLogs = window.db.collection('youtubePlayerLogs')
+      .orderBy('timestamp', 'desc')
+      .limit(15)
+      .onSnapshot((snap) => {
+        if (snap.empty) {
+          logsContainer.innerHTML = '<span style="color: #666;">No hay eventos registrados en la bitácora.</span>';
+          return;
+        }
+
+        logsContainer.innerHTML = '';
+        snap.forEach((doc) => {
+          const data = doc.data();
+          const t = data.timestamp ? new Date(data.timestamp.seconds * 1000 || data.timestamp._seconds * 1000) : new Date();
+          const timeStr = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          
+          const logLine = document.createElement('div');
+          logLine.style.marginBottom = '6px';
+          logLine.style.borderBottom = '1px solid rgba(255,255,255,0.03)';
+          logLine.style.paddingBottom = '4px';
+
+          const color = data.type === 'recovery' ? '#f43f5e' : '#fbbf24'; // Red for recovery, Amber for warnings
+          const badge = `<span style="color: ${color}; font-weight: bold;">[${data.type.toUpperCase()}]</span>`;
+          
+          logLine.innerHTML = `
+            <span style="color: #888;">[${timeStr}]</span> ${badge} ${escapeHTML(data.message)}
+            <br/>
+            <span style="color: #666; font-size: 10px;">Video: "${escapeHTML(data.videoTitle)}" (${data.videoId}) en ${data.elapsedSec}s</span>
+          `;
+          logsContainer.appendChild(logLine);
+        });
+      }, (err) => {
+        console.warn('Error reading watchdog logs:', err);
+      });
+  }
+
+  // Clear logs button handler
+  document.getElementById('clear-watchdog-logs-btn')?.addEventListener('click', async () => {
+    if (!window.db) return;
+    if (!confirm('¿Seguro que quieres vaciar la bitácora de eventos del supervisor?')) return;
+    try {
+      const snap = await window.db.collection('youtubePlayerLogs').get();
+      const batch = window.db.batch();
+      snap.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+      window.showNotification && window.showNotification('Bitácora vaciada con éxito ✓', 'success');
+    } catch (e) {
+      console.error('Error clearing watchdog logs:', e);
+      alert('Error al vaciar logs: ' + e.message);
+    }
+  });
+
+  // Start listening to watchdog logs on load
+  if (document.readyState === 'complete') {
+    startListeningToWatchdogLogs();
+  } else {
+    window.addEventListener('load', startListeningToWatchdogLogs);
+  }

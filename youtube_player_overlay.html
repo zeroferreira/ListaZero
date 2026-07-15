@@ -1128,6 +1128,24 @@
   let lastTimeChecked = -1;
   let stuckTimeCount = 0;
 
+  // Registrar eventos de diagnóstico y autorecuperación en Firestore para visibilidad del DJ
+  async function logWatchdogEvent(type, message) {
+    if (!db) return;
+    try {
+      await db.collection('youtubePlayerLogs').add({
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        type: type, // 'warning' | 'recovery'
+        message: message,
+        videoId: currentVideoId || '',
+        videoTitle: (songTitle && songTitle.textContent) || 'Sin título',
+        elapsedSec: elapsedSec || 0
+      });
+      console.log(`[Watchdog Log Saved] ${type.toUpperCase()}: ${message}`);
+    } catch (e) {
+      console.warn('[Watchdog] Error guardando log en Firestore:', e);
+    }
+  }
+
   function startWatchdog() {
     if (watchdogInterval) clearInterval(watchdogInterval);
     watchdogInterval = setInterval(() => {
@@ -1148,6 +1166,8 @@
         stuckCount++;
         console.warn(`[Watchdog] Alerta: El reproductor está en estado ${ytState} en lugar de PLAYING. Reintento ${stuckCount}/3...`);
         
+        logWatchdogEvent('warning', `Detenido en estado ${ytState}. Reintento ${stuckCount}/3.`);
+
         // Intentar dar play
         try {
           ytPlayer.playVideo();
@@ -1159,8 +1179,10 @@
           console.error(`[Watchdog] Crítico: El reproductor sigue sin reproducir tras 3 intentos. Forzando reinicio de la instancia...`);
           stuckCount = 0;
           
-          // Reconstrucción de emergencia: Recrea el player desde la última posición conocida
           const targetTime = currentTime > 0 ? currentTime : (elapsedSec > 0 ? elapsedSec : 0);
+          logWatchdogEvent('recovery', `Player no responde tras 3 reintentos. Recreando player en el segundo ${Math.round(targetTime)}s.`);
+          
+          // Reconstrucción de emergencia: Recrea el player desde la última posición conocida
           createOrLoadPlayer(currentVideoId, 'playing', targetTime);
         }
       } else {
@@ -1173,11 +1195,16 @@
           stuckTimeCount++;
           console.warn(`[Watchdog] Alerta: El video está congelado en el segundo ${currentTime}. Conteo: ${stuckTimeCount}/5`);
           
+          if (stuckTimeCount === 2) {
+            logWatchdogEvent('warning', `Video congelado en segundo ${currentTime}. Evaluando buffer...`);
+          }
+
           if (stuckTimeCount >= 5) {
             console.error(`[Watchdog] Crítico: Reproducción congelada o buffer infinito por más de 10s. Forzando recarga de player...`);
             stuckTimeCount = 0;
             // Adelantamos 1 segundo para saltar cualquier frame/fragmento de video corrupto en YouTube
             const targetTime = currentTime > 0 ? currentTime + 1 : (elapsedSec > 0 ? elapsedSec : 0);
+            logWatchdogEvent('recovery', `Buffer infinito / Frame congelado detectado en ${Math.round(currentTime)}s. Forzando recarga de player con salto de +1s.`);
             createOrLoadPlayer(currentVideoId, 'playing', targetTime);
           }
         } else {
