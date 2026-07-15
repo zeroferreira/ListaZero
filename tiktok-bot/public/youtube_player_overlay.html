@@ -674,7 +674,7 @@
     }
   };
 
-  function createOrLoadPlayer(videoId, targetState) {
+  function createOrLoadPlayer(videoId, targetState, startTime) {
     isYtReady = false; // Reset player ready state
     if (!isYtApiReady) {
       pendingVideoId = videoId;
@@ -717,6 +717,7 @@
       videoId: videoId,
       playerVars: {
         'autoplay': startState === 'playing' ? 1 : 0,
+        'start': Math.floor(startTime || 0),
         'controls': 0,
         'disablekb': 1,
         'fs': 0,
@@ -737,8 +738,14 @@
           const isMuteParam = params.get('mute') === 'true';
 
           if (startState === 'playing') {
+            if (startTime > 0) {
+              event.target.seekTo(startTime, true);
+            }
             event.target.playVideo();
           } else {
+            if (startTime > 0) {
+              event.target.seekTo(startTime, true);
+            }
             event.target.pauseVideo();
           }
           if (typeof event.target.setPlaybackQuality === 'function') {
@@ -1112,6 +1119,81 @@
       if (idlePreview) {
         idlePreview.style.display = (!isObs) ? 'flex' : 'none';
       }
+    }
+  }
+
+  // ─── Watchdog / Supervisor del Reproductor de YouTube ───
+  let watchdogInterval = null;
+  let stuckCount = 0;
+  let lastTimeChecked = -1;
+  let stuckTimeCount = 0;
+
+  function startWatchdog() {
+    if (watchdogInterval) clearInterval(watchdogInterval);
+    watchdogInterval = setInterval(() => {
+      // Solo vigilar si el estado configurado es 'playing' y el player está instanciado
+      if (currentState !== 'playing' || !ytPlayer || typeof ytPlayer.getPlayerState !== 'function') {
+        stuckCount = 0;
+        stuckTimeCount = 0;
+        return;
+      }
+
+      const ytState = ytPlayer.getPlayerState();
+      const currentTime = typeof ytPlayer.getCurrentTime === 'function' ? ytPlayer.getCurrentTime() : -1;
+
+      console.log(`[Watchdog] Estado YT: ${ytState}, Tiempo: ${currentTime}s (Esperado: PLAYING, Objetivo: ${elapsedSec}s)`);
+
+      // CASO 1: El video debería estar reproduciendo pero se pausó (2), no inició (-1) o está canteado (5)
+      if (ytState === 2 || ytState === -1 || ytState === 5) {
+        stuckCount++;
+        console.warn(`[Watchdog] Alerta: El reproductor está en estado ${ytState} en lugar de PLAYING. Reintento ${stuckCount}/3...`);
+        
+        // Intentar dar play
+        try {
+          ytPlayer.playVideo();
+        } catch (e) {
+          console.warn('[Watchdog] Error al dar playVideo:', e);
+        }
+
+        if (stuckCount >= 3) {
+          console.error(`[Watchdog] Crítico: El reproductor sigue sin reproducir tras 3 intentos. Forzando reinicio de la instancia...`);
+          stuckCount = 0;
+          
+          // Reconstrucción de emergencia: Recrea el player desde la última posición conocida
+          const targetTime = currentTime > 0 ? currentTime : (elapsedSec > 0 ? elapsedSec : 0);
+          createOrLoadPlayer(currentVideoId, 'playing', targetTime);
+        }
+      } else {
+        stuckCount = 0; // Resetear contador si no está atascado
+      }
+
+      // CASO 2: El reproductor está en PLAYING (1) o BUFFERING (3), pero el segundero no avanza (Frames congelados / Buffer infinito)
+      if (ytState === 1 || ytState === 3) {
+        if (currentTime === lastTimeChecked && currentTime !== -1) {
+          stuckTimeCount++;
+          console.warn(`[Watchdog] Alerta: El video está congelado en el segundo ${currentTime}. Conteo: ${stuckTimeCount}/5`);
+          
+          if (stuckTimeCount >= 5) {
+            console.error(`[Watchdog] Crítico: Reproducción congelada o buffer infinito por más de 10s. Forzando recarga de player...`);
+            stuckTimeCount = 0;
+            // Adelantamos 1 segundo para saltar cualquier frame/fragmento de video corrupto en YouTube
+            const targetTime = currentTime > 0 ? currentTime + 1 : (elapsedSec > 0 ? elapsedSec : 0);
+            createOrLoadPlayer(currentVideoId, 'playing', targetTime);
+          }
+        } else {
+          stuckTimeCount = 0;
+          lastTimeChecked = currentTime;
+        }
+      } else {
+        stuckTimeCount = 0;
+      }
+    }, 2000);
+  }
+
+  function stopWatchdog() {
+    if (watchdogInterval) {
+      clearInterval(watchdogInterval);
+      watchdogInterval = null;
     }
   }
 
@@ -1654,6 +1736,9 @@
   window.addEventListener('resize', () => {
     positionMiniatureVideo();
   });
+
+  // Iniciar el vigilante en segundo plano para autocuración
+  startWatchdog();
 </script>
 </body>
 </html>
