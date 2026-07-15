@@ -50,6 +50,8 @@
       pointer-events: none;
       will-change: transform, opacity;
       backface-visibility: hidden;
+      /* OPT-6: Aislar repaints del card del resto del layout */
+      contain: layout style;
     }
 
     #player-card.visible {
@@ -558,18 +560,21 @@
     document.body.appendChild(debugDiv);
   });
 
-  // ─── DOM refs ────────────────────────────────
-  const card       = document.getElementById('player-card');
-  const cardBg     = document.getElementById('card-bg');
-  const artwork    = document.getElementById('artwork');
-  const songTitle  = document.getElementById('song-title');
-  const artistName = document.getElementById('artist-name');
-  const stateDot   = document.getElementById('state-dot');
-  const stateLabel = document.getElementById('state-label');
-  const progressFill = document.getElementById('progress-fill');
-  const timeElapsed  = document.getElementById('time-elapsed');
-  const timeTotal    = document.getElementById('time-total');
-  const reqName    = document.getElementById('req-name');
+  // ─── DOM refs (cacheados una vez para evitar getElementById repetidos) ─
+  const card        = document.getElementById('player-card');
+  const cardBg      = document.getElementById('card-bg');
+  const artwork     = document.getElementById('artwork');
+  const songTitle   = document.getElementById('song-title');
+  const artistName  = document.getElementById('artist-name');
+  const stateDot    = document.getElementById('state-dot');
+  const stateLabel  = document.getElementById('state-label');
+  const progressFill  = document.getElementById('progress-fill');
+  const timeElapsed   = document.getElementById('time-elapsed');
+  const timeTotal     = document.getElementById('time-total');
+  const reqName       = document.getElementById('req-name');
+  // OPT-5: cachear referencias usadas frecuentemente en applyData/setIdle
+  const idlePreview   = document.getElementById('idle-preview');
+  const reqBadgeName  = document.getElementById('req-badge-name');
 
   // Interactive Progress Bar seeking support
   const progressTrack = document.querySelector('.progress-track');
@@ -880,7 +885,12 @@
     }
   }
 
+  // OPT-3: flag para evitar escrituras duplicadas si onStateChange dispara
+  // 'ended' varias veces (ej. seek cerca del final del video)
+  let _reportingEnded = false;
   async function reportEndedToFirestore() {
+    if (_reportingEnded) return;
+    _reportingEnded = true;
     if (db) {
       try {
         await db.collection('systemConfig').doc('activeYoutubeVideo').update({
@@ -891,6 +901,8 @@
         console.error("Error al actualizar Firestore (ended):", e);
       }
     }
+    // Reset con delay para permitir que el sistema procese el nuevo video
+    setTimeout(() => { _reportingEnded = false; }, 3000);
   }
 
   // ─── Helpers ─────────────────────────────────
@@ -923,7 +935,7 @@
       idleTimeoutId = null;
     }
 
-    const idlePreview = document.getElementById('idle-preview');
+    // OPT-5: usar refs cacheadas
     if (idlePreview) idlePreview.style.display = 'none';
 
     const vid = getYoutubeVideoId(data.videoId) || data.videoId;
@@ -937,15 +949,17 @@
       timeTotal.textContent = '—';
     }
 
-    // Artwork + blurred BG
-    artwork.src = thumb;
-    cardBg.style.backgroundImage = `url('${thumb}')`;
+    // OPT-4: solo actualizar artwork y bg si el video cambió (evita requests HTTP innecesarios)
+    if (videoChanged) {
+      artwork.src = thumb;
+      cardBg.style.backgroundImage = `url('${thumb}')`;  
+    }
 
     songTitle.textContent  = data.title    || 'Sin título';
     artistName.textContent = data.artist   || 'YouTube Creator';
     const reqText = data.requester || '—';
     reqName.textContent = reqText;
-    const reqBadgeName = document.getElementById('req-badge-name');
+    // OPT-5: usar ref cacheada
     if (reqBadgeName) reqBadgeName.textContent = reqText;
 
     // Duration (puede llegar en data.duration o ser consultada al player luego)
@@ -1064,8 +1078,8 @@
     }
 
     const isPreview = params.get('preview') === 'true';
-    const idlePreview = document.getElementById('idle-preview');
-    
+    // OPT-5: usar ref cacheada
+
     if (isPreview) {
       if (idlePreview) idlePreview.style.display = 'none';
       card.style.display = 'block';
@@ -1075,8 +1089,7 @@
       songTitle.textContent  = 'Canción de Prueba (Preview)';
       artistName.textContent = 'Artista de YouTube';
       reqName.textContent    = 'NombreUsuario';
-      const reqBadgeName = document.getElementById('req-badge-name');
-      if (reqBadgeName) reqBadgeName.textContent = 'NombreUsuario';
+      if (reqBadgeName) reqBadgeName.textContent = 'NombreUsuario'; // OPT-5: ref cacheada
       
       const defaultThumb = 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg';
       artwork.src = defaultThumb;
@@ -1103,43 +1116,56 @@
   }
 
   // ─── Progress timer (visual only, no audio) ──
+  // OPT-1: requestAnimationFrame en lugar de setInterval para sincronizar
+  // el timer con el render loop del navegador/OBS y evitar drift visual.
   function startTimer() {
     stopTimer();
-    timerInterval = setInterval(() => {
-      if (currentState !== 'playing') return;
+    let lastTick = performance.now();
+    function tick(now) {
+      // Si el estado ya no es 'playing', detenemos el loop sin cancelar
+      if (currentState !== 'playing') { timerInterval = null; return; }
 
-      // 1. Query duration from API if not loaded yet
-      if (ytPlayer && typeof ytPlayer.getDuration === 'function') {
-        const ytDuration = ytPlayer.getDuration();
-        if (ytDuration > 0 && durationSec !== ytDuration) {
-          durationSec = ytDuration;
-          timeTotal.textContent = fmtTime(durationSec);
+      if (now - lastTick >= 1000) {
+        lastTick = now;
+
+        // 1. Sincronizar duráción desde la API si aún no se cargó
+        if (ytPlayer && typeof ytPlayer.getDuration === 'function') {
+          const ytDuration = ytPlayer.getDuration();
+          if (ytDuration > 0 && durationSec !== ytDuration) {
+            durationSec = ytDuration;
+            timeTotal.textContent = fmtTime(durationSec);
+          }
         }
-      }
 
-      // 2. Query exact current time from API
-      if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
-        const ytCurrent = ytPlayer.getCurrentTime();
-        if (typeof ytCurrent === 'number') {
-          elapsedSec = Math.floor(ytCurrent);
+        // 2. Sincronizar posición exacta desde la API
+        if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+          const ytCurrent = ytPlayer.getCurrentTime();
+          if (typeof ytCurrent === 'number') {
+            elapsedSec = Math.floor(ytCurrent);
+          } else {
+            elapsedSec++;
+          }
         } else {
           elapsedSec++;
         }
-      } else {
-        elapsedSec++;
-      }
 
-      if (durationSec > 0 && elapsedSec >= durationSec) {
-        elapsedSec = durationSec;
-        applyState('ended');
-        return;
+        // 3. Detectar fin del video
+        if (durationSec > 0 && elapsedSec >= durationSec) {
+          elapsedSec = durationSec;
+          updateProgress();
+          applyState('ended');
+          timerInterval = null;
+          return; // Salir del loop
+        }
+        updateProgress();
       }
-      updateProgress();
-    }, 1000);
+      timerInterval = requestAnimationFrame(tick);
+    }
+    timerInterval = requestAnimationFrame(tick);
   }
 
   function stopTimer() {
-    clearInterval(timerInterval);
+    if (timerInterval) cancelAnimationFrame(timerInterval);
     timerInterval = null;
   }
 
@@ -1517,6 +1543,10 @@
 
   // ─── Firebase ────────────────────────────────
   let db = null;
+  // OPT-2: guardar handles de unsubscribe para poder cancelar listeners si es necesario
+  let _unsubVideo  = null;
+  let _unsubConfig = null;
+  let _unsubAudio  = null;
   const fbConfig = window.ZERO_FM_FIREBASE || {
       apiKey:            "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
       authDomain:        "zero-strom-web.firebaseapp.com",
@@ -1535,8 +1565,8 @@
         console.warn('Could not set experimentalForceLongPolling:', e);
       }
 
-      // Listen to active video in both preview and OBS mode to keep them in sync
-      db.collection('systemConfig').doc('activeYoutubeVideo')
+      // Listen to active video — guardar unsubscribe para limpieza futura
+      _unsubVideo = db.collection('systemConfig').doc('activeYoutubeVideo')
         .onSnapshot((doc) => {
           if (!doc.exists) { setIdle(); return; }
           const data = doc.data();
@@ -1546,7 +1576,6 @@
         }, err => console.warn('[YT Overlay] Firestore error:', err));
 
       window.isMutedByIP = false;
-      const params = new URLSearchParams(window.location.search);
       const isPreview = params.get('preview') === 'true';
 
       if (isPreview) {
@@ -1558,7 +1587,7 @@
         }).catch(err => console.warn('Error setting active audio session:', err));
 
         // Listen to active audio session to dynamically handle double audio
-        db.collection('systemConfig').doc('activeAudioSession')
+        _unsubAudio = db.collection('systemConfig').doc('activeAudioSession')
           .onSnapshot((doc) => {
             if (doc.exists && doc.data()) {
               const activeHost = doc.data().hostname || '';
@@ -1582,8 +1611,8 @@
           }, err => console.warn('Error listening to active audio session:', err));
       }
 
-      // Listen to visual configurations
-      db.collection('systemConfig').doc('overlayAlertsConfig')
+      // Listen to visual configurations — guardar unsubscribe
+      _unsubConfig = db.collection('systemConfig').doc('overlayAlertsConfig')
         .onSnapshot((doc) => {
           if (doc.exists) {
             applyCardStyles(doc.data());
