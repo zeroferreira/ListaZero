@@ -3228,11 +3228,12 @@ function setupListeners() {
                         }
                         if (isFollower) roles.push('follower');
                         
-                        // Filtrado inteligente: solo escribir en Firestore para usuarios destacados (streamer, moderador, subscriber, vip, donador)
+                        // Filtrado inteligente: solo escribir en Firestore para destacados, o para un usuario común de vez en cuando (5% de probabilidad)
                         // Esto reduce más de un 95% el consumo de cuota de Firestore (evita RESOURCE_EXHAUSTED)
                         const isFeaturedUser = roles.includes('streamer') || roles.includes('moderator') || roles.includes('subscriber') || roles.includes('vip') || roles.includes('donador');
+                        const isLuckyRegularUser = !isFeaturedUser && Math.random() < 0.05; // 5% de probabilidad para usuarios comunes
                         
-                        if (isFeaturedUser) {
+                        if (isFeaturedUser || isLuckyRegularUser) {
                             // Guardar/Actualizar el registro en liveUsers para el registro histórico del mes
                             const { doc, setDoc, serverTimestamp, increment } = require('firebase/firestore');
                             const now = new Date();
