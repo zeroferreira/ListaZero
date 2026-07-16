@@ -3051,9 +3051,12 @@ function setupListeners() {
                 const generalSnap = await getDocFn(generalRef);
                 if (generalSnap.exists()) {
                     const genData = generalSnap.data() || {};
-                    if (genData.likesGoalStartOffset !== undefined) {
-                        likesGoalStartOffset = Number(genData.likesGoalStartOffset) !== null ? Number(genData.likesGoalStartOffset) : null;
+                    if (genData.likesGoalStartOffset !== undefined && genData.likesGoalStartOffset !== null) {
+                        const val = Number(genData.likesGoalStartOffset);
+                        likesGoalStartOffset = Number.isFinite(val) ? val : null;
                         console.log(`🟢 Recuperado likesGoalStartOffset de Firestore: ${likesGoalStartOffset}`);
+                    } else {
+                        likesGoalStartOffset = null;
                     }
                 }
             } catch (e) {
