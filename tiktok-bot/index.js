@@ -1257,22 +1257,35 @@ function startBot() {
         }
     });
 
-    app.get('/QUIEREME.mov', (req, res) => {
-        const filePath = findQuieremeFile();
-        if (filePath && fs.existsSync(filePath)) {
-            res.sendFile(filePath);
-        } else {
-            // Fallback a cualquier archivo quiereme por si acaso
-            res.sendStatus(404);
+    app.get('/:filename', (req, res, next) => {
+        const filename = req.params.filename;
+        const ext = path.extname(filename).toLowerCase();
+        if (ext === '.mov' || ext === '.mp4') {
+            const parentDir = path.resolve(path.join(__dirname, '..'));
+            const filePath = path.resolve(path.join(__dirname, '..', filename));
+            // Seguridad: solo servir archivos que estén dentro del directorio padre
+            if (!filePath.startsWith(parentDir + path.sep) && filePath !== parentDir) {
+                return next();
+            }
+            if (fs.existsSync(filePath)) {
+                const mimeType = ext === '.mov' ? 'video/quicktime' : 'video/mp4';
+                res.setHeader('Content-Type', mimeType);
+                return res.sendFile(filePath);
+            }
+            
+            // Fallback: si el archivo exacto no existe, buscar el archivo quiereme por defecto
+            const normalizedName = filename.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9.]+/g, '');
+            if (normalizedName.replace(/\..+$/, '') === 'quiereme') {
+                const fallbackPath = findQuieremeFile();
+                if (fallbackPath && fs.existsSync(fallbackPath)) {
+                    const fallbackExt = path.extname(fallbackPath).toLowerCase();
+                    const mimeType = fallbackExt === '.mov' ? 'video/quicktime' : 'video/mp4';
+                    res.setHeader('Content-Type', mimeType);
+                    return res.sendFile(fallbackPath);
+                }
+            }
         }
-    });
-    app.get('/QUIEREME.mp4', (req, res) => {
-        const filePath = findQuieremeFile();
-        if (filePath && fs.existsSync(filePath)) {
-            res.sendFile(filePath);
-        } else {
-            res.sendStatus(404);
-        }
+        next();
     });
 
     // Endpoint dinámico para servir configuración de Firebase a los overlays

@@ -16,8 +16,8 @@ const db = getFirestore(app);
 // Helper to determine if a gift notification is a Quiéreme gift
 function checkIsQuiereme(giftName) {
   if (!giftName) return false;
-  const name = giftName.trim().toLowerCase();
-  return name === 'heart me' || name === 'heartme';
+  const name = giftName.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return name === 'heart me' || name === 'heartme' || name === 'quiereme' || name === 'quiere me';
 }
 
 // Convert Firestore Timestamp to milliseconds

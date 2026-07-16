@@ -1230,7 +1230,7 @@
                             const _giftKey = String(data.giftName || '').toLowerCase()
                                 .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
                                 .replace(/[^a-z0-9]+/g, '').trim();
-                            const _isQuiereme = (data.type === 'gift' && _giftKey === 'heartme');
+                            const _isQuiereme = (data.type === 'gift' && (_giftKey === 'heartme' || _giftKey === 'quiereme'));
 
                             if (urlType === 'quiereme') {
                                 // Solo Quiéreme exacto
@@ -2209,31 +2209,37 @@
                 } else if (type === 'gift') {
                     const giftName = String(data.giftName || '').toLowerCase().trim();
                     const giftKey = giftName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '').trim();
-                    const isQuiereme = (giftKey === 'heartme');
+                    const isQuiereme = (giftKey === 'heartme' || giftKey === 'quiereme');
                     if (isQuiereme) {
                         // Reproducir el video Quiéreme de forma discreta y elegante usando configuración
                         const config = window.overlayAlertsConfig || {};
-                        // Siempre usar la ruta universal /quiereme-video que sirve el archivo subido
+                        // Resolver URL del video respetando la configuración guardada o fallback por defecto
                         let videoUrl = '/quiereme-video';
-                        // Si hay una URL custom explícita (http o ruta distinta), usarla
                         const cfgUrl = config.quieremeVideoUrl;
-                        if (cfgUrl && cfgUrl !== 'custom' && cfgUrl !== '/QUIEREME.mov' && cfgUrl !== '/QUIEREME.mp4' && (cfgUrl.startsWith('http') || cfgUrl.startsWith('/'))) {
-                            videoUrl = cfgUrl;
-                        } else if (cfgUrl === 'custom' && config.quieremeVideoCustomUrl && (config.quieremeVideoCustomUrl.startsWith('http') || config.quieremeVideoCustomUrl.startsWith('/'))) {
+                        if (cfgUrl === 'custom' && config.quieremeVideoCustomUrl) {
                             videoUrl = config.quieremeVideoCustomUrl;
+                        } else if (cfgUrl && cfgUrl !== 'custom') {
+                            videoUrl = cfgUrl;
                         }
                         
-                        if (videoUrl.startsWith('/') && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-                            videoUrl = 'http://localhost:3000' + videoUrl;
+                        if (videoUrl.startsWith('/')) {
+                            if (window.location.protocol === 'file:') {
+                                videoUrl = 'http://localhost:3000' + videoUrl;
+                            } else {
+                                videoUrl = window.location.origin + videoUrl;
+                            }
                         }
                         
                         console.log('[Quiéreme] Reproduciendo video URL:', videoUrl, '| config.quieremeVideoUrl:', cfgUrl);
                         
                         const $videoContainer = $("<div>").addClass("quiereme-video-container");
+                        const videoExt = videoUrl.split('?')[0].split('.').pop().toLowerCase();
+                        const primaryMime = (videoExt === 'mov') ? 'video/quicktime' : 'video/mp4';
+                        const secondaryMime = (videoExt === 'mov') ? 'video/mp4' : 'video/quicktime';
                         $videoContainer.html(`
                             <video id="quieremeVideo" autoplay playsinline muted loop style="display: none;">
-                                <source src="${videoUrl}" type="video/mp4">
-                                <source src="${videoUrl}" type="video/quicktime">
+                                <source src="${videoUrl}" type="${primaryMime}">
+                                <source src="${videoUrl}" type="${secondaryMime}">
                             </video>
                             <canvas id="quieremeCanvas" width="140" height="140" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;"></canvas>
                         `);
