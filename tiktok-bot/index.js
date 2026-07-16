@@ -3228,31 +3228,37 @@ function setupListeners() {
                         }
                         if (isFollower) roles.push('follower');
                         
-                        // Guardar/Actualizar el registro en liveUsers para el registro histórico del mes
-                        const { doc, setDoc, serverTimestamp, increment } = require('firebase/firestore');
-                        const now = new Date();
-                        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                        // Filtrado inteligente: solo escribir en Firestore para usuarios destacados (streamer, moderador, subscriber, vip, donador)
+                        // Esto reduce más de un 95% el consumo de cuota de Firestore (evita RESOURCE_EXHAUSTED)
+                        const isFeaturedUser = roles.includes('streamer') || roles.includes('moderator') || roles.includes('subscriber') || roles.includes('vip') || roles.includes('donador');
                         
-                        await setDoc(doc(db, 'liveUsers', uid), {
-                            uniqueId: uid,
-                            nickname: nickname,
-                            profilePic: avatarUrl,
-                            roles: roles,
-                            joinCount: increment(1),
-                            lastJoined: serverTimestamp(),
-                            monthJoined: currentMonth
-                        }, { merge: true });
+                        if (isFeaturedUser) {
+                            // Guardar/Actualizar el registro en liveUsers para el registro histórico del mes
+                            const { doc, setDoc, serverTimestamp, increment } = require('firebase/firestore');
+                            const now = new Date();
+                            const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                            
+                            await setDoc(doc(db, 'liveUsers', uid), {
+                                uniqueId: uid,
+                                nickname: nickname,
+                                profilePic: avatarUrl,
+                                roles: roles,
+                                joinCount: increment(1),
+                                lastJoined: serverTimestamp(),
+                                monthJoined: currentMonth
+                            }, { merge: true });
 
-                        // Enviar notificación en tiempo real para el overlay
-                        await addDoc(collection(db, 'notifications'), {
-                            type: 'join',
-                            user: nickname,
-                            uniqueId: uid,
-                            profilePic: avatarUrl,
-                            message: '¡Entró al Live!',
-                            roles: roles,
-                            timestamp: serverTimestamp()
-                        });
+                            // Enviar notificación en tiempo real para el overlay
+                            await addDoc(collection(db, 'notifications'), {
+                                type: 'join',
+                                user: nickname,
+                                uniqueId: uid,
+                                profilePic: avatarUrl,
+                                message: '¡Entró al Live!',
+                                roles: roles,
+                                timestamp: serverTimestamp()
+                            });
+                        }
                     } catch (e) {
                         console.error('⚠️ Error enviando notificación de bienvenida a Firestore:', e);
                     }

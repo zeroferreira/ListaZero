@@ -3517,31 +3517,17 @@
                 setTimeout(() => setSaveStatus(''), 3000);
             };
 
-            const toggleRouletteActive = async (enabled) => {
+             const toggleRouletteActive = async (enabled) => {
                 try {
                     // 1. Guardar en config local
                     const next = { ...overlays, rouletteOverlayEnabled: enabled };
                     setDirtyKeys(d => ({ ...d, rouletteOverlayEnabled: true }));
                     setOverlays(next);
                     localStorage.setItem('offline_overlays_config', JSON.stringify(next));
-                    await saveOverlaysConfig(next, { rouletteOverlayEnabled: true });
 
-                    // 2. Sincronizar en Firestore para control remoto
-                    if (window.db) {
-                        await window.db.collection('system').doc('status').set({
-                            rouletteOverlayEnabled: enabled,
-                            lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
-                            updatedBy: 'dashboard'
-                        }, { merge: true });
-
-                        await window.db.collection('notifications').add({
-                            type: 'roulette_overlay_toggle',
-                            enabled: enabled,
-                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                    }
-
-                    // 3. Notificar a los iframes locales (control y vista previa)
+                    // 2. Notificar INMEDIATAMENTE a los iframes locales (control y vista previa)
+                    // Esto permite que el preview responda al instante en la pantalla del streamer
+                    // incluso si hay lentitud o la cuota de Firebase está agotada.
                     ['iframe-control-roulette-page', 'iframe-roulette'].forEach(id => {
                         const iframe = document.getElementById(id);
                         if (iframe && iframe.contentWindow) {
@@ -3551,6 +3537,27 @@
                             }, '*');
                         }
                     });
+
+                    // 3. Intentar sincronizar con Firestore, tolerando fallos de cuota o red
+                    try {
+                        await saveOverlaysConfig(next, { rouletteOverlayEnabled: true });
+
+                        if (window.db) {
+                            await window.db.collection('system').doc('status').set({
+                                rouletteOverlayEnabled: enabled,
+                                lastUpdate: firebase.firestore.FieldValue.serverTimestamp(),
+                                updatedBy: 'dashboard'
+                            }, { merge: true });
+
+                            await window.db.collection('notifications').add({
+                                type: 'roulette_overlay_toggle',
+                                enabled: enabled,
+                                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                        }
+                    } catch (dbErr) {
+                        console.warn("⚠️ No se pudo guardar el estado de la ruleta en Firestore (posible cuota agotada):", dbErr);
+                    }
                 } catch (e) {
                     console.error("Error toggling roulette:", e);
                 }
