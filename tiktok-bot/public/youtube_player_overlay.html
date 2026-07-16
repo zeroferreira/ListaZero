@@ -625,6 +625,7 @@
   let pendingTargetState = null;
   let currentVolume   = 100;
   let hasSetInitialVolume = false;
+  let routeAudioTo    = 'obs'; // 'obs' | 'dashboard'
 
   // Debounce handle para applyCardStyles layout recalculation
   let _layoutDebounce = null;
@@ -764,22 +765,13 @@
 
           // Delay unmute to ensure autoplay registry accepts it
           setTimeout(() => {
-            if (!isMuteParam && !window.isMutedByIP) {
-              event.target.unMute();
-              event.target.setVolume(currentVolume);
-              console.log("🔊 Autounmute triggered after load.");
-            }
+            updatePlayerMuteState(currentVolume);
           }, 150);
         },
         'onStateChange': (event) => {
           // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
           if (event.data === 1) {
-            // Usar params cacheado del scope global
-            const isMuteParam = params.get('mute') === 'true';
-            if (!isMuteParam && !window.isMutedByIP) {
-              event.target.unMute();
-              event.target.setVolume(currentVolume);
-            }
+            updatePlayerMuteState(currentVolume);
              if (typeof event.target.getDuration === 'function') {
                const ytDuration = event.target.getDuration();
                if (ytDuration > 0 && durationSec !== ytDuration) {
@@ -835,10 +827,28 @@
     
     const params = new URLSearchParams(window.location.search);
     const isMuteParam = params.get('mute') === 'true';
+    const isPreview = params.get('preview') === 'true';
 
-    if (isMuteParam) {
+    // Determinar si esta instancia debe silenciarse
+    let shouldMute = isMuteParam;
+
+    if (routeAudioTo === 'dashboard') {
+      // Audio ruteado a la compu:
+      // - El dashboard (donde isPreview es true) debe sonar (no silenciar).
+      // - OBS (donde isPreview es false) debe estar silenciado.
+      shouldMute = !isPreview;
+      console.log(`🔀 Audio ruteado a Computadora (Dashboard). ¿Silenciar aquí? ${shouldMute ? 'SÍ' : 'NO'} (isPreview: ${isPreview})`);
+    } else {
+      // Audio ruteado a OBS:
+      // - OBS (donde isPreview es false) debe sonar.
+      // - El dashboard (donde isPreview es true) debe estar silenciado para evitar doble audio.
+      shouldMute = isPreview;
+      console.log(`🔀 Audio ruteado a OBS Studio. ¿Silenciar aquí? ${shouldMute ? 'SÍ' : 'NO'} (isPreview: ${isPreview})`);
+    }
+
+    if (shouldMute) {
       ytPlayer.mute();
-      console.log(`🔇 Audio silenciado por parámetro de URL (?mute=true).`);
+      console.log(`🔇 Audio silenciado (ruteado a otro dispositivo o silenciado por URL).`);
       return;
     }
 
@@ -853,10 +863,10 @@
     if (targetVolume > 0) {
       ytPlayer.unMute();
       ytPlayer.setVolume(targetVolume);
-      console.log(`🔊 Audio des-silenciado en vista previa. Volumen: ${targetVolume}`);
+      console.log(`🔊 Audio des-silenciado. Volumen: ${targetVolume}`);
     } else {
       ytPlayer.mute();
-      console.log(`🔇 Audio silenciado en vista previa (volumen 0)`);
+      console.log(`🔇 Audio silenciado (volumen 0)`);
     }
   }
 
@@ -1378,6 +1388,11 @@
     if (!cfg) return;
     window.lastConfig = cfg;
     try {
+
+    // Configurar la ruta de audio
+    if (cfg.route_audio_to) {
+      routeAudioTo = cfg.route_audio_to;
+    }
 
     // 0. Layout Mode
     const rawLayoutMode = cfg.yt_card_layout_mode || 'standard';
