@@ -37,8 +37,9 @@ function stopLiveHeartbeat() {
 }
 function startLiveHeartbeat() {
     stopLiveHeartbeat();
-    liveHeartbeatInterval = setInterval(() => {
+    liveHeartbeatInterval = setInterval(async () => {
         try { updateLiveStatus(true); } catch (_) {}
+        try { await syncRoomLikesFromApi(); } catch (_) {}
     }, 60 * 1000);
 }
 function initStatusUpdater(firebaseConfig) {
@@ -3044,6 +3045,21 @@ function setupListeners() {
         if (previousRoomId && previousRoomId === state.roomId) {
             console.log(`🟢 Reconexión en el mismo live (${state.roomId}). Recuperando rankings de sesión...`);
             
+            // Recuperar el offset de likes de la sesión
+            try {
+                const generalRef = docFn(db, 'globalStats', 'general');
+                const generalSnap = await getDocFn(generalRef);
+                if (generalSnap.exists()) {
+                    const genData = generalSnap.data() || {};
+                    if (genData.likesGoalStartOffset !== undefined) {
+                        likesGoalStartOffset = Number(genData.likesGoalStartOffset) !== null ? Number(genData.likesGoalStartOffset) : null;
+                        console.log(`🟢 Recuperado likesGoalStartOffset de Firestore: ${likesGoalStartOffset}`);
+                    }
+                }
+            } catch (e) {
+                console.error('⚠️ Error recuperando likesGoalStartOffset de general:', e);
+            }
+
             // 1. Recuperar Top Likers de sesión
             try {
                 const likersRef = docFn(db, 'globalStats', 'topLikers');
@@ -4306,6 +4322,7 @@ function syncSessionCountersToFirestore(immediate = false) {
                 sessionShares:  totalShares,
                 sessionLikes:   totalLikes,
                 streamTotalLikes: streamTotalLikesCounter,
+                likesGoalStartOffset: likesGoalStartOffset, // Guardar offset para persistencia tras reinicios
                 sessionCoins:   sessionTotalCoins,
                 lastUpdate:     serverTimestamp()
             }, { merge: true });
@@ -4318,6 +4335,33 @@ function syncSessionCountersToFirestore(immediate = false) {
         runSync();
     } else {
         _syncCountersTimeout = setTimeout(runSync, 2000);
+    }
+}
+
+// Sincronizar total de likes desde la API de TikTok para corregir lags del websocket
+async function syncRoomLikesFromApi() {
+    try {
+        if (!tiktokLiveConnection || !tiktokLiveConnection.isConnected) return;
+        const roomInfo = await tiktokLiveConnection.fetchRoomInfo();
+        if (roomInfo && roomInfo.stats) {
+            const realTotalLikes = Number(roomInfo.stats.likeCount || roomInfo.stats.like_count || 0);
+            if (realTotalLikes > streamTotalLikesCounter) {
+                console.log(`📊 [Room Stats Sync] Sincronizando likes de sala desde API: ${streamTotalLikesCounter} → ${realTotalLikes}`);
+                
+                // Si el offset no ha sido inicializado, este es el momento
+                if (likesGoalStartOffset === null) {
+                    const currentSessionLikes = Array.from(sessionLikes.values()).reduce((a, b) => a + b, 0);
+                    likesGoalStartOffset = Math.max(0, realTotalLikes - currentSessionLikes);
+                    console.log(`📊 [Room Stats Sync] Offset inicializado desde API: ${likesGoalStartOffset}`);
+                }
+                
+                streamTotalLikesCounter = realTotalLikes;
+                lastKnownTotalLikeCount = realTotalLikes;
+                syncSessionCountersToFirestore(true);
+            }
+        }
+    } catch (e) {
+        console.warn('⚠️ Error sincronizando estadísticas de sala desde API:', e.message || e);
     }
 }
 
@@ -4908,12 +4952,11 @@ async function handleSongRequest(user, query, options = {}) {
             const isLockEnabled = overlayAlertsConfig.enableLikesYoutubeLock === true;
             if (isLockEnabled) {
                 const targetLikes = Number(overlayAlertsConfig.likesTargetForYoutubeLink) || 999;
-                let totalSessionLikes = 0;
-                try {
-                    for (const count of sessionLikes.values()) {
-                        totalSessionLikes += count;
-                    }
-                } catch (_) {}
+                
+                // Calcular total likes de sesión de forma unificada y precisa (evita el desfase por throttling de usuarios)
+                const totalSessionLikes = likesGoalStartOffset !== null 
+                    ? Math.max(0, streamTotalLikesCounter - likesGoalStartOffset) 
+                    : Array.from(sessionLikes.values()).reduce((a, b) => a + b, 0);
 
                 if (totalSessionLikes < targetLikes) {
                     const missingLikes = targetLikes - totalSessionLikes;
