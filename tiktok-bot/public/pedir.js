@@ -874,7 +874,7 @@
           const mm = String(now.getMinutes()).padStart(2, '0');
           const ss = String(now.getSeconds()).padStart(2, '0');
           const hora = `${hh}:${mm}:${ss}`;
-          const songId = `${usuario}-${finalCancion}-${finalArtista}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+          const songId = `${usuario}-${finalCancion}-${finalArtista}-${hora}`.replace(/[^\p{L}\p{N}-]/gu, '');
 
           // --- DETECCIÓN DE GÉNERO (NUEVO) ---
           let genre = '';
