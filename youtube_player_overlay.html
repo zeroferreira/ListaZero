@@ -1172,6 +1172,65 @@
     }
   }
 
+  // Elemento visual flotante para desbloquear el autoplay en navegadores
+  let autoplayBanner = null;
+
+  function showAutoplayUnlockBanner() {
+    if (autoplayBanner) return;
+    autoplayBanner = document.createElement('div');
+    autoplayBanner.id = 'autoplay-unlock-banner';
+    autoplayBanner.style.position = 'fixed';
+    autoplayBanner.style.top = '15px';
+    autoplayBanner.style.left = '50%';
+    autoplayBanner.style.transform = 'translateX(-50%)';
+    autoplayBanner.style.background = 'rgba(239, 68, 68, 0.95)';
+    autoplayBanner.style.color = '#fff';
+    autoplayBanner.style.padding = '10px 20px';
+    autoplayBanner.style.borderRadius = '8px';
+    autoplayBanner.style.fontSize = '12px';
+    autoplayBanner.style.fontWeight = '700';
+    autoplayBanner.style.zIndex = '999999';
+    autoplayBanner.style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)';
+    autoplayBanner.style.cursor = 'pointer';
+    autoplayBanner.style.pointerEvents = 'auto';
+    autoplayBanner.style.textAlign = 'center';
+    autoplayBanner.innerHTML = '🔊 Clic aquí para activar sonido / desbloquear reproductor';
+    
+    autoplayBanner.addEventListener('click', () => {
+      console.log('[Autoplay Banner] Desbloqueo manual disparado');
+      try {
+        if (ytPlayer) {
+          ytPlayer.playVideo();
+          updatePlayerMuteState(currentVolume);
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+      hideAutoplayUnlockBanner();
+    });
+    document.body.appendChild(autoplayBanner);
+  }
+
+  function hideAutoplayUnlockBanner() {
+    if (autoplayBanner) {
+      autoplayBanner.remove();
+      autoplayBanner = null;
+    }
+  }
+
+  // Listener de clic en toda la pantalla para autocuración de audio al primer clic del DJ/Usuario
+  document.body.style.pointerEvents = 'auto';
+  document.body.addEventListener('click', () => {
+    console.log('[Global Click] Intento de desbloqueo de audio...');
+    try {
+      if (ytPlayer && typeof ytPlayer.playVideo === 'function') {
+        ytPlayer.playVideo();
+        updatePlayerMuteState(currentVolume);
+      }
+    } catch(e) {}
+    hideAutoplayUnlockBanner();
+  });
+
   function startWatchdog() {
     if (watchdogInterval) clearInterval(watchdogInterval);
     watchdogInterval = setInterval(() => {
@@ -1179,6 +1238,7 @@
       if (currentState !== 'playing' || !ytPlayer || typeof ytPlayer.getPlayerState !== 'function') {
         stuckCount = 0;
         stuckTimeCount = 0;
+        hideAutoplayUnlockBanner();
         return;
       }
 
@@ -1187,58 +1247,59 @@
 
       console.log(`[Watchdog] Estado YT: ${ytState}, Tiempo: ${currentTime}s (Esperado: PLAYING, Objetivo: ${elapsedSec}s)`);
 
-      // CASO 1: El video debería estar reproduciendo pero se pausó (2), no inició (-1) o está canteado (5)
+      // 1. Si está reproduciendo (1), ocultamos banner de desbloqueo y reseteamos contadores
+      if (ytState === 1) {
+        stuckCount = 0;
+        stuckTimeCount = 0;
+        hideAutoplayUnlockBanner();
+        return;
+      }
+
+      // 2. Si está en BUFFERING (3), no incrementamos el contador de congelamiento de frame (Caso 2),
+      // pero sí permitimos un conteo independiente muy largo para el caso de buffer colgado de red (20s).
+      if (ytState === 3) {
+        stuckCount = 0;
+        stuckTimeCount++;
+        if (stuckTimeCount >= 10) { // 20 segundos continuos en buffering
+          console.error(`[Watchdog] Crítico: Buffer colgado por más de 20s. Recargando player...`);
+          stuckTimeCount = 0;
+          const targetTime = currentTime > 0 ? currentTime + 1 : (elapsedSec > 0 ? elapsedSec : 0);
+          logWatchdogEvent('recovery', `Buffer colgado. Recargando en ${Math.round(targetTime)}s.`);
+          createOrLoadPlayer(currentVideoId, 'playing', targetTime);
+        }
+        return;
+      }
+
+      // CASO 1: El video debería estar reproduciendo pero está pausado (2), no inició (-1) o está cued (5)
       if (ytState === 2 || ytState === -1 || ytState === 5) {
         stuckCount++;
-        console.warn(`[Watchdog] Alerta: El reproductor está en estado ${ytState} en lugar de PLAYING. Reintento ${stuckCount}/3...`);
-        
-        logWatchdogEvent('warning', `Detenido en estado ${ytState}. Reintento ${stuckCount}/3.`);
+        console.warn(`[Watchdog] Alerta: El reproductor está en estado ${ytState} en lugar de PLAYING. Reintento ${stuckCount}...`);
 
         // Intentar dar play
         try {
           ytPlayer.playVideo();
+          updatePlayerMuteState(currentVolume);
         } catch (e) {
           console.warn('[Watchdog] Error al dar playVideo:', e);
         }
 
-        if (stuckCount >= 3) {
-          console.error(`[Watchdog] Crítico: El reproductor sigue sin reproducir tras 3 intentos. Forzando reinicio de la instancia...`);
+        // Si llevamos más de 2 intentos (4s) y sigue sin avanzar, es muy probable que sea autoplay bloqueado.
+        if (stuckCount >= 2) {
+          showAutoplayUnlockBanner();
+        }
+
+        // Solo recrear el reproductor si realmente está en un estado corrupto o no responde por más de 16 segundos (8 ticks)
+        // y no es un tema de interacción del usuario (banner visible).
+        if (stuckCount >= 8) {
+          console.error(`[Watchdog] Crítico: El reproductor no responde tras 16s en estado ${ytState}. Forzando reinicio...`);
           stuckCount = 0;
-          
+          hideAutoplayUnlockBanner();
           const targetTime = currentTime > 0 ? currentTime : (elapsedSec > 0 ? elapsedSec : 0);
-          logWatchdogEvent('recovery', `Player no responde tras 3 reintentos. Recreando player en el segundo ${Math.round(targetTime)}s.`);
-          
-          // Reconstrucción de emergencia: Recrea el player desde la última posición conocida
+          logWatchdogEvent('recovery', `Player colgado en estado ${ytState}. Recreando en segundo ${Math.round(targetTime)}s.`);
           createOrLoadPlayer(currentVideoId, 'playing', targetTime);
         }
       } else {
-        stuckCount = 0; // Resetear contador si no está atascado
-      }
-
-      // CASO 2: El reproductor está en PLAYING (1) o BUFFERING (3), pero el segundero no avanza (Frames congelados / Buffer infinito)
-      if (ytState === 1 || ytState === 3) {
-        if (currentTime === lastTimeChecked && currentTime !== -1) {
-          stuckTimeCount++;
-          console.warn(`[Watchdog] Alerta: El video está congelado en el segundo ${currentTime}. Conteo: ${stuckTimeCount}/5`);
-          
-          if (stuckTimeCount === 2) {
-            logWatchdogEvent('warning', `Video congelado en segundo ${currentTime}. Evaluando buffer...`);
-          }
-
-          if (stuckTimeCount >= 5) {
-            console.error(`[Watchdog] Crítico: Reproducción congelada o buffer infinito por más de 10s. Forzando recarga de player...`);
-            stuckTimeCount = 0;
-            // Adelantamos 1 segundo para saltar cualquier frame/fragmento de video corrupto en YouTube
-            const targetTime = currentTime > 0 ? currentTime + 1 : (elapsedSec > 0 ? elapsedSec : 0);
-            logWatchdogEvent('recovery', `Buffer infinito / Frame congelado detectado en ${Math.round(currentTime)}s. Forzando recarga de player con salto de +1s.`);
-            createOrLoadPlayer(currentVideoId, 'playing', targetTime);
-          }
-        } else {
-          stuckTimeCount = 0;
-          lastTimeChecked = currentTime;
-        }
-      } else {
-        stuckTimeCount = 0;
+        stuckCount = 0;
       }
     }, 2000);
   }
