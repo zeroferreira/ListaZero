@@ -2170,6 +2170,64 @@ function startBot() {
         }
     });
 
+    // Endpoint para simular likes de prueba que SÍ extienden el timer
+    app.post('/api/timer/test/like', async (req, res) => {
+        try {
+            const { user = 'SimuladorLiker', likes = 100, seconds } = req.body || {};
+            const randomId = Math.floor(Math.random() * 70) + 1;
+            const avatarUrl = `https://i.pravatar.cc/100?img=${randomId}`;
+            const finalLikes = Number(likes) || 100;
+
+            // 1. Alert message template replacement
+            const docSnap = await getDocFn(docFn(db, 'systemConfig', 'overlayAlertsConfig'));
+            const overlayConfig = docSnap.exists() ? docSnap.data() : {};
+            const likesMsg = overlayConfig.likesAlertMsg || "¡Envió {likes} likes! ❤️";
+            const customMsg = likesMsg
+                .replace(/{user}/g, user)
+                .replace(/{likes}/g, finalLikes.toLocaleString());
+
+            // 2. Add like notification to firestore (Alert overlay triggers)
+            if (db) {
+                await addDoc(collectionFn(db, 'notifications'), {
+                    type: 'like',
+                    user: user,
+                    uniqueId: user.toLowerCase(),
+                    profilePic: avatarUrl,
+                    likes: finalLikes,
+                    message: customMsg,
+                    isTest: true,
+                    timestamp: serverTimestampFn()
+                });
+            }
+
+            // 3. Extend countdown timer
+            let extendedSec = 0;
+            if (timerState.state === 'running' && timerState.endsAt) {
+                // Si seconds se provee explícito, usarlo. Si no, usar la fórmula (likes * secondsPerLike)
+                const secPerLike = Number(timerState.secondsPerLike) > 0 ? Number(timerState.secondsPerLike) : 0.05; // default fallback para prueba
+                extendedSec = Number(seconds) || (finalLikes * secPerLike);
+
+                if (extendedSec > 0) {
+                    if (timerState.multiplierEnabled && Number(timerState.multiplierValue) > 0) {
+                        extendedSec *= Number(timerState.multiplierValue);
+                    }
+                    timerState.endsAt += Math.round(extendedSec * 1000);
+                    await saveTimerToFirestore();
+                    console.log(`⏱️ [SIMULACIÓN] Timer extendido +${extendedSec.toFixed(2)}s por ${finalLikes} likes de ${user}`);
+                }
+            }
+
+            res.json({ 
+                success: true, 
+                extended: extendedSec > 0, 
+                extendedSeconds: extendedSec, 
+                endsAt: timerState.endsAt 
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     // Obtener configuración de estilos del feed de últimos eventos
     app.get('/api/lastevents/config', async (req, res) => {
         try {
@@ -5110,7 +5168,7 @@ async function handleSongRequest(user, query, options = {}) {
         const hh = String(now.getHours()).padStart(2, '0');
         const mm = String(now.getMinutes()).padStart(2, '0');
         const hora = `${hh}:${mm}`;
-        const songId = `${user}-${songName}-${artistName}-${hora}`.replace(/[^a-zA-Z0-9-]/g, '');
+        const songId = `${user}-${songName}-${artistName}-${hora}`.replace(/[^\p{L}\p{N}-]/gu, '');
         const currentDay = getLocalDateKey();
         const liveCodeEnv = String(process.env.ZEROFM_LIVE_CODE || '').trim();
         const liveCodeStatus = String(await getLiveCodeCached() || '').trim();
