@@ -7327,6 +7327,35 @@ function shouldShowStatsTicker() {
         }
       }
 
+      // ===== SESIÓN DE LIVE (para cooldown once_per_live) =====
+      // window.currentLiveSessionId almacena el ID del live activo.
+      // Se lee de systemConfig/currentLiveSession en Firestore.
+      // Si no existe, se crea automáticamente al primer canje, usando la fecha del día.
+      window.currentLiveSessionId = null;
+
+      async function loadCurrentLiveSession() {
+        if (!window.db) return;
+        try {
+          const doc = await window.db.collection('systemConfig').doc('currentLiveSession').get();
+          if (doc.exists && doc.data().sessionId) {
+            window.currentLiveSessionId = doc.data().sessionId;
+          } else {
+            // Crear sesión automática basada en la fecha del día
+            const autoId = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+            await window.db.collection('systemConfig').doc('currentLiveSession').set({
+              sessionId: autoId,
+              startedAt: new Date().toISOString(),
+              autoCreated: true
+            });
+            window.currentLiveSessionId = autoId;
+          }
+          console.log('🔴 Sesión de LIVE activa:', window.currentLiveSessionId);
+        } catch (e) {
+          console.warn('Error leyendo sesión de live:', e);
+          window.currentLiveSessionId = new Date().toISOString().slice(0, 10);
+        }
+      }
+
       // Cargar al inicio (enganchado a DOMContentLoaded)
       document.addEventListener('DOMContentLoaded', () => {
         // Intentar cargar configuración inmediatamente si db está listo, o reintentar brevemente
@@ -7335,6 +7364,7 @@ function shouldShowStatsTicker() {
             // Cargar alias primero para que normalización funcione
             try { await loadUserAliases(); } catch (_) { }
             try { await loadRewardsConfig(); } catch (_) { }
+            try { await loadCurrentLiveSession(); } catch (_) { }
           } else {
             setTimeout(initRewards, 500);
           }
@@ -15072,6 +15102,8 @@ function shouldShowStatsTicker() {
         if (cooldownSelect) {
           cooldownSelect.value = window.rewardsCooldownType || '36_hours';
         }
+        // Mostrar info de sesión de LIVE actual
+        updateLiveSessionInfoDisplay();
 
         const container = document.getElementById('rewards-config-list');
         if (!container) return;
@@ -15140,6 +15172,40 @@ function shouldShowStatsTicker() {
           alert('❌ Error al guardar: ' + e.message);
         }
       };
+
+      // ===== REINICIO DE SESIÓN DE LIVE =====
+      window.resetLiveSession = async function() {
+        if (!window.db) { alert('Sin conexión a base de datos.'); return; }
+        if (!confirm('¿Iniciar un nuevo LIVE? Esto permitirá a todos los usuarios canjear nuevamente las recompensas de tipo "1 vez por LIVE".')) return;
+        try {
+          const newSessionId = new Date().toISOString(); // Timestamp único para este live
+          await window.db.collection('systemConfig').doc('currentLiveSession').set({
+            sessionId: newSessionId,
+            startedAt: new Date().toISOString(),
+            autoCreated: false
+          });
+          window.currentLiveSessionId = newSessionId;
+          const infoEl = document.getElementById('live-session-info');
+          if (infoEl) infoEl.textContent = `Sesión activa: ${new Date(newSessionId).toLocaleString()}`;
+          alert('✅ Nuevo LIVE iniciado. Los usuarios pueden volver a canjear.');
+        } catch (e) {
+          alert('❌ Error: ' + e.message);
+        }
+      };
+
+      // Mostrar info de sesión actual en el panel cuando se carga la config
+      function updateLiveSessionInfoDisplay() {
+        const infoEl = document.getElementById('live-session-info');
+        if (!infoEl) return;
+        if (window.currentLiveSessionId) {
+          const d = new Date(window.currentLiveSessionId);
+          infoEl.textContent = isNaN(d.getTime())
+            ? `Sesión activa: ${window.currentLiveSessionId}`
+            : `Sesión activa desde: ${d.toLocaleString()}`;
+        } else {
+          infoEl.textContent = 'Sin sesión de LIVE activa.';
+        }
+      }
 
       // Listener para cambiar tabs (versión robusta)
       // Asegurarse de limpiar listeners anteriores si los hubiera (aunque es script inline)
@@ -15282,7 +15348,16 @@ function shouldShowStatsTicker() {
           let cooldownLabel = '';
           let cooldownDetailMsg = '36 horas entre usos.';
 
-          if (userStatsDoc && userStatsDoc.lastRedeemedAt && userStatsDoc.lastRedeemedAt[reward.id]) {
+          if (cooldownType === 'once_per_live') {
+            // Verificar si ya canjeó en el live actual
+            const redeemedSessions = (userStatsDoc && userStatsDoc.lastRedeemedSessionId) || {};
+            const sessionId = window.currentLiveSessionId || new Date().toISOString().slice(0, 10);
+            if (redeemedSessions[reward.id] === sessionId) {
+              isOnCooldown = true;
+              cooldownLabel = 'Ya canjeado';
+              cooldownDetailMsg = '1 vez por LIVE (el admin puede reiniciar el live para permitir nuevos canjes).';
+            }
+          } else if (userStatsDoc && userStatsDoc.lastRedeemedAt && userStatsDoc.lastRedeemedAt[reward.id]) {
             const lastRedeemStr = userStatsDoc.lastRedeemedAt[reward.id];
             
             if (cooldownType === 'once_per_day') {
@@ -15376,7 +15451,17 @@ function shouldShowStatsTicker() {
 
           // Validación de Cooldown dinámico en el momento del canje (doble check)
           const cooldownType = window.rewardsCooldownType || '36_hours';
-          if (userLastRedeemed[rewardId]) {
+          if (cooldownType === 'once_per_live') {
+            // Doble-check: leer desde Firestore para evitar condiciones de carrera
+            const freshDoc = await userDocRef.get();
+            const freshSessions = (freshDoc.exists && freshDoc.data().lastRedeemedSessionId) || {};
+            const sessionId = window.currentLiveSessionId || new Date().toISOString().slice(0, 10);
+            if (freshSessions[rewardId] === sessionId) {
+              showErrorNotification('Ya canjeaste esta recompensa en este LIVE. Solo se permite 1 vez por sesión en vivo.');
+              if (btn) { btn.disabled = true; btn.textContent = 'Ya canjeado'; }
+              return;
+            }
+          } else if (userLastRedeemed[rewardId]) {
             const lastRedeemStr = userLastRedeemed[rewardId];
             if (cooldownType === 'once_per_day') {
               const lastDate = new Date(lastRedeemStr);
@@ -15476,6 +15561,9 @@ function shouldShowStatsTicker() {
           };
           // Guardar el timestamp de este canje específico
           updatePayload[`lastRedeemedAt.${rewardId}`] = new Date().toISOString();
+          // Guardar el ID de sesión de live para el cooldown once_per_live
+          const liveSessionId = window.currentLiveSessionId || new Date().toISOString().slice(0, 10);
+          updatePayload[`lastRedeemedSessionId.${rewardId}`] = liveSessionId;
 
           batch.set(userDocRef, updatePayload, { merge: true });
 
