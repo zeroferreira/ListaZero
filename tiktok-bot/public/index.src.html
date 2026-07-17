@@ -2432,6 +2432,7 @@
             const [playedState, setPlayedState] = React.useState({ songs: new Set(), skipped: new Set() });
             const [activeVideo, setActiveVideo] = React.useState({ state: 'ended', videoId: '', title: '', volume: 100 });
             const [ytProgress, setYtProgress] = React.useState({ elapsed: 0, duration: 0 });
+            const [ytManualUrl, setYtManualUrl] = React.useState('');
 
             React.useEffect(() => {
                 let unsubPlayed = () => {};
@@ -2621,6 +2622,33 @@
                     if (typeof showToast === 'function') {
                         showToast('Error: ' + e.message, 'error');
                     }
+                }
+            };
+
+            const handlePlayManualYoutubeUrl = async () => {
+                if (!window.db) return;
+                const raw = ytManualUrl.trim();
+                if (!raw) return;
+                // Extract video ID from any youtube link format
+                const m = raw.match(/(?:youtu\.be\/|v\/|watch\?v=|shorts\/)([^#&?]{11})/);
+                const videoId = m ? m[1] : (raw.length === 11 ? raw : null);
+                if (!videoId) {
+                    alert('Link de YouTube no válido. Pega una URL completa de YouTube o un ID de 11 caracteres.');
+                    return;
+                }
+                try {
+                    await window.db.collection('systemConfig').doc('activeYoutubeVideo').set({
+                        videoId: videoId,
+                        title: 'Video Manual',
+                        artist: 'Zero FM',
+                        requester: 'Streamer',
+                        state: 'playing',
+                        timestamp: Date.now()
+                    });
+                    setYtManualUrl('');
+                    if (typeof showToast === 'function') showToast('▶ Reproduciendo video en OBS', 'success');
+                } catch (e) {
+                    alert('Error al reproducir: ' + e.message);
                 }
             };
 
@@ -11184,6 +11212,62 @@
                                                 <div className="player-tip-box" style={{ padding: '12px', background: 'rgba(255,255,255,0.01)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                                                     💡 <strong>Tip de control:</strong> Al hacer clic en <em>Detener / Saltar</em> se terminará el video en curso y el bot pasará automáticamente a reproducir la siguiente canción disponible en la cola (si la reproducción automática está activa).
                                                 </div>
+                                            </div>
+
+                                            {/* Manual URL Player */}
+                                            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(168,85,247,0.04) 100%)', border: '1px solid rgba(16,185,129,0.18)' }}>
+                                                <h4 style={{ margin: 0, color: '#34d399', display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.95rem' }}>
+                                                    🔗 Reproducir Video por URL
+                                                </h4>
+                                                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem', margin: 0, lineHeight: '1.5' }}>
+                                                    Pega cualquier link de YouTube (normal, Shorts o ID) y se reproducirá directamente en el overlay de OBS.
+                                                </p>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="https://youtu.be/... o https://youtube.com/watch?v=..."
+                                                        value={ytManualUrl}
+                                                        onChange={(e) => setYtManualUrl(e.target.value)}
+                                                        onKeyDown={(e) => { if (e.key === 'Enter') handlePlayManualYoutubeUrl(); }}
+                                                        style={{ flex: 1, padding: '9px 12px', fontSize: '0.82rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', outline: 'none' }}
+                                                    />
+                                                    <button
+                                                        onClick={handlePlayManualYoutubeUrl}
+                                                        disabled={!ytManualUrl.trim()}
+                                                        style={{
+                                                            padding: '9px 16px',
+                                                            background: ytManualUrl.trim() ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.05)',
+                                                            border: 'none',
+                                                            borderRadius: '8px',
+                                                            color: ytManualUrl.trim() ? '#fff' : 'rgba(255,255,255,0.25)',
+                                                            cursor: ytManualUrl.trim() ? 'pointer' : 'not-allowed',
+                                                            fontWeight: '700',
+                                                            fontSize: '0.82rem',
+                                                            whiteSpace: 'nowrap',
+                                                            transition: 'all 0.2s ease',
+                                                            boxShadow: ytManualUrl.trim() ? '0 4px 12px rgba(16,185,129,0.35)' : 'none'
+                                                        }}
+                                                    >
+                                                        ▶ Reproducir
+                                                    </button>
+                                                </div>
+                                                {ytManualUrl.trim() && (() => {
+                                                    const m = ytManualUrl.match(/(?:youtu\.be\/|v\/|watch\?v=|shorts\/)([^#&?]{11})/);
+                                                    const vid = m ? m[1] : (ytManualUrl.trim().length === 11 ? ytManualUrl.trim() : null);
+                                                    return vid ? (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px' }}>
+                                                            <img src={`https://img.youtube.com/vi/${vid}/default.jpg`} alt="" style={{ width: '48px', height: '36px', borderRadius: '4px', objectFit: 'cover' }} />
+                                                            <div style={{ fontSize: '0.72rem', color: '#6ee7b7' }}>
+                                                                <div style={{ fontWeight: '700' }}>✅ ID detectado: <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: '4px' }}>{vid}</code></div>
+                                                                <div style={{ color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>Preview de miniatura del video</div>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{ fontSize: '0.72rem', color: '#fca5a5', padding: '6px 10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px' }}>
+                                                            ⚠️ No se reconoce un ID de YouTube válido en este link.
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
 
                                             {/* Column 2: Peticiones por YouTube */}
