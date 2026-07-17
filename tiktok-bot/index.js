@@ -1954,13 +1954,24 @@ function startBot() {
 
     // Resetear contadores de metas
     app.post('/api/goals/reset', async (req, res) => {
-        sessionFollows.clear();
-        sessionShares.clear();
-        sessionLikes.clear();
-        sessionTotalCoins = 0;
-        likesGoalStartOffset = streamTotalLikesCounter;
+        const type = (req.body && req.body.type) || (req.query && req.query.type) || 'all';
+
+        if (type === 'likes' || type === 'all') {
+            sessionLikes.clear();
+            likesGoalStartOffset = streamTotalLikesCounter;
+        }
+        if (type === 'follows' || type === 'all') {
+            sessionFollows.clear();
+        }
+        if (type === 'shares' || type === 'all') {
+            sessionShares.clear();
+        }
+        if (type === 'coins' || type === 'all') {
+            sessionTotalCoins = 0;
+        }
+
         syncSessionCountersToFirestore();
-        res.json({ success: true });
+        res.json({ success: true, type });
     });
 
     // Resetear ranking de likes

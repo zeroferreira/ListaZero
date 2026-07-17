@@ -915,6 +915,7 @@
         // Timer references
         let confettiTimeout = null;
         let completeTimeout = null;
+        let autoResetTimeout = null;  // Auto-reset timer after goal completion
 
         // Unsubscribe references
         let unsubConfig     = null;
@@ -1329,9 +1330,32 @@
                         card.classList.add('complete');
                         startConfetti();
                         wasComplete = true;
+
+                        // ── Auto-reset after 8 s so the next goal cycle begins ──
+                        if (autoResetTimeout) clearTimeout(autoResetTimeout);
+                        autoResetTimeout = setTimeout(async () => {
+                            autoResetTimeout = null;
+                            try {
+                                // Determine bot base URL (same origin or injected)
+                                const botBase = window.BOT_BASE_URL || '';
+                                await fetch(botBase + '/api/goals/reset?type=' + encodeURIComponent(cfg.goalType), { method: 'POST' });
+                                console.log(`[Goal] Auto-reset completado para ${cfg.goalType} — nueva meta iniciada ✓`);
+                            } catch (e) {
+                                console.warn('[Goal] Auto-reset falló:', e);
+                            }
+                            // Reset visual state
+                            card.classList.remove('complete');
+                            stopConfetti();
+                            wasComplete = false;
+                        }, 8000);
                     }
                 } else {
+                    // Progress dropped below 100% (e.g. after a manual reset)
                     if (wasComplete) {
+                        if (autoResetTimeout) {
+                            clearTimeout(autoResetTimeout);
+                            autoResetTimeout = null;
+                        }
                         card.classList.remove('complete');
                         stopConfetti();
                         wasComplete = false;
