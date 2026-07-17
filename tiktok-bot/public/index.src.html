@@ -2267,6 +2267,13 @@
                 }
             };
 
+            const fmtTime = (s) => {
+                if (!s || isNaN(s)) return '0:00';
+                const m = Math.floor(s / 60);
+                const sec = Math.floor(s % 60);
+                return `${m}:${String(sec).padStart(2, '0')}`;
+            };
+
             const handleStopActiveYoutubeVideo = async () => {
                 try {
                     const iframe = document.getElementById('iframe-ytplayer');
@@ -2420,6 +2427,7 @@
             const [pendingRequests, setPendingRequests] = React.useState([]);
             const [playedState, setPlayedState] = React.useState({ songs: new Set(), skipped: new Set() });
             const [activeVideo, setActiveVideo] = React.useState({ state: 'ended', videoId: '', title: '', volume: 100 });
+            const [ytProgress, setYtProgress] = React.useState({ elapsed: 0, duration: 0 });
 
             React.useEffect(() => {
                 let unsubPlayed = () => {};
@@ -2492,6 +2500,7 @@
                                 const data = doc.data();
                                 const vid = data.videoId || '';
                                 const coverUrl = vid ? `https://img.youtube.com/vi/${vid.length === 11 ? vid : (vid.match(/(?:v=|youtu\.be\/)([^&?]{11})/)?.[1] || vid)}/hqdefault.jpg` : '';
+                                const isEnded = (data.state === 'ended');
                                 setActiveVideo({
                                     state: data.state || 'ended',
                                     videoId: vid,
@@ -2501,8 +2510,13 @@
                                     requester: data.requester || '',
                                     volume: typeof data.volume === 'number' ? data.volume : 100
                                 });
+                                setYtProgress(prev => ({
+                                    elapsed: isEnded ? 0 : (typeof data.elapsed === 'number' ? data.elapsed : prev.elapsed),
+                                    duration: isEnded ? 0 : (typeof data.duration === 'number' ? data.duration : prev.duration)
+                                }));
                             } else {
                                 setActiveVideo({ state: 'ended', videoId: '', title: '', artist: '', cover: '', requester: '', volume: 100 });
+                                setYtProgress({ elapsed: 0, duration: 0 });
                             }
                         }, err => {
                             console.warn("Error loading active video status:", err);
@@ -2550,6 +2564,10 @@
                         if (event.data.subTab) {
                             setActiveControlSub(event.data.subTab);
                         }
+                    }
+                    if (event.data && event.data.action === 'ytPlayerProgress') {
+                        const { elapsed, duration } = event.data.payload || {};
+                        setYtProgress({ elapsed: elapsed || 0, duration: duration || 0 });
                     }
                 };
                 window.addEventListener('message', handleMessage);
@@ -10869,6 +10887,58 @@
 
                                                 {/* Unified Media Player Controls (Spotify-style) */}
                                                 <div className="media-player-controls-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 15px', background: 'rgba(0,0,0,0.3)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.06)', gap: '15px', width: '100%' }}>
+                                                    {/* Progress Seek Bar */}
+                                                    {activeVideo && activeVideo.videoId && (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', maxWidth: '380px', marginBottom: '5px' }}>
+                                                            <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', width: '35px', textAlign: 'right', fontFamily: 'monospace' }}>
+                                                                {fmtTime(ytProgress.elapsed)}
+                                                            </span>
+                                                            <input 
+                                                                type="range" 
+                                                                min="0" 
+                                                                max={ytProgress.duration || 100} 
+                                                                value={ytProgress.elapsed || 0} 
+                                                                onChange={async (e) => {
+                                                                    const targetSec = parseInt(e.target.value);
+                                                                    setYtProgress(prev => ({ ...prev, elapsed: targetSec }));
+                                                                    
+                                                                    // 1. Enviar el postMessage al iframe local para respuesta instantánea
+                                                                    const iframe = document.getElementById('iframe-ytplayer');
+                                                                    if (iframe && iframe.contentWindow) {
+                                                                        iframe.contentWindow.postMessage({
+                                                                            action: 'ytSeek',
+                                                                            payload: { elapsed: targetSec }
+                                                                        }, '*');
+                                                                    }
+                                                                    
+                                                                    // 2. Actualizar en Firestore para los reproductores remotos (ej: OBS)
+                                                                    if (window.db) {
+                                                                        try {
+                                                                            await window.db.collection('systemConfig').doc('activeYoutubeVideo').update({
+                                                                                elapsed: targetSec,
+                                                                                timestamp: Date.now()
+                                                                            });
+                                                                        } catch (err) {
+                                                                            console.warn('[Dashboard Seek] Firestore sync failed:', err);
+                                                                        }
+                                                                    }
+                                                                }}
+                                                                style={{ 
+                                                                    flex: 1, 
+                                                                    height: '4px', 
+                                                                    background: `linear-gradient(to right, #a78bfa 0%, #a78bfa ${ytProgress.duration > 0 ? (ytProgress.elapsed / ytProgress.duration * 100) : 0}%, rgba(255,255,255,0.1) ${ytProgress.duration > 0 ? (ytProgress.elapsed / ytProgress.duration * 100) : 0}%, rgba(255,255,255,0.1) 100%)`,
+                                                                    borderRadius: '2px', 
+                                                                    outline: 'none', 
+                                                                    cursor: 'pointer',
+                                                                    WebkitAppearance: 'none'
+                                                                }}
+                                                                className="progress-seek-slider"
+                                                            />
+                                                            <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', width: '35px', textAlign: 'left', fontFamily: 'monospace' }}>
+                                                                {fmtTime(ytProgress.duration)}
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: '30px', width: '100%', marginBottom: '5px' }}>
                                                         {/* Control 1: Detener */}
                                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '65px' }}>
