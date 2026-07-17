@@ -660,11 +660,6 @@
   }
 
   // ─── YouTube Iframe API Loader ────────────────
-  const tag = document.createElement('script');
-  tag.src = "https://www.youtube.com/iframe_api";
-  const firstScriptTag = document.getElementsByTagName('script')[0];
-  firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
   window.onYouTubeIframeAPIReady = function() {
     isYtApiReady = true;
     console.log("🎥 API de YouTube lista");
@@ -675,6 +670,26 @@
       pendingTargetState = null;
     }
   };
+
+  // Check if YouTube API is already loaded in the window
+  if (window.YT && typeof window.YT.Player === 'function') {
+    isYtApiReady = true;
+    console.log("🎥 API de YouTube ya estaba cargada");
+    if (pendingVideoId) {
+      createOrLoadPlayer(pendingVideoId, pendingTargetState || 'playing');
+      pendingVideoId = null;
+      pendingTargetState = null;
+    }
+  } else {
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    if (firstScriptTag && firstScriptTag.parentNode) {
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    } else {
+      document.head.appendChild(tag);
+    }
+  }
 
   function createOrLoadPlayer(videoId, targetState, startTime) {
     isYtReady = false; // Reset player ready state
@@ -1008,7 +1023,7 @@
 
     // Sync YT audio player state (una sola vez, evita race conditions)
     if (videoChanged) {
-      createOrLoadPlayer(vid, data.state || 'playing');
+      createOrLoadPlayer(vid, data.state || 'playing', elapsedSec);
     } else {
       syncPlayerState(data.state || 'playing', vid);
       updatePlayerMuteState(currentVolume);

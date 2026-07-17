@@ -240,6 +240,10 @@ if (!fs.existsSync(PROFILE_FB_CONFIG_FILE)) {
 const CONFIG_FILE = PROFILE_CONFIG_FILE;
 
 let overlayAlertsConfig = {
+    controlShowGoals: false,
+    controlShowLikesLock: false,
+    controlShowTimer: false,
+    controlShowAlerts: false,
     minLikesAlert: 100,
     likesAlertMsg: "¡Envió {likes} likes! ❤️",
     minCoinsAlert: 1,
