@@ -1246,6 +1246,20 @@
             const [activeProfile, setActiveProfile] = React.useState('zeroferreira');
             const [isEditingUsername, setIsEditingUsername] = React.useState(false);
             
+            // Estados y referencias para evitar conflictos al arrastrar controles del reproductor de YouTube
+            const [isDraggingYtProgress, setIsDraggingYtProgress] = React.useState(false);
+            const [isDraggingYtVolume, setIsDraggingYtVolume] = React.useState(false);
+            const isDraggingYtProgressRef = React.useRef(false);
+            const isDraggingYtVolumeRef = React.useRef(false);
+            
+            React.useEffect(() => {
+                isDraggingYtProgressRef.current = isDraggingYtProgress;
+            }, [isDraggingYtProgress]);
+            
+            React.useEffect(() => {
+                isDraggingYtVolumeRef.current = isDraggingYtVolume;
+            }, [isDraggingYtVolume]);
+            
             // Bienvenidas Personalizadas & Registro de Entradas
             const [liveUsers, setLiveUsers] = React.useState([]);
             const [liveUsersSearchQuery, setLiveUsersSearchQuery] = React.useState('');
@@ -2498,7 +2512,6 @@
                         }, err => {
                             console.warn("Error loading active solicitudes:", err);
                         });
-
                         // 3. Escuchar activeYoutubeVideo
                         unsubActiveVideo = db.collection('systemConfig').doc('activeYoutubeVideo').onSnapshot((doc) => {
                             if (doc.exists && doc.data()) {
@@ -2506,22 +2519,36 @@
                                 const vid = data.videoId || '';
                                 const coverUrl = vid ? `https://img.youtube.com/vi/${vid.length === 11 ? vid : (vid.match(/(?:v=|youtu\.be\/)([^&?]{11})/)?.[1] || vid)}/hqdefault.jpg` : '';
                                 const isEnded = (data.state === 'ended');
-                                setActiveVideo({
-                                    state: data.state || 'ended',
-                                    videoId: vid,
-                                    title: data.title || '',
-                                    artist: data.artist || 'YouTube Creator',
-                                    cover: data.cover || coverUrl,
-                                    requester: data.requester || '',
-                                    volume: typeof data.volume === 'number' ? data.volume : 100
+                                
+                                setActiveVideo(prev => {
+                                    const nextVol = typeof data.volume === 'number' ? data.volume : 100;
+                                    return {
+                                        state: data.state || 'ended',
+                                        videoId: vid,
+                                        title: data.title || '',
+                                        artist: data.artist || 'YouTube Creator',
+                                        cover: data.cover || coverUrl,
+                                        requester: data.requester || '',
+                                        volume: isDraggingYtVolumeRef.current ? prev.volume : nextVol
+                                    };
                                 });
-                                setYtProgress(prev => ({
-                                    elapsed: isEnded ? 0 : (typeof data.elapsed === 'number' ? data.elapsed : prev.elapsed),
-                                    duration: isEnded ? 0 : (typeof data.duration === 'number' ? data.duration : prev.duration)
-                                }));
+
+                                setYtProgress(prev => {
+                                    const nextElapsed = isEnded ? 0 : (typeof data.elapsed === 'number' ? data.elapsed : prev.elapsed);
+                                    return {
+                                        elapsed: isDraggingYtProgressRef.current ? prev.elapsed : nextElapsed,
+                                        duration: isEnded ? 0 : (typeof data.duration === 'number' ? data.duration : prev.duration)
+                                    };
+                                });
                             } else {
-                                setActiveVideo({ state: 'ended', videoId: '', title: '', artist: '', cover: '', requester: '', volume: 100 });
-                                setYtProgress({ elapsed: 0, duration: 0 });
+                                setActiveVideo(prev => {
+                                    if (isDraggingYtVolumeRef.current) return prev;
+                                    return { state: 'ended', videoId: '', title: '', artist: '', cover: '', requester: '', volume: 100 };
+                                });
+                                setYtProgress(prev => {
+                                    if (isDraggingYtProgressRef.current) return prev;
+                                    return { elapsed: 0, duration: 0 };
+                                });
                             }
                         }, err => {
                             console.warn("Error loading active video status:", err);
@@ -11010,11 +11037,12 @@
                                                                 min="0" 
                                                                 max={ytProgress.duration || 100} 
                                                                 value={ytProgress.elapsed || 0} 
-                                                                onChange={async (e) => {
+                                                                onChange={(e) => {
                                                                     const targetSec = parseInt(e.target.value);
+                                                                    setIsDraggingYtProgress(true);
                                                                     setYtProgress(prev => ({ ...prev, elapsed: targetSec }));
                                                                     
-                                                                    // 1. Enviar el postMessage al iframe local para respuesta instantánea
+                                                                    // Enviar el postMessage al iframe local para respuesta visual instantánea
                                                                     const iframe = document.getElementById('iframe-ytplayer');
                                                                     if (iframe && iframe.contentWindow) {
                                                                         iframe.contentWindow.postMessage({
@@ -11022,8 +11050,24 @@
                                                                             payload: { elapsed: targetSec }
                                                                         }, '*');
                                                                     }
-                                                                    
-                                                                    // 2. Actualizar en Firestore para los reproductores remotos (ej: OBS)
+                                                                }}
+                                                                onMouseUp={async (e) => {
+                                                                    const targetSec = parseInt(e.target.value);
+                                                                    setIsDraggingYtProgress(false);
+                                                                    if (window.db) {
+                                                                        try {
+                                                                            await window.db.collection('systemConfig').doc('activeYoutubeVideo').update({
+                                                                                elapsed: targetSec,
+                                                                                timestamp: Date.now()
+                                                                            });
+                                                                        } catch (err) {
+                                                                            console.warn('[Dashboard Seek] Firestore sync failed:', err);
+                                                                        }
+                                                                    }
+                                                                }}
+                                                                onTouchEnd={async (e) => {
+                                                                    const targetSec = parseInt(e.target.value);
+                                                                    setIsDraggingYtProgress(false);
                                                                     if (window.db) {
                                                                         try {
                                                                             await window.db.collection('systemConfig').doc('activeYoutubeVideo').update({
@@ -11182,19 +11226,35 @@
                                                                 <svg viewBox="0 0 24 24" width="16" height="16" stroke="#10b981" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
                                                             )}
                                                         </span>
-                                                        <input 
-                                                            type="range" 
-                                                            min="0" 
-                                                            max="100" 
-                                                            value={activeVideo.volume || 0} 
-                                                            onChange={(e) => {
-                                                                const val = parseInt(e.target.value);
-                                                                setActiveVideo(prev => ({ ...prev, volume: val }));
-                                                                handleSetActiveYoutubeVolume(val);
-                                                            }}
-                                                            style={{ 
-                                                                flex: 1, 
-                                                                height: '4px', 
+                                                         <input 
+                                                             type="range" 
+                                                             min="0" 
+                                                             max="100" 
+                                                             value={activeVideo.volume || 0} 
+                                                             onChange={(e) => {
+                                                                 const val = parseInt(e.target.value);
+                                                                 setIsDraggingYtVolume(true);
+                                                                 setActiveVideo(prev => ({ ...prev, volume: val }));
+                                                                 
+                                                                 // Enviar volumen al iframe de preview del dashboard para respuesta inmediata
+                                                                 const iframeObs = document.getElementById('iframe-ytplayer');
+                                                                 if (iframeObs && iframeObs.contentWindow) {
+                                                                     iframeObs.contentWindow.postMessage({ action: 'ytSetVolume', payload: { volume: val } }, '*');
+                                                                 }
+                                                             }}
+                                                             onMouseUp={async (e) => {
+                                                                 const val = parseInt(e.target.value);
+                                                                 setIsDraggingYtVolume(false);
+                                                                 handleSetActiveYoutubeVolume(val);
+                                                             }}
+                                                             onTouchEnd={async (e) => {
+                                                                 const val = parseInt(e.target.value);
+                                                                 setIsDraggingYtVolume(false);
+                                                                 handleSetActiveYoutubeVolume(val);
+                                                             }}
+                                                             style={{ 
+                                                                 flex: 1, 
+                                                                 height: '4px', 
                                                                 background: `linear-gradient(to right, #10b981 0%, #10b981 ${activeVideo.volume || 0}%, rgba(255,255,255,0.1) ${activeVideo.volume || 0}%, rgba(255,255,255,0.1) 100%)`,
                                                                 borderRadius: '2px', 
                                                                 outline: 'none', 

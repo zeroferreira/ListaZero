@@ -1065,6 +1065,18 @@ function startBot() {
         }
     }
     
+    // Cargar estado inicial del temporizador desde Firestore después de autenticarse
+    if (firebaseAuthPromise) {
+        firebaseAuthPromise.then(async () => {
+            console.log("⏰ Firebase autenticado. Cargando temporizador de Firestore...");
+            await loadTimerFromFirestore();
+        }).catch((err) => {
+            console.warn("⚠️ Error en auth al cargar temporizador:", err);
+        });
+    } else {
+        setTimeout(loadTimerFromFirestore, 1500);
+    }
+    
     // --- SANEAMIENTO AUTOMÁTICO DE PUNTOS INFLADOS ---
     // Ejecutar una vez al inicio para corregir usuarios con puntos de likes astronómicos
     setTimeout(async () => {
@@ -4477,6 +4489,72 @@ let timerState = {
     showMeta: true,
     showLabel: true
 };
+
+async function loadTimerFromFirestore() {
+    if (!db) return;
+    try {
+        const docRef = doc(db, 'systemConfig', 'timerConfig');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            
+            // Re-mapear campos a timerState
+            if (data.state !== undefined) {
+                if (data.state === 'running' && data.endsAt) {
+                    const ms = data.endsAt.toMillis ? data.endsAt.toMillis()
+                             : data.endsAt.seconds  ? data.endsAt.seconds * 1000
+                             : Number(data.endsAt);
+                    const remaining = ms - Date.now();
+                    if (remaining > 0) {
+                        timerState.state = 'running';
+                        timerState.endsAt = Date.now() + remaining;
+                        timerState.remainingOnPause = 0;
+                    } else {
+                        timerState.state = 'stopped';
+                        timerState.endsAt = null;
+                        timerState.remainingOnPause = 0;
+                    }
+                } else if (data.state === 'paused') {
+                    timerState.state = 'paused';
+                    timerState.remainingOnPause = Number(data.remainingOnPause) || 0;
+                    timerState.pausedAt = data.pausedAt ? (data.pausedAt.seconds ? data.pausedAt.seconds * 1000 : Number(data.pausedAt)) : Date.now();
+                    timerState.endsAt = null;
+                } else {
+                    timerState.state = 'stopped';
+                    timerState.endsAt = null;
+                    timerState.remainingOnPause = 0;
+                }
+            }
+            
+            if (data.label !== undefined) timerState.label = data.label;
+            if (data.primaryColor !== undefined) timerState.primaryColor = data.primaryColor;
+            if (data.secondsPerGift !== undefined) timerState.secondsPerGift = data.secondsPerGift;
+            if (data.secondsPerCoin !== undefined) timerState.secondsPerCoin = data.secondsPerCoin;
+            if (data.secondsPerFollow !== undefined) timerState.secondsPerFollow = data.secondsPerFollow;
+            if (data.secondsPerLike !== undefined) timerState.secondsPerLike = data.secondsPerLike;
+            if (data.secondsPerSubscribe !== undefined) timerState.secondsPerSubscribe = data.secondsPerSubscribe;
+            if (data.secondsPerShare !== undefined) timerState.secondsPerShare = data.secondsPerShare;
+            if (data.secondsPerChatMessage !== undefined) timerState.secondsPerChatMessage = data.secondsPerChatMessage;
+            if (data.multiplierEnabled !== undefined) timerState.multiplierEnabled = data.multiplierEnabled;
+            if (data.multiplierValue !== undefined) timerState.multiplierValue = data.multiplierValue;
+            if (data.actionOnExpiry !== undefined) timerState.actionOnExpiry = data.actionOnExpiry;
+            if (data.timerOpacity !== undefined) timerState.timerOpacity = data.timerOpacity;
+            if (data.timerRadius !== undefined) timerState.timerRadius = data.timerRadius;
+            if (data.timerFontSize !== undefined) timerState.timerFontSize = data.timerFontSize;
+            if (data.timerTheme !== undefined) timerState.timerTheme = data.timerTheme;
+            if (data.timerWidth !== undefined) timerState.timerWidth = data.timerWidth;
+            if (data.timerHeight !== undefined) timerState.timerHeight = data.timerHeight;
+            if (data.progressHeight !== undefined) timerState.progressHeight = data.progressHeight;
+            if (data.showProgressBar !== undefined) timerState.showProgressBar = data.showProgressBar;
+            if (data.showMeta !== undefined) timerState.showMeta = data.showMeta;
+            if (data.showLabel !== undefined) timerState.showLabel = data.showLabel;
+            
+            console.log(`⏰ Timer cargado de Firestore con éxito. Estado: ${timerState.state}, Restante en pausa: ${Math.round(timerState.remainingOnPause / 1000)}s`);
+        }
+    } catch (e) {
+        console.error('Error cargando timer de Firestore en el bot:', e);
+    }
+}
 
 async function saveTimerToFirestore() {
     if (!db) return;
