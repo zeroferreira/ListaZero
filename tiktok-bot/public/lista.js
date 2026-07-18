@@ -15839,42 +15839,36 @@ function shouldShowStatsTicker() {
         }
 
         try {
-          console.log("📊 Calculando estadísticas globales maestras...");
+          console.log("📊 [Optimized Client] Calculando estadísticas globales maestras...");
 
-          // NUEVO: Leer historial de canciones reproducidas (HISTORIA REAL)
-          // Y las solicitudes para enriquecer con metadata (género, etc.) y userStats en paralelo
-          const [playedSnapshot, solicitudesSnapshot, systemEventsSnapshot, userStatsSnapshot] = await Promise.all([
+          // Modificado: Traer solo el Top 10 ordenado directamente de Firebase (ahorro masivo de lecturas)
+          const [playedSnapshot, solicitudesSnapshot, systemEventsSnapshot, topPointsSnapshot, topLikesSnapshot] = await Promise.all([
             window.db.collection('playedSongs').get().catch(() => null),
             window.db.collection('solicitudes').get(),
             window.db.collection('systemEvents').where('type', '==', 'togglePlayed').get(),
-            window.db.collection('userStats').get().catch(() => null)
+            window.db.collection('userStats').orderBy('totalPoints', 'desc').limit(10).get().catch(() => null),
+            window.db.collection('userStats').orderBy('totalLikes', 'desc').limit(10).get().catch(() => null)
           ]);
 
-          console.log(`📚 Leídos ${systemEventsSnapshot ? systemEventsSnapshot.size : 0} eventos, ${solicitudesSnapshot ? solicitudesSnapshot.size : 0} solicitudes y ${userStatsSnapshot ? userStatsSnapshot.size : 0} userStats.`);
+          console.log(`📚 Leídos: ${playedSnapshot ? playedSnapshot.size : 0} played, ${solicitudesSnapshot ? solicitudesSnapshot.size : 0} solicitudes, 10 topPoints, 10 topLikes.`);
 
           // 1. Construir un buscador dinámico de prefijos de usuarios conocidos
           const knownUsers = new Set();
-          if (userStatsSnapshot) {
-            userStatsSnapshot.forEach(doc => {
-              const d = doc.data() || {};
-              const name = String(d.displayName || doc.id || '').trim();
-              if (name) knownUsers.add(name);
-            });
-          }
-          if (solicitudesSnapshot) {
-            solicitudesSnapshot.forEach(doc => {
-              const d = doc.data() || {};
-              const name = String(d.usuario || d.displayName || '').trim();
-              if (name) knownUsers.add(name);
-            });
-          }
-          if (systemEventsSnapshot) {
-            systemEventsSnapshot.forEach(doc => {
-              const d = doc.data() || {};
-              const name = String(d.usuario || d.displayName || '').trim();
-              if (name) knownUsers.add(name);
-            });
-          }
+          const addKnown = (snap) => {
+            if (snap) {
+              snap.forEach(doc => {
+                const d = doc.data() || {};
+                const name = String(d.usuario || d.displayName || doc.id || '').trim();
+                if (name && name !== 'general' && name !== 'userTotals' && name !== '__userTotals__') {
+                  knownUsers.add(name);
+                }
+              });
+            }
+          };
+          addKnown(topPointsSnapshot);
+          addKnown(topLikesSnapshot);
+          addKnown(solicitudesSnapshot);
+          addKnown(systemEventsSnapshot);
 
           const cleanForId = (str) => String(str || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
           const userMapping = Array.from(knownUsers)
@@ -15925,9 +15919,6 @@ function shouldShowStatsTicker() {
           // Fuente B: Historial de Eventos (Recuperar metadata de canciones ya borradas)
           systemEventsSnapshot.forEach(doc => fillMaps(doc.data() || {}, String(doc.data()?.songId || doc.id || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase()));
 
-          console.log(`🧠 Mapa de metadatos consolidado: ${Object.keys(masterMetaMap).length} canciones identificadas.`);
-          console.log(`🏷️ Diccionario de géneros por artista: ${Object.keys(artistToGenre).length} géneros mapeados.`);
-
           let totalRequests = 0;
           let totalTodayRequests = 0;
           const today = new Date().toISOString().split('T')[0];
@@ -15974,7 +15965,7 @@ function shouldShowStatsTicker() {
             const s = normalizeKeyTextForTicker(sRaw);
             const u = normalizeUserKey(uRaw);
 
-            // Inferencia de género: si no tiene, buscamos si ya conocemos el género de este artista
+            // Inferencia de género
             if (!window.isInvalid(gRaw)) {
               if (!artistToGenre[a]) artistToGenre[a] = gRaw.trim();
             } else if (artistToGenre[a]) {
@@ -16009,7 +16000,7 @@ function shouldShowStatsTicker() {
               const isToday = doc.id === today;
 
               songArr.forEach(fullId => {
-                if (skippedArr.includes(fullId)) return; // Ignorar canciones saltadas (skip)
+                if (skippedArr.includes(fullId)) return;
                 const sId = String(fullId || '').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
                 const meta = masterMetaMap[sId] || {};
                 processItem(sId, meta, fullId);
@@ -16018,18 +16009,13 @@ function shouldShowStatsTicker() {
             });
           }
 
-          // 3. Contar solicitudes actuales (Cola) - Solo para el contador del día de hoy
+          // 3. Contar solicitudes actuales (Cola)
           solicitudesSnapshot.forEach(doc => {
             const d = doc.data() || {};
             if (d.day === today) totalTodayRequests++;
           });
 
-          console.log(`📊 Auditoría final: ${totalRequests} peticiones únicas procesadas.`);
-
           // Calcular Tops
-          // Para el Top Usuarios: Solo contar si el usuario tiene nombre válido
-          // Excluir "N/D" o usuarios vacíos
-
           const topArtists = Object.keys(artistCount)
             .map(k => ({ k, c: artistCount[k], o: artistOriginal[k] || k }))
             .filter(a => a.k && a.k.length > 1 && a.k !== 'undefined' && a.k !== 'null')
@@ -16042,138 +16028,111 @@ function shouldShowStatsTicker() {
             .sort((a, b) => b.c - a.c)
             .slice(0, 10);
 
-          try {
-            const aggregatedPoints = new Map();
-            if (userStatsSnapshot) {
-              userStatsSnapshot.forEach(doc => {
-                const d = doc.data() || {};
-                const rawName = String(d.displayName || doc.id || '').trim();
-                const normKey = normalizeUserKey(rawName);
-                if (!normKey || normKey === 'prueba' || normKey === 'test' || normKey.startsWith('prueba')) return;
-
-                const pts = Number(d.totalPoints || 0);
-                if (!Number.isFinite(pts) || pts <= 0) return;
-
-                if (aggregatedPoints.has(normKey)) {
-                  const existing = aggregatedPoints.get(normKey);
-                  existing.points = Math.max(existing.points, pts);
-                } else {
-                  aggregatedPoints.set(normKey, { user: rawName, points: pts });
-                }
-              });
-            }
-            pointsUsers = Array.from(aggregatedPoints.values());
-
-            let topLikerName = 'N/D';
-            let topLikerCountVal = 0;
-            let globalTotalLikes = 0;
-            try {
-              let maxL = 0;
-              let maxLk = '';
-              userStatsSnapshot.forEach(doc => {
-                const ud = doc.data() || {};
-                const rawName = String(ud.displayName || doc.id || '').trim();
-                const normKey = normalizeUserKey(rawName);
-                if (!normKey || normKey === 'prueba' || normKey === 'test' || normKey.startsWith('prueba')) return;
-
-                const lCount = Number(ud.totalLikes || 0);
-                globalTotalLikes += lCount;
-                if (lCount > maxL) {
-                  maxL = lCount;
-                  maxLk = String(ud.displayName || doc.id || '').trim();
-                }
-              });
-              if (maxLk) {
-                topLikerName = maxLk;
-                topLikerCountVal = maxL;
+          // Top 10 Puntos
+          const topPoints10 = [];
+          if (topPointsSnapshot) {
+            topPointsSnapshot.forEach(doc => {
+              const d = doc.data() || {};
+              const name = String(d.displayName || doc.id || '').trim();
+              const pts = Number(d.totalPoints || 0);
+              if (name && pts > 0) {
+                topPoints10.push(`${name} (${pts})`);
               }
-            } catch (e) { console.warn("Error calculando Top Liker:", e); }
-
-            pointsUsers.sort((a, b) => b.points - a.points || a.user.localeCompare(b.user));
-            const topPoints10 = pointsUsers.slice(0, 10).map(it => `${it.user} (${it.points})`);
-
-            let topSongName = 'N/D';
-            let topSongCountVal = 0;
-            let maxS = 0;
-            let maxSk = '';
-            for (let k in songCount) {
-              if (k && k.length > 1 && k !== 'undefined' && k !== 'null') {
-                if (songCount[k] > maxS) {
-                  maxS = songCount[k];
-                  maxSk = k;
-                }
-              }
-            }
-            if (maxSk) {
-              topSongName = maxSk.replace(/\b\w/g, l => l.toUpperCase());
-              topSongCountVal = maxS;
-            }
-
-            const topSongsFull = Object.entries(songCount)
-              .sort(([, a], [, b]) => b - a)
-              .slice(0, 10)
-              .map(([name, count]) => [name.replace(/\b\w/g, l => l.toUpperCase()), count]);
-
-            let topGenreName = 'N/D';
-            let topGenreCountVal = 0;
-            let maxG = 0;
-            let maxGk = '';
-            for (let k in genreCount) {
-              if (genreCount[k] > maxG) {
-                maxG = genreCount[k];
-                maxGk = k;
-              }
-            }
-            if (maxGk) {
-              topGenreName = maxGk.replace(/\b\w/g, l => l.toUpperCase());
-              topGenreCountVal = maxG;
-            }
-
-            const topGenresFull = Object.entries(genreCount)
-              .sort(([, a], [, b]) => b - a)
-              .slice(0, 10)
-              .map(([name, count]) => [name.replace(/\b\w/g, l => l.toUpperCase()), count]);
-
-            const globalStatsData = {
-              totalRequests,
-              totalTodayRequests,
-              topArtists: topArtists.map(it => `${it.o} (${it.c})`),
-              topArtistsFull: topArtists.map(it => ({ name: it.o, count: it.c })),
-              topUsers: topUsers.map(it => `${it.o} (${it.c})`),
-              topUsersFull: topUsers.map(it => ({ name: it.o, count: it.c })),
-              topPoints10,
-              topSong: topSongName,
-              topSongCount: topSongCountVal,
-              topSongsFull: topSongsFull.map(([n, c]) => ({ name: n, count: c })),
-              topGenre: topGenreName,
-              topGenreCount: topGenreCountVal,
-              topGenresFull: topGenresFull.map(([n, c]) => ({ name: n, count: c })),
-              topLiker: topLikerName,
-              topLikerCount: topLikerCountVal,
-              totalLikes: globalTotalLikes,
-              distinctUsers: Object.keys(userCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null').length,
-              distinctArtists: Object.keys(artistCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null').length,
-              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-
-            // Usar merge: true para no borrar datos que otros procesos (como el bot) hayan escrito
-            await window.db.collection('globalStats').doc('general').set(globalStatsData, { merge: true });
-            console.log("✅ Estadísticas globales guardadas en 'globalStats/general'");
-
-            // Guardar el desglose COMPLETO por usuario para sincronizar perfiles personales
-            try {
-              await window.db.collection('globalStats').doc('userTotals').set({ 
-                totals: userCount,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-              }, { merge: true });
-              console.log("✅ Desglose de totales por usuario sincronizado.");
-            } catch (e) {
-              console.warn("Error sincronizando userTotals:", e);
-            }
-
-          } catch (e) {
-            console.warn("⚠️ No se pudo leer userStats para estadísticas globales:", e);
+            });
           }
+
+          // Top Liker
+          let topLikerName = 'N/D';
+          let topLikerCountVal = 0;
+          let globalTotalLikes = 0;
+          if (topLikesSnapshot && !topLikesSnapshot.empty) {
+            const firstDoc = topLikesSnapshot.docs[0];
+            const firstData = firstDoc.data() || {};
+            topLikerName = String(firstData.displayName || firstDoc.id || 'N/D').trim();
+            topLikerCountVal = Number(firstData.totalLikes || 0);
+
+            topLikesSnapshot.forEach(doc => {
+              globalTotalLikes += Number(doc.data().totalLikes || 0);
+            });
+          }
+
+          let topSongName = 'N/D';
+          let topSongCountVal = 0;
+          let maxS = 0;
+          let maxSk = '';
+          for (let k in songCount) {
+            if (k && k.length > 1 && k !== 'undefined' && k !== 'null') {
+              if (songCount[k] > maxS) {
+                maxS = songCount[k];
+                maxSk = k;
+              }
+            }
+          }
+          if (maxSk) {
+            topSongName = maxSk.replace(/\b\w/g, l => l.toUpperCase());
+            topSongCountVal = maxS;
+          }
+
+          const topSongsFull = Object.entries(songCount)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 10)
+            .map(([name, count]) => [name.replace(/\b\w/g, l => l.toUpperCase()), count]);
+
+          let topGenreName = 'N/D';
+          let topGenreCountVal = 0;
+          let maxG = 0;
+          let maxGk = '';
+          for (let k in genreCount) {
+            if (genreCount[k] > maxG) {
+              maxG = genreCount[k];
+              maxGk = k;
+            }
+          }
+          if (maxGk) {
+            topGenreName = maxGk.replace(/\b\w/g, l => l.toUpperCase());
+            topGenreCountVal = maxG;
+          }
+
+          const topGenresFull = Object.entries(genreCount)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 10)
+            .map(([name, count]) => [name.replace(/\b\w/g, l => l.toUpperCase()), count]);
+
+          const globalStatsData = {
+            totalRequests,
+            totalTodayRequests,
+            topArtists: topArtists.map(it => `${it.o} (${it.c})`),
+            topArtistsFull: topArtists.map(it => ({ name: it.o, count: it.c })),
+            topUsers: topUsers.map(it => `${it.o} (${it.c})`),
+            topUsersFull: topUsers.map(it => ({ name: it.o, count: it.c })),
+            topPoints10,
+            topSong: topSongName,
+            topSongCount: topSongCountVal,
+            topSongsFull: topSongsFull.map(([n, c]) => ({ name: n, count: c })),
+            topGenre: topGenreName,
+            topGenreCount: topGenreCountVal,
+            topGenresFull: topGenresFull.map(([n, c]) => ({ name: n, count: c })),
+            topLiker: topLikerName,
+            topLikerCount: topLikerCountVal,
+            totalLikes: globalTotalLikes,
+            distinctUsers: Object.keys(userCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null').length,
+            distinctArtists: Object.keys(artistCount).filter(k => k && k.length > 1 && k !== 'undefined' && k !== 'null').length,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          };
+
+          await window.db.collection('globalStats').doc('general').set(globalStatsData, { merge: true });
+          console.log("✅ Estadísticas globales guardadas en 'globalStats/general'");
+
+          try {
+            await window.db.collection('globalStats').doc('userTotals').set({ 
+              totals: userCount,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            console.log("✅ Desglose de totales por usuario sincronizado.");
+          } catch (e) {
+            console.warn("Error sincronizando userTotals:", e);
+          }
+
         } catch (e) {
           console.error("Error calculando estadísticas globales:", e);
         }
