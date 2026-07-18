@@ -9514,6 +9514,26 @@ function shouldShowStatsTicker() {
         }
       }
 
+      function syncUserToRtdb(username, points, level, achievements, gamificationData) {
+        if (!window.firebase) return;
+        try {
+          const rtdb = window.firebase.database();
+          const normUser = normalizeUserKey(username).toLowerCase().trim().replace(/[.#$\[\]]/g, '_');
+          rtdb.ref('liveUsers/' + normUser).set({
+            points: Number(points) || 0,
+            level: Number(level) || 1,
+            achievements: achievements || [],
+            streaks: gamificationData && gamificationData.streaks ? gamificationData.streaks : { current: 0, best: 0, lastActivity: null, calendar: {} },
+            stats: gamificationData && gamificationData.stats ? gamificationData.stats : { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false },
+            displayName: String(username).trim(),
+            profilePic: String(gamificationData && gamificationData.profilePic ? gamificationData.profilePic : '').trim(),
+            lastUpdated: new Date().toISOString()
+          }).catch(err => console.error('Error actualizando RTDB:', err));
+        } catch (e) {
+          console.error('Error en syncUserToRtdb:', e);
+        }
+      }
+
       // Función para analizar y otorgar puntos automáticamente a un usuario
       async function analyzeAndGrantPointsForUser(username, options = {}) {
         const allTime = !!options.allTime;
@@ -9686,7 +9706,6 @@ function shouldShowStatsTicker() {
             const normUser = normalizeUserKey(targetUser);
             // SEGURIDAD: No permitir que el cálculo local baje los puntos de la nube drásticamente
             // sin una razón válida (un canje), para evitar regresiones por fallos de carga.
-              // SINCRONIZACIÓN DIRECTA: Confiamos en el cálculo reconstruido
               db.collection('userStats').doc(normUser).set({
                 totalPoints: data.points,
                 level: data.level,
@@ -9694,6 +9713,9 @@ function shouldShowStatsTicker() {
                 gamification: data,
                 lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
               }, { merge: true }).catch(err => console.error('Error guardando stats:', err));
+
+              // Sincronizar en caché de Realtime Database
+              syncUserToRtdb(targetUser, data.points, data.level, data.achievements, data);
           } else {
             console.log(`🔒 Evitando sobrescritura de Cloud Stats (No soy Owner o modo Admin activo)`);
           }
@@ -11520,6 +11542,9 @@ function shouldShowStatsTicker() {
           lastAdminRebuildAt: firebase.firestore.FieldValue.serverTimestamp(),
           lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
+
+        // Sincronizar en caché de Realtime Database
+        syncUserToRtdb(username, data.points, data.level, data.achievements, data);
       }
 
       // Flags de control de flujo para el recálculo
@@ -13019,6 +13044,7 @@ function shouldShowStatsTicker() {
 
           // Guardar fusión en local inmediatamente (para caché de visualización)
           saveGamificationDataForUser(mergedData, username);
+          syncUserToRtdb(username, mergedData.points, mergedData.level, mergedData.achievements, mergedData);
 
           // Si el local era mayor que la nube, forzar subida para sincronizar
           // FIX: Solo permitir subida forzada si soy el DUEÑO de los datos

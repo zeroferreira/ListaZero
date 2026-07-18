@@ -1509,9 +1509,10 @@
       if (!currentRaw) return;
       await loadUserAliases();
       const current = normalizeUserKey(currentRaw);
-      const db = firebase.firestore();
-      db.collection('userStats').doc(current).onSnapshot((doc) => {
-        if (!doc || !doc.exists) return;
+      const rtdb = firebase.database();
+      const normUserForRtdb = current.toLowerCase().trim().replace(/[.#$\[\]]/g, '_');
+      rtdb.ref('liveUsers/' + normUserForRtdb).on('value', (snapshot) => {
+        if (!snapshot || !snapshot.exists()) return;
         const allStr = localStorage.getItem('gamificationData') || '{}';
         const all = JSON.parse(allStr);
         const d = all[current] || {
@@ -1522,25 +1523,23 @@
           streaks: { current: 0, best: 0, lastActivity: null, calendar: {} },
           stats: { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: false }
         };
-        const data = doc.data() || {};
-        if (typeof data.totalPoints === 'number') d.points = data.totalPoints;
-        if (typeof data.currentStreak === 'number') d.streaks.current = data.currentStreak;
-        if (typeof data.bestStreak === 'number') d.streaks.best = data.bestStreak;
-        if (typeof data.lastActivity === 'string') d.streaks.lastActivity = data.lastActivity;
-        
-        // Cargar payload guardado desde lista.js si existe
-        if (data.gamification) {
-          if (data.gamification.achievements) d.achievements = data.gamification.achievements;
-          if (data.gamification.stats) d.stats = data.gamification.stats;
-          if (data.gamification.level) d.level = data.gamification.level;
-          if (data.gamification.streaks && data.gamification.streaks.calendar) d.streaks.calendar = data.gamification.streaks.calendar;
+        const data = snapshot.val() || {};
+        if (typeof data.points === 'number') d.points = data.points;
+        if (data.streaks) {
+          if (typeof data.streaks.current === 'number') d.streaks.current = data.streaks.current;
+          if (typeof data.streaks.best === 'number') d.streaks.best = data.streaks.best;
+          if (typeof data.streaks.lastActivity === 'string') d.streaks.lastActivity = data.streaks.lastActivity;
+          if (data.streaks.calendar) d.streaks.calendar = data.streaks.calendar;
         }
+        if (data.achievements) d.achievements = data.achievements;
+        if (data.stats) d.stats = data.stats;
+        if (typeof data.level === 'number') d.level = data.level;
 
         all[current] = d;
         localStorage.setItem('gamificationData', JSON.stringify(all));
         try { if (typeof updatePointsIndicator === 'function') updatePointsIndicator(); } catch (_){}
       }, (err) => {
-        console.error("Error sincronizando gamificationData en tiempo real:", err);
+        console.error("Error sincronizando gamificationData desde RTDB:", err);
       });
     } catch (_){}
   })();

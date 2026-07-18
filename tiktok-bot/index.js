@@ -84,7 +84,7 @@ const {
     getFirestore: getFirestoreFn, 
     doc: docFn, 
     getDoc: getDocFn, 
-    setDoc, 
+    setDoc: setDocFn, 
     updateDoc: updateDocFn, 
     arrayUnion, 
     collection: collectionFn, 
@@ -97,6 +97,64 @@ const {
     deleteDoc,
     increment 
 } = require('firebase/firestore');
+
+const { getDatabase, ref, set: rtdbSet } = require('firebase/database');
+
+let rtdb; // Instancia global de Realtime Database
+
+async function syncUserStatsToRtdb(userKey) {
+    if (!db || !rtdb) return;
+    try {
+        const normFirestoreUser = userKey.trim();
+        const normRtdbUser = normFirestoreUser.toLowerCase().replace(/[.#$\[\]]/g, '_');
+        
+        const snap = await getDocFn(docFn(db, 'userStats', normFirestoreUser));
+        if (!snap || !snap.exists()) return;
+        const data = snap.data() || {};
+        
+        const rtdbUserData = {
+            points: Number(data.totalPoints || 0) || 0,
+            level: Number((data.gamification && data.gamification.level) || data.level || 1) || 1,
+            xp: Number(data.xp || 0) || 0,
+            achievements: Array.isArray(data.gamification && data.gamification.achievements) ? data.gamification.achievements : [],
+            streaks: data.gamification && data.gamification.streaks ? data.gamification.streaks : { current: 0, best: 0, lastActivity: null, calendar: {} },
+            stats: data.gamification && data.gamification.stats ? data.gamification.stats : { totalSongs: 0, uniqueArtists: 0, activeDays: 0, isVip: !!data.isVip },
+            displayName: String(data.displayName || userKey).trim(),
+            tiktokId: String(data.tiktokId || '').trim(),
+            profilePic: String(data.profilePic || data.profilePhoto || '').trim(),
+            lastUpdated: new Date().toISOString()
+        };
+        
+        await rtdbSet(ref(rtdb, `liveUsers/${normRtdbUser}`), rtdbUserData);
+    } catch (e) {
+        console.warn(`[RTDB Sync Error] No se pudo sincronizar ${userKey} a RTDB:`, e.message);
+    }
+}
+
+async function setDocInterceptor(documentReference, data, options) {
+    const result = await setDocFn(documentReference, data, options);
+    try {
+        if (documentReference && documentReference.path && documentReference.path.startsWith('userStats/')) {
+            const userKey = documentReference.id;
+            syncUserStatsToRtdb(userKey).catch(() => {});
+        }
+    } catch (_) {}
+    return result;
+}
+
+async function updateDocInterceptor(documentReference, ...args) {
+    const result = await updateDocFn(documentReference, ...args);
+    try {
+        if (documentReference && documentReference.path && documentReference.path.startsWith('userStats/')) {
+            const userKey = documentReference.id;
+            syncUserStatsToRtdb(userKey).catch(() => {});
+        }
+    } catch (_) {}
+    return result;
+}
+
+// Para usar el setDoc local interceptado en todo el script
+const setDoc = setDocInterceptor;
 
 let db; // RESTORED
 let firebaseAuthPromise = Promise.resolve();
@@ -131,7 +189,7 @@ function maskLiveCode(code) {
 getFirestore = getFirestoreFn; // RESTORED
 doc = docFn;
 getDoc = getDocFn;
-updateDoc = updateDocFn;
+updateDoc = updateDocInterceptor;
 collection = collectionFn;
 addDoc = addDocFn;
 serverTimestamp = serverTimestampFn;
@@ -162,6 +220,7 @@ try {
     }
     
     db = getFirestoreFn(app);
+    rtdb = getDatabase(app);
     try {
         const { getAuth, signInAnonymously } = require('firebase/auth');
         const auth = getAuth(app);
@@ -1035,6 +1094,7 @@ function startBot() {
         }
         // Usar la función importada al principio, no la global
         db = getFirestore(firebaseApp);
+        rtdb = getDatabase(firebaseApp);
         try {
             const { getAuth, signInAnonymously } = require('firebase/auth');
             const auth = getAuth(firebaseApp);
@@ -1052,6 +1112,7 @@ function startBot() {
                  const { getApp } = require('firebase/app');
                  firebaseApp = getApp();
                  db = getFirestore(firebaseApp);
+                 rtdb = getDatabase(firebaseApp);
                  try {
                      const { getAuth, signInAnonymously } = require('firebase/auth');
                      const auth = getAuth(firebaseApp);
