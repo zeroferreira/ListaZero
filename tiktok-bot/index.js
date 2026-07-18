@@ -211,7 +211,8 @@ try {
           projectId: "zero-strom-web",
           storageBucket: "zero-strom-web.appspot.com",
           messagingSenderId: "758369466349",
-          appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+          appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
+          databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
         });
         console.log("🔥 Firebase inicializado correctamente.");
     } else {
@@ -347,7 +348,8 @@ try {
           apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
           authDomain: "zero-strom-web.firebaseapp.com",
           projectId: "zero-strom-web",
-          appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+          appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
+          databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
         });
     }
 } catch (e) {
@@ -1068,7 +1070,8 @@ function startBot() {
               projectId: "zero-strom-web",
               storageBucket: "zero-strom-web.firebasestorage.app",
               messagingSenderId: "758369466349",
-              appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+              appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
+              databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
             };
         }
     } catch (e) {
@@ -1385,7 +1388,8 @@ function startBot() {
                 projectId: "zero-strom-web",
                 storageBucket: "zero-strom-web.firebasestorage.app",
                 messagingSenderId: "758369466349",
-                appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+                appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
+                databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
             };`);
         }
     });
@@ -1794,7 +1798,8 @@ function startBot() {
                 projectId: "zero-strom-web",
                 storageBucket: "zero-strom-web.firebasestorage.app",
                 messagingSenderId: "758369466349",
-                appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
+                appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
+                databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
             };
 
             fs.writeFileSync(path.join(targetDir, 'config.json'), JSON.stringify(default_config, null, 2));

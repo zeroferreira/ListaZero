@@ -16,7 +16,8 @@ const firebaseConfig = {
     projectId:         "zero-strom-web",
     storageBucket:     "zero-strom-web.firebasestorage.app",
     messagingSenderId: "758369466349",
-    appId:             "1:758369466349:web:f2ced362a5a049c70b59e4"
+    appId:             "1:758369466349:web:f2ced362a5a049c70b59e4",
+    databaseURL:       "https://zero-strom-web-default-rtdb.firebaseio.com"
 };
 
 if (typeof window !== 'undefined') {
