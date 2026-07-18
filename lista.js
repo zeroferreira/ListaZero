@@ -643,9 +643,9 @@
           if (banner) {
             if (maintenanceMsg) {
               if (bannerText) bannerText.textContent = maintenanceMsg;
-              banner.hidden = false;
+              banner.style.display = 'flex';
             } else {
-              banner.hidden = true;
+              banner.style.display = 'none';
             }
           }
         }, (error) => {
