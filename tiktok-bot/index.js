@@ -1355,6 +1355,18 @@ function startBot() {
         });
     });
 
+    app.get('/api/debug-status', (req, res) => {
+        res.json({
+            dbStatusInitialized: !!dbStatus,
+            activeProfile: activeProfile,
+            configTiktokUsername: config.tiktokUsername,
+            TIKTOK_USERNAME: TIKTOK_USERNAME,
+            tiktokIsConnected: !!(tiktokLiveConnection && tiktokLiveConnection.isConnected),
+            fbConfigLoaded: !!PROFILE_FB_CONFIG_FILE,
+            fbConfigFileExists: require('fs').existsSync(PROFILE_FB_CONFIG_FILE)
+        });
+    });
+
     app.get('/api/myinstants/search', (req, res) => {
         const query = req.query.q || '';
         if (!query.trim()) {
