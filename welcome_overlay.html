@@ -233,6 +233,9 @@
             color: #d8b4fe;
             font-weight: 600;
             white-space: nowrap;
+            max-width: 340px;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         /* ─── Premium Themes ────────────────────── */
@@ -355,7 +358,7 @@
         <div class="welcome-card">
             <!-- Avatar -->
             <div class="avatar-wrapper" id="avatar-glow">
-                <img id="user-avatar" class="avatar-img" src="" alt="Avatar">
+                <img id="user-avatar" class="avatar-img" src="" alt="Avatar" onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\'%3E%3Crect width=\'100\' height=\'100\' fill=\'%232a1015\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' fill=\'%23a855f7\' font-size=\'40\'%3E👤%3C/text%3E%3C/svg%3E';">
                 <div class="badge">👋</div>
             </div>
             
@@ -389,6 +392,39 @@
         let playTimeout = null;
         let playExitTimeout = null;
 
+        // ─── Cooldown Inteligente de Audio ────────────────────────────────────────
+        // Registra el timestamp (ms) de la última vez que sonó el audio por usuario.
+        // Si el usuario regresa dentro del cooldown, la tarjeta sí aparece pero el
+        // audio NO suena para evitar saturación. Pasado el cooldown, el audio puede
+        // volver a reproducirse.
+        const audioCooldownMs = 9 * 60 * 1000; // 9 minutos en milisegundos
+        const lastAudioPlayedAt = new Map(); // uid → timestamp (ms)
+
+        /**
+         * Determina si el audio puede reproducirse para un usuario dado.
+         * Retorna true si nunca ha sonado o si han pasado más de 9 minutos.
+         * @param {string} uid - ID único del usuario (uniqueId)
+         * @returns {boolean}
+         */
+        function canPlayAudioForUser(uid) {
+            const key = String(uid || '').toLowerCase().trim();
+            if (!key) return true;
+            const last = lastAudioPlayedAt.get(key);
+            if (!last) return true; // Primera vez
+            const elapsed = Date.now() - last;
+            return elapsed >= audioCooldownMs;
+        }
+
+        /**
+         * Registra que el audio acaba de sonar para un usuario.
+         * @param {string} uid - ID único del usuario (uniqueId)
+         */
+        function markAudioPlayedForUser(uid) {
+            const key = String(uid || '').toLowerCase().trim();
+            if (key) lastAudioPlayedAt.set(key, Date.now());
+        }
+        // ─────────────────────────────────────────────────────────────────────────
+
         // Unsubscribe references
         let unsubConfig = null;
         let unsubNotifications = null;
@@ -413,7 +449,8 @@
             welcomeOverlayCardTheme: "standard",
             welcomeOverlayTemplates: {},
             welcomeOverlayColors: {},
-            welcomeOverlaySounds: {}
+            welcomeOverlaySounds: {},
+            welcomeOverlayUserSounds: {}
         };
         // Aumentamos a 5 minutos para tolerar desfases de reloj (clock drift) y filtramos la carga inicial en JS
         const startedAt = new Date(Date.now() - 5 * 60 * 1000);
@@ -468,10 +505,11 @@
                             if (data.welcomeOverlayFontFamily !== undefined) config.welcomeOverlayFontFamily = data.welcomeOverlayFontFamily;
                             if (data.welcomeOverlayCardTheme !== undefined) config.welcomeOverlayCardTheme = data.welcomeOverlayCardTheme;
 
-                            // Mapear configuración de bienvenida por rol
+                            // Mapear configuración de bienvenida por rol y por usuario
                             if (data.welcomeOverlayTemplates !== undefined) config.welcomeOverlayTemplates = data.welcomeOverlayTemplates || {};
                             if (data.welcomeOverlayColors !== undefined) config.welcomeOverlayColors = data.welcomeOverlayColors || {};
                             if (data.welcomeOverlaySounds !== undefined) config.welcomeOverlaySounds = data.welcomeOverlaySounds || {};
+                            if (data.welcomeOverlayUserSounds !== undefined) config.welcomeOverlayUserSounds = data.welcomeOverlayUserSounds || {};
 
                             // Aplicar estilos dinámicos
                             applyStyles();
@@ -608,9 +646,12 @@
             }
         }
 
-        // Agregar bienvenida a la cola
+        // Agregar bienvenida a la cola (máximo 15 para evitar acumulación excesiva)
         function addWelcome(data) {
             welcomeQueue.push(data);
+            if (welcomeQueue.length > 15) {
+                welcomeQueue.splice(0, welcomeQueue.length - 15);
+            }
             processQueue();
         }
 
@@ -704,11 +745,21 @@
                 }
             }
             
-            // 5. Determinar y reproducir el sonido para este rol
+            // 5. Determinar y reproducir el sonido para este usuario o rol
+            const lowerUid = String(next.uniqueId || '').toLowerCase().trim();
+            const lowerNick = String(next.user || '').toLowerCase().trim();
             let soundKeyOrUrl = '';
-            if (config.welcomeOverlaySounds && config.welcomeOverlaySounds[resolvedRole]) {
+            
+            // Prioridad 1: Audio de usuario específico
+            if (config.welcomeOverlayUserSounds && (config.welcomeOverlayUserSounds[lowerUid] || config.welcomeOverlayUserSounds[lowerNick])) {
+                soundKeyOrUrl = config.welcomeOverlayUserSounds[lowerUid] || config.welcomeOverlayUserSounds[lowerNick];
+            } 
+            // Prioridad 2: Audio asignado al rol
+            else if (config.welcomeOverlaySounds && config.welcomeOverlaySounds[resolvedRole]) {
                 soundKeyOrUrl = config.welcomeOverlaySounds[resolvedRole];
-            } else {
+            } 
+            // Prioridad 3: Audio predeterminado general
+            else {
                 soundKeyOrUrl = config.welcomeOverlaySoundUrl || 'mixkit-2017';
             }
             
@@ -723,12 +774,29 @@
             
             const resolvedSoundUrl = soundLibrary[soundKeyOrUrl] || soundKeyOrUrl;
             
-            if (config.welcomeOverlaySoundEnabled && resolvedSoundUrl && resolvedSoundUrl !== 'none') {
+            // ─── Cooldown Inteligente de Audio ───────────────────────────────────
+            // Solo reproducir el audio si el usuario no ha sido saludado recientemente
+            // (o si ha estado ausente más de 9 minutos desde la última vez que sonó).
+            const audioAllowed = canPlayAudioForUser(next.uniqueId);
+
+            if (config.welcomeOverlaySoundEnabled && resolvedSoundUrl && resolvedSoundUrl !== 'none' && audioAllowed) {
                 audio.src = resolvedSoundUrl;
                 audio.volume = config.welcomeOverlaySoundVolume / 100;
                 audio.currentTime = 0;
-                audio.play().catch(e => console.log("[Audio] Blocked or error playing welcome sound:", e));
+                audio.play()
+                    .then(() => {
+                        // Registrar que el audio acaba de sonar para este usuario
+                        markAudioPlayedForUser(next.uniqueId);
+                        console.log(`[Audio] ✅ Sonido reproducido para @${next.uniqueId}. Cooldown activo por ${audioCooldownMs / 60000} min.`);
+                    })
+                    .catch(e => console.log("[Audio] Blocked or error playing welcome sound:", e));
+            } else if (!audioAllowed) {
+                // Calcular tiempo restante del cooldown para log informativo
+                const last = lastAudioPlayedAt.get(String(next.uniqueId || '').toLowerCase().trim());
+                const remaining = last ? Math.ceil((audioCooldownMs - (Date.now() - last)) / 1000) : 0;
+                console.log(`[Audio] 🔇 Cooldown activo para @${next.uniqueId}. Faltan ~${remaining}s. Tarjeta visible sin audio.`);
             }
+            // ─────────────────────────────────────────────────────────────────────
 
             // Mostrar tarjeta (animación de entrada)
             container.className = 'active';
@@ -778,10 +846,14 @@
                 if (data.welcomeOverlayShowPulseWave !== undefined) config.welcomeOverlayShowPulseWave = data.welcomeOverlayShowPulseWave;
                 if (data.welcomeOverlayFontFamily !== undefined) config.welcomeOverlayFontFamily = data.welcomeOverlayFontFamily;
                 
-                // Configs personalizadas por rango
+                // Configs personalizadas por rango y por usuario
                 if (data.welcomeOverlayTemplates !== undefined) config.welcomeOverlayTemplates = data.welcomeOverlayTemplates || {};
                 if (data.welcomeOverlayColors !== undefined) config.welcomeOverlayColors = data.welcomeOverlayColors || {};
                 if (data.welcomeOverlaySounds !== undefined) config.welcomeOverlaySounds = data.welcomeOverlaySounds || {};
+                if (data.welcomeOverlayUserSounds !== undefined) config.welcomeOverlayUserSounds = data.welcomeOverlayUserSounds || {};
+                // FIX: estas dos propíades faltaban y no se actualizaban desde el dashboard
+                if (data.welcomeOverlaySoundUrl !== undefined) config.welcomeOverlaySoundUrl = data.welcomeOverlaySoundUrl;
+                if (data.welcomeOverlayCardTheme !== undefined) config.welcomeOverlayCardTheme = data.welcomeOverlayCardTheme;
 
                 applyStyles();
             } else if (event.data.action === 'triggerTestAlert' && event.data.payload && event.data.payload.type === 'join') {

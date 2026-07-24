@@ -454,6 +454,7 @@
       syncAppleMusic: true,
       // Visual Scaling
        maxCards: 3,
+       compactThreshold: 7,
        widthScale: 1.0,
        heightScale: 1.0,
        
@@ -518,6 +519,10 @@
         const maxCardsVal = settings.maxCards !== undefined ? settings.maxCards : 3;
         document.getElementById('inp-maxCards').value = maxCardsVal;
         document.getElementById('max-cards-val').innerText = maxCardsVal;
+
+        const compactThresholdVal = settings.compactThreshold !== undefined ? settings.compactThreshold : 7;
+        const compactThresholdEl = document.getElementById('inp-compactThreshold');
+        if (compactThresholdEl) compactThresholdEl.value = compactThresholdVal;
 
         const widthScaleVal = settings.widthScale !== undefined ? settings.widthScale : 1.0;
          document.getElementById('inp-widthScale').value = widthScaleVal;
@@ -657,6 +662,19 @@
       if (container) {
         container.classList.remove('theme-classic', 'theme-neon-glass', 'theme-vision');
         container.classList.add(`theme-${s.theme || 'classic'}`);
+
+        // Activar/desactivar modo lista compacta según cantidad de pendientes
+        const pendingCount = Array.isArray(window.allRequests) ? window.allRequests.filter(req => {
+          try {
+            const sid = generateSongId(req);
+            const did = String(req?.docId || '').trim();
+            const rid = String(req?.id || '').trim();
+            return !playedSongIds.has(sid) && !playedSongIds.has(did) && !playedSongIds.has(rid);
+          } catch (_) { return true; }
+        }).length : 0;
+        const threshold = (s.compactThreshold !== undefined && s.compactThreshold > 0) ? s.compactThreshold : 7;
+        const shouldBeCompact = pendingCount >= threshold;
+        container.classList.toggle('layout-compact', shouldBeCompact);
       }
       
       // Lista segura de clases de animación para limpiar
@@ -829,6 +847,7 @@
         primaryOpacity: getNum('inp-primaryOpacity', 100),
         secondaryOpacity: getNum('inp-secondaryOpacity', 60),
         maxCards: getNum('inp-maxCards', 3),
+        compactThreshold: getNum('inp-compactThreshold', 7),
         widthScale: getNum('inp-widthScale', 1.0),
         heightScale: getNum('inp-heightScale', 1.0),
         text: document.getElementById('inp-text').value,
@@ -858,7 +877,7 @@
     function initSettingsListeners() {
         // Text/Number inputs
         ['inp-theme', 'inp-width', 'inp-minHeight', 'inp-spacing', 'inp-padding', 'inp-textGap', 'inp-borderRadius', 'inp-animEntry', 'inp-animExit', 
-         'inp-font', 'inp-fontSize', 'inp-accent', 'inp-bg', 'inp-primaryOpacity', 'inp-secondaryOpacity', 'inp-text', 'inp-maxCards', 'inp-widthScale', 'inp-heightScale',
+         'inp-font', 'inp-fontSize', 'inp-accent', 'inp-bg', 'inp-primaryOpacity', 'inp-secondaryOpacity', 'inp-text', 'inp-maxCards', 'inp-compactThreshold', 'inp-widthScale', 'inp-heightScale',
          'inp-showCardBg', 'inp-borderWidth', 'inp-borderColor', 'inp-borderOpacity', 'inp-borderStyle', 'inp-showAccentBorder', 'inp-accentBorderWidth',
          'inp-showShadow', 'inp-shadowColor', 'inp-shadowBlur', 'inp-shadowOpacity', 'inp-showSweepBorder'].forEach(id => {
            const el = document.getElementById(id);
@@ -2090,9 +2109,16 @@
       }
 
       // 2. Tomar las primeras X (config limit)
-      // Dynamic limit based on settings
+      // En modo compacto: mostrar todas las pendientes; en modo normal: limitar a maxCards
       const maxCards = (window.appliedSettings && window.appliedSettings.maxCards) ? window.appliedSettings.maxCards : 3;
-      const itemsToShow = pendingRequests.slice(0, maxCards);
+      const compactThreshold = (window.appliedSettings && window.appliedSettings.compactThreshold !== undefined) ? window.appliedSettings.compactThreshold : 7;
+      const isCompactMode = pendingRequests.length >= compactThreshold;
+      const itemsToShow = isCompactMode ? pendingRequests : pendingRequests.slice(0, maxCards);
+      
+      // Sincronizar clase layout-compact con el estado real calculado aquí
+      const container2 = document.getElementById('queue-container');
+      if (container2) container2.classList.toggle('layout-compact', isCompactMode);
+      
       window.__lastRenderedQueueItems = itemsToShow;
       
       // 3. Diffing Inteligente: Solo animar elementos NUEVOS
@@ -2421,7 +2447,6 @@
       const n = Number(v);
       if (!Number.isFinite(n) || n <= 0) return 0;
       if (n < 1000) return Math.round(n * 1000);
-      if (n < 1000 * 60 * 20) return Math.round(n * 1000);
       return Math.round(n);
     }
 

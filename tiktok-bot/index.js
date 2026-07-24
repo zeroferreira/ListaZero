@@ -317,7 +317,8 @@ let overlayAlertsConfig = {
     welcomeOverlayAllowAll: true,
     welcomeOverlayAllowFollowers: false,
     welcomeOverlayAllowSubscribers: false,
-    welcomeOverlayAllowModerators: false
+    welcomeOverlayAllowModerators: false,
+    welcomeOverlayUserSounds: {}
 };
 
 try {
@@ -368,6 +369,11 @@ let retryTimeoutId = null;
 let ciderSocket;
 let tiktokWebsocketUpgradeEnabled = true;
 let tiktokConnectionOptions = null;
+let badgeRefreshInterval = null;
+let likeFlushInterval = null;
+let unsubOverlayConfig = null;
+let unsubNotifications = null;
+let unsubSolicitudes = null;
 
 // --- DEDUPLICACIÓN DE EVENTOS ---
 // Previene que el mismo mensaje/regalo se procese múltiples veces
@@ -857,7 +863,13 @@ async function getCanonicalUserKey(userId, displayName) {
     } catch (_) {}
 
     const out = { userKey, displayName: bestDisplay, ts: now };
-    if (uid) userKeyCache.set(uid, out);
+    if (uid) {
+        if (userKeyCache.size >= 5000) {
+            const firstKey = userKeyCache.keys().next().value;
+            userKeyCache.delete(firstKey);
+        }
+        userKeyCache.set(uid, out);
+    }
     return out;
 }
 
@@ -1204,7 +1216,10 @@ function startBot() {
     }, 5000); // Esperar 5s a que la conexión se estabilice
 
     try { refreshBadgeSets(); } catch (_) {}
-    try { setInterval(() => { refreshBadgeSets().catch(() => {}); }, 5 * 60 * 1000); } catch (_) {}
+    try {
+        if (badgeRefreshInterval) clearInterval(badgeRefreshInterval);
+        badgeRefreshInterval = setInterval(() => { refreshBadgeSets().catch(() => {}); }, 5 * 60 * 1000);
+    } catch (_) {}
 
     // --- SERVIDOR WEB (DASHBOARD) ---
     const app = express();
@@ -2741,13 +2756,17 @@ function startBot() {
 
 function setupNotificationListener() {
     if (!db) return;
+
+    if (unsubOverlayConfig) { try { unsubOverlayConfig(); } catch (_) {} unsubOverlayConfig = null; }
+    if (unsubNotifications) { try { unsubNotifications(); } catch (_) {} unsubNotifications = null; }
+    if (unsubSolicitudes) { try { unsubSolicitudes(); } catch (_) {} unsubSolicitudes = null; }
     
     console.log("👂 Iniciando listener de notificaciones de Firebase...");
 
     // Escuchar la configuración dinámica de los overlays
     try {
         const { doc } = require('firebase/firestore');
-        onSnapshot(doc(db, 'systemConfig', 'overlayAlertsConfig'), (docSnap) => {
+        unsubOverlayConfig = onSnapshot(doc(db, 'systemConfig', 'overlayAlertsConfig'), (docSnap) => {
             if (docSnap.exists()) {
                 console.log("📺 Configuración dinámica de overlays actualizada desde Firebase.");
                 overlayAlertsConfig = { ...overlayAlertsConfig, ...docSnap.data() };
@@ -2766,7 +2785,7 @@ function setupNotificationListener() {
         limit(100)
     );
 
-    onSnapshot(recentNotificationsQuery, (snapshot) => {
+    unsubNotifications = onSnapshot(recentNotificationsQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
                 const data = change.doc.data();
@@ -2807,7 +2826,7 @@ function setupNotificationListener() {
             where('ts', '>=', startOfToday)
         );
 
-        onSnapshot(solicitudesQuery, (snapshot) => {
+        unsubSolicitudes = onSnapshot(solicitudesQuery, (snapshot) => {
             snapshot.docChanges().forEach(async (change) => {
                 if (change.type === "added") {
                     const docId = change.doc.id;
@@ -2825,6 +2844,10 @@ function setupNotificationListener() {
 
                     if (isPending && !alreadySent) {
                         processedSolicitudIds.add(solicitudId);
+                        if (processedSolicitudIds.size > 1000) {
+                            const first = processedSolicitudIds.values().next().value;
+                            processedSolicitudIds.delete(first);
+                        }
                         let appleMusicId = data.appleMusicId ? String(data.appleMusicId).trim() : '';
                         let songName = data.cancion ? String(data.cancion).trim() : '';
                         let artistName = data.artista ? String(data.artista).trim() : '';
@@ -4197,8 +4220,8 @@ function setupListeners() {
             }
         }
 
-        // Recalcular rangos (VIP, etc.)
-        recalculateDonorRanks();
+        // Recalcular rangos (VIP, etc.) con debounce
+        scheduleRecalculateDonorRanks();
 
         // ─── GOAL OVERLAYS: acumular coins de sesión ────────────────────────────
         if (isGiftFinal) {
@@ -4300,10 +4323,10 @@ function setupListeners() {
 
         console.log(`❤️ @${nickname} +${delta} likes → sesión: ${sessionTotal} | stream total: ${streamTotalLikesCounter}`);
 
-        // Actualizar top liker si corresponde
+        // Actualizar top liker si corresponde (con debounce)
         if (sessionTotal > currentTopLiker.count) {
             currentTopLiker = { name: nickname, count: sessionTotal };
-            updateGlobalTopLiker(nickname, sessionTotal);
+            scheduleUpdateGlobalTopLiker(nickname, sessionTotal);
         }
 
         // ─── TIMER EXTENSION: extender el countdown por likes (Tikfinity Mode) ───
@@ -4707,6 +4730,14 @@ async function updateGlobalTopLiker(name, count) {
     }
 }
 
+let _topLikerDebounceTimeout = null;
+function scheduleUpdateGlobalTopLiker(name, count) {
+    if (_topLikerDebounceTimeout) clearTimeout(_topLikerDebounceTimeout);
+    _topLikerDebounceTimeout = setTimeout(() => {
+        updateGlobalTopLiker(name, count).catch(() => {});
+    }, 2000);
+}
+
 // Flush periódico de likes (cada 30 segundos para dar tiempo a acumular)
 setInterval(async () => {
     // Asegurar que insignias y alias estén frescos
@@ -4957,6 +4988,14 @@ async function recalculateDonorRanks() {
     }
 }
 
+let _donorRanksDebounceTimeout = null;
+function scheduleRecalculateDonorRanks() {
+    if (_donorRanksDebounceTimeout) clearTimeout(_donorRanksDebounceTimeout);
+    _donorRanksDebounceTimeout = setTimeout(() => {
+        recalculateDonorRanks().catch(() => {});
+    }, 2000);
+}
+
 // Conectar al Live
 async function connectToLive() {
     if (manualDisconnect) {
@@ -5034,12 +5073,13 @@ let activeTtsQueue = [];
 
 // Manejar pedido de canción
 async function resolveTrackFromQuery(query) {
-    // 1. Buscar en iTunes
-    const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=15`;
-    const response = await axios.get(searchUrl);
-    if (!response.data || response.data.resultCount === 0) {
-        return null;
-    }
+    try {
+        // 1. Buscar en iTunes
+        const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=15`;
+        const response = await axios.get(searchUrl, { timeout: 5000 });
+        if (!response.data || response.data.resultCount === 0) {
+            return null;
+        }
 
     const results = response.data.results;
     const avoidKeywords = ['karaoke', 'tribute', 'cover', 'instrumental', 'remix', 'lullaby', 'rendition', 'slowed', 'reverb'];
@@ -5118,6 +5158,10 @@ async function resolveTrackFromQuery(query) {
         return null;
     }
     return { songName, artistName, artworkUrl, appleMusicId: String(appleMusicId), trackViewUrl, genre };
+    } catch (e) {
+        console.warn('⚠️ No se pudo consultar la API de iTunes:', e && e.message ? e.message : String(e));
+        return null;
+    }
 }
 
 function parseRawQueryToTrack(rawQuery) {

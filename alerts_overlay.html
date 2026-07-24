@@ -1186,6 +1186,10 @@
                             if (playedNotificationIds.has(docId)) {
                                 return;
                             }
+                            if (playedNotificationIds.size >= 500) {
+                                const first = playedNotificationIds.values().next().value;
+                                playedNotificationIds.delete(first);
+                            }
                             playedNotificationIds.add(docId);
 
                             const data = change.doc.data();
@@ -2232,14 +2236,11 @@
                         
                         console.log('[Quiéreme] Reproduciendo video URL:', videoUrl, '| config.quieremeVideoUrl:', cfgUrl);
                         
-                        const $videoContainer = $("<div>").addClass("quiereme-video-container");
-                        const videoExt = videoUrl.split('?')[0].split('.').pop().toLowerCase();
-                        const primaryMime = (videoExt === 'mov') ? 'video/quicktime' : 'video/mp4';
-                        const secondaryMime = (videoExt === 'mov') ? 'video/mp4' : 'video/quicktime';
+                        const safeVideoUrl = String(videoUrl || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                         $videoContainer.html(`
                             <video id="quieremeVideo" autoplay playsinline muted loop style="display: none;">
-                                <source src="${videoUrl}" type="${primaryMime}">
-                                <source src="${videoUrl}" type="${secondaryMime}">
+                                <source src="${safeVideoUrl}" type="${primaryMime}">
+                                <source src="${safeVideoUrl}" type="${secondaryMime}">
                             </video>
                             <canvas id="quieremeCanvas" width="140" height="140" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;"></canvas>
                         `);
@@ -2676,10 +2677,8 @@
                     if (onEndCallback) onEndCallback();
                 };
                 
-                utterance.onend = done;
                 utterance.onerror = (e) => {
-                    console.error("[TTS] SpeechSynthesis error:", e);
-                    alert("Error en TTS del Overlay: " + (e.error || "Desconocido") + "\nTexto: " + text);
+                    console.error("[TTS] SpeechSynthesis error:", e && e.error ? e.error : e);
                     done();
                 };
                 

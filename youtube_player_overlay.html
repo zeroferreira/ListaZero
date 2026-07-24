@@ -840,7 +840,7 @@
   function updatePlayerMuteState(customVolume) {
     if (!ytPlayer || typeof ytPlayer.mute !== 'function') return;
     
-    const params = new URLSearchParams(window.location.search);
+    // FIX: usar el `params` global en lugar de redeclarlo en cada llamada
     const isMuteParam = params.get('mute') === 'true';
     const isPreview = params.get('preview') === 'true';
 
@@ -1352,6 +1352,10 @@
           elapsedSec = durationSec;
           updateProgress();
           applyState('ended');
+          // FIX: reportar el fin a Firestore desde el timer también,
+          // ya que applyState('ended') establece currentState='ended' ANTES
+          // de que onStateChange(0) pueda disparar, bloqueando su guard.
+          reportEndedToFirestore();
           timerInterval = null;
           return; // Salir del loop
         }

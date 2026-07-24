@@ -233,6 +233,9 @@
             color: #d8b4fe;
             font-weight: 600;
             white-space: nowrap;
+            max-width: 340px;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         /* ─── Premium Themes ────────────────────── */
@@ -355,7 +358,7 @@
         <div class="welcome-card">
             <!-- Avatar -->
             <div class="avatar-wrapper" id="avatar-glow">
-                <img id="user-avatar" class="avatar-img" src="" alt="Avatar">
+                <img id="user-avatar" class="avatar-img" src="" alt="Avatar" onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\'%3E%3Crect width=\'100\' height=\'100\' fill=\'%232a1015\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' fill=\'%23a855f7\' font-size=\'40\'%3E👤%3C/text%3E%3C/svg%3E';">
                 <div class="badge">👋</div>
             </div>
             
@@ -413,7 +416,8 @@
             welcomeOverlayCardTheme: "standard",
             welcomeOverlayTemplates: {},
             welcomeOverlayColors: {},
-            welcomeOverlaySounds: {}
+            welcomeOverlaySounds: {},
+            welcomeOverlayUserSounds: {}
         };
         // Aumentamos a 5 minutos para tolerar desfases de reloj (clock drift) y filtramos la carga inicial en JS
         const startedAt = new Date(Date.now() - 5 * 60 * 1000);
@@ -468,10 +472,11 @@
                             if (data.welcomeOverlayFontFamily !== undefined) config.welcomeOverlayFontFamily = data.welcomeOverlayFontFamily;
                             if (data.welcomeOverlayCardTheme !== undefined) config.welcomeOverlayCardTheme = data.welcomeOverlayCardTheme;
 
-                            // Mapear configuración de bienvenida por rol
+                            // Mapear configuración de bienvenida por rol y por usuario
                             if (data.welcomeOverlayTemplates !== undefined) config.welcomeOverlayTemplates = data.welcomeOverlayTemplates || {};
                             if (data.welcomeOverlayColors !== undefined) config.welcomeOverlayColors = data.welcomeOverlayColors || {};
                             if (data.welcomeOverlaySounds !== undefined) config.welcomeOverlaySounds = data.welcomeOverlaySounds || {};
+                            if (data.welcomeOverlayUserSounds !== undefined) config.welcomeOverlayUserSounds = data.welcomeOverlayUserSounds || {};
 
                             // Aplicar estilos dinámicos
                             applyStyles();
@@ -608,9 +613,12 @@
             }
         }
 
-        // Agregar bienvenida a la cola
+        // Agregar bienvenida a la cola (máximo 15 para evitar acumulación excesiva)
         function addWelcome(data) {
             welcomeQueue.push(data);
+            if (welcomeQueue.length > 15) {
+                welcomeQueue.splice(0, welcomeQueue.length - 15);
+            }
             processQueue();
         }
 
@@ -704,11 +712,21 @@
                 }
             }
             
-            // 5. Determinar y reproducir el sonido para este rol
+            // 5. Determinar y reproducir el sonido para este usuario o rol
+            const lowerUid = String(next.uniqueId || '').toLowerCase().trim();
+            const lowerNick = String(next.user || '').toLowerCase().trim();
             let soundKeyOrUrl = '';
-            if (config.welcomeOverlaySounds && config.welcomeOverlaySounds[resolvedRole]) {
+            
+            // Prioridad 1: Audio de usuario específico
+            if (config.welcomeOverlayUserSounds && (config.welcomeOverlayUserSounds[lowerUid] || config.welcomeOverlayUserSounds[lowerNick])) {
+                soundKeyOrUrl = config.welcomeOverlayUserSounds[lowerUid] || config.welcomeOverlayUserSounds[lowerNick];
+            } 
+            // Prioridad 2: Audio asignado al rol
+            else if (config.welcomeOverlaySounds && config.welcomeOverlaySounds[resolvedRole]) {
                 soundKeyOrUrl = config.welcomeOverlaySounds[resolvedRole];
-            } else {
+            } 
+            // Prioridad 3: Audio predeterminado general
+            else {
                 soundKeyOrUrl = config.welcomeOverlaySoundUrl || 'mixkit-2017';
             }
             
@@ -778,10 +796,14 @@
                 if (data.welcomeOverlayShowPulseWave !== undefined) config.welcomeOverlayShowPulseWave = data.welcomeOverlayShowPulseWave;
                 if (data.welcomeOverlayFontFamily !== undefined) config.welcomeOverlayFontFamily = data.welcomeOverlayFontFamily;
                 
-                // Configs personalizadas por rango
+                // Configs personalizadas por rango y por usuario
                 if (data.welcomeOverlayTemplates !== undefined) config.welcomeOverlayTemplates = data.welcomeOverlayTemplates || {};
                 if (data.welcomeOverlayColors !== undefined) config.welcomeOverlayColors = data.welcomeOverlayColors || {};
                 if (data.welcomeOverlaySounds !== undefined) config.welcomeOverlaySounds = data.welcomeOverlaySounds || {};
+                if (data.welcomeOverlayUserSounds !== undefined) config.welcomeOverlayUserSounds = data.welcomeOverlayUserSounds || {};
+                // FIX: estas dos propíades faltaban y no se actualizaban desde el dashboard
+                if (data.welcomeOverlaySoundUrl !== undefined) config.welcomeOverlaySoundUrl = data.welcomeOverlaySoundUrl;
+                if (data.welcomeOverlayCardTheme !== undefined) config.welcomeOverlayCardTheme = data.welcomeOverlayCardTheme;
 
                 applyStyles();
             } else if (event.data.action === 'triggerTestAlert' && event.data.payload && event.data.payload.type === 'join') {

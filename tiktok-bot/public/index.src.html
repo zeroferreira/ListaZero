@@ -1429,6 +1429,7 @@
                 welcomeOverlayTemplates: {},
                 welcomeOverlayColors: {},
                 welcomeOverlaySounds: {},
+                welcomeOverlayUserSounds: {},
                 
                 // Chat TTS Config
                 chatTtsEnabled: false,
@@ -2820,6 +2821,7 @@
             const [lasteventsModalPos, setLasteventsModalPos] = React.useState({ x: 200, y: 200 });
             const [welcomeModalPos, setWelcomeModalPos] = React.useState({ x: 250, y: 220 });
             const [newSpecialUser, setNewSpecialUser] = React.useState({ username: '', allowed: true, voice: 'Default Voice', speed: 50, pitch: 50 });
+            const [newWelcomeUserAudio, setNewWelcomeUserAudio] = React.useState({ username: '', soundUrl: 'mixkit-2017' });
 
             // Coordinates for modals
             const [followModalPos, setFollowModalPos] = React.useState({ x: 100, y: 150 });
@@ -3371,10 +3373,18 @@
                     const freshRes = await fetch('/api/overlays/config');
                     const freshData = await freshRes.json();
                     
-                    // Encontrar diferencias instantáneas con el estado local actual
+                    // Encontrar diferencias instantáneas con el estado local actual.
+                    // NOTA: se usa JSON.stringify para comparar objetos correctamente
+                    // (evita que referencias distintas de objetos iguales no sean detectadas como dirty).
                     const instantDirty = {};
                     for (const k in localOverlays) {
-                        if (localOverlays[k] !== overlays[k]) {
+                        const localVal = localOverlays[k];
+                        const freshVal = freshData[k];
+                        // Comparar usando JSON para objetos/arrays, primitivos con !==
+                        const isDiff = (typeof localVal === 'object' && localVal !== null)
+                            ? JSON.stringify(localVal) !== JSON.stringify(freshVal)
+                            : localVal !== freshVal;
+                        if (isDiff) {
                             instantDirty[k] = true;
                         }
                     }
@@ -3693,9 +3703,30 @@
 
 
             // Custom specific Overlay config saves
+            // Mapa de claves por subpanel para forzar guardado completo aunque no estén en dirtyKeys
+            const SUBPANEL_KEYS = {
+                'Bienvenida': [
+                    'welcomeOverlayEnabled', 'welcomeOverlayDuration', 'welcomeOverlayGreetingTemplate',
+                    'welcomeOverlayColor', 'welcomeOverlaySoundEnabled', 'welcomeOverlaySoundVolume',
+                    'welcomeOverlayCardScale', 'welcomeOverlayBgColor', 'welcomeOverlayBgOpacity',
+                    'welcomeOverlayBorderColor', 'welcomeOverlayBorderOpacity', 'welcomeOverlayBorderWidth',
+                    'welcomeOverlayRadius', 'welcomeOverlayShowAvatar', 'welcomeOverlayShowPulseWave',
+                    'welcomeOverlayFontFamily', 'welcomeOverlayCardTheme', 'welcomeOverlaySoundUrl',
+                    'welcomeOverlayTemplates', 'welcomeOverlayColors', 'welcomeOverlaySounds',
+                    'welcomeOverlayUserSounds'
+                ],
+            };
+
             const handleSaveOverlaysConfigOnly = async (subpanel = '') => {
                 localStorage.setItem('offline_overlays_config', JSON.stringify(overlays));
-                const success = await saveOverlaysConfig(overlays);
+                // Forzar que todas las claves del subpanel se incluyan como "dirty"
+                // aunque React ya haya actualizado el estado (lo que vaciaría la detección de diff).
+                const forcedDirty = {};
+                const panelKeys = SUBPANEL_KEYS[subpanel];
+                if (panelKeys) {
+                    panelKeys.forEach(k => { forcedDirty[k] = true; });
+                }
+                const success = await saveOverlaysConfig(overlays, forcedDirty);
                 if (success) {
                     triggerSaveBadge(`💾 Diseño de ${subpanel} guardado`);
                 } else {
@@ -10307,7 +10338,8 @@
                                                         { id: 'subscriber', label: 'Sub ⚡' },
                                                         { id: 'vip', label: 'VIP ⭐' },
                                                         { id: 'donador', label: 'Donador 💎' },
-                                                        { id: 'follower', label: 'Seguidor ✨' }
+                                                        { id: 'follower', label: 'Seguidor ✨' },
+                                                        { id: 'usersounds', label: 'Audios Especiales 🎵' }
                                                     ].map((tab) => (
                                                         <button
                                                             key={tab.id}
@@ -10368,6 +10400,145 @@
                                                                 </select>
                                                             </div>
                                                         </div>
+                                                    </div>
+                                                ) : activeWelcomeTab === 'usersounds' ? (
+                                                    <div>
+                                                        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', borderRadius: '10px', border: '1px dashed rgba(168,85,247,0.3)', marginBottom: '15px' }}>
+                                                            <h5 style={{ color: '#a855f7', marginBottom: '10px', fontSize: '0.88rem' }}>➕ Asignar Audio a Usuario Específico</h5>
+                                                            <div className="grid-2">
+                                                                <div className="form-group">
+                                                                    <label>Usuario de TikTok (@username)</label>
+                                                                    <input 
+                                                                        type="text" 
+                                                                        placeholder="Ej: zero_fm" 
+                                                                        value={newWelcomeUserAudio.username} 
+                                                                        onChange={(e) => setNewWelcomeUserAudio({ ...newWelcomeUserAudio, username: e.target.value })} 
+                                                                    />
+                                                                </div>
+                                                                <div className="form-group">
+                                                                    <label>Efecto de Sonido o URL</label>
+                                                                    <select 
+                                                                        value={['mixkit-2017', 'retro-arcade', 'sci-fi-reveal', 'soft-bubble', 'none'].includes(newWelcomeUserAudio.soundUrl) ? newWelcomeUserAudio.soundUrl : 'custom'} 
+                                                                        onChange={(e) => {
+                                                                            if (e.target.value !== 'custom') {
+                                                                                setNewWelcomeUserAudio({ ...newWelcomeUserAudio, soundUrl: e.target.value });
+                                                                            } else {
+                                                                                setNewWelcomeUserAudio({ ...newWelcomeUserAudio, soundUrl: '' });
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <option value="mixkit-2017">🔔 Campana Elegante</option>
+                                                                        <option value="retro-arcade">🕹️ Retro Arcade</option>
+                                                                        <option value="sci-fi-reveal">🚀 Sci-Fi Reveal</option>
+                                                                        <option value="soft-bubble">🫧 Soft Bubble</option>
+                                                                        <option value="none">🔇 Sin Sonido</option>
+                                                                        <option value="custom">🔗 URL Personalizada (MP3 / WAV / OGG)</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            {(!['mixkit-2017', 'retro-arcade', 'sci-fi-reveal', 'soft-bubble', 'none'].includes(newWelcomeUserAudio.soundUrl)) && (
+                                                                <div className="form-group" style={{ marginTop: '10px' }}>
+                                                                    <label>URL Directa del Audio (MP3 / WAV / OGG)</label>
+                                                                    <input 
+                                                                        type="text" 
+                                                                        placeholder="https://ejemplo.com/audio.mp3" 
+                                                                        value={newWelcomeUserAudio.soundUrl} 
+                                                                        onChange={(e) => setNewWelcomeUserAudio({ ...newWelcomeUserAudio, soundUrl: e.target.value })} 
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                            <button 
+                                                                type="button" 
+                                                                className="btn btn-primary" 
+                                                                style={{ marginTop: '12px', width: '100%', fontSize: '0.8rem', padding: '6px' }}
+                                                                onClick={() => {
+                                                                    const u = (newWelcomeUserAudio.username || '').toLowerCase().trim().replace(/^@/, '');
+                                                                    if (!u) {
+                                                                        if (typeof showToast === 'function') showToast('Ingresa un nombre de usuario válido', 'warning');
+                                                                        return;
+                                                                    }
+                                                                    if (!newWelcomeUserAudio.soundUrl) {
+                                                                        if (typeof showToast === 'function') showToast('Selecciona o ingresa una URL de sonido', 'warning');
+                                                                        return;
+                                                                    }
+                                                                    const userSounds = { ...(overlays.welcomeOverlayUserSounds || {}) };
+                                                                    userSounds[u] = newWelcomeUserAudio.soundUrl;
+                                                                    setOverlays({ ...overlays, welcomeOverlayUserSounds: userSounds });
+                                                                    setNewWelcomeUserAudio({ username: '', soundUrl: 'mixkit-2017' });
+                                                                    if (typeof showToast === 'function') showToast(`Audio asignado a @${u}`, 'success');
+                                                                }}
+                                                            >
+                                                                ➕ Guardar Audio para @{newWelcomeUserAudio.username.trim().replace(/^@/, '') || 'usuario'}
+                                                            </button>
+                                                        </div>
+
+                                                        <h5 style={{ color: '#fff', marginBottom: '10px', fontSize: '0.85rem' }}>📋 Usuarios con Audio Personalizado</h5>
+                                                        {Object.keys(overlays.welcomeOverlayUserSounds || {}).length === 0 ? (
+                                                            <div style={{ opacity: 0.5, fontSize: '0.8rem', fontStyle: 'italic', padding: '10px', textAlign: 'center' }}>
+                                                                No hay usuarios con audio personalizado configurado.
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+                                                                {Object.entries(overlays.welcomeOverlayUserSounds || {}).map(([user, sound]) => {
+                                                                    const soundLabels = {
+                                                                        'mixkit-2017': '🔔 Campana Elegante',
+                                                                        'retro-arcade': '🕹️ Retro Arcade',
+                                                                        'sci-fi-reveal': '🚀 Sci-Fi Reveal',
+                                                                        'soft-bubble': '🫧 Soft Bubble',
+                                                                        'none': '🔇 Sin Sonido'
+                                                                    };
+                                                                    const label = soundLabels[sound] || sound;
+                                                                    return (
+                                                                        <div key={user} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px' }}>
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                                                                                <span style={{ fontWeight: 'bold', fontSize: '0.82rem', color: '#a855f7' }}>@{user}</span>
+                                                                                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px' }}>
+                                                                                    {label}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                                                <button 
+                                                                                    type="button" 
+                                                                                    className="btn btn-secondary" 
+                                                                                    style={{ padding: '3px 8px', fontSize: '0.7rem' }}
+                                                                                    title="Probar Sonido"
+                                                                                    onClick={() => {
+                                                                                        const soundUrls = {
+                                                                                            'mixkit-2017': 'https://assets.mixkit.co/active_storage/sfx/2017/2017-84.wav',
+                                                                                            'retro-arcade': 'https://assets.mixkit.co/active_storage/sfx/1435/1435-200.wav',
+                                                                                            'sci-fi-reveal': 'https://assets.mixkit.co/active_storage/sfx/2568/2568-200.wav',
+                                                                                            'soft-bubble': 'https://assets.mixkit.co/active_storage/sfx/2869/2869-200.wav'
+                                                                                        };
+                                                                                        const url = soundUrls[sound] || sound;
+                                                                                        if (url && url !== 'none') {
+                                                                                            const a = new Audio(url);
+                                                                                            a.volume = (overlays.welcomeOverlaySoundVolume || 40) / 100;
+                                                                                            a.play().catch(e => console.log('Error testing sound:', e));
+                                                                                        }
+                                                                                    }}
+                                                                                >
+                                                                                    ▶️ Probar
+                                                                                </button>
+                                                                                <button 
+                                                                                    type="button" 
+                                                                                    className="btn btn-secondary" 
+                                                                                    style={{ padding: '3px 8px', fontSize: '0.7rem', borderColor: 'rgba(239,68,68,0.4)', color: '#f87171' }}
+                                                                                    title="Eliminar Audio"
+                                                                                    onClick={() => {
+                                                                                        const userSounds = { ...(overlays.welcomeOverlayUserSounds || {}) };
+                                                                                        delete userSounds[user];
+                                                                                        setOverlays({ ...overlays, welcomeOverlayUserSounds: userSounds });
+                                                                                        if (typeof showToast === 'function') showToast(`Audio de @${user} eliminado`, 'info');
+                                                                                    }}
+                                                                                >
+                                                                                    🗑️
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <div>
