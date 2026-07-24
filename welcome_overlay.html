@@ -397,22 +397,33 @@
         // Si el usuario regresa dentro del cooldown, la tarjeta sí aparece pero el
         // audio NO suena para evitar saturación. Pasado el cooldown, el audio puede
         // volver a reproducirse.
-        const audioCooldownMs = 9 * 60 * 1000; // 9 minutos en milisegundos
+        // Los valores se leen de la config de Firestore (configurables desde el dashboard).
         const lastAudioPlayedAt = new Map(); // uid → timestamp (ms)
 
         /**
+         * Retorna el cooldown en ms según la config actual.
+         * Usa welcomeOverlayCooldownMinutes (default 9) si el cooldown está habilitado.
+         */
+        function getAudioCooldownMs() {
+            if (config.welcomeOverlayCooldownEnabled === false) return 0; // sin límite
+            const minutes = Number(config.welcomeOverlayCooldownMinutes) || 9;
+            return minutes * 60 * 1000;
+        }
+
+        /**
          * Determina si el audio puede reproducirse para un usuario dado.
-         * Retorna true si nunca ha sonado o si han pasado más de 9 minutos.
+         * Retorna true si nunca ha sonado, cooldown desactivado, o ha pasado el tiempo configurado.
          * @param {string} uid - ID único del usuario (uniqueId)
          * @returns {boolean}
          */
         function canPlayAudioForUser(uid) {
+            if (config.welcomeOverlayCooldownEnabled === false) return true; // siempre suena
             const key = String(uid || '').toLowerCase().trim();
             if (!key) return true;
             const last = lastAudioPlayedAt.get(key);
             if (!last) return true; // Primera vez
             const elapsed = Date.now() - last;
-            return elapsed >= audioCooldownMs;
+            return elapsed >= getAudioCooldownMs();
         }
 
         /**
@@ -447,6 +458,8 @@
             welcomeOverlayShowPulseWave: true,
             welcomeOverlayFontFamily: "Outfit",
             welcomeOverlayCardTheme: "standard",
+            welcomeOverlayCooldownEnabled: true,
+            welcomeOverlayCooldownMinutes: 9,
             welcomeOverlayTemplates: {},
             welcomeOverlayColors: {},
             welcomeOverlaySounds: {},
@@ -504,6 +517,8 @@
                             if (data.welcomeOverlayShowPulseWave !== undefined) config.welcomeOverlayShowPulseWave = data.welcomeOverlayShowPulseWave;
                             if (data.welcomeOverlayFontFamily !== undefined) config.welcomeOverlayFontFamily = data.welcomeOverlayFontFamily;
                             if (data.welcomeOverlayCardTheme !== undefined) config.welcomeOverlayCardTheme = data.welcomeOverlayCardTheme;
+                            if (data.welcomeOverlayCooldownEnabled !== undefined) config.welcomeOverlayCooldownEnabled = data.welcomeOverlayCooldownEnabled;
+                            if (data.welcomeOverlayCooldownMinutes !== undefined) config.welcomeOverlayCooldownMinutes = Number(data.welcomeOverlayCooldownMinutes) || 9;
 
                             // Mapear configuración de bienvenida por rol y por usuario
                             if (data.welcomeOverlayTemplates !== undefined) config.welcomeOverlayTemplates = data.welcomeOverlayTemplates || {};
@@ -845,6 +860,8 @@
                 if (data.welcomeOverlayShowAvatar !== undefined) config.welcomeOverlayShowAvatar = data.welcomeOverlayShowAvatar;
                 if (data.welcomeOverlayShowPulseWave !== undefined) config.welcomeOverlayShowPulseWave = data.welcomeOverlayShowPulseWave;
                 if (data.welcomeOverlayFontFamily !== undefined) config.welcomeOverlayFontFamily = data.welcomeOverlayFontFamily;
+                if (data.welcomeOverlayCooldownEnabled !== undefined) config.welcomeOverlayCooldownEnabled = data.welcomeOverlayCooldownEnabled;
+                if (data.welcomeOverlayCooldownMinutes !== undefined) config.welcomeOverlayCooldownMinutes = Number(data.welcomeOverlayCooldownMinutes) || 9;
                 
                 // Configs personalizadas por rango y por usuario
                 if (data.welcomeOverlayTemplates !== undefined) config.welcomeOverlayTemplates = data.welcomeOverlayTemplates || {};
