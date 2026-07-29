@@ -3567,6 +3567,21 @@ function setupListeners() {
             if (specialUser && specialUser.allowed === false) {
                 // Ya logueado y controlado
             } else if (userAllowed) {
+                // ── VERIFICAR MÍNIMO DE LIKES REQUERIDOS ──
+                // Solo aplica si chatTtsMinLikes > 0 y el usuario no es streamer ni special user bypasseado
+                const minLikesRequired = Number(overlayAlertsConfig.chatTtsMinLikes) || 0;
+                if (minLikesRequired > 0 && !isStreamer && !specialUser) {
+                    const userSessionLikes = sessionLikes.get(userId) || 0;
+                    if (userSessionLikes < minLikesRequired) {
+                        console.log(`🗣️ [TTS] @${displayName} bloqueado: tiene ${userSessionLikes} likes en sesión, mínimo requerido: ${minLikesRequired}`);
+                        userAllowed = false;
+                    }
+                }
+            }
+
+            if (specialUser && specialUser.allowed === false) {
+                // Ya manejado arriba
+            } else if (userAllowed) {
                 let commentQualifies = false;
                 const filterType = overlayAlertsConfig.chatTtsType || 'any'; // 'any', 'dot', 'slash', 'command'
                 const ttsCommand = String(overlayAlertsConfig.chatTtsCommand || '!tts').toLowerCase();
