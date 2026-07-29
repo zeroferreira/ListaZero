@@ -88,6 +88,10 @@
       border: 1px solid #1f1f2e;
       box-shadow: 0 20px 50px rgba(0,0,0,0.8);
     }
+    /* VISUAL 2: Fondo sólido en minimalist — el blur de card-bg es GPU desperdiciada */
+    #player-card.theme-minimalist .card-bg {
+      display: none;
+    }
     
     #player-card.theme-cyberpunk {
       background: rgba(5, 5, 10, 0.95);
@@ -118,7 +122,8 @@
       will-change: transform, opacity, filter;
       backface-visibility: hidden;
       z-index: 0;
-      transition: background-image 0.6s ease;
+      /* VISUAL 4: background-image no interpola en ningún browser — usar opacity */
+      transition: opacity 0.5s ease;
     }
 
     .card-inner {
@@ -294,6 +299,10 @@
       animation: shimmer-move 2s linear infinite;
       will-change: transform;
     }
+    /* VISUAL 3: Desactivar shimmer en OBS — repaint continuo satura la GPU */
+    body.obs-mode .progress-fill.playing::after {
+      animation: none !important;
+    }
 
     .time-row {
       display: flex;
@@ -464,6 +473,16 @@
       box-shadow: 0 4px 15px rgba(0,0,0,0.4) !important;
     }
     
+    /* VISUAL 1: Override para temas que usan backdrop-filter en OBS → GPU stutter */
+    body.obs-mode #player-card.theme-cyberpunk {
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      box-shadow: 0 0 15px rgba(255, 0, 60, 0.25), 0 20px 50px rgba(0,0,0,0.9) !important;
+    }
+    body.obs-mode #player-card.theme-minimalist {
+      box-shadow: 0 10px 30px rgba(0,0,0,0.9) !important;
+    }
+
     /* Reducir el radio de blur del fondo en OBS para ahorrar fill-rate de la GPU */
     body.obs-mode .card-bg {
       filter: blur(20px) brightness(0.25) saturate(1.8) !important;
@@ -751,8 +770,11 @@
       events: {
         'onReady': (event) => {
           isYtReady = true;
-          // Usar params cacheado del scope global (evita redeclaración)
-          const isMuteParam = params.get('mute') === 'true';
+
+          // BUG F: Aplicar mute/unmute INMEDIATAMENTE antes de playVideo().
+          // playerVar mute:1 garantiza autoplay en OBS; aquí lo sobreescribimos
+          // para el Dashboard, donde el audio DEBE sonar en la Mac.
+          updatePlayerMuteState(currentVolume);
 
           if (startState === 'playing') {
             if (startTime > 0) {
@@ -778,10 +800,11 @@
           adjustIframeAspectRatio();
           positionMiniatureVideo();
 
-          // Delay unmute to ensure autoplay registry accepts it
+          // BUG A: 500ms en vez de 150ms — garantiza que el audio se active
+          // incluso si el browser throttlea el tab o la GPU está ocupada.
           setTimeout(() => {
             updatePlayerMuteState(currentVolume);
-          }, 150);
+          }, 500);
         },
         'onStateChange': (event) => {
           // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
@@ -890,6 +913,9 @@
   function syncPlayerState(state, vid) {
     if (typeof YT === 'undefined' || !isYtApiReady || !isYtReady) {
       if (vid) pendingVideoId = vid;
+      // ERROR G: guardar el estado objetivo para restaurarlo cuando la API esté lista.
+      // Sin esto, siempre se asumía 'playing' aunque el estado real fuera 'paused'.
+      pendingTargetState = state || 'playing';
       return;
     }
     if (vid && (!ytPlayer || vid !== currentVideoId)) {
@@ -936,8 +962,10 @@
         console.error("Error al actualizar Firestore (ended):", e);
       }
     }
-    // Reset con delay para permitir que el sistema procese el nuevo video
-    setTimeout(() => { _reportingEnded = false; }, 3000);
+    // FIX ERROR#7: Aumentar el delay de reset de 3s a 8s para cubrir el caso donde
+    // tanto el timer como onStateChange(0) disparan 'ended' dentro de la misma ventana.
+    // Con 3s el guard se reseteaba antes de que el segundo evento llegara.
+    setTimeout(() => { _reportingEnded = false; }, 8000);
   }
 
   // ─── Helpers ─────────────────────────────────
@@ -1044,11 +1072,16 @@
 
   function showCard() {
     card.style.display = 'block';
-    // Force browser reflow to register display change before animating opacity
-    void card.offsetWidth;
+    // PERF 1: Doble rAF en vez de reflow forzado (void card.offsetWidth).
+    // El browser registra el display change en el primer frame y aplica
+    // la transición de opacidad en el siguiente — sin bloquear el hilo principal.
     if (!isVisible) {
-      card.classList.add('visible');
-      isVisible = true;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          card.classList.add('visible');
+          isVisible = true;
+        });
+      });
     }
   }
 
@@ -1136,10 +1169,14 @@
       stateDot.className = 'state-dot playing';
       stateLabel.textContent = 'En espera (Vista Previa)';
       
-      // Load default video in preview mode to showcase display modes (miniature, background, cover)
-      if (!ytPlayer || currentVideoId !== 'dQw4w9WgXcQ') {
+      // BUG D: NO recrear el player en setIdle() — si el DJ da Stop desde el panel,
+      // el audio debe detenerse, no reiniciar con el video de preview.
+      // Solo actualizamos la thumbnail estática sin crear un iframe con audio.
+      if (currentVideoId !== 'dQw4w9WgXcQ') {
         currentVideoId = 'dQw4w9WgXcQ';
-        createOrLoadPlayer('dQw4w9WgXcQ', 'playing');
+        if (ytPlayer && typeof ytPlayer.stopVideo === 'function') {
+          try { ytPlayer.stopVideo(); } catch(e) {}
+        }
       }
     } else {
       hideCard();
@@ -1236,6 +1273,10 @@
   function startWatchdog() {
     if (watchdogInterval) clearInterval(watchdogInterval);
     watchdogInterval = setInterval(() => {
+      // FIX BUG#5: No forzar play en OBS cuando el audio va al Dashboard.
+      // El player de OBS está intencionalmente silenciado/pausado en ese modo.
+      if (isObs && routeAudioTo === 'dashboard') return;
+
       // Solo vigilar si el estado configurado es 'playing' y el player está instanciado
       if (currentState !== 'playing' || !ytPlayer || typeof ytPlayer.getPlayerState !== 'function') {
         stuckCount = 0;
@@ -1272,8 +1313,18 @@
         return;
       }
 
-      // CASO 1: El video debería estar reproduciendo pero está pausado (2), no inició (-1) o está cued (5)
-      if (ytState === 2 || ytState === -1 || ytState === 5) {
+      // FIX ERROR#9: Separar pausa voluntaria del DJ (state 2) de los estados de error.
+      // Si el DJ pausó manualmente, NO forzar play ni mostrar el banner de desbloqueo.
+      if (ytState === 2) {
+        // Pausa voluntaria: no contar como stuck, solo registrar y salir.
+        stuckCount = 0;
+        stuckTimeCount = 0;
+        console.log('[Watchdog] Reproductor en pausa (state 2). Pausa voluntaria, no se fuerza play.');
+        return;
+      }
+
+      // CASO 1: El video no inició (-1) o está cued (5) — estados de error reales
+      if (ytState === -1 || ytState === 5) {
         stuckCount++;
         console.warn(`[Watchdog] Alerta: El reproductor está en estado ${ytState} en lugar de PLAYING. Reintento ${stuckCount}...`);
 
@@ -1303,7 +1354,7 @@
       } else {
         stuckCount = 0;
       }
-    }, 2000);
+    }, 3000); // PERF 2: 3000ms en vez de 2000ms — reduce llamadas al iframe en OBS
   }
 
   function stopWatchdog() {
@@ -1482,9 +1533,13 @@
     window.lastConfig = cfg;
     try {
 
-    // Configurar la ruta de audio (Siempre en el dashboard)
-    routeAudioTo = 'dashboard';
-    updatePlayerMuteState(currentVolume);
+    // ERROR H: Solo actualizar routeAudioTo y llamar updatePlayerMuteState si el valor cambió.
+    // Llamarlo en cada config update causaba micro-silencio/pop en el audio del Dashboard.
+    const newAudioRoute = cfg.yt_audio_route || 'dashboard';
+    if (newAudioRoute !== routeAudioTo) {
+      routeAudioTo = newAudioRoute;
+      updatePlayerMuteState(currentVolume);
+    }
 
     // 0. Layout Mode
     const rawLayoutMode = cfg.yt_card_layout_mode || 'standard';
@@ -1542,7 +1597,9 @@
     }
 
     // 4.5. Preview Mode Auto-Scaling (fits inside 350px x 180px preview area in Dashboard)
-    const isPreview = (new URLSearchParams(window.location.search)).get('preview') === 'true';
+    // FIX PERF#12: Reutilizar el `params` global en lugar de crear una nueva instancia
+    // de URLSearchParams en cada actualización de configuración.
+    const isPreview = params.get('preview') === 'true';
     if (isPreview) {
       document.body.classList.add('preview-mode');
       const estimatedHeight = isVideoLeft ? 212 : (isSplit ? 162 : 140);
@@ -1774,7 +1831,13 @@
   };
   if (typeof firebase !== 'undefined' && fbConfig) {
     try {
-      firebase.initializeApp(fbConfig);
+      // FIX BUG#1: Proteger contra doble initializeApp cuando el overlay
+      // corre dentro de un iframe del Dashboard que ya inicializó Firebase.
+      if (!firebase.apps || firebase.apps.length === 0) {
+        firebase.initializeApp(fbConfig);
+      } else {
+        firebase.app(); // reutilizar la app ya inicializada
+      }
       db = firebase.firestore();
       try {
         db.settings({ experimentalForceLongPolling: true });
@@ -1847,14 +1910,30 @@
     }
 
     if (action === 'ytPlay' || action === 'ytResume') {
-      if (payload?.videoId) applyData({ ...payload, state: 'playing', timestamp: Date.now() });
-      else applyState('playing');
+      if (payload?.videoId) {
+        applyData({ ...payload, state: 'playing', timestamp: Date.now() });
+      } else {
+        // FIX BUG#3: applyState solo actualiza la UI. Sin videoId, también
+        // hay que decirle al ytPlayer que reanude la reproducción real.
+        applyState('playing');
+        syncPlayerState('playing', currentVideoId);
+      }
     }
-    if (action === 'ytPause')  applyState('paused');
+    if (action === 'ytPause') {
+      applyState('paused');
+      // BUG C: pausar el player real, no solo la UI
+      if (ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
+        ytPlayer.pauseVideo();
+      }
+    }
     if (action === 'ytStop' || action === 'ytEnd') setIdle();
     if (action === 'ytSeek' && typeof payload?.elapsed === 'number') {
       elapsedSec = payload.elapsed;
       updateProgress();
+      // FIX BUG#2: Sincronizar posición real del player, no solo la barra visual.
+      if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
+        ytPlayer.seekTo(payload.elapsed, true);
+      }
     }
     if (action === 'ytSetVolume' && typeof payload?.volume === 'number') {
       currentVolume = payload.volume;
@@ -1863,8 +1942,11 @@
     }
   });
 
+  // PERF 3: Debounce en resize — evita traversal DOM masivo (hasta 60 veces/seg)
+  let _resizeDebounce = null;
   window.addEventListener('resize', () => {
-    positionMiniatureVideo();
+    clearTimeout(_resizeDebounce);
+    _resizeDebounce = setTimeout(positionMiniatureVideo, 100);
   });
 
   // Iniciar el vigilante en segundo plano para autocuración

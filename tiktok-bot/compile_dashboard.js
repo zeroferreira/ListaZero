@@ -180,7 +180,7 @@ async function run() {
         process.exit(1);
     }
     
-    const endIndex = htmlContent.indexOf(endTag, startIndex);
+    const endIndex = htmlContent.lastIndexOf(endTag);
     if (endIndex === -1) {
         console.error('❌ Error: Closing tag </script> not found after the start tag!');
         process.exit(1);
@@ -196,7 +196,9 @@ async function run() {
     const outputJsPath = path.join(__dirname, 'public/dashboard.js');
 
     console.log('⏳ Compiling React JSX to public/dashboard.js using local Babel CLI...');
-    execSync(`npx babel "${tempJsxPath}" --out-file "${outputJsPath}" --presets=@babel/preset-react --no-babelrc`, { stdio: 'inherit' });
+    const localBabel = path.join(__dirname, 'node_modules/.bin/babel');
+    const babelCmd = fs.existsSync(localBabel) ? `"${localBabel}"` : 'npx --no-install babel';
+    execSync(`${babelCmd} "${tempJsxPath}" --out-file "${outputJsPath}" --presets=@babel/preset-react --no-babelrc`, { cwd: __dirname, stdio: 'inherit' });
 
     // Clean up temporary file
     if (fs.existsSync(tempJsxPath)) {
@@ -226,8 +228,14 @@ async function run() {
     console.log('✅ Successfully compiled! Created optimized index.html and public/dashboard.js.');
 
   } catch (error) {
-    console.error('❌ Compilation failed:', error.message);
-    process.exit(1);
+    console.warn('⚠️ Advertencia en compilación de React JSX:', error.message);
+    const outputJsPath = path.join(__dirname, 'public/dashboard.js');
+    if (fs.existsSync(outputJsPath)) {
+      console.log('💡 Continuando con la versión actual de public/dashboard.js y public/index.html...');
+    } else {
+      console.error('❌ No se encontró dashboard.js para iniciar.');
+      process.exit(1);
+    }
   }
 }
 
