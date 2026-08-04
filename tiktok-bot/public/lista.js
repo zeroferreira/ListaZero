@@ -7356,6 +7356,40 @@ function shouldShowStatsTicker() {
         }
       }
 
+      function subscribeRewardsConfig() {
+        if (!window.db || window._rewardsConfigSubscribed) return;
+        window._rewardsConfigSubscribed = true;
+        try {
+          window.db.collection('systemConfig').doc('rewardsConfig').onSnapshot(doc => {
+            if (doc.exists) {
+              const data = doc.data();
+              window.rewardsCooldownType = data.cooldownType || '36_hours';
+              if (Array.isArray(data.list)) {
+                const remote = data.list;
+                const byId = new Map();
+                remote.forEach((r) => { if (r && r.id) byId.set(String(r.id), r); });
+                REWARDS.forEach((r) => { if (r && r.id && !byId.has(String(r.id))) remote.push(r); });
+                REWARDS = remote;
+                const rewardsModal = document.getElementById('rewards-modal');
+                if (rewardsModal && !rewardsModal.hidden) {
+                  renderRewardsModal();
+                }
+              }
+            }
+          }, err => console.warn('Listener rewardsConfig error:', err));
+
+          window.db.collection('systemConfig').doc('currentLiveSession').onSnapshot(doc => {
+            if (doc.exists && doc.data().sessionId) {
+              window.currentLiveSessionId = doc.data().sessionId;
+              const rewardsModal = document.getElementById('rewards-modal');
+              if (rewardsModal && !rewardsModal.hidden) {
+                renderRewardsModal();
+              }
+            }
+          }, err => console.warn('Listener currentLiveSession error:', err));
+        } catch (e) { console.warn('Error suscribiendo rewardsConfig:', e); }
+      }
+
       // Cargar al inicio (enganchado a DOMContentLoaded)
       document.addEventListener('DOMContentLoaded', () => {
         // Intentar cargar configuración inmediatamente si db está listo, o reintentar brevemente
@@ -7365,6 +7399,7 @@ function shouldShowStatsTicker() {
             try { await loadUserAliases(); } catch (_) { }
             try { await loadRewardsConfig(); } catch (_) { }
             try { await loadCurrentLiveSession(); } catch (_) { }
+            subscribeRewardsConfig();
           } else {
             setTimeout(initRewards, 500);
           }
@@ -12241,33 +12276,54 @@ function shouldShowStatsTicker() {
             byAccount[accId].push(d);
           });
 
-          let totalPoints = 0;
-          let bestDoc = null;
+          // Fusionar historiales de canje (lastRedeemedAt y lastRedeemedSessionId) de TODOS los documentos del usuario
+          const mergedLastRedeemedAt = {};
+          const mergedLastRedeemedSessionId = {};
 
-          Object.keys(byAccount).forEach(accId => {
-            const accountDocs = byAccount[accId];
-            accountDocs.sort((x, y) => {
-              const tx = Math.max(getMillisFromTs(x.data.updatedAt), getMillisFromTs(x.data.lastUpdated));
-              const ty = Math.max(getMillisFromTs(y.data.updatedAt), getMillisFromTs(y.data.lastUpdated));
-              if (Math.abs(tx - ty) > 5000) return ty - tx;
-              return Number(y.data.totalPoints || 0) - Number(x.data.totalPoints || 0);
-            });
-
-            const bestForThisAccount = accountDocs[0];
-            // FIX: Usar Math.max para evitar duplicar puntos ya consolidados de cuentas vinculadas
-            totalPoints = Math.max(totalPoints, Number(bestForThisAccount.data.totalPoints || 0));
-
-            if (!bestDoc || Number(bestForThisAccount.data.totalPoints || 0) > Number(bestDoc.data.totalPoints || 0)) {
-              bestDoc = bestForThisAccount;
+          existing.forEach(d => {
+            if (d.data.lastRedeemedAt && typeof d.data.lastRedeemedAt === 'object') {
+              Object.keys(d.data.lastRedeemedAt).forEach(rid => {
+                const tsStr = d.data.lastRedeemedAt[rid];
+                if (tsStr) {
+                  if (!mergedLastRedeemedAt[rid] || new Date(tsStr).getTime() > new Date(mergedLastRedeemedAt[rid]).getTime()) {
+                    mergedLastRedeemedAt[rid] = tsStr;
+                  }
+                }
+              });
+            }
+            if (d.data.lastRedeemedSessionId && typeof d.data.lastRedeemedSessionId === 'object') {
+              Object.keys(d.data.lastRedeemedSessionId).forEach(rid => {
+                const sid = d.data.lastRedeemedSessionId[rid];
+                if (sid) {
+                  mergedLastRedeemedSessionId[rid] = sid;
+                }
+              });
             }
           });
+
+          let maxPoints = 0;
+          existing.forEach(d => {
+            maxPoints = Math.max(maxPoints, Number(d.data.totalPoints || 0));
+          });
+
+          // Ordenar los documentos por la fecha de actualización más reciente para elegir el documento principal
+          existing.sort((x, y) => {
+            const tx = Math.max(getMillisFromTs(x.data.updatedAt), getMillisFromTs(x.data.lastUpdated));
+            const ty = Math.max(getMillisFromTs(y.data.updatedAt), getMillisFromTs(y.data.lastUpdated));
+            if (Math.abs(tx - ty) > 5000) return ty - tx;
+            return Number(y.data.totalPoints || 0) - Number(x.data.totalPoints || 0);
+          });
+
+          const bestDoc = existing[0];
 
           if (bestDoc) {
             return {
               ...bestDoc,
               data: {
                 ...bestDoc.data,
-                totalPoints: totalPoints
+                totalPoints: maxPoints,
+                lastRedeemedAt: mergedLastRedeemedAt,
+                lastRedeemedSessionId: mergedLastRedeemedSessionId
               }
             };
           }
@@ -15135,7 +15191,9 @@ function shouldShowStatsTicker() {
         if (!container) return;
 
         // Renderizar inputs sin onchange inline, usando data attributes
-        container.innerHTML = REWARDS.map((r, index) => `
+        container.innerHTML = REWARDS.map((r, index) => {
+          const cdVal = r.cooldownType || '';
+          return `
             <div class="reward-config-item" data-index="${index}" style="border:1px solid #ddd; padding:15px; border-radius:8px; display:flex; gap:15px; background:#fff; align-items:flex-start;">
                <div style="font-size:24px;">${r.icon}</div>
                <div style="flex:1;">
@@ -15144,10 +15202,23 @@ function shouldShowStatsTicker() {
                        <input type="number" class="form-control reward-cost" value="${r.cost}" placeholder="Costo" style="width:100px;">
                    </div>
                    <textarea class="form-control reward-desc" placeholder="Descripción" rows="2" style="width:100%; font-size:12px;">${r.description}</textarea>
-                   <div style="margin-top:5px; font-size:10px; color:#666;">ID: ${r.id} (No editable)</div>
+                   <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+                       <div style="font-size:10px; color:#666;">ID: ${r.id} (No editable)</div>
+                       <div style="display:flex; align-items:center; gap:5px;">
+                           <label style="font-size:11px; font-weight:bold; color:#555; margin:0;">⏱️ Cooldown:</label>
+                           <select class="form-control reward-cooldown" style="font-size:11px; padding:2px 6px; width:auto;">
+                               <option value="" ${cdVal === '' ? 'selected' : ''}>Heredar del Global</option>
+                               <option value="once_per_live" ${cdVal === 'once_per_live' ? 'selected' : ''}>1 vez por LIVE</option>
+                               <option value="once_per_day" ${cdVal === 'once_per_day' ? 'selected' : ''}>Una vez al día</option>
+                               <option value="36_hours" ${cdVal === '36_hours' ? 'selected' : ''}>36 Horas</option>
+                               <option value="disabled" ${cdVal === 'disabled' ? 'selected' : ''}>Sin Cooldown</option>
+                           </select>
+                       </div>
+                   </div>
                </div>
             </div>
-          `).join('');
+          `;
+        }).join('');
       }
 
       window.saveRewardsConfig = async function () {
@@ -15163,12 +15234,20 @@ function shouldShowStatsTicker() {
             const index = parseInt(item.dataset.index);
             const original = REWARDS[index];
             if (original) {
-              newRewards.push({
+              const cdSel = item.querySelector('.reward-cooldown');
+              const cdValue = cdSel ? cdSel.value : '';
+              const updatedReward = {
                 ...original,
                 name: item.querySelector('.reward-name').value,
                 cost: Number(item.querySelector('.reward-cost').value),
                 description: item.querySelector('.reward-desc').value
-              });
+              };
+              if (cdValue) {
+                updatedReward.cooldownType = cdValue;
+              } else {
+                delete updatedReward.cooldownType;
+              }
+              newRewards.push(updatedReward);
             }
           });
 
@@ -15331,11 +15410,17 @@ function shouldShowStatsTicker() {
       // ===== FUNCIONES PARA MODAL DE CANJE DE PUNTOS =====
 
       // Función para renderizar el modal de recompensas
+      // Función para renderizar el modal de recompensas
       async function renderRewardsModal() {
         console.log('🔄 Renderizando modal de recompensas...');
         const targetUser = getCurrentSelectedUser();
         const userData = getGamificationDataForUser(targetUser);
         console.log('👤 Usuario objetivo:', targetUser, 'Puntos (local):', userData.points);
+
+        // Intentar refrescar configuración y sesión de LIVE activa antes de calcular cooldowns
+        try { await loadRewardsConfig(); } catch (_) { }
+        try { await loadCurrentLiveSession(); } catch (_) { }
+
         let effectivePoints = Number(userData.points || 0);
         let userStatsDoc = null;
 
@@ -15363,19 +15448,19 @@ function shouldShowStatsTicker() {
         rewardsContainer.innerHTML = '';
 
         const now = Date.now();
-        const cooldownType = window.rewardsCooldownType || '36_hours';
 
         REWARDS.forEach(reward => {
           const canAfford = effectivePoints >= reward.cost;
 
-          // Lógica de Cooldown
+          // Determinar Cooldown (per-recompensa si está definido, o global)
+          const cooldownType = reward.cooldownType || window.rewardsCooldownType || '36_hours';
+
           let isOnCooldown = false;
           let remainingHours = 0;
           let cooldownLabel = '';
           let cooldownDetailMsg = '36 horas entre usos.';
 
           if (cooldownType === 'once_per_live') {
-            // Verificar si ya canjeó en el live actual
             const redeemedSessions = (userStatsDoc && userStatsDoc.lastRedeemedSessionId) || {};
             const sessionId = window.currentLiveSessionId || new Date().toISOString().slice(0, 10);
             if (redeemedSessions[reward.id] === sessionId) {
@@ -15383,10 +15468,9 @@ function shouldShowStatsTicker() {
               cooldownLabel = 'Ya canjeado';
               cooldownDetailMsg = '1 vez por LIVE (el admin puede reiniciar el live para permitir nuevos canjes).';
             }
-          } else if (userStatsDoc && userStatsDoc.lastRedeemedAt && userStatsDoc.lastRedeemedAt[reward.id]) {
-            const lastRedeemStr = userStatsDoc.lastRedeemedAt[reward.id];
-            
-            if (cooldownType === 'once_per_day') {
+          } else if (cooldownType === 'once_per_day') {
+            if (userStatsDoc && userStatsDoc.lastRedeemedAt && userStatsDoc.lastRedeemedAt[reward.id]) {
+              const lastRedeemStr = userStatsDoc.lastRedeemedAt[reward.id];
               const lastDate = new Date(lastRedeemStr);
               const today = new Date();
               const isSameDay = lastDate.getFullYear() === today.getFullYear() &&
@@ -15397,7 +15481,10 @@ function shouldShowStatsTicker() {
                 cooldownLabel = 'Vuelve mañana';
                 cooldownDetailMsg = '1 vez al día (reinicia a medianoche).';
               }
-            } else if (cooldownType === '36_hours') {
+            }
+          } else if (cooldownType === '36_hours') {
+            if (userStatsDoc && userStatsDoc.lastRedeemedAt && userStatsDoc.lastRedeemedAt[reward.id]) {
+              const lastRedeemStr = userStatsDoc.lastRedeemedAt[reward.id];
               const lastTime = new Date(lastRedeemStr).getTime();
               const elapsed = now - lastTime;
               const COOLDOWN_MS = 36 * 60 * 60 * 1000;
@@ -15440,7 +15527,6 @@ function shouldShowStatsTicker() {
           `;
 
           rewardsContainer.appendChild(rewardCard);
-          // ... events ...
         });
 
         // Renderizar solicitudes pendientes
@@ -15455,42 +15541,52 @@ function shouldShowStatsTicker() {
 
         try {
           console.log('📊 Obteniendo datos del usuario...');
-          // Obtener puntos actuales de Firestore para asegurar consistencia
           const normUser = normalizeUserKey(username);
           const userDocRef = window.db.collection('userStats').doc(normUser);
-          const userDoc = await userDocRef.get();
 
-          let currentPoints = 0;
-          let userLastRedeemed = {};
-          let profilePic = '';
+          // Obtener documento consolidado de usuario para asegurar consistencia entre alias/mayúsculas
+          const bestStats = await fetchBestUserStatsDoc(username);
+          const userDocData = (bestStats && bestStats.data) ? bestStats.data : {};
 
-          if (userDoc.exists) {
-            const data = userDoc.data();
-            currentPoints = Number(data.totalPoints || 0);
-            userLastRedeemed = data.lastRedeemedAt || {};
-            profilePic = data.profilePic || '';
-          } else {
-            // Fallback a local si no existe en DB (aunque debería)
-            const localData = getGamificationDataForUser(username);
-            currentPoints = localData.points || 0;
+          let currentPoints = Number(userDocData.totalPoints || 0);
+          let userLastRedeemed = userDocData.lastRedeemedAt || {};
+          let userLastRedeemedSession = userDocData.lastRedeemedSessionId || {};
+          let profilePic = userDocData.profilePic || '';
+
+          if (!bestStats) {
+            const userDoc = await userDocRef.get();
+            if (userDoc.exists) {
+              const data = userDoc.data();
+              currentPoints = Number(data.totalPoints || 0);
+              userLastRedeemed = data.lastRedeemedAt || {};
+              userLastRedeemedSession = data.lastRedeemedSessionId || {};
+              profilePic = data.profilePic || '';
+            } else {
+              const localData = getGamificationDataForUser(username);
+              currentPoints = localData.points || 0;
+            }
+          }
+
+          console.log('🔍 Buscando recompensa en configuración...');
+          const reward = REWARDS.find(r => r.id === rewardId);
+          if (!reward) {
+            showErrorNotification('Recompensa no encontrada.');
+            if (btn) { btn.disabled = false; btn.textContent = 'Canjear'; }
+            return;
           }
 
           // Validación de Cooldown dinámico en el momento del canje (doble check)
-          const cooldownType = window.rewardsCooldownType || '36_hours';
+          const cooldownType = reward.cooldownType || window.rewardsCooldownType || '36_hours';
           if (cooldownType === 'once_per_live') {
-            // Doble-check: leer desde Firestore para evitar condiciones de carrera
-            const freshDoc = await userDocRef.get();
-            const freshSessions = (freshDoc.exists && freshDoc.data().lastRedeemedSessionId) || {};
             const sessionId = window.currentLiveSessionId || new Date().toISOString().slice(0, 10);
-            if (freshSessions[rewardId] === sessionId) {
+            if (userLastRedeemedSession[rewardId] === sessionId) {
               showErrorNotification('Ya canjeaste esta recompensa en este LIVE. Solo se permite 1 vez por sesión en vivo.');
               if (btn) { btn.disabled = true; btn.textContent = 'Ya canjeado'; }
               return;
             }
-          } else if (userLastRedeemed[rewardId]) {
-            const lastRedeemStr = userLastRedeemed[rewardId];
-            if (cooldownType === 'once_per_day') {
-              const lastDate = new Date(lastRedeemStr);
+          } else if (cooldownType === 'once_per_day') {
+            if (userLastRedeemed[rewardId]) {
+              const lastDate = new Date(userLastRedeemed[rewardId]);
               const today = new Date();
               const isSameDay = lastDate.getFullYear() === today.getFullYear() &&
                                 lastDate.getMonth() === today.getMonth() &&
@@ -15500,8 +15596,10 @@ function shouldShowStatsTicker() {
                 if (btn) { btn.disabled = true; btn.textContent = 'Canjeado hoy'; }
                 return;
               }
-            } else if (cooldownType === '36_hours') {
-              const lastTime = new Date(lastRedeemStr).getTime();
+            }
+          } else if (cooldownType === '36_hours') {
+            if (userLastRedeemed[rewardId]) {
+              const lastTime = new Date(userLastRedeemed[rewardId]).getTime();
               const COOLDOWN_MS = 36 * 60 * 60 * 1000;
               if (Date.now() - lastTime < COOLDOWN_MS) {
                 showErrorNotification('Debes esperar 36 horas antes de canjear esto nuevamente.');
@@ -15515,14 +15613,6 @@ function shouldShowStatsTicker() {
 
           if (currentPoints < cost) {
             showErrorNotification('No tienes suficientes puntos para esta recompensa.');
-            if (btn) { btn.disabled = false; btn.textContent = 'Canjear'; }
-            return;
-          }
-
-          console.log('🔍 Buscando recompensa en configuración...');
-          const reward = REWARDS.find(r => r.id === rewardId);
-          if (!reward) {
-            showErrorNotification('Recompensa no encontrada.');
             if (btn) { btn.disabled = false; btn.textContent = 'Canjear'; }
             return;
           }
@@ -15567,7 +15657,6 @@ function shouldShowStatsTicker() {
           };
 
           // --- ACTUALIZACIÓN OPTIMISTA PREVIA ---
-          // Restar visualmente antes de enviar a DB para feedback instantáneo
           const optimisticPoints = Math.max(0, currentPoints - cost);
           const pointsDisplay = document.getElementById('user-points-display');
           if (pointsDisplay) pointsDisplay.textContent = `${optimisticPoints} pts`;
@@ -15592,6 +15681,12 @@ function shouldShowStatsTicker() {
           updatePayload[`lastRedeemedSessionId.${rewardId}`] = liveSessionId;
 
           batch.set(userDocRef, updatePayload, { merge: true });
+
+          // Si el mejor documento del usuario correspondía a otra clave alias, actualizarlo también
+          if (bestStats && bestStats.key && bestStats.key !== normUser) {
+            const aliasDocRef = window.db.collection('userStats').doc(bestStats.key);
+            batch.set(aliasDocRef, updatePayload, { merge: true });
+          }
 
           // 3. Crear alerta de notificación para streaming en vivo
           const notificationRef = db.collection('notifications').doc();

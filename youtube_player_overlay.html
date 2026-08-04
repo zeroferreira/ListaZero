@@ -644,7 +644,7 @@
   let pendingTargetState = null;
   let currentVolume   = 100;
   let hasSetInitialVolume = false;
-  let routeAudioTo    = 'dashboard'; // 'obs' | 'dashboard'
+  let routeAudioTo    = 'obs'; // 'obs' (predeterminado) | 'dashboard' | 'none' | 'both'
 
   // Debounce handle para applyCardStyles layout recalculation
   let _layoutDebounce = null;
@@ -711,17 +711,39 @@
   }
 
   function createOrLoadPlayer(videoId, targetState, startTime) {
-    isYtReady = false; // Reset player ready state
     if (!isYtApiReady) {
       pendingVideoId = videoId;
-      pendingTargetState = targetState || 'playing'; // Guardar estado para cuando la API esté lista
+      pendingTargetState = targetState || 'playing';
       return;
     }
 
     const startState = targetState || 'playing';
     const quality = getSuggestedQuality();
+    const startSec = Math.floor(startTime || 0);
 
-    // Destroy existing player to avoid CEF cross-origin iframe recycling bugs in OBS
+    // Si ya existe un player instanciado y funcional, reutilizarlo con loadVideoById
+    if (ytPlayer && isYtReady && typeof ytPlayer.loadVideoById === 'function') {
+      try {
+        currentVideoId = videoId;
+        ytPlayer.loadVideoById({
+          videoId: videoId,
+          startSeconds: startSec
+        });
+        if (startState !== 'playing' && typeof ytPlayer.pauseVideo === 'function') {
+          ytPlayer.pauseVideo();
+        }
+        if (typeof ytPlayer.setPlaybackQuality === 'function') {
+          ytPlayer.setPlaybackQuality(quality);
+        }
+        return;
+      } catch (e) {
+        console.warn("⚠️ Error al reutilizar el reproductor, recreando...", e);
+      }
+    }
+
+    isYtReady = false;
+
+    // Destruir player anterior solo si existía pero no se pudo reutilizar
     if (ytPlayer) {
       try {
         if (typeof ytPlayer.destroy === 'function') {
@@ -733,13 +755,12 @@
       ytPlayer = null;
     }
 
-    // Recreate the div container element
+    // Recreate container div
     const container = document.getElementById('yt-player-container');
     if (container) {
       container.innerHTML = '<div id="yt-player"></div>';
     }
 
-    // Determine the origin for YouTube Iframe handshake.
     let originParam = window.location.origin;
     if (originParam === 'null' || originParam.startsWith('file:')) {
       console.warn("⚠️ Advertencia: Estás ejecutando el overlay desde un archivo local (file://). YouTube bloqueará la reproducción de videos protegidos. Por favor, usa tu enlace HTTPS de Vercel en OBS.");
@@ -753,7 +774,7 @@
       videoId: videoId,
       playerVars: {
         'autoplay': startState === 'playing' ? 1 : 0,
-        'start': Math.floor(startTime || 0),
+        'start': startSec,
         'controls': 0,
         'disablekb': 1,
         'fs': 0,
@@ -761,7 +782,7 @@
         'showinfo': 0,
         'iv_load_policy': 3,
         'enablejsapi': 1,
-        'mute': 1, // Start MUTED to bypass OBS autoplay blocking
+        'mute': 1, // Iniciar SILENCIADO para cumplir políticas de Autoplay y evitar congelamientos
         'modestbranding': 1,
         'autohide': 1,
         'cc_load_policy': 0,
@@ -771,20 +792,9 @@
         'onReady': (event) => {
           isYtReady = true;
 
-          // BUG F: Aplicar mute/unmute INMEDIATAMENTE antes de playVideo().
-          // playerVar mute:1 garantiza autoplay en OBS; aquí lo sobreescribimos
-          // para el Dashboard, donde el audio DEBE sonar en la Mac.
-          updatePlayerMuteState(currentVolume);
-
           if (startState === 'playing') {
-            if (startTime > 0) {
-              event.target.seekTo(startTime, true);
-            }
             event.target.playVideo();
           } else {
-            if (startTime > 0) {
-              event.target.seekTo(startTime, true);
-            }
             event.target.pauseVideo();
           }
           if (typeof event.target.setPlaybackQuality === 'function') {
@@ -799,16 +809,11 @@
           }
           adjustIframeAspectRatio();
           positionMiniatureVideo();
-
-          // BUG A: 500ms en vez de 150ms — garantiza que el audio se active
-          // incluso si el browser throttlea el tab o la GPU está ocupada.
-          setTimeout(() => {
-            updatePlayerMuteState(currentVolume);
-          }, 500);
         },
         'onStateChange': (event) => {
           // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
           if (event.data === 1) {
+            // Aplicar mute/unmute ÚNICAMENTE cuando el video esté reproduciéndose activamente
             updatePlayerMuteState(currentVolume);
              if (typeof event.target.getDuration === 'function') {
                const ytDuration = event.target.getDuration();
@@ -846,7 +851,6 @@
           stateLabel.textContent = "Error";
           stateDot.className = "state-dot paused";
 
-          // Usar params cacheado del scope global
           const isPreview = params.get('preview') === 'true';
           if (!isPreview) {
             console.warn("⏱️ Saltando canción bloqueada en 5 segundos...");
@@ -863,38 +867,31 @@
   function updatePlayerMuteState(customVolume) {
     if (!ytPlayer || typeof ytPlayer.mute !== 'function') return;
     
-    // FIX: usar el `params` global en lugar de redeclarlo en cada llamada
-    const isMuteParam = params.get('mute') === 'true';
     const isPreview = params.get('preview') === 'true';
 
-    // Determinar si esta instancia debe silenciarse
-    let shouldMute = isMuteParam;
+    // Ruteo unificado de audio exclusivo:
+    // routeAudioTo: 'obs' (predeterminado) | 'dashboard' | 'both' | 'none'
+    let shouldMute = false;
 
-    if (!shouldMute) {
-      if (routeAudioTo === 'dashboard') {
-        // Audio ruteado a la compu:
-        // - El dashboard (donde isPreview es true) debe sonar (no silenciar).
-        // - OBS (donde isPreview es false) debe estar silenciado.
-        shouldMute = !isPreview;
-        console.log(`🔀 Audio ruteado a Computadora (Dashboard). ¿Silenciar aquí? ${shouldMute ? 'SÍ' : 'NO'} (isPreview: ${isPreview})`);
-      } else {
-        // Audio ruteado a OBS:
-        // - OBS (donde isPreview es false) debe sonar.
-        // - El dashboard (donde isPreview es true) debe estar silenciado para evitar doble audio.
-        shouldMute = isPreview;
-        console.log(`🔀 Audio ruteado a OBS Studio. ¿Silenciar aquí? ${shouldMute ? 'SÍ' : 'NO'} (isPreview: ${isPreview})`);
-      }
+    if (routeAudioTo === 'dashboard') {
+      // Audio ruteado a Computadora (Dashboard) -> Silenciar en OBS (where isPreview=false)
+      shouldMute = !isPreview;
+    } else if (routeAudioTo === 'obs') {
+      // Audio ruteado a OBS Studio -> Silenciar en Dashboard (where isPreview=true)
+      shouldMute = isPreview;
+    } else if (routeAudioTo === 'none') {
+      shouldMute = true;
+    } else if (routeAudioTo === 'both') {
+      shouldMute = false;
+    }
+
+    if (window.isMutedByIP) {
+      shouldMute = true;
     }
 
     if (shouldMute) {
       ytPlayer.mute();
-      console.log(`🔇 Audio silenciado (ruteado a otro dispositivo o silenciado por URL).`);
-      return;
-    }
-
-    if (window.isMutedByIP) {
-      ytPlayer.mute();
-      console.log(`🔇 Audio silenciado debido a otra sesión activa.`);
+      console.log(`🔇 YouTube Player silenciado (routeAudioTo: ${routeAudioTo}, isPreview: ${isPreview})`);
       return;
     }
 
@@ -903,33 +900,29 @@
     if (targetVolume > 0) {
       ytPlayer.unMute();
       ytPlayer.setVolume(targetVolume);
-      console.log(`🔊 Audio des-silenciado. Volumen: ${targetVolume}`);
+      console.log(`🔊 YouTube Player des-silenciado. Volumen: ${targetVolume} (routeAudioTo: ${routeAudioTo}, isPreview: ${isPreview})`);
     } else {
       ytPlayer.mute();
-      console.log(`🔇 Audio silenciado (volumen 0)`);
+      console.log(`🔇 YouTube Player silenciado por volumen 0`);
     }
   }
 
   function syncPlayerState(state, vid) {
     if (typeof YT === 'undefined' || !isYtApiReady || !isYtReady) {
       if (vid) pendingVideoId = vid;
-      // ERROR G: guardar el estado objetivo para restaurarlo cuando la API esté lista.
-      // Sin esto, siempre se asumía 'playing' aunque el estado real fuera 'paused'.
       pendingTargetState = state || 'playing';
       return;
     }
     if (vid && (!ytPlayer || vid !== currentVideoId)) {
-      createOrLoadPlayer(vid);
+      createOrLoadPlayer(vid, state, elapsedSec);
       return;
     }
     if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
       const ytState = ytPlayer.getPlayerState();
       if (state === 'playing') {
         if (ytState !== 1 && ytState !== 3) {
-          updatePlayerMuteState(currentVolume);
           ytPlayer.playVideo();
         }
-        // Sync seek position solo si el drift es mayor a 10s (evita falsos positivos por latencia de red)
         if (typeof ytPlayer.getCurrentTime === 'function' && typeof elapsedSec === 'number' && elapsedSec > 0) {
           const ytCurrent = ytPlayer.getCurrentTime();
           const drift = Math.abs(ytCurrent - elapsedSec);
@@ -1323,28 +1316,28 @@
         return;
       }
 
-      // CASO 1: El video no inició (-1) o está cued (5) — estados de error reales
+      // CASO 1: El video no inició (-1) o está cued (5) — dar tiempo a la inicialización nativa
       if (ytState === -1 || ytState === 5) {
         stuckCount++;
-        console.warn(`[Watchdog] Alerta: El reproductor está en estado ${ytState} en lugar de PLAYING. Reintento ${stuckCount}...`);
+        console.warn(`[Watchdog] Alerta: El reproductor está en estado ${ytState} en lugar de PLAYING. Esperando inicialización (intento ${stuckCount})...`);
 
-        // Intentar dar play
-        try {
-          ytPlayer.playVideo();
-          updatePlayerMuteState(currentVolume);
-        } catch (e) {
-          console.warn('[Watchdog] Error al dar playVideo:', e);
+        // Solo intentar dar playVideo si han pasado al menos 3 ciclos (9 segundos) de inicialización atascada
+        if (stuckCount >= 3) {
+          try {
+            ytPlayer.playVideo();
+          } catch (e) {
+            console.warn('[Watchdog] Error al intentar playVideo:', e);
+          }
         }
 
-        // Si llevamos más de 2 intentos (4s) y sigue sin avanzar, es muy probable que sea autoplay bloqueado.
-        if (stuckCount >= 2) {
+        // Si llevamos 5 o más intentos (15s) y sigue sin avanzar, mostrar el banner de desbloqueo de autoplay
+        if (stuckCount >= 5) {
           showAutoplayUnlockBanner();
         }
 
-        // Solo recrear el reproductor si realmente está en un estado corrupto o no responde por más de 16 segundos (8 ticks)
-        // y no es un tema de interacción del usuario (banner visible).
-        if (stuckCount >= 8) {
-          console.error(`[Watchdog] Crítico: El reproductor no responde tras 16s en estado ${ytState}. Forzando reinicio...`);
+        // Solo recrear el reproductor si no responde tras 10 intentos (30 segundos)
+        if (stuckCount >= 10) {
+          console.error(`[Watchdog] Crítico: El reproductor no responde tras 30s en estado ${ytState}. Forzando reinicio...`);
           stuckCount = 0;
           hideAutoplayUnlockBanner();
           const targetTime = currentTime > 0 ? currentTime : (elapsedSec > 0 ? elapsedSec : 0);
@@ -1535,7 +1528,7 @@
 
     // ERROR H: Solo actualizar routeAudioTo y llamar updatePlayerMuteState si el valor cambió.
     // Llamarlo en cada config update causaba micro-silencio/pop en el audio del Dashboard.
-    const newAudioRoute = cfg.yt_audio_route || 'dashboard';
+    const newAudioRoute = cfg.yt_audio_route || cfg.route_audio_to || 'obs';
     if (newAudioRoute !== routeAudioTo) {
       routeAudioTo = newAudioRoute;
       updatePlayerMuteState(currentVolume);
