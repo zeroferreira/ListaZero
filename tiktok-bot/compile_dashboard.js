@@ -180,7 +180,7 @@ async function run() {
         process.exit(1);
     }
     
-    const endIndex = htmlContent.lastIndexOf(endTag);
+    const endIndex = htmlContent.indexOf(endTag, startIndex);
     if (endIndex === -1) {
         console.error('❌ Error: Closing tag </script> not found after the start tag!');
         process.exit(1);
