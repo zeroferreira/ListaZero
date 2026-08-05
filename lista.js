@@ -3420,31 +3420,38 @@
       }
 
       async function loadDays() {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const today = `${year}-${month}-${day}`;
+        const today = (typeof window.getLocalDateKey === 'function') ? window.getLocalDateKey() : (() => {
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        })();
 
         const isValidDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim());
         const days = new Set();
+        days.add(today); // Asegurar que el día de hoy siempre esté presente y seleccionado por defecto
 
         if (db) {
-          const snap = await db.collection('solicitudes').orderBy('ts', 'desc').get();
-          snap.forEach(doc => {
-            const d = doc.data();
-            if (isValidDay(d.day)) {
-              days.add(String(d.day).trim());
-            } else if (d.ts) {
-              try {
-                const date = d.ts.toDate ? d.ts.toDate() : new Date(d.ts);
-                const yyyy = date.getFullYear();
-                const mm = String(date.getMonth() + 1).padStart(2, '0');
-                const dd = String(date.getDate()).padStart(2, '0');
-                days.add(`${yyyy}-${mm}-${dd}`);
-              } catch (_) { }
-            }
-          });
+          try {
+            const snap = await db.collection('solicitudes').orderBy('ts', 'desc').get();
+            snap.forEach(doc => {
+              const d = doc.data();
+              if (isValidDay(d.day)) {
+                days.add(String(d.day).trim());
+              } else if (d.ts) {
+                try {
+                  const date = d.ts.toDate ? d.ts.toDate() : new Date(d.ts);
+                  const yyyy = date.getFullYear();
+                  const mm = String(date.getMonth() + 1).padStart(2, '0');
+                  const dd = String(date.getDate()).padStart(2, '0');
+                  days.add(`${yyyy}-${mm}-${dd}`);
+                } catch (_) { }
+              }
+            });
+          } catch (err) {
+            console.warn('Error cargando días desde Firestore:', err);
+          }
         }
 
         if (!days.size) {

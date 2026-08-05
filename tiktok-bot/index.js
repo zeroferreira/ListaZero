@@ -318,7 +318,9 @@ let overlayAlertsConfig = {
     welcomeOverlayAllowFollowers: false,
     welcomeOverlayAllowSubscribers: false,
     welcomeOverlayAllowModerators: false,
-    welcomeOverlayUserSounds: {}
+    welcomeOverlayUserSounds: {},
+    chatTtsEnabled: true,
+    chatTtsAllowAll: true
 };
 
 try {
