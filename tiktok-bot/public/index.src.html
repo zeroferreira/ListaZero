@@ -3475,10 +3475,40 @@
                 try {
                     await fetch('/api/chat/clear', { method: 'POST' });
                     setChatMessages([]);
-                    triggerSaveBadge('🗑️ Historial de chat vaciado');
+                    if (typeof triggerSaveBadge === 'function') triggerSaveBadge('🗑️ Historial de chat vaciado');
                 } catch (e) {
                     console.error('Error vaciando chat:', e);
                 }
+            };
+
+            const handleOpenDocumentPiP = async () => {
+                if ('documentPictureInPicture' in window) {
+                    try {
+                        const pipWin = await window.documentPictureInPicture.requestWindow({
+                            width: 400,
+                            height: 650
+                        });
+                        pipWin.document.body.style.margin = '0';
+                        pipWin.document.body.style.padding = '0';
+                        pipWin.document.body.style.overflow = 'hidden';
+                        pipWin.document.body.style.background = '#070710';
+                        const iframe = document.createElement('iframe');
+                        const currentTheme = overlays.chatOverlayTheme || 'cyber';
+                        const currentSize = overlays.chatOverlayFontSize || 14;
+                        iframe.src = `./chat_overlay.html?mode=window&theme=${currentTheme}&fontSize=${currentSize}`;
+                        iframe.style.width = '100vw';
+                        iframe.style.height = '100vh';
+                        iframe.style.border = 'none';
+                        pipWin.document.body.appendChild(iframe);
+                        if (typeof triggerSaveBadge === 'function') triggerSaveBadge('📌 Chat flotando fuera de la ventana (PiP)');
+                        return;
+                    } catch (e) {
+                        console.warn('[PiP] Error abriendo Document PiP:', e);
+                    }
+                }
+                // Fallback a ventana emergente independiente
+                window.open(`./chat_overlay.html?mode=window&theme=${overlays.chatOverlayTheme || 'cyber'}`, 'ZeroFMChatPiP', 'width=420,height=720,menubar=no,toolbar=no,location=no,status=no');
+                if (typeof triggerSaveBadge === 'function') triggerSaveBadge('🪟 Chat abierto en ventana flotante');
             };
 
             // Función para enviar configuraciones en tiempo real a los iframes
@@ -10887,10 +10917,14 @@
                                                     <div className="form-group">
                                                         <label>Tema del Chat</label>
                                                         <select value={overlays.chatOverlayTheme || 'cyber'} onChange={(e) => setOverlays({ ...overlays, chatOverlayTheme: e.target.value })}>
-                                                            <option value="cyber">Cyberpunk / Zero FM</option>
-                                                            <option value="glass">Glassmorphism (Cristal)</option>
-                                                            <option value="neon">Neón Violeta</option>
-                                                            <option value="minimal">Minimalista (Negro Plano)</option>
+                                                            <option value="cyber">⚡ Cyberpunk / Zero FM</option>
+                                                            <option value="neon">🔮 Neón Violeta</option>
+                                                            <option value="glass">🪟 Cristal Glassmorphism</option>
+                                                            <option value="synthwave">🌌 Synthwave Retro 80s</option>
+                                                            <option value="minimal">🖤 Dark Minimal OLED</option>
+                                                            <option value="kawaii">🌸 Kawaii Pastel</option>
+                                                            <option value="gamer">🎮 Gamer Twitch</option>
+                                                            <option value="tiktok">🔴 TikTok Live Oficial</option>
                                                         </select>
                                                     </div>
                                                     <div className="form-group">
@@ -11468,11 +11502,15 @@
                                                        <div className="form-group">
                                                            <label>Tema Visual</label>
                                                            <select value={overlays.chatOverlayTheme || 'cyber'} onChange={(e) => { setOverlays({ ...overlays, chatOverlayTheme: e.target.value }); handleSaveOverlaysConfigOnly('Chat Overlay'); }}>
-                                                               <option value="cyber">Cyber / Zero FM (Neón Púrpura)</option>
-                                                               <option value="glass">Glassmorphism (Cristal Translúcido)</option>
-                                                               <option value="neon">Neón Violeta</option>
-                                                               <option value="minimal">Minimalista (Negro Plano)</option>
-                                                           </select>
+                                                                <option value="cyber">⚡ Cyberpunk / Zero FM</option>
+                                                                <option value="neon">🔮 Neón Violeta</option>
+                                                                <option value="glass">🪟 Cristal Glassmorphism</option>
+                                                                <option value="synthwave">🌌 Synthwave Retro 80s</option>
+                                                                <option value="minimal">🖤 Dark Minimal OLED</option>
+                                                                <option value="kawaii">🌸 Kawaii Pastel</option>
+                                                                <option value="gamer">🎮 Gamer Twitch</option>
+                                                                <option value="tiktok">🔴 TikTok Live Oficial</option>
+                                                            </select>
                                                        </div>
                                                        <div className="form-group">
                                                            <label>Tamaño de Letra: {overlays.chatOverlayFontSize || 14}px</label>
@@ -12096,31 +12134,67 @@
                                             </div>
 
                                             {/* Action Buttons */}
-                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                {/* PiP Button (Floating Outside Browser on top of all apps) */}
                                                 <button 
                                                     className="btn btn-secondary" 
-                                                    onClick={() => window.open('./chat_overlay.html?mode=window', 'ZeroFMChat', 'width=420,height=720,menubar=no,toolbar=no,location=no,status=no')}
-                                                    style={{ padding: '7px 13px', fontSize: '0.82rem', borderColor: '#38bdf8', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.08)', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                                    title="Abrir chat en una ventana emergente limpia"
+                                                    onClick={handleOpenDocumentPiP}
+                                                    style={{ padding: '7px 13px', fontSize: '0.82rem', borderColor: '#38bdf8', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}
+                                                    title="Flotar fuera de la ventana sobre todas las apps (OBS, Juegos, Escritorio) con Picture-in-Picture"
                                                 >
-                                                    🪟 En Ventana
+                                                    📌 PiP Flotante (Fuera de ventana)
                                                 </button>
 
+                                                {/* In-Dashboard Floating Widget Button */}
                                                 <button 
                                                     className="btn btn-secondary" 
                                                     onClick={() => setFloatingChat(!floatingChat)}
                                                     style={{ padding: '7px 13px', fontSize: '0.82rem', borderColor: floatingChat ? '#ec4899' : 'var(--border-glass)', color: floatingChat ? '#f472b6' : '#fff', background: floatingChat ? 'rgba(236, 72, 153, 0.15)' : 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                                    title="Tener el chat flotando sobre cualquier pestaña del dashboard"
+                                                    title="Flotar widget dentro del dashboard sobre cualquier pestaña"
                                                 >
-                                                    📌 {floatingChat ? 'Flotante: ON' : 'Pantalla Flotante'}
+                                                    🪟 {floatingChat ? 'Widget Panel: ON' : 'Flotar en Dashboard'}
                                                 </button>
+
+                                                {/* Standalone Popout Window */}
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    onClick={() => window.open(`./chat_overlay.html?mode=window&theme=${overlays.chatOverlayTheme || 'cyber'}`, 'ZeroFMChat', 'width=420,height=720,menubar=no,toolbar=no,location=no,status=no')}
+                                                    style={{ padding: '7px 13px', fontSize: '0.82rem', borderColor: 'var(--border-glass)', color: '#c4c4e0', background: 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                    title="Abrir en ventana independiente completa para segundo monitor"
+                                                >
+                                                    🖥️ Ventana Completa
+                                                </button>
+
+                                                {/* Quick Theme Selector Dropdown */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.04)', padding: '2px 8px', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>🎨</span>
+                                                    <select 
+                                                        value={overlays.chatOverlayTheme || 'cyber'} 
+                                                        onChange={(e) => {
+                                                            const newTheme = e.target.value;
+                                                            setOverlays(prev => ({ ...prev, chatOverlayTheme: newTheme }));
+                                                            saveOverlaysConfig({ ...overlays, chatOverlayTheme: newTheme }, { chatOverlayTheme: true });
+                                                            if (typeof triggerSaveBadge === 'function') triggerSaveBadge(`🎨 Tema cambiado: ${newTheme}`);
+                                                        }}
+                                                        style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '0.78rem', cursor: 'pointer', outline: 'none', padding: '4px 2px' }}
+                                                    >
+                                                        <option value="cyber" style={{ background: '#120f24' }}>⚡ Cyberpunk</option>
+                                                        <option value="neon" style={{ background: '#120f24' }}>🔮 Neón Violeta</option>
+                                                        <option value="glass" style={{ background: '#120f24' }}>🪟 Cristal Glass</option>
+                                                        <option value="synthwave" style={{ background: '#120f24' }}>🌌 Retro 80s</option>
+                                                        <option value="minimal" style={{ background: '#120f24' }}>🖤 Minimalista</option>
+                                                        <option value="kawaii" style={{ background: '#120f24' }}>🌸 Kawaii</option>
+                                                        <option value="gamer" style={{ background: '#120f24' }}>🎮 Gamer Twitch</option>
+                                                        <option value="tiktok" style={{ background: '#120f24' }}>🔴 TikTok Live</option>
+                                                    </select>
+                                                </div>
 
                                                 <button 
                                                     className="btn btn-secondary" 
                                                     onClick={() => {
                                                         const url = `${currentOrigin}/chat_overlay.html?mode=overlay`;
                                                         navigator.clipboard.writeText(url);
-                                                        triggerSaveBadge('📋 Enlace de Overlay OBS copiado');
+                                                        if (typeof triggerSaveBadge === 'function') triggerSaveBadge('📋 Enlace de Overlay OBS copiado');
                                                     }}
                                                     style={{ padding: '7px 13px', fontSize: '0.82rem', borderColor: '#a855f7', color: '#c084fc', background: 'rgba(168, 85, 247, 0.08)', display: 'flex', alignItems: 'center', gap: '6px' }}
                                                     title="Copiar URL para agregar como fuente de navegador en OBS"
@@ -13179,6 +13253,13 @@
                                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>({filteredChatMessages.length})</span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <button 
+                                        onClick={handleOpenDocumentPiP}
+                                        style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: '0.85rem', padding: '2px 4px' }}
+                                        title="Flotar fuera de la ventana sobre todas las apps (PiP)"
+                                    >
+                                        📌
+                                    </button>
                                     <button 
                                         onClick={() => window.open('./chat_overlay.html?mode=window', 'ZeroFMChat', 'width=420,height=720,menubar=no,toolbar=no,location=no,status=no')}
                                         style={{ background: 'transparent', border: 'none', color: '#c4c4e0', cursor: 'pointer', fontSize: '0.8rem', padding: '2px 4px' }}
