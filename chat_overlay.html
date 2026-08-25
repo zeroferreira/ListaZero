@@ -45,6 +45,8 @@
     html, body {
       width: 100%;
       height: 100%;
+      margin: 0;
+      padding: 0;
       font-family: var(--font);
       font-size: var(--font-size);
       color: var(--text-color);
@@ -57,6 +59,19 @@
       background: radial-gradient(circle at 10% 20%, #120f24 0%, #06060d 90%);
       display: flex;
       flex-direction: column;
+      height: 100vh;
+      max-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ─── Overlay Mode Styles ─── */
+    body.mode-overlay {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      height: 100vh;
+      max-height: 100vh;
+      overflow: hidden;
     }
 
     /* Window Header / Toolbar */
@@ -220,8 +235,8 @@
     /* ─── Chat Feed Container ─── */
     .chat-container {
       width: 100%;
-      height: 100%;
-      flex: 1;
+      flex: 1 1 0%;
+      min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
       padding: 12px 14px;
@@ -698,10 +713,36 @@
         btnToggleCmdFilter.classList.add('active');
       }
 
+      function normalizeChatItem(raw) {
+        if (!raw) return null;
+        const comment = String(raw.comment || raw.message || raw.text || '').trim();
+        if (!comment) return null;
+        const uid = String(raw.uniqueId || raw.username || raw.user || 'usuario');
+        return {
+          id: raw.id || `msg_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          uniqueId: uid,
+          nickname: String(raw.nickname || raw.name || uid),
+          comment: comment,
+          profilePictureUrl: raw.profilePictureUrl || raw.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(uid)}`,
+          timestamp: raw.timestamp || Date.now(),
+          isSubscriber: Boolean(raw.isSubscriber),
+          isModerator: Boolean(raw.isModerator),
+          isSuperFan: Boolean(raw.isSuperFan),
+          isStreamer: Boolean(raw.isStreamer),
+          isVip: Boolean(raw.isVip),
+          isDonador: Boolean(raw.isDonador),
+          isFollower: raw.isFollower !== false,
+          memberLevel: Number(raw.memberLevel) || 0,
+          gifterLevel: Number(raw.gifterLevel) || 0
+        };
+      }
+
       function applyTheme(t) {
         theme = t || 'cyber';
-        document.body.className = document.body.className.replace(/theme-\w+/g, '').trim();
-        document.body.classList.add(`theme-${theme}`);
+        const currentMode = mode || (window.opener ? 'window' : 'overlay');
+        document.body.className = `mode-${currentMode} theme-${theme}`;
+        if (hideAvatars) document.body.classList.add('hide-avatars');
+        if (hideBadges) document.body.classList.add('hide-badges');
         if (themeSelector) themeSelector.value = theme;
       }
 
@@ -819,8 +860,9 @@
       }
 
       // ── Add Message to DOM ──
-      function appendMessage(item) {
-        if (!item || !item.comment) return;
+      function appendMessage(rawItem) {
+        const item = normalizeChatItem(rawItem);
+        if (!item) return;
         messages.push(item);
         totalReceived++;
 
@@ -935,8 +977,11 @@
             } else if (data.type === 'clear') {
               messages = [];
               rerenderAll();
-            } else if (data.comment) {
-              appendMessage(data);
+            } else {
+              const item = normalizeChatItem(data);
+              if (item) {
+                appendMessage(item);
+              }
             }
           } catch (err) {
             console.warn('[Chat SSE] Error procesando evento:', err);
