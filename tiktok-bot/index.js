@@ -320,8 +320,102 @@ let overlayAlertsConfig = {
     welcomeOverlayAllowModerators: false,
     welcomeOverlayUserSounds: {},
     chatTtsEnabled: true,
-    chatTtsAllowAll: true
+    chatTtsAllowAll: true,
+    chatTtsLanguage: 'es-MX',
+    chatTtsSpeed: 50,
+    chatTtsPitch: 50,
+    chatTtsVolume: 80,
+    chatTtsType: 'any',
+    chatTtsCommand: '!tts',
+    chatTtsMessageTemplate: '{comment}',
+    enableOverlayAudio: true,
+    route_audio_to: 'obs',
+    chatOverlayEnabled: true,
+    chatOverlayTheme: 'cyber',
+    chatOverlayFontSize: 14,
+    chatOverlayOpacity: 0.85,
+    chatOverlayRadius: 12,
+    chatOverlayAutoHide: 0,
+    chatOverlayShowBadges: true,
+    chatOverlayShowAvatars: true,
+    chatOverlayFilterCommands: false,
+    chatOverlayHighlightVip: true
 };
+
+/**
+ * Genera audio TTS nativo en macOS devolviendo una Data URI base64 (data:audio/mp4;base64,...)
+ * Esto asegura que OBS Studio Browser Source y cualquier navegador pueda reproducir el audio
+ * instantáneamente con <audio> sin depender de APIs caídas ni de SpeechSynthesis del navegador.
+ */
+function generateTtsAudio(text, voiceName, speedVal, lang) {
+    if (!text || !text.trim()) return null;
+    
+    if (process.platform === 'darwin') {
+        try {
+            const os = require('os');
+            const tmpFile = path.join(os.tmpdir(), `tts_${Date.now()}_${Math.random().toString(36).substring(7)}.m4a`);
+            
+            let selectedVoice = voiceName;
+            const targetLang = String(lang || overlayAlertsConfig.chatTtsLanguage || 'es-MX').toLowerCase();
+            
+            // Si la voz es default, vacía o un código de TikTok, mapear a las mejores voces nativas de macOS
+            if (!selectedVoice || selectedVoice === 'Default Voice' || selectedVoice === '' || selectedVoice.startsWith('tiktok:')) {
+                if (selectedVoice === 'tiktok:es_mx_002' || selectedVoice === 'tiktok:es_002') {
+                    selectedVoice = 'Reed';
+                } else if (selectedVoice === 'tiktok:es_female_f6') {
+                    selectedVoice = 'Paulina';
+                } else if (selectedVoice === 'tiktok:en_us_ghostface' || selectedVoice === 'tiktok:en_us_stitch') {
+                    selectedVoice = 'Zarvox';
+                } else if (selectedVoice === 'tiktok:en_us_c3po' || selectedVoice === 'tiktok:en_us_stormtrooper') {
+                    selectedVoice = 'Albert';
+                } else if (selectedVoice === 'tiktok:en_us_006') {
+                    selectedVoice = 'Ralph';
+                } else if (selectedVoice === 'tiktok:en_us_001') {
+                    selectedVoice = 'Samantha';
+                } else if (targetLang.startsWith('es-es')) {
+                    selectedVoice = 'Mónica';
+                } else if (targetLang.startsWith('es')) {
+                    selectedVoice = 'Paulina';
+                } else if (targetLang.startsWith('en-gb')) {
+                    selectedVoice = 'Daniel';
+                } else if (targetLang.startsWith('en')) {
+                    selectedVoice = 'Samantha';
+                } else if (targetLang.startsWith('pt')) {
+                    selectedVoice = 'Luciana';
+                } else if (targetLang.startsWith('fr')) {
+                    selectedVoice = 'Thomas';
+                } else if (targetLang.startsWith('it')) {
+                    selectedVoice = 'Alice';
+                } else {
+                    selectedVoice = 'Paulina';
+                }
+            }
+            
+            // Normalizar velocidad: 50% es normal (~175 wpm), rango seguro 90 - 350 wpm
+            const speed = (speedVal !== null && speedVal !== undefined) ? Number(speedVal) : (Number(overlayAlertsConfig.chatTtsSpeed) || 50);
+            const rate = Math.max(90, Math.min(350, Math.round(90 + (speed / 50) * 85)));
+            
+            // Limpiar texto para evitar errores de sintaxis en shell
+            const cleanText = text.replace(/[\"\\\`\$]/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500);
+            if (!cleanText) return null;
+            
+            const { execSync } = require('child_process');
+            execSync(`say -v "${selectedVoice}" -r ${rate} -o "${tmpFile}" "${cleanText}"`, { timeout: 8000 });
+            
+            if (fs.existsSync(tmpFile)) {
+                const buf = fs.readFileSync(tmpFile);
+                try { fs.unlinkSync(tmpFile); } catch (_) {}
+                if (buf.length > 0) {
+                    return `data:audio/mp4;base64,${buf.toString('base64')}`;
+                }
+            }
+        } catch (err) {
+            console.error('⚠️ [TTS] Error generando audio nativo macOS:', err.message);
+        }
+    }
+    
+    return null;
+}
 
 try {
     if (fs.existsSync(CONFIG_FILE)) {
@@ -540,6 +634,26 @@ async function extractYoutubeMetadata(url) {
 const recentSrEvents = [];
 const pendingCiderQueue = [];
 let ciderFlushInProgress = false;
+
+// ── LIVE CHAT STREAM & BUFFER ──
+const recentChatMessages = [];
+const chatSseClients = new Set();
+
+function broadcastChatMessage(chatItem) {
+    if (!chatItem) return;
+    recentChatMessages.push(chatItem);
+    while (recentChatMessages.length > 250) {
+        recentChatMessages.shift();
+    }
+    const dataStr = `data: ${JSON.stringify(chatItem)}\n\n`;
+    for (const client of Array.from(chatSseClients)) {
+        try {
+            client.res.write(dataStr);
+        } catch (_) {
+            chatSseClients.delete(client);
+        }
+    }
+}
 
 let mockCiderHttpServer = null;
 let mockCiderIo = null;
@@ -1648,6 +1762,78 @@ function startBot() {
         res.json({ ok: true, events: out });
     });
 
+    // ── LIVE CHAT ENDPOINTS ──
+    app.get('/api/chat/history', (req, res) => {
+        const limit = Math.max(1, Math.min(250, Number(req.query.limit || 100) || 100));
+        const out = recentChatMessages.slice(-limit);
+        res.json({ ok: true, messages: out });
+    });
+
+    app.get('/api/chat/stream', (req, res) => {
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
+        });
+
+        // Handshake inicial
+        res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now(), totalHistory: recentChatMessages.length })}\n\n`);
+
+        const client = { id: Date.now() + Math.random(), res };
+        chatSseClients.add(client);
+
+        // Keep-alive heartbeat cada 15 segundos
+        const keepAlive = setInterval(() => {
+            try {
+                res.write(': keep-alive\n\n');
+            } catch (_) {}
+        }, 15000);
+
+        req.on('close', () => {
+            clearInterval(keepAlive);
+            chatSseClients.delete(client);
+        });
+    });
+
+    app.post('/api/chat/test', (req, res) => {
+        const body = req.body || {};
+        const testUser = body.uniqueId || 'tester_' + Math.floor(Math.random() * 900 + 100);
+        const testNick = body.nickname || (body.uniqueId ? body.uniqueId : 'Zero Fan ' + Math.floor(Math.random() * 100));
+        const testMsg = body.comment || body.message || '¡Hola! Probando el chat en vivo 🎵✨';
+        const role = body.role || 'user'; // 'streamer', 'vip', 'mod', 'sub', 'superfan', 'donador', 'user'
+
+        const chatItem = {
+            id: `test_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+            uniqueId: testUser,
+            nickname: testNick,
+            comment: testMsg,
+            profilePictureUrl: body.profilePictureUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(testUser)}`,
+            timestamp: Date.now(),
+            isSubscriber: role === 'sub' || body.isSubscriber === true,
+            isModerator: role === 'mod' || body.isModerator === true,
+            isSuperFan: role === 'superfan' || body.isSuperFan === true,
+            isStreamer: role === 'streamer' || body.isStreamer === true,
+            isVip: role === 'vip' || body.isVip === true,
+            isDonador: role === 'donador' || body.isDonador === true,
+            isFollower: true,
+            memberLevel: Number(body.memberLevel) || (role === 'sub' ? 5 : 0),
+            gifterLevel: Number(body.gifterLevel) || (role === 'donador' ? 15 : 0)
+        };
+
+        broadcastChatMessage(chatItem);
+        res.json({ ok: true, message: chatItem });
+    });
+
+    app.post('/api/chat/clear', (req, res) => {
+        recentChatMessages.length = 0;
+        const dataStr = `data: ${JSON.stringify({ type: 'clear', timestamp: Date.now() })}\n\n`;
+        for (const client of Array.from(chatSseClients)) {
+            try { client.res.write(dataStr); } catch (_) {}
+        }
+        res.json({ ok: true, message: 'Chat limpiado correctamente.' });
+    });
+
     app.get('/api/mockcider/status', (req, res) => {
         res.json({
             ok: true,
@@ -2574,29 +2760,8 @@ function startBot() {
                 };
             } else if (type === 'chat') {
                 const customMsg = req.body.customText || "¡Hola! Este es un mensaje de prueba leído por el lector de chat.";
-                
-                let audioData = null;
                 const activeVoice = overlayConfig.chatTtsVoice;
-                if (activeVoice && activeVoice.startsWith('tiktok:')) {
-                    const voiceCode = activeVoice.replace('tiktok:', '');
-                    try {
-                        console.log(`🗣️ [TTS Test] Solicitando voz de TikTok (${voiceCode}) para prueba: "${customMsg}"`);
-                        const ttsRes = await axios.post('https://tiktok-tts.weilnet.workers.dev/api/generation', {
-                            text: customMsg.substring(0, 290),
-                            voice: voiceCode
-                        }, {
-                            headers: { 'Content-Type': 'application/json' },
-                            timeout: 7000
-                        });
-
-                        if (ttsRes.data && ttsRes.data.success && ttsRes.data.data) {
-                            audioData = `data:audio/mp3;base64,${ttsRes.data.data}`;
-                            console.log(`🗣️ [TTS Test] Voz de TikTok de prueba generada exitosamente`);
-                        }
-                    } catch (ttsErr) {
-                        console.error(`🗣️ [TTS Test] Error generando voz de TikTok para prueba:`, ttsErr.message);
-                    }
-                }
+                const audioData = generateTtsAudio(customMsg, activeVoice, overlayConfig.chatTtsSpeed, overlayConfig.chatTtsLanguage);
 
                 mockData = {
                     type: 'chat',
@@ -3515,13 +3680,34 @@ function setupListeners() {
         const isVip = isSubscriber || isModerator || isSuperFan || isStreamer || tempVipUsers.has(userId);
         const requireVip = config.requireVipForSr === true; // Strict check
 
+        const isDonador = tempDonadorUsers.has(userId.toLowerCase()) || badgeSets.donador.has(normalizeUserKeyForBadges(userId));
+
+        // ── TRANSMISIÓN EN VIVO A CONTROL DE STREAM, OVERLAY Y VENTANA POPUP ──
+        broadcastChatMessage({
+            id: data.msgId || `msg_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+            uniqueId: userId,
+            nickname: displayName || userId,
+            comment: msg,
+            profilePictureUrl: profilePic || '',
+            timestamp: Date.now(),
+            isSubscriber: !!data.isSubscriber,
+            isModerator: !!data.isModerator,
+            isSuperFan: isSuperFanRaw || false,
+            isStreamer: isStreamer || false,
+            isVip: isVip || false,
+            isDonador: isDonador || false,
+            isFollower: !!isFollower,
+            memberLevel: parsedMemberLevel || 0,
+            gifterLevel: parsedGifterLevel || 0
+        });
+
         // ── TEXT TO SPEECH (TTS) PARA COMENTARIOS DE CHAT ──
-        if (overlayAlertsConfig.chatTtsEnabled === true) {
-            // 1. Verificar Special Users
+        if (overlayAlertsConfig.chatTtsEnabled !== false) {
+            // 1. Verificar Special Users (coincidencia por uniqueId o por nickname/displayName)
             const specialUsers = overlayAlertsConfig.chatTtsSpecialUsers || [];
             const specialUser = specialUsers.find(u => {
-                const cleanUser = String(u.username || '').toLowerCase().replace(/^@/, '');
-                return cleanUser === userId.toLowerCase();
+                const cleanUser = String(u.username || '').toLowerCase().replace(/^@/, '').trim();
+                return cleanUser === userId.toLowerCase() || (displayName && cleanUser === displayName.toLowerCase());
             });
 
             let userAllowed = false;
@@ -3541,7 +3727,7 @@ function setupListeners() {
                 }
             } else {
                 // General allowed checks
-                if (overlayAlertsConfig.chatTtsAllowAll === true) {
+                if (overlayAlertsConfig.chatTtsAllowAll === true || overlayAlertsConfig.chatTtsAllowAll === undefined) {
                     userAllowed = true;
                 } else {
                     if (overlayAlertsConfig.chatTtsAllowFollowers === true && isFollower) {
@@ -3585,29 +3771,32 @@ function setupListeners() {
                 // Ya manejado arriba
             } else if (userAllowed) {
                 let commentQualifies = false;
+                let cleanedMsg = msg;
                 const filterType = overlayAlertsConfig.chatTtsType || 'any'; // 'any', 'dot', 'slash', 'command'
-                const ttsCommand = String(overlayAlertsConfig.chatTtsCommand || '!tts').toLowerCase();
+                const ttsCommand = String(overlayAlertsConfig.chatTtsCommand || '!tts').trim().toLowerCase();
 
-                if (filterType === 'any') {
+                // 1. Si el mensaje empieza con el comando explícito de TTS (ej: !tts Hola), SIEMPRE califica
+                if (ttsCommand && lowerMsg.startsWith(ttsCommand)) {
+                    commentQualifies = true;
+                    cleanedMsg = msg.substring(ttsCommand.length).trim();
+                } else if (filterType === 'any') {
+                    // Modo "Cualquier mensaje": califica siempre que no sea otro comando de bot (ej: !sr, !puntos, etc.)
                     if (!msg.startsWith('!')) {
                         commentQualifies = true;
+                        cleanedMsg = msg.trim();
                     }
                 } else if (filterType === 'dot' && msg.startsWith('.')) {
                     commentQualifies = true;
+                    cleanedMsg = msg.substring(1).trim();
                 } else if (filterType === 'slash' && msg.startsWith('/')) {
                     commentQualifies = true;
-                } else if (filterType === 'command' && lowerMsg.startsWith(ttsCommand)) {
-                    commentQualifies = true;
+                    cleanedMsg = msg.substring(1).trim();
+                } else if (filterType === 'command') {
+                    // Si era modo command y no empezó con ttsCommand, no califica
+                    commentQualifies = false;
                 }
 
                 if (commentQualifies && db) {
-                    let cleanedMsg = msg;
-                    if (filterType === 'command') {
-                        cleanedMsg = msg.substring(ttsCommand.length).trim();
-                    } else if (filterType === 'dot' || filterType === 'slash') {
-                        cleanedMsg = msg.substring(1).trim();
-                    }
-
                     // SPAM PROTECTION: Filter letter spam (exclude digits and whitespace)
                     if (overlayAlertsConfig.chatTtsFilterLetterSpam !== false) {
                         cleanedMsg = cleanedMsg.replace(/([^\d\s])\1{2,}/gi, '$1$1');
@@ -3696,31 +3885,8 @@ function setupListeners() {
                                 .replace(/{username}/g, userId)
                                 .replace(/{comment}/g, cleanedMsg);
 
-                            let audioData = null;
                             const activeVoice = voiceOverride || overlayAlertsConfig.chatTtsVoice;
-                            if (activeVoice && activeVoice.startsWith('tiktok:')) {
-                                const voiceCode = activeVoice.replace('tiktok:', '');
-                                try {
-                                    const textToSpeak = speechText.substring(0, 290);
-                                    console.log(`🗣️ [TTS] Solicitando voz de TikTok (${voiceCode}) para: "${textToSpeak}"`);
-                                    const ttsRes = await axios.post('https://tiktok-tts.weilnet.workers.dev/api/generation', {
-                                        text: textToSpeak,
-                                        voice: voiceCode
-                                    }, {
-                                        headers: { 'Content-Type': 'application/json' },
-                                        timeout: 7000
-                                    });
-
-                                    if (ttsRes.data && ttsRes.data.success && ttsRes.data.data) {
-                                        audioData = `data:audio/mp3;base64,${ttsRes.data.data}`;
-                                        console.log(`🗣️ [TTS] Voz de TikTok generada exitosamente (${ttsRes.data.data.length} bytes)`);
-                                    } else {
-                                        console.warn(`🗣️ [TTS] Error de la API de TikTok:`, ttsRes.data);
-                                    }
-                                } catch (ttsErr) {
-                                    console.error(`🗣️ [TTS] Error solicitando voz de TikTok:`, ttsErr.message);
-                                }
-                            }
+                            const audioData = generateTtsAudio(speechText, activeVoice, speedOverride, overlayAlertsConfig.chatTtsLanguage);
 
                             try {
                                 await addDoc(collection(db, 'notifications'), {
@@ -3750,7 +3916,7 @@ function setupListeners() {
                                 });
                                 if (ttsLogs.length > 50) ttsLogs.shift();
 
-                                console.log(`🗣️ TTS Chat agregado para @${displayName}: "${speechText}"`);
+                                console.log(`🗣️ TTS Chat generado y enviado para @${displayName}: "${speechText}" (audio: ${audioData ? 'MP4/Base64' : 'Browser fallback'})`);
                             } catch (err) {
                                 console.error('Error guardando TTS de chat en Firestore:', err);
                             }

@@ -826,7 +826,18 @@
                applyState('playing');
              }
           } else if (event.data === 2) {
-            if (currentState !== 'paused') {
+            if (currentState === 'playing') {
+              console.warn("⚠️ YouTube se pausó por política de autoplay/unmute del navegador. Intentando reanudar...");
+              setTimeout(() => {
+                if (currentState === 'playing' && ytPlayer && typeof ytPlayer.playVideo === 'function') {
+                  const s = typeof ytPlayer.getPlayerState === 'function' ? ytPlayer.getPlayerState() : -1;
+                  if (s === 2 || s === -1 || s === 5) {
+                    ytPlayer.playVideo();
+                    updatePlayerMuteState(currentVolume);
+                  }
+                }
+              }, 250);
+            } else if (currentState !== 'paused') {
               applyState('paused');
             }
           } else if (event.data === 0) {
@@ -1308,13 +1319,29 @@
         return;
       }
 
-      // FIX ERROR#9: Separar pausa voluntaria del DJ (state 2) de los estados de error.
-      // Si el DJ pausó manualmente, NO forzar play ni mostrar el banner de desbloqueo.
+      // Si está en PAUSA (2) pero el estado deseado es PLAYING (autounmute bloqueado por navegador)
       if (ytState === 2) {
-        // Pausa voluntaria: no contar como stuck, solo registrar y salir.
-        stuckCount = 0;
-        stuckTimeCount = 0;
-        console.log('[Watchdog] Reproductor en pausa (state 2). Pausa voluntaria, no se fuerza play.');
+        stuckCount++;
+        console.warn(`[Watchdog] Alerta: El reproductor está en PAUSA (state 2) pero currentState es PLAYING (intento ${stuckCount}). Forzando play...`);
+        try {
+          ytPlayer.playVideo();
+          updatePlayerMuteState(currentVolume);
+        } catch (e) {
+          console.warn('[Watchdog] Error reanudando reproducción:', e);
+        }
+
+        if (stuckCount >= 4) {
+          showAutoplayUnlockBanner();
+        }
+
+        if (stuckCount >= 8) {
+          console.error(`[Watchdog] Crítico: Reproductor bloqueado en pausa tras 8 intentos. Recreando...`);
+          stuckCount = 0;
+          hideAutoplayUnlockBanner();
+          const targetTime = currentTime > 0 ? currentTime : (elapsedSec > 0 ? elapsedSec : 0);
+          logWatchdogEvent('recovery', `Player bloqueado en pausa por política de autoplay. Recreando en ${Math.round(targetTime)}s.`);
+          createOrLoadPlayer(currentVideoId, 'playing', targetTime);
+        }
         return;
       }
 
@@ -1475,27 +1502,28 @@
     const videoMode = window.currentVideoMode || 'audio_only';
     if (videoMode !== 'miniature') return;
     
-    // Position ytContainer absolutely relative to player-card by checking rects
-    // Calculate unscaled offsets and dimensions using offsetParent chain relative to #player-card
-    let top = 0;
-    let left = 0;
-    let curr = artWrap;
-    while (curr && curr !== card) {
-      top += curr.offsetTop;
-      left += curr.offsetLeft;
-      curr = curr.offsetParent;
-    }
+    const artRect = artWrap.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
     
-    const w = artWrap.offsetWidth;
-    const h = artWrap.offsetHeight;
-    
-    if (w > 0 && h > 0) {
-      ytContainer.style.top = `${top}px`;
-      ytContainer.style.left = `${left}px`;
-      ytContainer.style.width = `${w}px`;
-      ytContainer.style.height = `${h}px`;
+    if (artRect.width > 0 && artRect.height > 0 && cardRect.width > 0) {
+      const scaleStr = card.style.getPropertyValue('--preview-scale');
+      const scale = scaleStr ? parseFloat(scaleStr) : 1;
+      const effectiveScale = (scale && !isNaN(scale) && scale > 0) ? scale : 1;
+
+      const top = (artRect.top - cardRect.top) / effectiveScale;
+      const left = (artRect.left - cardRect.left) / effectiveScale;
+      const w = artRect.width / effectiveScale;
+      const h = artRect.height / effectiveScale;
+
+      ytContainer.style.position = 'absolute';
+      ytContainer.style.top = `${Math.round(top)}px`;
+      ytContainer.style.left = `${Math.round(left)}px`;
+      ytContainer.style.width = `${Math.round(w)}px`;
+      ytContainer.style.height = `${Math.round(h)}px`;
+      ytContainer.style.opacity = '1';
+      ytContainer.style.zIndex = '2';
+      ytContainer.style.overflow = 'hidden';
     } else {
-      // Retry once visible and layout is calculated
       setTimeout(positionMiniatureVideo, 100);
     }
     

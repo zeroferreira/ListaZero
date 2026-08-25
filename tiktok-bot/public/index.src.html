@@ -2451,6 +2451,22 @@
             const [ytProgress, setYtProgress] = React.useState({ elapsed: 0, duration: 0 });
             const [ytManualUrl, setYtManualUrl] = React.useState('');
 
+            // LIVE CHAT SYSTEM STATES
+            const [chatMessages, setChatMessages] = React.useState([]);
+            const [floatingChat, setFloatingChat] = React.useState(false);
+            const [floatingChatPos, setFloatingChatPos] = React.useState({ x: (typeof window !== 'undefined' ? Math.max(20, window.innerWidth - 420) : 800), y: 80 });
+            const [floatingChatMinimized, setFloatingChatMinimized] = React.useState(false);
+            const [chatAutoScroll, setChatAutoScroll] = React.useState(true);
+            const [chatFilterCommands, setChatFilterCommands] = React.useState(false);
+            const [chatFilterVipOnly, setChatFilterVipOnly] = React.useState(false);
+            const [chatSearchQuery, setChatSearchQuery] = React.useState('');
+            const [showChatSimModal, setShowChatSimModal] = React.useState(false);
+            const [chatSimForm, setChatSimForm] = React.useState({ uniqueId: '', nickname: '', comment: '', role: 'user' });
+            const [showChatPersonalize, setShowChatPersonalize] = React.useState(false);
+            const [chatModalPos, setChatModalPos] = React.useState({ x: 200, y: 150 });
+            const chatFeedRef = React.useRef(null);
+            const floatingChatFeedRef = React.useRef(null);
+
             React.useEffect(() => {
                 let unsubPlayed = () => {};
                 let unsubRequests = () => {};
@@ -3027,6 +3043,30 @@
                 e.preventDefault();
             };
 
+            const handleMouseDownChatModal = (e) => {
+                if (e.target.closest('.btn-close-modal') || e.target.closest('input') || e.target.closest('select') || e.target.closest('button')) return;
+                dragInfo.current = {
+                    active: 'chat_overlay',
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    startLeft: chatModalPos.x,
+                    startTop: chatModalPos.y
+                };
+                e.preventDefault();
+            };
+
+            const handleMouseDownFloatingChat = (e) => {
+                if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select') || e.target.closest('a')) return;
+                dragInfo.current = {
+                    active: 'floating_chat',
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    startLeft: floatingChatPos.x,
+                    startTop: floatingChatPos.y
+                };
+                e.preventDefault();
+            };
+
             // Master dragging listener
             React.useEffect(() => {
                 const handleMouseMove = (e) => {
@@ -3066,6 +3106,10 @@
                         setLasteventsModalPos({ x: drag.startLeft + dx, y: drag.startTop + dy });
                     } else if (drag.active === 'welcome') {
                         setWelcomeModalPos({ x: drag.startLeft + dx, y: drag.startTop + dy });
+                    } else if (drag.active === 'chat_overlay') {
+                        setChatModalPos({ x: drag.startLeft + dx, y: drag.startTop + dy });
+                    } else if (drag.active === 'floating_chat') {
+                        setFloatingChatPos({ x: Math.max(10, Math.min(window.innerWidth - 300, drag.startLeft + dx)), y: Math.max(10, Math.min(window.innerHeight - 100, drag.startTop + dy)) });
                     }
                 };
 
@@ -3080,7 +3124,7 @@
                     window.removeEventListener('mousemove', handleMouseMove);
                     window.removeEventListener('mouseup', handleMouseUp);
                 };
-            }, [followModalPos, likesModalPos, giftModalPos, subscribeModalPos, rewardModalPos, goalsFollowsModalPos, goalsLikesModalPos, goalsSharesModalPos, goalsCoinsModalPos, topgifterModalPos, toplikerModalPos, queueModalPos, rouletteModalPos, lasteventsModalPos, welcomeModalPos]);
+            }, [followModalPos, likesModalPos, giftModalPos, subscribeModalPos, rewardModalPos, goalsFollowsModalPos, goalsLikesModalPos, goalsSharesModalPos, goalsCoinsModalPos, topgifterModalPos, toplikerModalPos, queueModalPos, rouletteModalPos, lasteventsModalPos, welcomeModalPos, chatModalPos, floatingChatPos]);
 
             // Broadcast real-time config updates to the 5 preview iframes
             React.useEffect(() => {
@@ -3317,6 +3361,126 @@
                 };
             }, []);
 
+            // ── LIVE CHAT SSE STREAM & HISTORY ──
+            React.useEffect(() => {
+                let eventSource = null;
+
+                // Cargar historial previo
+                fetch('/api/chat/history?limit=100')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.ok && Array.isArray(data.messages)) {
+                            setChatMessages(data.messages);
+                        }
+                    })
+                    .catch(e => console.warn('[Chat History] Error:', e.message));
+
+                function connectChatStream() {
+                    const streamUrl = (window.location.protocol === 'file:' ? 'http://localhost:3000' : '') + '/api/chat/stream';
+                    eventSource = new EventSource(streamUrl);
+
+                    eventSource.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            if (data.type === 'connected') {
+                                console.log('[Chat SSE Dashboard] Conectado exitosamente');
+                            } else if (data.type === 'clear') {
+                                setChatMessages([]);
+                            } else if (data.comment) {
+                                setChatMessages(prev => {
+                                    const next = [...prev, data];
+                                    if (next.length > 250) next.shift();
+                                    return next;
+                                });
+                            }
+                        } catch (err) {
+                            console.warn('[Chat SSE Dashboard] Error:', err);
+                        }
+                    };
+
+                    eventSource.onerror = () => {
+                        setTimeout(() => {
+                            if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+                                connectChatStream();
+                            }
+                        }, 3000);
+                    };
+                }
+
+                connectChatStream();
+
+                return () => {
+                    if (eventSource) eventSource.close();
+                };
+            }, []);
+
+            // Auto-scroll del chat feed cuando llega un nuevo mensaje
+            React.useEffect(() => {
+                if (chatAutoScroll) {
+                    if (chatFeedRef.current) {
+                        chatFeedRef.current.scrollTop = chatFeedRef.current.scrollHeight;
+                    }
+                    if (floatingChatFeedRef.current) {
+                        floatingChatFeedRef.current.scrollTop = floatingChatFeedRef.current.scrollHeight;
+                    }
+                }
+            }, [chatMessages, chatAutoScroll, activeControlSub, floatingChat]);
+
+            // Mensajes filtrados en tiempo real
+            const filteredChatMessages = React.useMemo(() => {
+                return chatMessages.filter(item => {
+                    if (chatFilterCommands && item.comment && item.comment.startsWith('!')) {
+                        return false;
+                    }
+                    if (chatFilterVipOnly && !item.isVip && !item.isSubscriber && !item.isSuperFan && !item.isDonador && !item.isStreamer && !item.isModerator) {
+                        return false;
+                    }
+                    if (chatSearchQuery) {
+                        const q = chatSearchQuery.toLowerCase();
+                        const nick = String(item.nickname || '').toLowerCase();
+                        const user = String(item.uniqueId || '').toLowerCase();
+                        const comment = String(item.comment || '').toLowerCase();
+                        return nick.includes(q) || user.includes(q) || comment.includes(q);
+                    }
+                    return true;
+                });
+            }, [chatMessages, chatFilterCommands, chatFilterVipOnly, chatSearchQuery]);
+
+            const handleSendTestChatMessage = async (overrideData) => {
+                try {
+                    const payload = overrideData || {
+                        uniqueId: chatSimForm.uniqueId || 'fan_' + Math.floor(Math.random() * 900 + 100),
+                        nickname: chatSimForm.nickname || (chatSimForm.uniqueId || 'Zero Fan'),
+                        comment: chatSimForm.comment || '¡Hola Zero! Excelente live y música 🎵🔥',
+                        role: chatSimForm.role || 'user'
+                    };
+                    const res = await fetch('/api/chat/test', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                        triggerSaveBadge('💬 Mensaje de chat simulado');
+                        setShowChatSimModal(false);
+                        setChatSimForm({ uniqueId: '', nickname: '', comment: '', role: 'user' });
+                    }
+                } catch (e) {
+                    console.error('Error simulando chat:', e);
+                }
+            };
+
+            const handleClearChatHistory = async () => {
+                if (!confirm('¿Deseas vaciar todo el historial de chat en vivo?')) return;
+                try {
+                    await fetch('/api/chat/clear', { method: 'POST' });
+                    setChatMessages([]);
+                    triggerSaveBadge('🗑️ Historial de chat vaciado');
+                } catch (e) {
+                    console.error('Error vaciando chat:', e);
+                }
+            };
+
             // Función para enviar configuraciones en tiempo real a los iframes
             const sendConfigToIframe = (iframeId, configData) => {
                 const iframe = document.getElementById(iframeId);
@@ -3363,6 +3527,8 @@
                         sendConfigToIframe('iframe-welcome', overlays);
                     } else if (activeSub === 'ytplayer') {
                         sendConfigToIframe('iframe-ytplayer', overlays);
+                    } else if (activeSub === 'chat') {
+                        sendConfigToIframe('iframe-chat-overlay', overlays);
                     }
                 }, 80);
                 return () => clearTimeout(timerId);
@@ -5786,6 +5952,10 @@
                                 </button>
                                 <button className={`overlays-menu-item ${activeSub === 'ytplayer' ? 'active' : ''}`} onClick={() => setActiveSub('ytplayer')}>
                                     <span>🎥 Reproductor YouTube</span>
+                                    <span className="menu-badge" style={{ color: '#ec4899' }}>Nuevo</span>
+                                </button>
+                                <button className={`overlays-menu-item ${activeSub === 'chat' ? 'active' : ''}`} onClick={() => setActiveSub('chat')}>
+                                    <span>💬 Overlay de Chat</span>
                                     <span className="menu-badge" style={{ color: '#ec4899' }}>Nuevo</span>
                                 </button>
                             </div>
@@ -10692,6 +10862,92 @@
                                     </div>
                                 )}
 
+                                {/* Draggable Chat Overlay Personalization Modal */}
+                                {showChatPersonalize && (
+                                    <div 
+                                        className="draggable-personalize-modal" 
+                                        style={{ 
+                                            left: `${chatModalPos.x}px`, 
+                                            top: `${chatModalPos.y}px` 
+                                        }}
+                                        onMouseDown={handleMouseDownChatModal}
+                                    >
+                                        <div className="personalize-drag-handle" style={{ borderLeft: '4px solid #ec4899' }}>
+                                            <div className="personalize-modal-title">
+                                                💬 Personalizar Overlay de Chat
+                                            </div>
+                                            <button className="btn-close-modal" onClick={() => setShowChatPersonalize(false)}>
+                                                &times;
+                                            </button>
+                                        </div>
+                                        <div className="personalize-modal-body" style={{ padding: '20px', overflowY: 'auto' }}>
+                                            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '20px', paddingBottom: '20px' }}>
+                                                <h4 style={{ marginBottom: '15px', color: '#ec4899' }}>🎨 Apariencia y Estilo</h4>
+                                                <div className="grid-2">
+                                                    <div className="form-group">
+                                                        <label>Tema del Chat</label>
+                                                        <select value={overlays.chatOverlayTheme || 'cyber'} onChange={(e) => setOverlays({ ...overlays, chatOverlayTheme: e.target.value })}>
+                                                            <option value="cyber">Cyberpunk / Zero FM</option>
+                                                            <option value="glass">Glassmorphism (Cristal)</option>
+                                                            <option value="neon">Neón Violeta</option>
+                                                            <option value="minimal">Minimalista (Negro Plano)</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="form-group">
+                                                        <label>Tamaño de Letra: {overlays.chatOverlayFontSize || 14}px</label>
+                                                        <input type="range" min="10" max="26" step="1" value={overlays.chatOverlayFontSize || 14} onChange={(e) => setOverlays({ ...overlays, chatOverlayFontSize: parseInt(e.target.value) })} />
+                                                    </div>
+                                                </div>
+                                                <div className="grid-2" style={{ marginTop: '15px' }}>
+                                                    <div className="form-group">
+                                                        <label>Auto-ocultar Mensajes</label>
+                                                        <select value={overlays.chatOverlayAutoHide || 0} onChange={(e) => setOverlays({ ...overlays, chatOverlayAutoHide: parseInt(e.target.value) })}>
+                                                            <option value="0">Permanente (Nunca ocultar)</option>
+                                                            <option value="8">8 segundos</option>
+                                                            <option value="15">15 segundos</option>
+                                                            <option value="30">30 segundos</option>
+                                                            <option value="60">60 segundos</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="form-group">
+                                                        <label>Opacidad de Tarjeta: {Math.round((overlays.chatOverlayOpacity !== undefined ? overlays.chatOverlayOpacity : 0.88) * 100)}%</label>
+                                                        <input type="range" min="0.2" max="1.0" step="0.05" value={overlays.chatOverlayOpacity !== undefined ? overlays.chatOverlayOpacity : 0.88} onChange={(e) => setOverlays({ ...overlays, chatOverlayOpacity: parseFloat(e.target.value) })} />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '20px', paddingBottom: '20px' }}>
+                                                <h4 style={{ marginBottom: '15px', color: '#ec4899' }}>⚙️ Elementos Visibles</h4>
+                                                <div className="toggle-row">
+                                                    <span>Mostrar Foto de Perfil / Avatares 👤</span>
+                                                    <label className="switch">
+                                                        <input type="checkbox" checked={overlays.chatOverlayShowAvatars !== false} onChange={(e) => setOverlays({ ...overlays, chatOverlayShowAvatars: e.target.checked })} />
+                                                        <span className="slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div className="toggle-row" style={{ marginTop: '10px' }}>
+                                                    <span>Mostrar Insignias (Streamer, Mod, VIP, Sub) 👑</span>
+                                                    <label className="switch">
+                                                        <input type="checkbox" checked={overlays.chatOverlayShowBadges !== false} onChange={(e) => setOverlays({ ...overlays, chatOverlayShowBadges: e.target.checked })} />
+                                                        <span className="slider"></span>
+                                                    </label>
+                                                </div>
+                                                <div className="toggle-row" style={{ marginTop: '10px' }}>
+                                                    <span>Ocultar Comandos de Bot (!sr, !puntos, etc.) 🚫</span>
+                                                    <label className="switch">
+                                                        <input type="checkbox" checked={overlays.chatOverlayFilterCommands === true} onChange={(e) => setOverlays({ ...overlays, chatOverlayFilterCommands: e.target.checked })} />
+                                                        <span className="slider"></span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <button className="btn btn-primary" onClick={() => { handleSaveOverlaysConfigOnly('Chat Overlay'); setShowChatPersonalize(false); }} style={{ width: '100%' }}>
+                                            {renderIcon('save')} Guardar Configuración de Chat
+                                        </button>
+                                    </div>
+                                )}
+
                                 {/* SUBPANEL 11: CHAT TTS */}
                                 {activeSub === 'tts' && renderTtsPanelContent()}
 
@@ -11141,6 +11397,138 @@
                                       </div>
                                   )}
 
+                                  {/* SUBPANEL 13: LIVE CHAT OVERLAY */}
+                                  {activeSub === 'chat' && (
+                                       <div className="glass-card animate-fade-in" style={{ padding: '20px' }}>
+                                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                                                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: '#ec4899' }}>
+                                                    💬 Overlay de Chat en Vivo
+                                                </h3>
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.82rem', borderColor: '#ec4899', color: '#f472b6', background: 'rgba(236, 72, 153, 0.05)' }} onClick={() => setShowChatPersonalize(true)}>
+                                                        🎨 Personalizar Overlay
+                                                    </button>
+                                                    <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.82rem' }} onClick={() => handleSendTestChatMessage()}>
+                                                        🧪 Probar Mensaje
+                                                    </button>
+                                                </div>
+                                           </div>
+                                           <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '20px' }}>
+                                             Muestra los comentarios de TikTok en vivo en OBS con fondo transparente, avatares, insignias animadas y diseño personalizable.
+                                           </p>
+
+                                           <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '24px', alignItems: 'start' }}>
+                                               {/* Column 1: Preview & Links */}
+                                               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                                   <div className="preview-panel" style={{ margin: 0 }}>
+                                                       <div className="preview-header">
+                                                           <span>💬 Vista Previa del Overlay de Chat</span>
+                                                           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                               <div className="preview-live-dot" style={{ background: '#ec4899', boxShadow: '0 0 6px #ec4899' }}></div> Live Chat
+                                                           </div>
+                                                       </div>
+                                                       <iframe 
+                                                           id="iframe-chat-overlay" 
+                                                           src="./chat_overlay.html?mode=overlay" 
+                                                           className="preview-iframe" 
+                                                           style={{ height: '380px', width: '100%', border: 'none', borderRadius: '8px', background: 'rgba(0,0,0,0.5)' }} 
+                                                           onLoad={() => sendConfigToIframe('iframe-chat-overlay', overlays)}
+                                                       ></iframe>
+                                                   </div>
+
+                                                   {/* OBS Link Card */}
+                                                   <div className="form-group" style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', border: '1px dashed var(--border-glass)', borderRadius: '10px' }}>
+                                                       <label style={{ fontWeight: '600', color: '#ec4899', display: 'block', marginBottom: '8px' }}>🔗 Enlace del Overlay para OBS (Fuente de Navegador)</label>
+                                                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '10px' }}>
+                                                           Agrega este enlace en OBS como <strong>Fuente de Navegador</strong>. Tamaño sugerido: 400 × 600 px (Fondo 100% transparente).
+                                                       </p>
+                                                       <div className="copy-url-row" style={{ display: 'flex', gap: '10px' }}>
+                                                           <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/chat_overlay.html?mode=overlay`} onClick={(e) => e.target.select()} style={{ flex: 1 }} />
+                                                           <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/chat_overlay.html?mode=overlay`)}>Copiar URL</button>
+                                                       </div>
+                                                   </div>
+
+                                                   {/* Standalone Window Link Card */}
+                                                   <div className="form-group" style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', border: '1px dashed var(--border-glass)', borderRadius: '10px' }}>
+                                                       <label style={{ fontWeight: '600', color: '#a855f7', display: 'block', marginBottom: '8px' }}>🪟 Enlace de Ventana Independiente (Popout)</label>
+                                                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginBottom: '10px' }}>
+                                                           Abre el chat en una ventana limpia con controles para segundo monitor o al lado de OBS.
+                                                       </p>
+                                                       <div className="copy-url-row" style={{ display: 'flex', gap: '10px' }}>
+                                                           <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/chat_overlay.html?mode=window`} onClick={(e) => e.target.select()} style={{ flex: 1 }} />
+                                                           <button className="btn btn-primary" onClick={() => window.open('./chat_overlay.html?mode=window', 'ZeroFMChat', 'width=420,height=720,menubar=no,toolbar=no,location=no,status=no')}>Abrir Ventana</button>
+                                                       </div>
+                                                   </div>
+                                               </div>
+
+                                               {/* Column 2: Quick Settings */}
+                                               <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                                   <h4 style={{ margin: 0, color: '#ec4899', fontSize: '1.05rem', fontWeight: 'bold' }}>⚙️ Ajustes Rápidos del Overlay</h4>
+                                                   <div className="grid-2">
+                                                       <div className="form-group">
+                                                           <label>Tema Visual</label>
+                                                           <select value={overlays.chatOverlayTheme || 'cyber'} onChange={(e) => { setOverlays({ ...overlays, chatOverlayTheme: e.target.value }); handleSaveOverlaysConfigOnly('Chat Overlay'); }}>
+                                                               <option value="cyber">Cyber / Zero FM (Neón Púrpura)</option>
+                                                               <option value="glass">Glassmorphism (Cristal Translúcido)</option>
+                                                               <option value="neon">Neón Violeta</option>
+                                                               <option value="minimal">Minimalista (Negro Plano)</option>
+                                                           </select>
+                                                       </div>
+                                                       <div className="form-group">
+                                                           <label>Tamaño de Letra: {overlays.chatOverlayFontSize || 14}px</label>
+                                                           <input type="range" min="11" max="24" step="1" value={overlays.chatOverlayFontSize || 14} onChange={(e) => { setOverlays({ ...overlays, chatOverlayFontSize: parseInt(e.target.value) }); }} />
+                                                       </div>
+                                                   </div>
+
+                                                   <div className="grid-2">
+                                                       <div className="form-group">
+                                                           <label>Auto-ocultar Mensajes</label>
+                                                           <select value={overlays.chatOverlayAutoHide || 0} onChange={(e) => { setOverlays({ ...overlays, chatOverlayAutoHide: parseInt(e.target.value) }); handleSaveOverlaysConfigOnly('Chat Overlay'); }}>
+                                                               <option value="0">Permanente (No ocultar)</option>
+                                                               <option value="10">Ocultar tras 10 segundos</option>
+                                                               <option value="15">Ocultar tras 15 segundos</option>
+                                                               <option value="30">Ocultar tras 30 segundos</option>
+                                                               <option value="60">Ocultar tras 1 minuto</option>
+                                                           </select>
+                                                       </div>
+                                                       <div className="form-group">
+                                                           <label>Opacidad de Tarjeta: {Math.round((overlays.chatOverlayOpacity !== undefined ? overlays.chatOverlayOpacity : 0.85) * 100)}%</label>
+                                                           <input type="range" min="0.2" max="1.0" step="0.05" value={overlays.chatOverlayOpacity !== undefined ? overlays.chatOverlayOpacity : 0.85} onChange={(e) => { setOverlays({ ...overlays, chatOverlayOpacity: parseFloat(e.target.value) }); }} />
+                                                       </div>
+                                                   </div>
+
+                                                   <div className="toggle-row">
+                                                       <span style={{ fontSize: '0.85rem' }}>Mostrar Avatares de Usuario 👤</span>
+                                                       <label className="switch">
+                                                           <input type="checkbox" checked={overlays.chatOverlayShowAvatars !== false} onChange={(e) => { setOverlays({ ...overlays, chatOverlayShowAvatars: e.target.checked }); }} />
+                                                           <span className="slider"></span>
+                                                       </label>
+                                                   </div>
+
+                                                   <div className="toggle-row">
+                                                       <span style={{ fontSize: '0.85rem' }}>Mostrar Insignias (VIP, Sub, Mod) 👑</span>
+                                                       <label className="switch">
+                                                           <input type="checkbox" checked={overlays.chatOverlayShowBadges !== false} onChange={(e) => { setOverlays({ ...overlays, chatOverlayShowBadges: e.target.checked }); }} />
+                                                           <span className="slider"></span>
+                                                       </label>
+                                                   </div>
+
+                                                   <div className="toggle-row">
+                                                       <span style={{ fontSize: '0.85rem' }}>Ocultar Comandos de Bot (!sr, !puntos) 🚫</span>
+                                                       <label className="switch">
+                                                           <input type="checkbox" checked={overlays.chatOverlayFilterCommands === true} onChange={(e) => { setOverlays({ ...overlays, chatOverlayFilterCommands: e.target.checked }); }} />
+                                                           <span className="slider"></span>
+                                                       </label>
+                                                   </div>
+
+                                                   <button className="btn btn-primary" onClick={() => handleSaveOverlaysConfigOnly('Chat Overlay')} style={{ marginTop: '10px', width: '100%' }}>
+                                                       {renderIcon('save')} Guardar Configuración de Chat
+                                                   </button>
+                                               </div>
+                                           </div>
+                                       </div>
+                                  )}
+
                             </div>
                         </div>
                     )}
@@ -11173,6 +11561,16 @@
                                     {!sidebarCollapsed && <span>Ocultar Menú</span>}
                                 </button>
 
+                                <button className={`config-menu-item ${activeControlSub === 'chat' ? 'active' : ''}`} onClick={() => setActiveControlSub('chat')}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}>
+                                        {renderIcon('message-square')} {!sidebarCollapsed && " 💬 Chat en Vivo"}
+                                        {!sidebarCollapsed && chatMessages.length > 0 && (
+                                            <span style={{ marginLeft: 'auto', background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', color: '#fff', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '99px', fontWeight: 'bold' }}>
+                                                {chatMessages.length}
+                                            </span>
+                                        )}
+                                    </span>
+                                </button>
                                 <button className={`config-menu-item ${activeControlSub === 'queue' ? 'active' : ''}`} onClick={() => setActiveControlSub('queue')}>
                                     <span>{renderIcon('list')} {!sidebarCollapsed && " 📋 Cola de Espera"}</span>
                                 </button>
@@ -11680,6 +12078,252 @@
                                         </div>
                                     </div>
                                 {/* end persistent youtube control subtab */}
+
+                                    {/* LIVE CHAT CONTROL SUBTAB */}
+                                    <div className="glass-card animate-fade-in" style={{ display: activeControlSub === 'chat' ? 'flex' : 'none', flexDirection: 'column', gap: '15px', padding: '20px', minHeight: '620px' }}>
+                                        {/* Header */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+                                            <div>
+                                                <h3 style={{ margin: 0, color: '#ec4899', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    💬 Chat de TikTok en Vivo
+                                                    <span style={{ background: status.tiktokState === 'connected' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)', color: status.tiktokState === 'connected' ? '#4ade80' : '#f87171', border: `1px solid ${status.tiktokState === 'connected' ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`, fontSize: '0.68rem', padding: '2px 8px', borderRadius: '99px', fontWeight: 'bold' }}>
+                                                        {status.tiktokState === 'connected' ? '🟢 Conectado al Live' : '🔴 Desconectado'}
+                                                    </span>
+                                                </h3>
+                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '4px 0 0 0' }}>
+                                                    Monitorea todos los comentarios de tus espectadores en tiempo real con insignias, alertas visuales y modo flotante.
+                                                </p>
+                                            </div>
+
+                                            {/* Action Buttons */}
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    onClick={() => window.open('./chat_overlay.html?mode=window', 'ZeroFMChat', 'width=420,height=720,menubar=no,toolbar=no,location=no,status=no')}
+                                                    style={{ padding: '7px 13px', fontSize: '0.82rem', borderColor: '#38bdf8', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.08)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                    title="Abrir chat en una ventana emergente limpia"
+                                                >
+                                                    🪟 En Ventana
+                                                </button>
+
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    onClick={() => setFloatingChat(!floatingChat)}
+                                                    style={{ padding: '7px 13px', fontSize: '0.82rem', borderColor: floatingChat ? '#ec4899' : 'var(--border-glass)', color: floatingChat ? '#f472b6' : '#fff', background: floatingChat ? 'rgba(236, 72, 153, 0.15)' : 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                    title="Tener el chat flotando sobre cualquier pestaña del dashboard"
+                                                >
+                                                    📌 {floatingChat ? 'Flotante: ON' : 'Pantalla Flotante'}
+                                                </button>
+
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    onClick={() => {
+                                                        const url = `${currentOrigin}/chat_overlay.html?mode=overlay`;
+                                                        navigator.clipboard.writeText(url);
+                                                        triggerSaveBadge('📋 Enlace de Overlay OBS copiado');
+                                                    }}
+                                                    style={{ padding: '7px 13px', fontSize: '0.82rem', borderColor: '#a855f7', color: '#c084fc', background: 'rgba(168, 85, 247, 0.08)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                    title="Copiar URL para agregar como fuente de navegador en OBS"
+                                                >
+                                                    📺 Copiar Overlay
+                                                </button>
+
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    onClick={() => setShowChatSimModal(true)}
+                                                    style={{ padding: '7px 13px', fontSize: '0.82rem', borderColor: '#f59e0b', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.08)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                    title="Simular un comentario de prueba"
+                                                >
+                                                    🧪 Simular Mensaje
+                                                </button>
+
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    onClick={handleClearChatHistory}
+                                                    style={{ padding: '7px 13px', fontSize: '0.82rem', borderColor: '#ef4444', color: '#f87171', background: 'rgba(239, 68, 68, 0.08)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                    title="Vaciar historial de chat"
+                                                >
+                                                    🗑️ Limpiar
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Toolbar & Filters */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', background: 'rgba(0,0,0,0.25)', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1, minWidth: '220px' }}>
+                                                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>🔍</span>
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Buscar en el chat o filtrar por @usuario..." 
+                                                    value={chatSearchQuery} 
+                                                    onChange={(e) => setChatSearchQuery(e.target.value)}
+                                                    style={{ flex: 1, height: '34px', padding: '6px 12px', fontSize: '0.82rem', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: '#fff' }}
+                                                />
+                                                {chatSearchQuery && (
+                                                    <button onClick={() => setChatSearchQuery('')} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}>✕</button>
+                                                )}
+                                            </div>
+
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <button 
+                                                    className={`tool-btn ${chatAutoScroll ? 'active' : ''}`} 
+                                                    onClick={() => setChatAutoScroll(!chatAutoScroll)}
+                                                    style={{ padding: '5px 10px', fontSize: '0.75rem', borderRadius: '6px', background: chatAutoScroll ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.05)', color: chatAutoScroll ? '#38bdf8' : 'var(--text-secondary)', border: '1px solid var(--border-glass)', cursor: 'pointer' }}
+                                                >
+                                                    🔒 Auto-scroll
+                                                </button>
+
+                                                <button 
+                                                    className={`tool-btn ${chatFilterCommands ? 'active' : ''}`} 
+                                                    onClick={() => setChatFilterCommands(!chatFilterCommands)}
+                                                    style={{ padding: '5px 10px', fontSize: '0.75rem', borderRadius: '6px', background: chatFilterCommands ? 'rgba(236, 72, 153, 0.2)' : 'rgba(255,255,255,0.05)', color: chatFilterCommands ? '#f472b6' : 'var(--text-secondary)', border: '1px solid var(--border-glass)', cursor: 'pointer' }}
+                                                >
+                                                    🚫 Ocultar Comandos (!)
+                                                </button>
+
+                                                <button 
+                                                    className={`tool-btn ${chatFilterVipOnly ? 'active' : ''}`} 
+                                                    onClick={() => setChatFilterVipOnly(!chatFilterVipOnly)}
+                                                    style={{ padding: '5px 10px', fontSize: '0.75rem', borderRadius: '6px', background: chatFilterVipOnly ? 'rgba(168, 85, 247, 0.2)' : 'rgba(255,255,255,0.05)', color: chatFilterVipOnly ? '#c084fc' : 'var(--text-secondary)', border: '1px solid var(--border-glass)', cursor: 'pointer' }}
+                                                >
+                                                    👑 Solo VIPs/Subs
+                                                </button>
+
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace', marginLeft: '5px' }}>
+                                                    {filteredChatMessages.length} msgs
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Live Chat Messages Feed */}
+                                        <div 
+                                            ref={chatFeedRef}
+                                            style={{ 
+                                                height: '460px', 
+                                                overflowY: 'auto', 
+                                                display: 'flex', 
+                                                flexDirection: 'column', 
+                                                gap: '8px', 
+                                                background: 'rgba(0,0,0,0.3)', 
+                                                borderRadius: '12px', 
+                                                padding: '14px', 
+                                                border: '1px solid rgba(255,255,255,0.05)',
+                                                position: 'relative'
+                                            }}
+                                        >
+                                            {filteredChatMessages.length === 0 ? (
+                                                <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>
+                                                    <div style={{ fontSize: '2rem', marginBottom: '8px' }}>💬</div>
+                                                    <div style={{ fontWeight: '600' }}>Sin mensajes recientes en el chat</div>
+                                                    <div style={{ fontSize: '0.78rem', opacity: 0.7, marginTop: '4px' }}>
+                                                        {status.tiktokState === 'connected' ? 'Esperando nuevos comentarios de TikTok...' : 'Conéctate al Live o usa "Simular Mensaje" para hacer pruebas.'}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                filteredChatMessages.map((item, idx) => {
+                                                    const avatarSrc = item.profilePictureUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(item.uniqueId || 'user')}`;
+                                                    const isStreamer = item.isStreamer;
+                                                    const isVip = item.isVip;
+                                                    const isSub = item.isSubscriber;
+                                                    const isMod = item.isModerator;
+                                                    const isSuperFan = item.isSuperFan;
+                                                    const isDonador = item.isDonador;
+
+                                                    let cardBg = 'rgba(14, 13, 26, 0.85)';
+                                                    let borderColor = 'rgba(255,255,255,0.08)';
+
+                                                    if (isStreamer) {
+                                                        cardBg = 'linear-gradient(135deg, rgba(255, 0, 80, 0.15), rgba(124, 58, 237, 0.12))';
+                                                        borderColor = 'rgba(255, 0, 80, 0.4)';
+                                                    } else if (isVip) {
+                                                        cardBg = 'linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(14, 13, 26, 0.85))';
+                                                        borderColor = 'rgba(168, 85, 247, 0.35)';
+                                                    } else if (isSub) {
+                                                        cardBg = 'linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(14, 13, 26, 0.85))';
+                                                        borderColor = 'rgba(6, 182, 212, 0.35)';
+                                                    } else if (isMod) {
+                                                        cardBg = 'linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(14, 13, 26, 0.85))';
+                                                        borderColor = 'rgba(59, 130, 246, 0.35)';
+                                                    } else if (isSuperFan) {
+                                                        cardBg = 'linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(14, 13, 26, 0.85))';
+                                                        borderColor = 'rgba(245, 158, 11, 0.35)';
+                                                    }
+
+                                                    const timeStr = item.timestamp ? new Date(item.timestamp).toLocaleTimeString('es-MX', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+
+                                                    return (
+                                                        <div 
+                                                            key={item.id || idx}
+                                                            style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'flex-start', 
+                                                                gap: '10px', 
+                                                                padding: '8px 12px', 
+                                                                background: cardBg, 
+                                                                border: `1px solid ${borderColor}`, 
+                                                                borderRadius: '10px',
+                                                                boxShadow: '0 2px 10px rgba(0,0,0,0.25)',
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '1.5px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                                <img src={avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.src = 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback'; }} />
+                                                            </div>
+                                                            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                                    {isStreamer && <span style={{ background: 'linear-gradient(135deg, #ff0050, #e11d48)', color: '#fff', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', textTransform: 'uppercase' }}>🔴 Streamer</span>}
+                                                                    {isMod && <span style={{ background: '#2563eb', color: '#fff', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', textTransform: 'uppercase' }}>🛡️ Mod</span>}
+                                                                    {isSub && <span style={{ background: 'linear-gradient(135deg, #06b6d4, #0284c7)', color: '#fff', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', textTransform: 'uppercase' }}>🌟 Sub</span>}
+                                                                    {isVip && <span style={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#fff', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', textTransform: 'uppercase' }}>👑 VIP</span>}
+                                                                    {isSuperFan && <span style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#000', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', textTransform: 'uppercase' }}>⭐ Superfan</span>}
+                                                                    {isDonador && <span style={{ background: 'linear-gradient(135deg, #ec4899, #db2777)', color: '#fff', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', textTransform: 'uppercase' }}>💎 Donador</span>}
+                                                                    
+                                                                    <span style={{ fontWeight: '700', fontSize: '0.86rem', color: '#fff' }}>{item.nickname || item.uniqueId}</span>
+                                                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>@{item.uniqueId}</span>
+                                                                    <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.3)', marginLeft: 'auto', fontFamily: 'monospace' }}>{timeStr}</span>
+                                                                </div>
+                                                                <div style={{ fontSize: '0.9rem', color: '#e5e5f5', lineHeight: '1.35', wordBreak: 'break-word' }}>
+                                                                    {item.comment}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+
+                                        {/* Quick Test Bar at bottom */}
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <input 
+                                                type="text" 
+                                                placeholder="Escribe un mensaje de prueba rápido..." 
+                                                value={chatSimForm.comment}
+                                                onChange={(e) => setChatSimForm({ ...chatSimForm, comment: e.target.value })}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') handleSendTestChatMessage(); }}
+                                                style={{ flex: 1, height: '36px', padding: '6px 12px', fontSize: '0.85rem', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: '#fff' }}
+                                            />
+                                            <select 
+                                                value={chatSimForm.role} 
+                                                onChange={(e) => setChatSimForm({ ...chatSimForm, role: e.target.value })}
+                                                style={{ width: '130px', height: '36px', padding: '0 8px', fontSize: '0.8rem', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: '#fff' }}
+                                            >
+                                                <option value="user">👤 Usuario</option>
+                                                <option value="vip">👑 VIP</option>
+                                                <option value="sub">🌟 Sub</option>
+                                                <option value="mod">🛡️ Mod</option>
+                                                <option value="superfan">⭐ Superfan</option>
+                                                <option value="donador">💎 Donador</option>
+                                                <option value="streamer">🔴 Streamer</option>
+                                            </select>
+                                            <button 
+                                                className="btn btn-primary" 
+                                                onClick={() => handleSendTestChatMessage()}
+                                                style={{ height: '36px', padding: '0 16px', fontSize: '0.82rem' }}
+                                            >
+                                                Enviar Test
+                                            </button>
+                                        </div>
+                                    </div>
 
                                     <div className="glass-card animate-fade-in" style={{ display: activeControlSub === 'queue' ? 'flex' : 'none', flexDirection: 'column', gap: '15px', padding: '20px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px' }}>
@@ -12489,6 +13133,239 @@
                                     }}>
                                         {dialog.type === 'confirm' ? 'Confirmar' : 'Aceptar'}
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── DRAGGABLE FLOATING CHAT PANEL (OVERLAY / PICTURE-IN-PICTURE ON DASHBOARD) ── */}
+                    {floatingChat && (
+                        <div 
+                            style={{
+                                position: 'fixed',
+                                left: `${floatingChatPos.x}px`,
+                                top: `${floatingChatPos.y}px`,
+                                width: '380px',
+                                maxHeight: floatingChatMinimized ? '48px' : '520px',
+                                background: 'rgba(10, 8, 22, 0.94)',
+                                backdropFilter: 'blur(20px) saturate(180%)',
+                                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                                border: '1px solid rgba(236, 72, 153, 0.4)',
+                                borderRadius: '16px',
+                                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.7), 0 0 30px rgba(236, 72, 153, 0.2)',
+                                zIndex: 99999,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                overflow: 'hidden',
+                                transition: 'max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                            }}
+                        >
+                            {/* Drag Handle */}
+                            <div 
+                                onMouseDown={handleMouseDownFloatingChat}
+                                style={{
+                                    padding: '10px 14px',
+                                    background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.18) 0%, rgba(124, 58, 237, 0.18) 100%)',
+                                    borderBottom: '1px solid rgba(255,255,255,0.08)',
+                                    cursor: 'move',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    userSelect: 'none'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold', color: '#fff' }}>
+                                    <span style={{ color: '#ec4899' }}>💬</span> Chat Flotante
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>({filteredChatMessages.length})</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <button 
+                                        onClick={() => window.open('./chat_overlay.html?mode=window', 'ZeroFMChat', 'width=420,height=720,menubar=no,toolbar=no,location=no,status=no')}
+                                        style={{ background: 'transparent', border: 'none', color: '#c4c4e0', cursor: 'pointer', fontSize: '0.8rem', padding: '2px 4px' }}
+                                        title="Abrir en ventana independiente"
+                                    >
+                                        🪟
+                                    </button>
+                                    <button 
+                                        onClick={() => setFloatingChatMinimized(!floatingChatMinimized)}
+                                        style={{ background: 'transparent', border: 'none', color: '#c4c4e0', cursor: 'pointer', fontSize: '0.8rem', padding: '2px 4px' }}
+                                        title={floatingChatMinimized ? "Expandir" : "Minimizar"}
+                                    >
+                                        {floatingChatMinimized ? '🔼' : '🔽'}
+                                    </button>
+                                    <button 
+                                        onClick={() => setFloatingChat(false)}
+                                        style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 4px' }}
+                                        title="Cerrar chat flotante"
+                                    >
+                                        &times;
+                                    </button>
+                                </div>
+                            </div>
+
+                            {!floatingChatMinimized && (
+                                <React.Fragment>
+                                    <div 
+                                        ref={floatingChatFeedRef}
+                                        style={{ 
+                                            flex: 1, 
+                                            height: '380px', 
+                                            overflowY: 'auto', 
+                                            padding: '10px', 
+                                            display: 'flex', 
+                                            flexDirection: 'column', 
+                                            gap: '6px' 
+                                        }}
+                                    >
+                                        {filteredChatMessages.length === 0 ? (
+                                            <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                                                Esperando comentarios de TikTok...
+                                            </div>
+                                        ) : (
+                                            filteredChatMessages.map((item, idx) => {
+                                                const avatarSrc = item.profilePictureUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(item.uniqueId || 'user')}`;
+                                                return (
+                                                    <div 
+                                                        key={item.id || idx}
+                                                        style={{ 
+                                                            display: 'flex', 
+                                                            gap: '8px', 
+                                                            padding: '6px 8px', 
+                                                            background: 'rgba(255,255,255,0.03)', 
+                                                            borderRadius: '8px',
+                                                            border: '1px solid rgba(255,255,255,0.05)',
+                                                            fontSize: '0.82rem'
+                                                        }}
+                                                    >
+                                                        <img src={avatarSrc} alt="" style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} onError={(e) => { e.target.src = 'https://api.dicebear.com/7.x/bottts/svg?seed=fallback'; }} />
+                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                                {item.isStreamer && <span style={{ fontSize: '0.58rem', background: '#ff0050', color: '#fff', padding: '0 3px', borderRadius: '3px', fontWeight: 'bold' }}>LIVE</span>}
+                                                                {item.isVip && <span style={{ fontSize: '0.58rem', background: '#a855f7', color: '#fff', padding: '0 3px', borderRadius: '3px', fontWeight: 'bold' }}>VIP</span>}
+                                                                {item.isSubscriber && <span style={{ fontSize: '0.58rem', background: '#06b6d4', color: '#fff', padding: '0 3px', borderRadius: '3px', fontWeight: 'bold' }}>SUB</span>}
+                                                                <span style={{ fontWeight: 'bold', color: '#fff', fontSize: '0.78rem' }}>{item.nickname || item.uniqueId}</span>
+                                                            </div>
+                                                            <div style={{ color: '#ddd', marginTop: '1px', wordBreak: 'break-word' }}>{item.comment}</div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+
+                                    <div style={{ padding: '8px 10px', background: 'rgba(0,0,0,0.3)', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '6px' }}>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Test rápido..." 
+                                            value={chatSimForm.comment}
+                                            onChange={(e) => setChatSimForm({ ...chatSimForm, comment: e.target.value })}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') handleSendTestChatMessage(); }}
+                                            style={{ flex: 1, height: '28px', padding: '2px 8px', fontSize: '0.75rem', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-glass)', borderRadius: '6px', color: '#fff' }}
+                                        />
+                                        <button 
+                                            className="btn btn-primary" 
+                                            onClick={() => handleSendTestChatMessage()}
+                                            style={{ height: '28px', padding: '0 10px', fontSize: '0.72rem' }}
+                                        >
+                                            Enviar
+                                        </button>
+                                    </div>
+                                </React.Fragment>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── CHAT SIMULATOR MODAL ── */}
+                    {showChatSimModal && (
+                        <div className="modal-overlay" style={{ zIndex: 100000 }}>
+                            <div className="glass-card animate-fade-in" style={{ width: '460px', maxWidth: '95vw', padding: '24px', background: '#0d0c1a', border: '1px solid rgba(236, 72, 153, 0.3)', borderRadius: '16px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                    <h3 style={{ margin: 0, color: '#ec4899', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        🧪 Simular Mensaje de Chat
+                                    </h3>
+                                    <button className="btn-close-modal" onClick={() => setShowChatSimModal(false)}>&times;</button>
+                                </div>
+
+                                <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                                    Prueba cómo se ven los comentarios en tu panel, ventana y overlay de OBS simulando diferentes roles.
+                                </p>
+
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label>Rol del Usuario</label>
+                                    <select 
+                                        value={chatSimForm.role} 
+                                        onChange={(e) => setChatSimForm({ ...chatSimForm, role: e.target.value })}
+                                        style={{ width: '100%', height: '38px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '0 10px' }}
+                                    >
+                                        <option value="user">👤 Espectador Regular</option>
+                                        <option value="vip">👑 VIP</option>
+                                        <option value="sub">🌟 Suscriptor</option>
+                                        <option value="mod">🛡️ Moderador</option>
+                                        <option value="superfan">⭐ Superfan</option>
+                                        <option value="donador">💎 Donador Destacado</option>
+                                        <option value="streamer">🔴 Streamer / Creador</option>
+                                    </select>
+                                </div>
+
+                                <div className="grid-2" style={{ marginBottom: '12px' }}>
+                                    <div className="form-group">
+                                        <label>Nombre a mostrar</label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Ej: Zero Fan" 
+                                            value={chatSimForm.nickname} 
+                                            onChange={(e) => setChatSimForm({ ...chatSimForm, nickname: e.target.value })}
+                                            style={{ width: '100%', height: '36px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: '#fff', padding: '0 10px' }}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>@Usuario</label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Ej: zerofan_99" 
+                                            value={chatSimForm.uniqueId} 
+                                            onChange={(e) => setChatSimForm({ ...chatSimForm, uniqueId: e.target.value })}
+                                            style={{ width: '100%', height: '36px', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: '#fff', padding: '0 10px' }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: '16px' }}>
+                                    <label>Mensaje / Comentario</label>
+                                    <textarea 
+                                        rows="3" 
+                                        placeholder="Escribe el comentario..." 
+                                        value={chatSimForm.comment} 
+                                        onChange={(e) => setChatSimForm({ ...chatSimForm, comment: e.target.value })}
+                                        style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: '#fff', padding: '8px 10px', resize: 'vertical' }}
+                                    ></textarea>
+                                </div>
+
+                                {/* Preset Buttons */}
+                                <div style={{ marginBottom: '16px' }}>
+                                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>Plantillas Rápidas:</label>
+                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                        {[
+                                            { label: '🎵 !sr Canción', text: '!sr Dua Lipa - Houdini', role: 'user' },
+                                            { label: '🔥 Apoyo VIP', text: '¡Excelente live Zero! Dejo mis 1000 likes ❤️🔥', role: 'vip' },
+                                            { label: '🛡️ Mod Alerta', text: 'Recuerden respetar las reglas del chat por favor ✨', role: 'mod' },
+                                            { label: '💎 Donación', text: '¡Te envié 5 Rosas! Saludos 🌹🎁', role: 'donador' }
+                                        ].map((preset, pIdx) => (
+                                            <button 
+                                                key={pIdx} 
+                                                type="button" 
+                                                onClick={() => setChatSimForm({ ...chatSimForm, comment: preset.text, role: preset.role, nickname: preset.label })}
+                                                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#c4c4e0', padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', cursor: 'pointer' }}
+                                            >
+                                                {preset.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                                    <button className="btn btn-secondary" onClick={() => setShowChatSimModal(false)}>Cancelar</button>
+                                    <button className="btn btn-primary" onClick={() => handleSendTestChatMessage()}>Enviar Mensaje</button>
                                 </div>
                             </div>
                         </div>
