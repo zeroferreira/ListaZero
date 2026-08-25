@@ -644,7 +644,8 @@
   let pendingTargetState = null;
   let currentVolume   = 100;
   let hasSetInitialVolume = false;
-  let routeAudioTo    = 'dashboard'; // 'obs' (predeterminado) | 'dashboard' | 'none' | 'both'
+  let routeAudioTo    = 'dashboard';
+  let isDashboardAudioLeader = true; // 'obs' (predeterminado) | 'dashboard' | 'none' | 'both'
 
   // Debounce handle para applyCardStyles layout recalculation
   let _layoutDebounce = null;
@@ -868,15 +869,18 @@
     
     const isPreview = params.get('preview') === 'true';
 
-    // Ruteo unificado de audio exclusivo:
-    // routeAudioTo: 'obs' (predeterminado) | 'dashboard' | 'both' | 'none'
+    // Ruteo inteligente multi-dispositivo:
+    // En OBS (isPreview=false): siempre silencioso (overlay visual para stream).
+    // En Dashboard (isPreview=true): suena en el dispositivo activo (Mac IP si está abierta, o PC local en fallback).
     let shouldMute = false;
 
     if (routeAudioTo === 'dashboard') {
-      // Audio ruteado a Computadora (Dashboard) -> Silenciar en OBS (where isPreview=false)
-      shouldMute = !isPreview;
+      if (!isPreview) {
+        shouldMute = true; // OBS overlay es 100% silencioso y visual
+      } else {
+        shouldMute = !isDashboardAudioLeader;
+      }
     } else if (routeAudioTo === 'obs') {
-      // Audio ruteado a OBS Studio -> Silenciar en Dashboard (where isPreview=true)
       shouldMute = isPreview;
     } else if (routeAudioTo === 'none') {
       shouldMute = true;
@@ -884,25 +888,20 @@
       shouldMute = false;
     }
 
-    if (window.isMutedByIP) {
-      shouldMute = true;
-    }
-
     if (shouldMute) {
-      ytPlayer.mute();
-      console.log(`🔇 YouTube Player silenciado (routeAudioTo: ${routeAudioTo}, isPreview: ${isPreview})`);
+      try { ytPlayer.mute(); } catch(e) {}
       return;
     }
 
     const targetVolume = (typeof customVolume === 'number') ? customVolume : (hasSetInitialVolume ? currentVolume : 100);
     
     if (targetVolume > 0) {
-      ytPlayer.unMute();
-      ytPlayer.setVolume(targetVolume);
-      console.log(`🔊 YouTube Player des-silenciado. Volumen: ${targetVolume} (routeAudioTo: ${routeAudioTo}, isPreview: ${isPreview})`);
+      try {
+        ytPlayer.unMute();
+        ytPlayer.setVolume(targetVolume);
+      } catch(e) {}
     } else {
-      ytPlayer.mute();
-      console.log(`🔇 YouTube Player silenciado por volumen 0`);
+      try { ytPlayer.mute(); } catch(e) {}
     }
   }
 
@@ -1817,6 +1816,11 @@
     console.log('[YT Overlay] Received postMessage:', evt.data);
     if (!evt.data) return;
     const { action, payload } = evt.data;
+
+    if (action === 'ytSetAudioLeader' || action === 'setAudioLeader') {
+      isDashboardAudioLeader = Boolean(payload?.isLeader !== undefined ? payload.isLeader : payload?.isAudioOwner);
+      updatePlayerMuteState(currentVolume);
+    }
 
     if (action === 'updateConfig' || action === 'updateLiveConfig') {
       console.log('[YT Overlay] Applying card styles:', payload);

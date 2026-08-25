@@ -1850,40 +1850,51 @@
                         const db = app.firestore();
                         window.db = db;
                         
-                        // Heartbeat: Registrar sesión activa del dashboard
+                        // Heartbeat: Registrar sesión activa del dashboard con prioridad para Mac (IP)
                         const registerDashboard = () => {
                             const now = Date.now();
                             const isVisible = document.visibilityState === 'visible';
+                            const currentHost = window.location.hostname || '';
+                            const isIP = /^[0-9.]+$/.test(currentHost) && currentHost !== '127.0.0.1';
                             
                             // Si localAudioEnabled no está activado en esta pestaña, no intentar adquirir el lock
                             if (!localAudioEnabledRef.current) {
-                                // Si éramos el dueño actual, liberar el lock
                                 if (window.activeDashboardClientId === myClientId) {
                                     db.collection('systemConfig').doc('activeDashboardSession').delete().catch(() => {});
                                 }
                                 return;
                             }
 
-                            // Determinar si debemos reclamar/renovar el lock de audio:
+                            const activeHost = window.activeDashboardHost || '';
+                            const activeTime = window.activeDashboardTime || 0;
+                            const isRemoteActive = (/^[0-9.]+$/.test(activeHost) && activeHost !== '127.0.0.1') && (now - activeTime < 10000);
+
+                            // LÓGICA DE PRIORIDAD MULTI-DISPOSITIVO:
                             let shouldClaim = false;
 
-                            // Regla 1: Si ya somos el dueño actual, renovamos el heartbeat
-                            if (window.activeDashboardClientId === myClientId) {
-                                shouldClaim = true;
-                            }
-                            // Regla 2: Si el lock está libre o expirado (más de 10 segundos sin heartbeat)
-                            else if (!window.activeDashboardClientId || (now - window.activeDashboardTime > 10000)) {
-                                shouldClaim = true;
-                            }
-                            // Regla 3: Si el dueño actual no está visible, pero nosotros SÍ estamos visibles
-                            else if (isVisible && !window.activeDashboardVisible) {
-                                shouldClaim = true;
+                            // CASO A: Estamos en la MAC (conectada por IP de red local):
+                            // La Mac tiene PRIORIDAD TOTAL sobre el PC local de streaming.
+                            if (isIP) {
+                                if (window.activeDashboardClientId === myClientId || !isRemoteActive || (isVisible && !window.activeDashboardVisible)) {
+                                    shouldClaim = true;
+                                }
+                            } 
+                            // CASO B: Estamos en el PC de streaming (localhost / 127.0.0.1):
+                            else {
+                                // Si la Mac por IP está conectada y enviando latidos, el PC local CEDE el audio automáticamente
+                                if (isRemoteActive && window.activeDashboardClientId !== myClientId) {
+                                    shouldClaim = false;
+                                } else {
+                                    // Si la Mac está cerrada o desconectada (>10s sin latido), el PC local toma el control de inmediato
+                                    shouldClaim = true;
+                                }
                             }
 
                             if (shouldClaim) {
                                 db.collection('systemConfig').doc('activeDashboardSession').set({
                                     clientId: myClientId,
-                                    hostname: window.location.hostname,
+                                    hostname: currentHost,
+                                    isIP: isIP,
                                     timestamp: now,
                                     isTabVisible: isVisible
                                 }).catch(err => console.warn('Error setting active dashboard session:', err));
@@ -1973,6 +1984,20 @@
                                     window.activeDashboardHost = dData.hostname || '';
                                     window.activeDashboardTime = dData.timestamp || 0;
                                     window.activeDashboardVisible = dData.isTabVisible || false;
+                                } else {
+                                    window.activeDashboardClientId = '';
+                                    window.activeDashboardHost = '';
+                                    window.activeDashboardTime = 0;
+                                }
+                                
+                                const isAudioOwner = (window.activeDashboardClientId === myClientId);
+                                const iframeYt = document.getElementById('iframe-ytplayer');
+                                if (iframeYt && iframeYt.contentWindow) {
+                                    iframeYt.contentWindow.postMessage({ action: 'ytSetAudioLeader', payload: { isLeader: isAudioOwner } }, '*');
+                                }
+                                const iframeYtPersist = document.getElementById('iframe-ytplayer-persistent');
+                                if (iframeYtPersist && iframeYtPersist.contentWindow) {
+                                    iframeYtPersist.contentWindow.postMessage({ action: 'ytSetAudioLeader', payload: { isLeader: isAudioOwner } }, '*');
                                 }
                             }, err => console.warn("Error activeDashboardSession sub:", err));
 
