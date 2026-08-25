@@ -811,33 +811,21 @@
           positionMiniatureVideo();
         },
         'onStateChange': (event) => {
-          // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
+          // 1 = PLAYING, 2 = PAUSED, 0 = ENDED, 3 = BUFFERING
           if (event.data === 1) {
-            // Aplicar mute/unmute ÚNICAMENTE cuando el video esté reproduciéndose activamente
             updatePlayerMuteState(currentVolume);
-             if (typeof event.target.getDuration === 'function') {
-               const ytDuration = event.target.getDuration();
-               if (ytDuration > 0 && durationSec !== ytDuration) {
-                 durationSec = ytDuration;
-                 timeTotal.textContent = fmtTime(durationSec);
-               }
-             }
-             if (currentState !== 'playing') {
-               applyState('playing');
-             }
+            if (typeof event.target.getDuration === 'function') {
+              const ytDuration = event.target.getDuration();
+              if (ytDuration > 0 && durationSec !== ytDuration) {
+                durationSec = ytDuration;
+                timeTotal.textContent = fmtTime(durationSec);
+              }
+            }
+            if (currentState !== 'playing') {
+              applyState('playing');
+            }
           } else if (event.data === 2) {
-            if (currentState === 'playing') {
-              console.warn("⚠️ YouTube se pausó por política de autoplay/unmute del navegador. Intentando reanudar...");
-              setTimeout(() => {
-                if (currentState === 'playing' && ytPlayer && typeof ytPlayer.playVideo === 'function') {
-                  const s = typeof ytPlayer.getPlayerState === 'function' ? ytPlayer.getPlayerState() : -1;
-                  if (s === 2 || s === -1 || s === 5) {
-                    ytPlayer.playVideo();
-                    updatePlayerMuteState(currentVolume);
-                  }
-                }
-              }, 250);
-            } else if (currentState !== 'paused') {
+            if (currentState !== 'paused' && currentState !== 'ended') {
               applyState('paused');
             }
           } else if (event.data === 0) {
@@ -931,18 +919,8 @@
     if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
       const ytState = ytPlayer.getPlayerState();
       if (state === 'playing') {
-        // Solo invocar playVideo si el reproductor está en pausa (2) o cued/ended (0, 5).
-        // Evita interrumpir la inicialización nativa (-1) o el buffering (3).
         if (ytState === 2 || ytState === 0 || ytState === 5) {
           ytPlayer.playVideo();
-        }
-        if (typeof ytPlayer.getCurrentTime === 'function' && typeof elapsedSec === 'number' && elapsedSec > 0) {
-          const ytCurrent = ytPlayer.getCurrentTime();
-          const drift = Math.abs(ytCurrent - elapsedSec);
-          if (drift > 10) {
-            console.log(`⏰ Seek drift detected: local=${Math.round(ytCurrent)}s, Firestore target=${elapsedSec}s. Seeking player...`);
-            ytPlayer.seekTo(elapsedSec, true);
-          }
         }
       } else if (state === 'paused' && ytState !== 2) {
         ytPlayer.pauseVideo();
@@ -1038,10 +1016,11 @@
     }
 
     // Elapsed / seek
-    if (typeof data.elapsed === 'number') {
-      if (videoChanged || lastFirestoreElapsed !== data.elapsed) {
-        elapsedSec = data.elapsed;
-        lastFirestoreElapsed = data.elapsed;
+    if (typeof data.elapsed === 'number' && (data.isUserSeek || videoChanged)) {
+      elapsedSec = data.elapsed;
+      lastFirestoreElapsed = data.elapsed;
+      if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
+        ytPlayer.seekTo(elapsedSec, true);
       }
     } else if (data.state === 'playing' && videoChanged) {
       elapsedSec = 0;
@@ -1279,11 +1258,8 @@
   function startWatchdog() {
     if (watchdogInterval) clearInterval(watchdogInterval);
     watchdogInterval = setInterval(() => {
-      // FIX BUG#5: No forzar play en OBS cuando el audio va al Dashboard.
-      // El player de OBS está intencionalmente silenciado/pausado en ese modo.
       if (isObs && routeAudioTo === 'dashboard') return;
 
-      // Solo vigilar si el estado configurado es 'playing' y el player está instanciado
       if (currentState !== 'playing' || !ytPlayer || typeof ytPlayer.getPlayerState !== 'function') {
         stuckCount = 0;
         stuckTimeCount = 0;
@@ -1292,91 +1268,33 @@
       }
 
       const ytState = ytPlayer.getPlayerState();
-      const currentTime = typeof ytPlayer.getCurrentTime === 'function' ? ytPlayer.getCurrentTime() : -1;
 
-      console.log(`[Watchdog] Estado YT: ${ytState}, Tiempo: ${currentTime}s (Esperado: PLAYING, Objetivo: ${elapsedSec}s)`);
-
-      // 1. Si está reproduciendo (1), ocultamos banner de desbloqueo y reseteamos contadores
-      if (ytState === 1) {
+      // 1 = PLAYING, 3 = BUFFERING
+      if (ytState === 1 || ytState === 3) {
         stuckCount = 0;
         stuckTimeCount = 0;
         hideAutoplayUnlockBanner();
         return;
       }
 
-      // 2. Si está en BUFFERING (3), no incrementamos el contador de congelamiento de frame (Caso 2),
-      // pero sí permitimos un conteo independiente muy largo para el caso de buffer colgado de red (20s).
-      if (ytState === 3) {
-        stuckCount = 0;
-        stuckTimeCount++;
-        if (stuckTimeCount >= 10) { // 20 segundos continuos en buffering
-          console.error(`[Watchdog] Crítico: Buffer colgado por más de 20s. Recargando player...`);
-          stuckTimeCount = 0;
-          const targetTime = currentTime > 0 ? currentTime + 1 : (elapsedSec > 0 ? elapsedSec : 0);
-          logWatchdogEvent('recovery', `Buffer colgado. Recargando en ${Math.round(targetTime)}s.`);
-          createOrLoadPlayer(currentVideoId, 'playing', targetTime);
-        }
-        return;
-      }
-
-      // Si está en PAUSA (2) pero el estado deseado es PLAYING (autounmute bloqueado por navegador)
-      if (ytState === 2) {
+      // Si está en estado no iniciado (-1 o 5) durante más de 6s
+      if (ytState === -1 || ytState === 5) {
         stuckCount++;
-        console.warn(`[Watchdog] Alerta: El reproductor está en PAUSA (state 2) pero currentState es PLAYING (intento ${stuckCount}). Forzando play...`);
-        try {
-          ytPlayer.playVideo();
-          updatePlayerMuteState(currentVolume);
-        } catch (e) {
-          console.warn('[Watchdog] Error reanudando reproducción:', e);
+        if (stuckCount >= 2) {
+          try {
+            ytPlayer.playVideo();
+          } catch (e) {}
         }
-
         if (stuckCount >= 4) {
           showAutoplayUnlockBanner();
         }
-
         if (stuckCount >= 8) {
-          console.error(`[Watchdog] Crítico: Reproductor bloqueado en pausa tras 8 intentos. Recreando...`);
           stuckCount = 0;
           hideAutoplayUnlockBanner();
-          const targetTime = currentTime > 0 ? currentTime : (elapsedSec > 0 ? elapsedSec : 0);
-          logWatchdogEvent('recovery', `Player bloqueado en pausa por política de autoplay. Recreando en ${Math.round(targetTime)}s.`);
-          createOrLoadPlayer(currentVideoId, 'playing', targetTime);
+          createOrLoadPlayer(currentVideoId, 'playing', elapsedSec || 0);
         }
-        return;
       }
-
-      // CASO 1: El video no inició (-1) o está cued (5) — dar tiempo a la inicialización nativa
-      if (ytState === -1 || ytState === 5) {
-        stuckCount++;
-        console.warn(`[Watchdog] Alerta: El reproductor está en estado ${ytState} en lugar de PLAYING. Esperando inicialización (intento ${stuckCount})...`);
-
-        // Solo intentar dar playVideo si han pasado al menos 3 ciclos (9 segundos) de inicialización atascada
-        if (stuckCount >= 3) {
-          try {
-            ytPlayer.playVideo();
-          } catch (e) {
-            console.warn('[Watchdog] Error al intentar playVideo:', e);
-          }
-        }
-
-        // Si llevamos 5 o más intentos (15s) y sigue sin avanzar, mostrar el banner de desbloqueo de autoplay
-        if (stuckCount >= 5) {
-          showAutoplayUnlockBanner();
-        }
-
-        // Solo recrear el reproductor si no responde tras 10 intentos (30 segundos)
-        if (stuckCount >= 10) {
-          console.error(`[Watchdog] Crítico: El reproductor no responde tras 30s en estado ${ytState}. Forzando reinicio...`);
-          stuckCount = 0;
-          hideAutoplayUnlockBanner();
-          const targetTime = currentTime > 0 ? currentTime : (elapsedSec > 0 ? elapsedSec : 0);
-          logWatchdogEvent('recovery', `Player colgado en estado ${ytState}. Recreando en segundo ${Math.round(targetTime)}s.`);
-          createOrLoadPlayer(currentVideoId, 'playing', targetTime);
-        }
-      } else {
-        stuckCount = 0;
-      }
-    }, 3000); // PERF 2: 3000ms en vez de 2000ms — reduce llamadas al iframe en OBS
+    }, 3000);
   }
 
   function stopWatchdog() {

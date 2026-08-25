@@ -3559,6 +3559,7 @@
                         sendConfigToIframe('iframe-welcome', overlays);
                     } else if (activeSub === 'ytplayer') {
                         sendConfigToIframe('iframe-ytplayer', overlays);
+                        sendConfigToIframe('iframe-ytplayer-persistent', overlays);
                     } else if (activeSub === 'chat') {
                         sendConfigToIframe('iframe-chat-overlay', overlays);
                     }
@@ -3905,6 +3906,15 @@
             // Custom specific Overlay config saves
             // Mapa de claves por subpanel para forzar guardado completo aunque no estén en dirtyKeys
             const SUBPANEL_KEYS = {
+                'Salida de Audio': ['yt_audio_route', 'route_audio_to'],
+                'YouTube Player': [
+                    'yt_card_width', 'yt_card_radius', 'yt_card_position', 'yt_show_requester',
+                    'yt_show_progress', 'yt_show_artist', 'yt_show_status_dot', 'yt_artwork_size',
+                    'yt_card_layout_mode', 'yt_video_display_mode', 'yt_bg_video_opacity', 'yt_bg_video_blur',
+                    'yt_artwork_aspect_ratio', 'yt_card_theme', 'yt_requester_pos', 'yt_title_font_size',
+                    'yt_artist_font_size', 'yt_requester_size', 'yt_accent_color', 'yt_accent2_color',
+                    'yt_audio_route', 'route_audio_to'
+                ],
                 'Bienvenida': [
                     'welcomeOverlayEnabled', 'welcomeOverlayDuration', 'welcomeOverlayGreetingTemplate',
                     'welcomeOverlayColor', 'welcomeOverlaySoundEnabled', 'welcomeOverlaySoundVolume',
@@ -5299,8 +5309,19 @@
                                 onClick={() => {
                                     const currentRoute = overlays.yt_audio_route || overlays.route_audio_to || 'obs';
                                     const nextRoute = currentRoute === 'obs' ? 'dashboard' : currentRoute === 'dashboard' ? 'none' : 'obs';
-                                    setOverlays({ ...overlays, yt_audio_route: nextRoute, route_audio_to: nextRoute });
-                                    handleSaveOverlaysConfigOnly('Salida de Audio');
+                                    const newOverlays = { ...overlays, yt_audio_route: nextRoute, route_audio_to: nextRoute };
+                                    setOverlays(newOverlays);
+                                    saveOverlaysConfig(newOverlays, { yt_audio_route: true, route_audio_to: true });
+                                    sendConfigToIframe('iframe-ytplayer', newOverlays);
+                                    sendConfigToIframe('iframe-ytplayer-persistent', newOverlays);
+                                    const routeLabels = {
+                                        'obs': '🔊 Audio YT: Solo en OBS Studio',
+                                        'dashboard': '💻 Audio YT: En Computadora / Dashboard',
+                                        'none': '🔇 Audio YT: Silenciado (Mute)'
+                                    };
+                                    if (typeof triggerSaveBadge === 'function') {
+                                        triggerSaveBadge(routeLabels[nextRoute] || ('🔊 Audio YT: ' + nextRoute));
+                                    }
                                 }}
                                 style={{ 
                                     cursor: 'pointer', 
@@ -13213,6 +13234,15 @@
                             </div>
                         </div>
                     )}
+
+                    {/* ── PERSISTENT YOUTUBE AUDIO ENGINE FOR DASHBOARD / COMPUTER ── */}
+                    <iframe 
+                        id="iframe-ytplayer-persistent" 
+                        src="./youtube_player_overlay.html?preview=true" 
+                        style={{ position: 'fixed', top: '-9999px', left: '-9999px', width: '1px', height: '1px', opacity: 0.001, pointerEvents: 'none', border: 'none' }} 
+                        allow="autoplay"
+                        onLoad={() => sendConfigToIframe('iframe-ytplayer-persistent', overlays)}
+                    />
 
                     {/* ── DRAGGABLE FLOATING CHAT PANEL (OVERLAY / PICTURE-IN-PICTURE ON DASHBOARD) ── */}
                     {floatingChat && (
