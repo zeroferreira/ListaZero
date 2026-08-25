@@ -329,7 +329,7 @@ let overlayAlertsConfig = {
     chatTtsCommand: '!tts',
     chatTtsMessageTemplate: '{comment}',
     enableOverlayAudio: true,
-    route_audio_to: 'obs',
+    route_audio_to: 'dashboard',
     chatOverlayEnabled: true,
     chatOverlayTheme: 'cyber',
     chatOverlayFontSize: 14,

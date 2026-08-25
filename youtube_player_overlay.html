@@ -644,7 +644,7 @@
   let pendingTargetState = null;
   let currentVolume   = 100;
   let hasSetInitialVolume = false;
-  let routeAudioTo    = 'obs'; // 'obs' (predeterminado) | 'dashboard' | 'none' | 'both'
+  let routeAudioTo    = 'dashboard'; // 'obs' (predeterminado) | 'dashboard' | 'none' | 'both'
 
   // Debounce handle para applyCardStyles layout recalculation
   let _layoutDebounce = null;
@@ -1798,34 +1798,7 @@
 
       window.isMutedByIP = false;
       const isPreview = params.get('preview') === 'true';
-
-      if (isPreview) {
-        setIdle();
-        // Register this preview session in Firestore
-        db.collection('systemConfig').doc('activeAudioSession').set({
-          hostname: window.location.hostname,
-          timestamp: Date.now()
-        }).catch(err => console.warn('Error setting active audio session:', err));
-
-        // Listen to active audio session to dynamically handle double audio
-        _unsubAudio = db.collection('systemConfig').doc('activeAudioSession')
-          .onSnapshot((doc) => {
-            if (doc.exists && doc.data()) {
-              const activeHost = doc.data().hostname || '';
-              const isIP = (host) => /^[0-9.]+$/.test(host) && host !== '127.0.0.1';
-              
-              if (isIP(activeHost) && window.location.hostname === 'localhost') {
-                window.isMutedByIP = true;
-                console.log(`🔇 Muted localhost preview because active session is on IP: ${activeHost}`);
-              } else {
-                window.isMutedByIP = false;
-                console.log(`🔊 Active audio host is ${activeHost}. Updating player mute state.`);
-              }
-              // Always run updatePlayerMuteState to evaluate all constraints unified
-              updatePlayerMuteState(currentVolume);
-            }
-          }, err => console.warn('Error listening to active audio session:', err));
-      }
+      window.isMutedByIP = false;
 
       // Listen to visual configurations — guardar unsubscribe
       _unsubConfig = db.collection('systemConfig').doc('overlayAlertsConfig')
