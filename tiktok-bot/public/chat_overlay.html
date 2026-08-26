@@ -864,10 +864,10 @@
         const item = normalizeChatItem(rawItem);
         if (!item) return;
         
-        // Evitar duplicados por ID o por combinación única (tiempo + usuario + comentario)
+        // Evitar duplicados
         const isDuplicate = messages.some(m => {
           if (m.id && item.id && m.id === item.id) return true;
-          return m.uniqueId === item.uniqueId && m.comment === item.comment && Math.abs((m.timestamp || 0) - (item.timestamp || 0)) < 2000;
+          return m.uniqueId === item.uniqueId && m.comment === item.comment && Math.abs((m.timestamp || 0) - (item.timestamp || 0)) < 3000;
         });
         if (isDuplicate) return;
 
@@ -878,8 +878,10 @@
           msgCounter.textContent = `${totalReceived} msgs`;
         }
 
-        if (emptyState && emptyState.parentNode) {
-          emptyState.remove();
+        // Remover placeholder de espera en cuanto hay cualquier mensaje
+        const emptyEl = document.getElementById('empty-state');
+        if (emptyEl && emptyEl.parentNode) {
+          emptyEl.remove();
         }
 
         if (!shouldDisplay(item)) return;
@@ -1231,7 +1233,33 @@
         }
       });
 
-      // ── BroadcastChannel Inter-tab Live Sync ──
+      // ── 1. Carga Síncrona Inmediata desde LocalStorage (0ms) ──
+      try {
+        const cached = localStorage.getItem('zerofm_chat_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            parsed.forEach(appendMessage);
+            console.log(`💬 [${parsed.length} msgs] Sincronizados instantáneamente desde caché local.`);
+          }
+        }
+      } catch (e) {
+        console.warn('Error leyendo caché local de chat:', e);
+      }
+
+      // ── 2. Sincronización en tiempo real vía eventos de Storage ──
+      window.addEventListener('storage', (ev) => {
+        if (ev.key === 'zerofm_chat_cache' && ev.newValue) {
+          try {
+            const parsed = JSON.parse(ev.newValue);
+            if (Array.isArray(parsed)) {
+              parsed.forEach(appendMessage);
+            }
+          } catch (e) {}
+        }
+      });
+
+      // ── 3. BroadcastChannel Inter-tab Live Sync ──
       let chatBroadcast = null;
       if (typeof BroadcastChannel !== 'undefined') {
         try {
@@ -1247,14 +1275,13 @@
               rerenderAll();
             }
           };
-          // Solicitar historial inmediato al Dashboard principal
           chatBroadcast.postMessage({ type: 'request_history' });
         } catch (bcErr) {
           console.warn('[Chat BC] Error:', bcErr);
         }
       }
 
-      // ── Start ──
+      // ── 4. Start Server API & SSE Stream ──
       loadHistoryAndConfig().then(() => {
         connectStream();
         if (chatBroadcast) {

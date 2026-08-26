@@ -3383,8 +3383,9 @@
                 fetch('/api/chat/history?limit=100')
                     .then(res => res.json())
                     .then(data => {
-                        if (data.ok && Array.isArray(data.messages)) {
+                        if (data.ok && Array.isArray(data.messages) && data.messages.length > 0) {
                             setChatMessages(data.messages);
+                            try { localStorage.setItem('zerofm_chat_cache', JSON.stringify(data.messages.slice(-100))); } catch (_) {}
                         }
                     })
                     .catch(e => console.warn('[Chat History] Error:', e.message));
@@ -3424,6 +3425,7 @@
                                 console.log('[Chat SSE Dashboard] Conectado exitosamente');
                             } else if (data.type === 'clear') {
                                 setChatMessages([]);
+                                try { localStorage.removeItem('zerofm_chat_cache'); } catch (_) {}
                                 if (chatBroadcast) chatBroadcast.postMessage({ type: 'clear_chat' });
                             } else if (data.comment || data.message || data.text) {
                                 const msgObj = {
@@ -3446,6 +3448,7 @@
                                 setChatMessages(prev => {
                                     const next = [...prev, msgObj];
                                     if (next.length > 250) next.shift();
+                                    try { localStorage.setItem('zerofm_chat_cache', JSON.stringify(next.slice(-100))); } catch (_) {}
                                     return next;
                                 });
                                 if (chatBroadcast) {
