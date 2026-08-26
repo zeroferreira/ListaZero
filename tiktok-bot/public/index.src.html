@@ -3389,6 +3389,30 @@
                     })
                     .catch(e => console.warn('[Chat History] Error:', e.message));
 
+                let chatBroadcast = null;
+                if (typeof BroadcastChannel !== 'undefined') {
+                    try {
+                        chatBroadcast = new BroadcastChannel('zerofm_live_chat');
+                        chatBroadcast.onmessage = (ev) => {
+                            if (!ev || !ev.data) return;
+                            if (ev.data.type === 'request_history') {
+                                // Enviar historial actual a la ventana emergente/overlay
+                                setChatMessages(current => {
+                                    if (chatBroadcast && Array.isArray(current) && current.length > 0) {
+                                        chatBroadcast.postMessage({
+                                            type: 'history_sync',
+                                            messages: current
+                                        });
+                                    }
+                                    return current;
+                                });
+                            }
+                        };
+                    } catch (bcErr) {
+                        console.warn('[Dashboard BC Error]:', bcErr);
+                    }
+                }
+
                 function connectChatStream() {
                     const streamUrl = (window.location.protocol === 'file:' ? 'http://localhost:3000' : '') + '/api/chat/stream';
                     eventSource = new EventSource(streamUrl);
@@ -3400,12 +3424,33 @@
                                 console.log('[Chat SSE Dashboard] Conectado exitosamente');
                             } else if (data.type === 'clear') {
                                 setChatMessages([]);
-                            } else if (data.comment) {
+                                if (chatBroadcast) chatBroadcast.postMessage({ type: 'clear_chat' });
+                            } else if (data.comment || data.message || data.text) {
+                                const msgObj = {
+                                    id: data.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substring(7)),
+                                    uniqueId: data.uniqueId || data.username || data.user || 'usuario',
+                                    nickname: data.nickname || data.name || data.uniqueId || 'Usuario',
+                                    comment: data.comment || data.message || data.text,
+                                    profilePictureUrl: data.profilePictureUrl || data.avatar || '',
+                                    timestamp: data.timestamp || Date.now(),
+                                    isSubscriber: Boolean(data.isSubscriber),
+                                    isModerator: Boolean(data.isModerator),
+                                    isSuperFan: Boolean(data.isSuperFan),
+                                    isStreamer: Boolean(data.isStreamer),
+                                    isVip: Boolean(data.isVip),
+                                    isDonador: Boolean(data.isDonador),
+                                    isFollower: data.isFollower !== false,
+                                    memberLevel: Number(data.memberLevel) || 0,
+                                    gifterLevel: Number(data.gifterLevel) || 0
+                                };
                                 setChatMessages(prev => {
-                                    const next = [...prev, data];
+                                    const next = [...prev, msgObj];
                                     if (next.length > 250) next.shift();
                                     return next;
                                 });
+                                if (chatBroadcast) {
+                                    chatBroadcast.postMessage({ type: 'new_message', message: msgObj });
+                                }
                             }
                         } catch (err) {
                             console.warn('[Chat SSE Dashboard] Error:', err);

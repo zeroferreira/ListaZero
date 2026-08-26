@@ -863,6 +863,14 @@
       function appendMessage(rawItem) {
         const item = normalizeChatItem(rawItem);
         if (!item) return;
+        
+        // Evitar duplicados por ID o por combinación única (tiempo + usuario + comentario)
+        const isDuplicate = messages.some(m => {
+          if (m.id && item.id && m.id === item.id) return true;
+          return m.uniqueId === item.uniqueId && m.comment === item.comment && Math.abs((m.timestamp || 0) - (item.timestamp || 0)) < 2000;
+        });
+        if (isDuplicate) return;
+
         messages.push(item);
         totalReceived++;
 
@@ -1223,9 +1231,35 @@
         }
       });
 
+      // ── BroadcastChannel Inter-tab Live Sync ──
+      let chatBroadcast = null;
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          chatBroadcast = new BroadcastChannel('zerofm_live_chat');
+          chatBroadcast.onmessage = (ev) => {
+            if (!ev || !ev.data) return;
+            if (ev.data.type === 'history_sync' && Array.isArray(ev.data.messages)) {
+              ev.data.messages.forEach(appendMessage);
+            } else if (ev.data.type === 'new_message' && ev.data.message) {
+              appendMessage(ev.data.message);
+            } else if (ev.data.type === 'clear_chat') {
+              messages = [];
+              rerenderAll();
+            }
+          };
+          // Solicitar historial inmediato al Dashboard principal
+          chatBroadcast.postMessage({ type: 'request_history' });
+        } catch (bcErr) {
+          console.warn('[Chat BC] Error:', bcErr);
+        }
+      }
+
       // ── Start ──
       loadHistoryAndConfig().then(() => {
         connectStream();
+        if (chatBroadcast) {
+          chatBroadcast.postMessage({ type: 'request_history' });
+        }
       });
     })();
   </script>

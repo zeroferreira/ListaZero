@@ -635,8 +635,33 @@ const recentSrEvents = [];
 const pendingCiderQueue = [];
 let ciderFlushInProgress = false;
 
-// ── LIVE CHAT STREAM & BUFFER ──
-const recentChatMessages = [];
+// ── LIVE CHAT STREAM & BUFFER (PERSISTENT) ──
+const CHAT_HISTORY_FILE = path.join(__dirname, 'chat_history.json');
+let recentChatMessages = [];
+try {
+    if (fs.existsSync(CHAT_HISTORY_FILE)) {
+        const raw = fs.readFileSync(CHAT_HISTORY_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+            recentChatMessages = parsed.slice(-250);
+            console.log(`💬 [Chat History] ${recentChatMessages.length} mensajes previos cargados desde disco.`);
+        }
+    }
+} catch (e) {
+    console.warn('[Chat History] Error cargando historial desde disco:', e.message);
+    recentChatMessages = [];
+}
+
+let saveChatTimeout = null;
+function saveChatHistoryToDisk() {
+    if (saveChatTimeout) clearTimeout(saveChatTimeout);
+    saveChatTimeout = setTimeout(() => {
+        try {
+            fs.writeFileSync(CHAT_HISTORY_FILE, JSON.stringify(recentChatMessages.slice(-250)), 'utf8');
+        } catch (_) {}
+    }, 300);
+}
+
 const chatSseClients = new Set();
 
 function broadcastChatMessage(chatItem) {
@@ -645,6 +670,8 @@ function broadcastChatMessage(chatItem) {
     while (recentChatMessages.length > 250) {
         recentChatMessages.shift();
     }
+    saveChatHistoryToDisk();
+
     const dataStr = `data: ${JSON.stringify(chatItem)}\n\n`;
     for (const client of Array.from(chatSseClients)) {
         try {
@@ -1827,6 +1854,7 @@ function startBot() {
 
     app.post('/api/chat/clear', (req, res) => {
         recentChatMessages.length = 0;
+        saveChatHistoryToDisk();
         const dataStr = `data: ${JSON.stringify({ type: 'clear', timestamp: Date.now() })}\n\n`;
         for (const client of Array.from(chatSseClients)) {
             try { client.res.write(dataStr); } catch (_) {}
