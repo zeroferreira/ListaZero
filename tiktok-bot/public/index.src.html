@@ -2468,7 +2468,20 @@
             // LIVE CHAT SYSTEM STATES
             const [chatMessages, setChatMessages] = React.useState([]);
             const [floatingChat, setFloatingChat] = React.useState(false);
-            const [floatingChatPos, setFloatingChatPos] = React.useState({ x: (typeof window !== 'undefined' ? Math.max(20, window.innerWidth - 420) : 800), y: 80 });
+            const [floatingChatPos, setFloatingChatPos] = React.useState(() => {
+                try {
+                    const saved = localStorage.getItem('zerofm_floating_chat_pos');
+                    if (saved) return JSON.parse(saved);
+                } catch (_) {}
+                return { x: (typeof window !== 'undefined' ? Math.max(20, window.innerWidth - 420) : 800), y: 80 };
+            });
+            const [floatingChatSize, setFloatingChatSize] = React.useState(() => {
+                try {
+                    const saved = localStorage.getItem('zerofm_floating_chat_size');
+                    if (saved) return JSON.parse(saved);
+                } catch (_) {}
+                return { width: 380, height: 520 };
+            });
             const [floatingChatMinimized, setFloatingChatMinimized] = React.useState(false);
             const [chatAutoScroll, setChatAutoScroll] = React.useState(true);
             const [chatFilterCommands, setChatFilterCommands] = React.useState(false);
@@ -3081,6 +3094,18 @@
                 e.preventDefault();
             };
 
+            const handleMouseDownResizeFloatingChat = (e) => {
+                dragInfo.current = {
+                    active: 'floating_chat_resize',
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    startWidth: floatingChatSize.width,
+                    startHeight: floatingChatSize.height
+                };
+                e.preventDefault();
+                e.stopPropagation();
+            };
+
             // Master dragging listener
             React.useEffect(() => {
                 const handleMouseMove = (e) => {
@@ -3448,6 +3473,7 @@
                                 setChatMessages(prev => {
                                     const next = [...prev, msgObj];
                                     if (next.length > 250) next.shift();
+                                    window.chatMessages = next;
                                     try { localStorage.setItem('zerofm_chat_cache', JSON.stringify(next.slice(-100))); } catch (_) {}
                                     return next;
                                 });
@@ -13273,8 +13299,12 @@
                                 position: 'fixed',
                                 left: `${floatingChatPos.x}px`,
                                 top: `${floatingChatPos.y}px`,
-                                width: '380px',
-                                maxHeight: floatingChatMinimized ? '48px' : '520px',
+                                width: `${floatingChatSize.width}px`,
+                                height: floatingChatMinimized ? '48px' : `${floatingChatSize.height}px`,
+                                minWidth: '280px',
+                                minHeight: floatingChatMinimized ? '48px' : '220px',
+                                maxWidth: '96vw',
+                                maxHeight: '96vh',
                                 background: 'rgba(10, 8, 22, 0.94)',
                                 backdropFilter: 'blur(20px) saturate(180%)',
                                 WebkitBackdropFilter: 'blur(20px) saturate(180%)',
@@ -13284,16 +13314,15 @@
                                 zIndex: 99999,
                                 display: 'flex',
                                 flexDirection: 'column',
-                                overflow: 'hidden',
-                                transition: 'max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                                overflow: 'hidden'
                             }}
                         >
                             {/* Drag Handle */}
                             <div 
                                 onMouseDown={handleMouseDownFloatingChat}
                                 style={{
-                                    padding: '10px 14px',
-                                    background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.18) 0%, rgba(124, 58, 237, 0.18) 100%)',
+                                    padding: '8px 12px',
+                                    background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.22) 0%, rgba(124, 58, 237, 0.22) 100%)',
                                     borderBottom: '1px solid rgba(255,255,255,0.08)',
                                     cursor: 'move',
                                     display: 'flex',
@@ -13306,7 +13335,32 @@
                                     <span style={{ color: '#ec4899' }}>💬</span> Chat Flotante
                                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>({filteredChatMessages.length})</span>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    {/* Preset Size Buttons */}
+                                    <div style={{ display: 'flex', gap: '2px', background: 'rgba(0,0,0,0.3)', padding: '2px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                        <button 
+                                            onClick={() => { const sz = { width: 300, height: 420 }; setFloatingChatSize(sz); try { localStorage.setItem('zerofm_floating_chat_size', JSON.stringify(sz)); } catch(_){} }}
+                                            style={{ background: floatingChatSize.width <= 320 ? 'rgba(236,72,153,0.3)' : 'transparent', border: 'none', color: '#fff', fontSize: '0.65rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', cursor: 'pointer' }}
+                                            title="Tamaño Pequeño (S)"
+                                        >
+                                            S
+                                        </button>
+                                        <button 
+                                            onClick={() => { const sz = { width: 380, height: 520 }; setFloatingChatSize(sz); try { localStorage.setItem('zerofm_floating_chat_size', JSON.stringify(sz)); } catch(_){} }}
+                                            style={{ background: (floatingChatSize.width > 320 && floatingChatSize.width <= 420) ? 'rgba(236,72,153,0.3)' : 'transparent', border: 'none', color: '#fff', fontSize: '0.65rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', cursor: 'pointer' }}
+                                            title="Tamaño Mediano (M)"
+                                        >
+                                            M
+                                        </button>
+                                        <button 
+                                            onClick={() => { const sz = { width: 480, height: 650 }; setFloatingChatSize(sz); try { localStorage.setItem('zerofm_floating_chat_size', JSON.stringify(sz)); } catch(_){} }}
+                                            style={{ background: floatingChatSize.width > 420 ? 'rgba(236,72,153,0.3)' : 'transparent', border: 'none', color: '#fff', fontSize: '0.65rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', cursor: 'pointer' }}
+                                            title="Tamaño Grande (L)"
+                                        >
+                                            L
+                                        </button>
+                                    </div>
+
                                     <button 
                                         onClick={handleOpenDocumentPiP}
                                         style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: '0.85rem', padding: '2px 4px' }}
@@ -13315,7 +13369,7 @@
                                         📌
                                     </button>
                                     <button 
-                                        onClick={() => window.open('./chat_overlay.html?mode=window', 'ZeroFMChat', 'width=420,height=720,menubar=no,toolbar=no,location=no,status=no')}
+                                        onClick={() => window.open(`./chat_overlay.html?mode=window&theme=${overlays.chatOverlayTheme || 'cyber'}`, 'ZeroFMChat', 'width=420,height=720,menubar=no,toolbar=no,location=no,status=no')}
                                         style={{ background: 'transparent', border: 'none', color: '#c4c4e0', cursor: 'pointer', fontSize: '0.8rem', padding: '2px 4px' }}
                                         title="Abrir en ventana independiente"
                                     >
@@ -13344,7 +13398,7 @@
                                         ref={floatingChatFeedRef}
                                         style={{ 
                                             flex: 1, 
-                                            height: '380px', 
+                                            minHeight: 0,
                                             overflowY: 'auto', 
                                             padding: '10px', 
                                             display: 'flex', 
@@ -13388,7 +13442,7 @@
                                         )}
                                     </div>
 
-                                    <div style={{ padding: '8px 10px', background: 'rgba(0,0,0,0.3)', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '6px' }}>
+                                    <div style={{ padding: '8px 10px', background: 'rgba(0,0,0,0.3)', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '6px', alignItems: 'center', position: 'relative' }}>
                                         <input 
                                             type="text" 
                                             placeholder="Test rápido..." 
@@ -13404,6 +13458,26 @@
                                         >
                                             Enviar
                                         </button>
+                                        {/* Corner Resize Grip */}
+                                        <div 
+                                            onMouseDown={handleMouseDownResizeFloatingChat}
+                                            style={{ 
+                                                width: '14px', 
+                                                height: '14px', 
+                                                cursor: 'nwse-resize', 
+                                                display: 'flex', 
+                                                alignItems: 'flex-end', 
+                                                justifyContent: 'flex-end', 
+                                                color: '#ec4899', 
+                                                fontSize: '12px', 
+                                                userSelect: 'none',
+                                                marginLeft: '2px',
+                                                opacity: 0.8
+                                            }}
+                                            title="Arrastra para cambiar el tamaño de la ventana"
+                                        >
+                                            ⤡
+                                        </div>
                                     </div>
                                 </React.Fragment>
                             )}

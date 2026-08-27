@@ -8,6 +8,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>💬 Chat en Vivo – Zero FM</title>
 
+  <!-- Firebase App & Firestore SDKs for Real-time Multi-Device Sync -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="firebase-config.js"></script>
+
   <!-- Google Fonts: Outfit & Orbitron for Synthwave -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -1233,6 +1238,16 @@
         }
       });
 
+      // ── 0. Sincronización Directa Inmediata con la Ventana Padre (Opener) ──
+      if (window.opener) {
+        try {
+          if (Array.isArray(window.opener.chatMessages) && window.opener.chatMessages.length > 0) {
+            window.opener.chatMessages.forEach(appendMessage);
+            console.log(`💬 [${window.opener.chatMessages.length} msgs] Sincronizados directamente desde ventana padre.`);
+          }
+        } catch (_) {}
+      }
+
       // ── 1. Carga Síncrona Inmediata desde LocalStorage (0ms) ──
       try {
         const cached = localStorage.getItem('zerofm_chat_cache');
@@ -1281,7 +1296,55 @@
         }
       }
 
-      // ── 4. Start Server API & SSE Stream ──
+      // ── 4. Sincronización en Tiempo Real con Firebase Firestore ──
+      try {
+        if (typeof firebase !== 'undefined' && window.firebaseConfig) {
+          if (!firebase.apps.length) {
+            firebase.initializeApp(window.firebaseConfig);
+          }
+          const db = firebase.firestore();
+          
+          // Escuchar último mensaje en vivo
+          db.collection('systemConfig').doc('chatLive')
+            .onSnapshot(doc => {
+              if (doc.exists && doc.data() && doc.data().lastMessage) {
+                appendMessage(doc.data().lastMessage);
+              }
+            }, err => console.warn('[Firebase ChatLive Error]:', err));
+
+          // Escuchar colección de notificaciones de tipo chat
+          const startTs = new Date(Date.now() - 3600 * 1000);
+          db.collection('notifications')
+            .where('timestamp', '>', startTs)
+            .onSnapshot(snap => {
+              snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                  const data = change.doc.data();
+                  if (data.type === 'chat' || data.comment || data.message) {
+                    appendMessage({
+                      id: change.doc.id,
+                      uniqueId: data.user || data.uniqueId || data.username,
+                      nickname: data.nickname || data.user || data.uniqueId,
+                      comment: data.message || data.comment || data.text,
+                      profilePictureUrl: data.profilePictureUrl || data.avatar || '',
+                      timestamp: data.timestamp ? (data.timestamp.toMillis ? data.timestamp.toMillis() : data.timestamp) : Date.now(),
+                      isSubscriber: Boolean(data.isSubscriber),
+                      isModerator: Boolean(data.isModerator),
+                      isSuperFan: Boolean(data.isSuperFan),
+                      isStreamer: Boolean(data.isStreamer),
+                      isVip: Boolean(data.isVip),
+                      isDonador: Boolean(data.isDonador)
+                    });
+                  }
+                }
+              });
+            }, err => console.warn('[Firebase Chat Notifications Error]:', err));
+        }
+      } catch (fbErr) {
+        console.warn('[Firebase Init in Chat Error]:', fbErr);
+      }
+
+      // ── 5. Start Server API & SSE Stream ──
       loadHistoryAndConfig().then(() => {
         connectStream();
         if (chatBroadcast) {

@@ -672,6 +672,16 @@ function broadcastChatMessage(chatItem) {
     }
     saveChatHistoryToDisk();
 
+    // Transmitir a Firestore para sincronización multi-dispositivo y ventana completa
+    if (typeof db !== 'undefined' && db && typeof setDoc === 'function' && typeof doc === 'function') {
+        try {
+            setDoc(doc(db, 'systemConfig', 'chatLive'), {
+                lastMessage: chatItem,
+                timestamp: Date.now()
+            }, { merge: true }).catch(() => {});
+        } catch (_) {}
+    }
+
     const dataStr = `data: ${JSON.stringify(chatItem)}\n\n`;
     for (const client of Array.from(chatSseClients)) {
         try {
