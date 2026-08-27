@@ -439,9 +439,42 @@
     .badge-superfan {
       background: linear-gradient(135deg, #f59e0b, #d97706);
       color: #000;
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.35);
+    }
+    .badge-platino {
+      background: linear-gradient(135deg, #00f2fe, #4facfe);
+      color: #000;
+      box-shadow: 0 0 10px rgba(0, 242, 254, 0.4);
+    }
+    .badge-z0vip {
+      background: linear-gradient(135deg, #ffd700, #ff8c00);
+      color: #000;
+      box-shadow: 0 0 10px rgba(255, 215, 0, 0.4);
     }
     .badge-donador {
       background: linear-gradient(135deg, #ec4899, #db2777);
+      color: #fff;
+      box-shadow: 0 0 8px rgba(236, 72, 153, 0.35);
+    }
+    .badge-oro {
+      background: linear-gradient(135deg, #ffd700, #f59e0b);
+      color: #000;
+      box-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
+    }
+    .badge-plata {
+      background: linear-gradient(135deg, #e2e8f0, #94a3b8);
+      color: #000;
+    }
+    .badge-bronce {
+      background: linear-gradient(135deg, #d97706, #b45309);
+      color: #fff;
+    }
+    .badge-fan {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+    }
+    .badge-custom {
+      background: linear-gradient(135deg, #8b5cf6, #ec4899);
       color: #fff;
     }
 
@@ -730,12 +763,14 @@
           comment: comment,
           profilePictureUrl: raw.profilePictureUrl || raw.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(uid)}`,
           timestamp: raw.timestamp || Date.now(),
+          badge: String(raw.badge || raw.badgeType || '').trim(),
+          badgeType: String(raw.badge || raw.badgeType || '').trim(),
           isSubscriber: Boolean(raw.isSubscriber),
           isModerator: Boolean(raw.isModerator),
-          isSuperFan: Boolean(raw.isSuperFan),
+          isSuperFan: Boolean(raw.isSuperFan || raw.badge === 'superfan'),
           isStreamer: Boolean(raw.isStreamer),
-          isVip: Boolean(raw.isVip),
-          isDonador: Boolean(raw.isDonador),
+          isVip: Boolean(raw.isVip || ['vip', 'z0-vip', 'z0-platino', 'superfan'].includes(raw.badge)),
+          isDonador: Boolean(raw.isDonador || (raw.badge && raw.badge.startsWith('donador'))),
           isFollower: raw.isFollower !== false,
           memberLevel: Number(raw.memberLevel) || 0,
           gifterLevel: Number(raw.gifterLevel) || 0
@@ -782,6 +817,8 @@
       // ── Helper: Build User Badges ──
       function renderBadges(item) {
         const badges = [];
+        const badge = String(item.badge || item.badgeType || '').toLowerCase().trim();
+
         if (item.isStreamer) {
           badges.push('<span class="badge-pill badge-streamer">🔴 Streamer</span>');
         }
@@ -791,15 +828,34 @@
         if (item.isSubscriber) {
           badges.push('<span class="badge-pill badge-sub">🌟 Sub</span>');
         }
-        if (item.isVip) {
-          badges.push('<span class="badge-pill badge-vip">👑 VIP</span>');
-        }
-        if (item.isSuperFan) {
+
+        // Insignias específicas de la página
+        if (badge === 'superfan') {
           badges.push('<span class="badge-pill badge-superfan">⭐ Superfan</span>');
-        }
-        if (item.isDonador) {
+        } else if (badge === 'z0-platino') {
+          badges.push('<span class="badge-pill badge-platino">💎 z0 Platino</span>');
+        } else if (badge === 'z0-vip') {
+          badges.push('<span class="badge-pill badge-z0vip">⚜️ z0 VIP</span>');
+        } else if (badge === 'vip') {
+          badges.push('<span class="badge-pill badge-vip">👑 VIP</span>');
+        } else if (badge === 'donador-oro') {
+          badges.push('<span class="badge-pill badge-oro">🥇 Donador Oro</span>');
+        } else if (badge === 'donador-plata') {
+          badges.push('<span class="badge-pill badge-plata">🥈 Donador Plata</span>');
+        } else if (badge === 'donador-bronce') {
+          badges.push('<span class="badge-pill badge-bronce">🥉 Donador Bronce</span>');
+        } else if (badge === 'donador' || item.isDonador) {
           badges.push('<span class="badge-pill badge-donador">💎 Donador</span>');
+        } else if (badge === 'z0-fan') {
+          badges.push('<span class="badge-pill badge-fan">⚡ z0 Fan</span>');
+        } else if (badge) {
+          badges.push(`<span class="badge-pill badge-custom">🏷️ ${escapeHtml(badge)}</span>`);
+        } else {
+          // Fallback por flags booleanos si no hay string badge
+          if (item.isVip) badges.push('<span class="badge-pill badge-vip">👑 VIP</span>');
+          if (item.isSuperFan) badges.push('<span class="badge-pill badge-superfan">⭐ Superfan</span>');
         }
+
         return badges.join('');
       }
 

@@ -1799,6 +1799,27 @@ function startBot() {
         res.json({ ok: true, events: out });
     });
 
+    // ── BADGES API ENDPOINT ──
+    app.get('/api/badges', async (req, res) => {
+        try {
+            await ensureBadgeSetsFresh();
+            res.json({
+                ok: true,
+                badges: {
+                    vip: Array.from(badgeSets.vip),
+                    z0Vip: Array.from(badgeSets.z0Vip),
+                    donador: Array.from(badgeSets.donador),
+                    z0Fan: Array.from(badgeSets.z0Fan),
+                    z0Platinum: Array.from(badgeSets.z0Platinum),
+                    superfan: Array.from(badgeSets.superfan),
+                    selected: Object.fromEntries(badgeSets.selected)
+                }
+            });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
     // ── LIVE CHAT ENDPOINTS ──
     app.get('/api/chat/history', (req, res) => {
         const limit = Math.max(1, Math.min(250, Number(req.query.limit || 100) || 100));
@@ -1840,6 +1861,7 @@ function startBot() {
         const testMsg = body.comment || body.message || '¡Hola! Probando el chat en vivo 🎵✨';
         const role = body.role || 'user'; // 'streamer', 'vip', 'mod', 'sub', 'superfan', 'donador', 'user'
 
+        const resolvedTestBadge = body.badge || body.badgeType || (['vip', 'superfan', 'donador', 'z0-vip', 'z0-platino', 'z0-fan'].includes(role) ? role : getBadgeForUser(testUser, testUser, testNick));
         const chatItem = {
             id: `test_${Date.now()}_${Math.random().toString(36).substring(7)}`,
             uniqueId: testUser,
@@ -1847,12 +1869,14 @@ function startBot() {
             comment: testMsg,
             profilePictureUrl: body.profilePictureUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(testUser)}`,
             timestamp: Date.now(),
+            badge: resolvedTestBadge || '',
+            badgeType: resolvedTestBadge || '',
             isSubscriber: role === 'sub' || body.isSubscriber === true,
             isModerator: role === 'mod' || body.isModerator === true,
-            isSuperFan: role === 'superfan' || body.isSuperFan === true,
+            isSuperFan: role === 'superfan' || body.isSuperFan === true || resolvedTestBadge === 'superfan',
             isStreamer: role === 'streamer' || body.isStreamer === true,
-            isVip: role === 'vip' || body.isVip === true,
-            isDonador: role === 'donador' || body.isDonador === true,
+            isVip: role === 'vip' || body.isVip === true || ['vip', 'z0-vip', 'z0-platino', 'superfan'].includes(resolvedTestBadge),
+            isDonador: role === 'donador' || body.isDonador === true || (resolvedTestBadge && resolvedTestBadge.startsWith('donador')),
             isFollower: true,
             memberLevel: Number(body.memberLevel) || (role === 'sub' ? 5 : 0),
             gifterLevel: Number(body.gifterLevel) || (role === 'donador' ? 15 : 0)
@@ -3720,6 +3744,12 @@ function setupListeners() {
 
         const isDonador = tempDonadorUsers.has(userId.toLowerCase()) || badgeSets.donador.has(normalizeUserKeyForBadges(userId));
 
+        // Resolver insignia registrada de la página para este usuario
+        const userBadge = getBadgeForUser(userId, userId, displayName);
+        const isVipFinal = isVip || (badgeSets.vip && badgeSets.vip.has(normalizeUserKeyForBadges(userId))) || userBadge === 'vip' || userBadge === 'z0-vip' || userBadge === 'z0-platino' || userBadge === 'superfan';
+        const isDonadorFinal = isDonador || (badgeSets.donador && badgeSets.donador.has(normalizeUserKeyForBadges(userId))) || (userBadge && userBadge.startsWith('donador'));
+        const isSuperFanFinal = isSuperFan || (badgeSets.superfan && badgeSets.superfan.has(normalizeUserKeyForBadges(userId))) || userBadge === 'superfan';
+
         // ── TRANSMISIÓN EN VIVO A CONTROL DE STREAM, OVERLAY Y VENTANA POPUP ──
         broadcastChatMessage({
             id: data.msgId || `msg_${Date.now()}_${Math.random().toString(36).substring(7)}`,
@@ -3728,12 +3758,14 @@ function setupListeners() {
             comment: msg,
             profilePictureUrl: profilePic || '',
             timestamp: Date.now(),
+            badge: userBadge || '',
+            badgeType: userBadge || '',
             isSubscriber: !!data.isSubscriber,
             isModerator: !!data.isModerator,
-            isSuperFan: isSuperFanRaw || false,
+            isSuperFan: isSuperFanFinal,
             isStreamer: isStreamer || false,
-            isVip: isVip || false,
-            isDonador: isDonador || false,
+            isVip: isVipFinal,
+            isDonador: isDonadorFinal,
             isFollower: !!isFollower,
             memberLevel: parsedMemberLevel || 0,
             gifterLevel: parsedGifterLevel || 0
