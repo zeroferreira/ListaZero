@@ -618,6 +618,7 @@
       if (typeof db !== 'undefined' && db) {
         db.collection('systemConfig').doc('activeYoutubeVideo').update({
           elapsed: targetSec,
+          isUserSeek: true,
           timestamp: Date.now()
         }).catch(err => console.warn('[YT Overlay] Seek Firestore update failed:', err));
       }
@@ -634,6 +635,8 @@
   let isVisible       = false;
   // ID del timeout del setIdle — guardado para poder cancelarlo si llega nueva canción
   let idleTimeoutId   = null;
+  // ID del timeout de salto por error — cancelado si el usuario cambia de canción
+  let errorSkipTimeoutId = null;
 
   // YouTube Player instance state
   let ytPlayer        = null;
@@ -808,6 +811,7 @@
               timeTotal.textContent = fmtTime(durationSec);
             }
           }
+          updatePlayerMuteState(currentVolume);
           adjustIframeAspectRatio();
           positionMiniatureVideo();
         },
@@ -852,11 +856,17 @@
           stateDot.className = "state-dot paused";
 
           const isPreview = params.get('preview') === 'true';
-          if (!isPreview) {
-            console.warn("⏱️ Saltando canción bloqueada en 5 segundos...");
-            setTimeout(() => {
-              applyState('ended');
-              reportEndedToFirestore();
+          const isForceMuted = params.get('mute') === 'true' || params.get('muted') === 'true';
+          if (!isPreview || (!isForceMuted && isDashboardAudioLeader)) {
+            console.warn("⏱️ Saltando canción con error en 5 segundos...");
+            if (errorSkipTimeoutId) clearTimeout(errorSkipTimeoutId);
+            const failedVideoId = videoId;
+            errorSkipTimeoutId = setTimeout(() => {
+              errorSkipTimeoutId = null;
+              if (currentVideoId === failedVideoId) {
+                applyState('ended');
+                reportEndedToFirestore();
+              }
             }, 5000);
           }
         }
@@ -868,6 +878,13 @@
     if (!ytPlayer || typeof ytPlayer.mute !== 'function') return;
     
     const isPreview = params.get('preview') === 'true';
+    const isForceMuted = params.get('mute') === 'true' || params.get('muted') === 'true';
+
+    // Si la URL solicita silencio explícito (ej. iframe de preview en Dashboard), silenciar incondicionalmente
+    if (isForceMuted) {
+      try { ytPlayer.mute(); } catch(e) {}
+      return;
+    }
 
     // Ruteo inteligente multi-dispositivo:
     // En OBS (isPreview=false): siempre silencioso (overlay visual para stream).
@@ -954,8 +971,9 @@
   // ─── Helpers ─────────────────────────────────
   function getYoutubeVideoId(url) {
     if (!url) return null;
-    const m = url.match(/(?:youtu\.be\/|v\/|watch\?v=|shorts\/)([^#&?]{11})/);
-    return m ? m[1] : (url.length === 11 ? url : null);
+    const str = String(url).trim();
+    const m = str.match(/(?:youtu\.be\/|(?:www\.|m\.)?youtube\.com\/(?:watch\?(?:.*&)?v=|v\/|embed\/|shorts\/|live\/))([a-zA-Z0-9_-]{11})/);
+    return m ? m[1] : (str.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(str) ? str : null);
   }
 
   function getThumbnailUrl(videoId) {
@@ -979,6 +997,12 @@
     if (idleTimeoutId) {
       clearTimeout(idleTimeoutId);
       idleTimeoutId = null;
+    }
+
+    // Cancelar cualquier salto por error pendiente de la canción anterior
+    if (errorSkipTimeoutId) {
+      clearTimeout(errorSkipTimeoutId);
+      errorSkipTimeoutId = null;
     }
 
     // OPT-5: usar refs cacheadas
@@ -1121,6 +1145,11 @@
     timeElapsed.textContent = '0:00';
     timeTotal.textContent   = '—';
     currentState = 'idle';
+
+    if (errorSkipTimeoutId) {
+      clearTimeout(errorSkipTimeoutId);
+      errorSkipTimeoutId = null;
+    }
     
     // Stop video playback too
     if (ytPlayer && typeof ytPlayer.stopVideo === 'function') {
@@ -1156,11 +1185,8 @@
       // BUG D: NO recrear el player en setIdle() — si el DJ da Stop desde el panel,
       // el audio debe detenerse, no reiniciar con el video de preview.
       // Solo actualizamos la thumbnail estática sin crear un iframe con audio.
-      if (currentVideoId !== 'dQw4w9WgXcQ') {
-        currentVideoId = 'dQw4w9WgXcQ';
-        if (ytPlayer && typeof ytPlayer.stopVideo === 'function') {
-          try { ytPlayer.stopVideo(); } catch(e) {}
-        }
+      if (ytPlayer && typeof ytPlayer.stopVideo === 'function') {
+        try { ytPlayer.stopVideo(); } catch(e) {}
       }
     } else {
       hideCard();
@@ -1423,6 +1449,7 @@
     const cardRect = card.getBoundingClientRect();
     
     if (artRect.width > 0 && artRect.height > 0 && cardRect.width > 0) {
+      window._miniatureRetryCount = 0;
       const scaleStr = card.style.getPropertyValue('--preview-scale');
       const scale = scaleStr ? parseFloat(scaleStr) : 1;
       const effectiveScale = (scale && !isNaN(scale) && scale > 0) ? scale : 1;
@@ -1440,8 +1467,14 @@
       ytContainer.style.opacity = '1';
       ytContainer.style.zIndex = '2';
       ytContainer.style.overflow = 'hidden';
+    } else if (card.style.display !== 'none') {
+      // Reintentar solo si la tarjeta está activa/mostrándose, limitado a 5 intentos
+      window._miniatureRetryCount = (window._miniatureRetryCount || 0) + 1;
+      if (window._miniatureRetryCount <= 5) {
+        setTimeout(positionMiniatureVideo, 100);
+      }
     } else {
-      setTimeout(positionMiniatureVideo, 100);
+      window._miniatureRetryCount = 0;
     }
     
     const cfg = window.lastConfig || {};
@@ -1475,7 +1508,7 @@
 
     // ERROR H: Solo actualizar routeAudioTo y llamar updatePlayerMuteState si el valor cambió.
     // Llamarlo en cada config update causaba micro-silencio/pop en el audio del Dashboard.
-    const newAudioRoute = cfg.yt_audio_route || cfg.route_audio_to || 'obs';
+    const newAudioRoute = cfg.yt_audio_route || cfg.route_audio_to || 'dashboard';
     if (newAudioRoute !== routeAudioTo) {
       routeAudioTo = newAudioRoute;
       updatePlayerMuteState(currentVolume);
@@ -1597,9 +1630,9 @@
     }
     
     if (cfg.yt_card_bg_color) {
-      card.style.background = cfg.yt_card_bg_color;
+      card.style.setProperty('background', cfg.yt_card_bg_color, 'important');
     } else {
-      card.style.background = ''; // reset to CSS theme default
+      card.style.removeProperty('background');
     }
 
     // 10.5 YouTube Video Mode (audio_only | miniature | card_background | card_cover)
@@ -1790,14 +1823,12 @@
         .onSnapshot((doc) => {
           if (!doc.exists) { setIdle(); return; }
           const data = doc.data();
-          const ageMs = Date.now() - (data.timestamp || 0);
-          if (ageMs > 2 * 60 * 60 * 1000) { setIdle(); return; } // >2h old → idle
+          if (data.timestamp && (Date.now() - data.timestamp) > 2 * 60 * 60 * 1000) {
+            setIdle();
+            return;
+          }
           applyData(data);
         }, err => console.warn('[YT Overlay] Firestore error:', err));
-
-      window.isMutedByIP = false;
-      const isPreview = params.get('preview') === 'true';
-      window.isMutedByIP = false;
 
       // Listen to visual configurations — guardar unsubscribe
       _unsubConfig = db.collection('systemConfig').doc('overlayAlertsConfig')
@@ -1864,7 +1895,10 @@
   let _resizeDebounce = null;
   window.addEventListener('resize', () => {
     clearTimeout(_resizeDebounce);
-    _resizeDebounce = setTimeout(positionMiniatureVideo, 100);
+    _resizeDebounce = setTimeout(() => {
+      positionMiniatureVideo();
+      adjustIframeAspectRatio();
+    }, 100);
   });
 
   // Iniciar el vigilante en segundo plano para autocuración
