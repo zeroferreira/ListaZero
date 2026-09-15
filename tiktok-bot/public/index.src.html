@@ -1269,9 +1269,9 @@
             const [localAudioEnabled, setLocalAudioEnabled] = React.useState(() => {
                 try {
                     const stored = localStorage.getItem('local_audio_enabled');
-                    return stored === null ? true : stored === 'true';
+                    return stored === null ? false : stored === 'true';
                 } catch (_) {
-                    return true;
+                    return false;
                 }
             });
             const localAudioEnabledRef = React.useRef(localAudioEnabled);
@@ -1449,19 +1449,13 @@
                 chatTtsType: "any",
                 chatTtsCommand: "!tts",
                 chatTtsFilterLetterSpam: true,
-                chatTtsFilterMentions: true,
-                chatTtsFilterCommands: true,
+                chatTtsFilterMentions: false,
+                chatTtsFilterCommands: false,
                 chatTtsMaxCommentLength: 300,
                 chatTtsUserCooldown: 0,
                 chatTtsMaxQueueLength: 5,
                 chatTtsChargePoints: false,
                 chatTtsCost: 5,
-                chatTtsUserCooldown: 0,
-                chatTtsMaxQueueLength: 5,
-                chatTtsMaxCommentLength: 300,
-                chatTtsFilterLetterSpam: true,
-                chatTtsFilterMentions: false,
-                chatTtsFilterCommands: false,
                 chatTtsMessageTemplate: "{nickname} dice {comment}",
                 chatTtsSpecialUsers: [],
                 
@@ -1623,40 +1617,35 @@
                 yt_requester_size: 11.5,
                 yt_accent_color: '#ff003c',
                 yt_accent2_color: '#ff6b6b',
-                yt_audio_route: 'dashboard',
-                route_audio_to: 'dashboard'
+                yt_audio_route: 'obs',
+                route_audio_to: 'obs',
+                enableOverlayAudio: true,
+                yt_auto_advance: true
             });
 
             const [dirtyKeys, setDirtyKeys] = React.useState({});
-            const [availableVoices, setAvailableVoices] = React.useState([]);
             const [voices, setVoices] = React.useState([]);
             const [ttsLogs, setTtsLogs] = React.useState([]);
             const [testerText, setTesterText] = React.useState('This is a test!');
             const [specialUserSearch, setSpecialUserSearch] = React.useState('');
 
             React.useEffect(() => {
-                if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                    const loadVoices = () => {
-                        const voices = window.speechSynthesis.getVoices();
-                        setAvailableVoices(voices);
-                    };
-                    loadVoices();
-                    if (window.speechSynthesis.onvoiceschanged !== undefined) {
-                        window.speechSynthesis.onvoiceschanged = loadVoices;
-                    }
-                }
-            }, []);
-
-            React.useEffect(() => {
                 const loadVoices = () => {
                     if (typeof window !== 'undefined' && window.speechSynthesis) {
-                        setVoices(window.speechSynthesis.getVoices());
+                        const vList = window.speechSynthesis.getVoices();
+                        setVoices(vList);
+                        voicesRef.current = vList;
                     }
                 };
                 loadVoices();
                 if (typeof window !== 'undefined' && window.speechSynthesis) {
                     window.speechSynthesis.onvoiceschanged = loadVoices;
                 }
+                return () => {
+                    if (typeof window !== 'undefined' && window.speechSynthesis) {
+                        window.speechSynthesis.onvoiceschanged = null;
+                    }
+                };
             }, []);
 
             const [localAudioUnlocked, setLocalAudioUnlocked] = React.useState(false);
@@ -2012,6 +2001,12 @@
 
                                         const isAudioOwner = (window.activeDashboardClientId === myClientId);
                                         if (localAudioEnabledRef.current && isAudioOwner) {
+                                            const cfg = overlaysRef.current || {};
+                                            const routeTo = cfg.route_audio_to || cfg.yt_audio_route || 'obs';
+                                            if (routeTo === 'obs') {
+                                                console.log(`🔇 Alerta [${data.type}] silenciada en Dashboard (audio ruteado a OBS para evitar eco/duplicado)`);
+                                                return;
+                                            }
                                             if (data.type === 'chat') {
                                                 console.log("🗣️ Comentario TTS recibido localmente:", data.message);
                                                 enqueueLocalTts(data);
@@ -2309,12 +2304,25 @@
                 return `${m}:${String(sec).padStart(2, '0')}`;
             };
 
+            const getYoutubeId = (url) => {
+                if (!url) return '';
+                const str = String(url).trim();
+                const m = str.match(/(?:youtu\.be\/|(?:www\.|m\.)?youtube\.com\/(?:watch\?(?:.*&)?v=|v\/|embed\/|shorts\/|live\/))([a-zA-Z0-9_-]{11})/);
+                return m ? m[1] : (str.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(str) ? str : '');
+            };
+
+            const postToYtIframes = (msg) => {
+                ['iframe-ytplayer', 'iframe-ytplayer-persistent'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el && el.contentWindow) {
+                        try { el.contentWindow.postMessage(msg, '*'); } catch (e) {}
+                    }
+                });
+            };
+
             const handleStopActiveYoutubeVideo = async () => {
                 try {
-                    const iframe = document.getElementById('iframe-ytplayer');
-                    if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage({ action: 'ytStop' }, '*');
-                    }
+                    postToYtIframes({ action: 'ytStop' });
                     if (typeof db !== 'undefined' && db) {
                         await db.collection('systemConfig').doc('activeYoutubeVideo').set({
                             videoId: '',
@@ -2337,10 +2345,7 @@
 
             const handlePauseActiveYoutubeVideo = async () => {
                 try {
-                    const iframe = document.getElementById('iframe-ytplayer');
-                    if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage({ action: 'ytPause' }, '*');
-                    }
+                    postToYtIframes({ action: 'ytPause' });
                     if (typeof db !== 'undefined' && db) {
                         await db.collection('systemConfig').doc('activeYoutubeVideo').update({
                             state: 'paused',
@@ -2354,10 +2359,7 @@
 
             const handleResumeActiveYoutubeVideo = async () => {
                 try {
-                    const iframe = document.getElementById('iframe-ytplayer');
-                    if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage({ action: 'ytPlay' }, '*');
-                    }
+                    postToYtIframes({ action: 'ytPlay' });
                     if (typeof db !== 'undefined' && db) {
                         await db.collection('systemConfig').doc('activeYoutubeVideo').update({
                             state: 'playing',
@@ -2371,11 +2373,7 @@
 
             const handleSetActiveYoutubeVolume = async (vol) => {
                 try {
-                    // Enviar volumen al iframe de preview del dashboard
-                    const iframeObs = document.getElementById('iframe-ytplayer');
-                    if (iframeObs && iframeObs.contentWindow) {
-                        iframeObs.contentWindow.postMessage({ action: 'ytSetVolume', payload: { volume: vol } }, '*');
-                    }
+                    postToYtIframes({ action: 'ytSetVolume', payload: { volume: vol } });
                     // Guardar el volumen en Firestore para que el overlay de OBS lo aplique
                     if (typeof db !== 'undefined' && db) {
                         await db.collection('systemConfig').doc('activeYoutubeVideo').update({
@@ -2461,6 +2459,11 @@
             const [activeControlSub, setActiveControlSub] = React.useState('queue');
             const [pendingRequests, setPendingRequests] = React.useState([]);
             const [playedState, setPlayedState] = React.useState({ songs: new Set(), skipped: new Set() });
+            const pendingRequestsRef = React.useRef(pendingRequests);
+            const playedStateRef = React.useRef(playedState);
+            const lastAutoAdvanceVidRef = React.useRef('');
+            React.useEffect(() => { pendingRequestsRef.current = pendingRequests; }, [pendingRequests]);
+            React.useEffect(() => { playedStateRef.current = playedState; }, [playedState]);
             const [activeVideo, setActiveVideo] = React.useState({ state: 'ended', videoId: '', title: '', volume: 100 });
             const [ytProgress, setYtProgress] = React.useState({ elapsed: 0, duration: 0 });
             const [ytManualUrl, setYtManualUrl] = React.useState('');
@@ -2586,6 +2589,49 @@
                                         duration: isEnded ? 0 : (typeof data.duration === 'number' ? data.duration : prev.duration)
                                     };
                                 });
+
+                                // Auto-avanzar la cola cuando termina la canción
+                                if (isEnded && vid && lastAutoAdvanceVidRef.current !== vid) {
+                                    lastAutoAdvanceVidRef.current = vid;
+                                    const cfg = overlaysRef.current || {};
+                                    if (cfg.yt_auto_advance !== false) {
+                                        const isAudioOwner = (window.activeDashboardClientId === myClientId || !window.activeDashboardClientId);
+                                        if (isAudioOwner) {
+                                            setTimeout(async () => {
+                                                try {
+                                                    const finishedVidId = getYoutubeId(vid);
+                                                    // Marcar como reproducida la que terminó si no estaba marcada
+                                                    const finishedReq = pendingRequestsRef.current.find(req => 
+                                                        req.link && getYoutubeId(req.link) === finishedVidId
+                                                    );
+                                                    if (finishedReq && !playedStateRef.current.songs.has(finishedReq.docId)) {
+                                                        await handleTogglePlayedInDashboard(finishedReq);
+                                                    }
+
+                                                    // Buscar la siguiente petición pendiente
+                                                    const nextReq = pendingRequestsRef.current.find(req => 
+                                                        !playedStateRef.current.songs.has(req.docId) && 
+                                                        Boolean(req.link && getYoutubeId(req.link)) && 
+                                                        (!finishedVidId || getYoutubeId(req.link) !== finishedVidId)
+                                                    );
+
+                                                    if (nextReq) {
+                                                        await handlePlayPauseRequestInObs(nextReq);
+                                                        if (typeof showToast === 'function') {
+                                                            showToast(`🎵 Siguiente canción en cola: "${nextReq.cancion}"`, 'success');
+                                                        }
+                                                    } else {
+                                                        console.log("🏁 Cola de YouTube completada. No hay más peticiones pendientes.");
+                                                    }
+                                                } catch (errAdv) {
+                                                    console.error("Error al auto-avanzar cola de YouTube:", errAdv);
+                                                }
+                                            }, 1500);
+                                        }
+                                    }
+                                } else if (data.state === 'playing' && vid && lastAutoAdvanceVidRef.current !== vid) {
+                                    lastAutoAdvanceVidRef.current = '';
+                                }
                             } else {
                                 setActiveVideo(prev => {
                                     if (isDraggingYtVolumeRef.current) return prev;
@@ -2646,6 +2692,13 @@
                     if (event.data && event.data.action === 'ytPlayerProgress') {
                         const { elapsed, duration } = event.data.payload || {};
                         setYtProgress({ elapsed: elapsed || 0, duration: duration || 0 });
+                    } else if (event.data && event.data.action === 'wheelPositionChanged') {
+                        if (Number.isFinite(event.data.yPercent)) {
+                            setRouletteYPos(event.data.yPercent);
+                        }
+                        if (Number.isFinite(event.data.size)) {
+                            setRouletteWheelSize(event.data.size);
+                        }
                     }
                 };
                 window.addEventListener('message', handleMessage);
@@ -2655,7 +2708,8 @@
             const handlePlayPauseRequestInObs = async (req) => {
                 if (!window.db) return;
                 try {
-                    const videoId = req.link || '';
+                    const rawLink = req.link || '';
+                    const videoId = getYoutubeId(rawLink) || rawLink;
                     if (!videoId) {
                         if (typeof showToast === 'function') {
                             showToast('Esta petición no tiene un enlace de YouTube válido.', 'error');
@@ -2665,7 +2719,8 @@
                         return;
                     }
 
-                    const isActive = activeVideo.videoId === videoId;
+                    const activeVid = getYoutubeId(activeVideo.videoId) || activeVideo.videoId;
+                    const isActive = activeVid && activeVid === videoId;
                     if (isActive) {
                         // Toggle play/pause
                         const nextState = activeVideo.state === 'playing' ? 'paused' : 'playing';
@@ -2680,9 +2735,11 @@
                         // Play new video
                         await window.db.collection('systemConfig').doc('activeYoutubeVideo').set({
                             videoId: videoId,
+                            requestId: req.docId || '',
                             title: req.cancion || 'Sin título',
                             artist: req.artista || 'Sin artista',
                             requester: req.displayName || req.usuario || 'Invitado',
+                            volume: (typeof activeVideo.volume === 'number') ? activeVideo.volume : 100,
                             state: 'playing',
                             timestamp: Date.now()
                         });
@@ -2715,6 +2772,7 @@
                         title: 'Video Manual',
                         artist: 'Zero FM',
                         requester: 'Streamer',
+                        volume: (typeof activeVideo.volume === 'number') ? activeVideo.volume : 100,
                         state: 'playing',
                         timestamp: Date.now()
                     });
@@ -2856,6 +2914,54 @@
                 }
             };
 
+            const handleSkipActiveYoutubeSong = async () => {
+                try {
+                    const currentActiveVid = getYoutubeId(activeVideo.videoId) || activeVideo.videoId;
+                    const curReqId = activeVideo.requestId;
+                    const pending = pendingRequestsRef.current || [];
+                    const pState = playedStateRef.current || { songs: new Set(), skipped: new Set() };
+                    
+                    // Mark current song as skipped if found
+                    let currentReq = null;
+                    if (curReqId) {
+                        currentReq = pending.find(r => r.docId === curReqId);
+                    }
+                    if (!currentReq && currentActiveVid) {
+                        currentReq = pending.find(r => r.link && getYoutubeId(r.link) === currentActiveVid);
+                    }
+
+                    if (currentReq) {
+                        await handleToggleSkippedInDashboard(currentReq);
+                    }
+
+                    // Find next unplayed song
+                    const nextReq = pending.find(r => {
+                        const sid = r.docId;
+                        const isPlayed = pState.songs.has(sid);
+                        const hasYt = Boolean(r.link && getYoutubeId(r.link));
+                        const isNotCurrent = currentReq ? r.docId !== currentReq.docId : (r.link && getYoutubeId(r.link) !== currentActiveVid);
+                        return !isPlayed && hasYt && isNotCurrent;
+                    });
+
+                    if (nextReq) {
+                        if (typeof showToast === 'function') {
+                            showToast(`⏭ Saltando a "${nextReq.cancion}"`, 'info');
+                        }
+                        await handlePlayPauseRequestInObs(nextReq);
+                    } else {
+                        if (typeof showToast === 'function') {
+                            showToast('Cola terminada. No hay más canciones de YouTube pendientes.', 'warning');
+                        }
+                        await handleStopActiveYoutubeVideo();
+                    }
+                } catch (err) {
+                    console.error('Error al saltar canción:', err);
+                    if (typeof showToast === 'function') {
+                        showToast('Error al saltar canción: ' + err.message, 'error');
+                    }
+                }
+            };
+
             const [showQueuePersonalize, setShowQueuePersonalize] = React.useState(false);
             const [showRoulettePersonalize, setShowRoulettePersonalize] = React.useState(false);
             const [showLastEventsPersonalize, setShowLastEventsPersonalize] = React.useState(false);
@@ -2863,6 +2969,37 @@
 
             const [queueModalPos, setQueueModalPos] = React.useState({ x: 100, y: 150 });
             const [rouletteModalPos, setRouletteModalPos] = React.useState({ x: 150, y: 180 });
+            const [rouletteYPos, setRouletteYPos] = React.useState(0);
+            const [rouletteWheelSize, setRouletteWheelSize] = React.useState(560);
+            const [rouletteViewMode, setRouletteViewMode] = React.useState('vertical');
+
+            const setRouletteVerticalPos = (val) => {
+                const num = parseInt(val, 10) || 0;
+                setRouletteYPos(num);
+                ['iframe-control-roulette-page', 'iframe-roulette'].forEach(id => {
+                    const iframe = document.getElementById(id);
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage({
+                            action: 'setWheelPosition',
+                            yPercent: num
+                        }, '*');
+                    }
+                });
+            };
+
+            const setRouletteWheelSizeVal = (size) => {
+                const s = parseInt(size, 10) || 560;
+                setRouletteWheelSize(s);
+                ['iframe-control-roulette-page', 'iframe-roulette'].forEach(id => {
+                    const iframe = document.getElementById(id);
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage({
+                            action: 'setWheelPosition',
+                            size: s
+                        }, '*');
+                    }
+                });
+            };
             const [lasteventsModalPos, setLasteventsModalPos] = React.useState({ x: 200, y: 200 });
             const [welcomeModalPos, setWelcomeModalPos] = React.useState({ x: 250, y: 220 });
             const [newSpecialUser, setNewSpecialUser] = React.useState({ username: '', allowed: true, voice: 'Default Voice', speed: 50, pitch: 50 });
@@ -3153,6 +3290,12 @@
                 };
 
                 const handleMouseUp = () => {
+                    if (dragInfo.current.active === 'floating_chat') {
+                        setFloatingChatPos(pos => {
+                            try { localStorage.setItem('zerofm_floating_chat_pos', JSON.stringify(pos)); } catch (_) {}
+                            return pos;
+                        });
+                    }
                     dragInfo.current.active = null;
                 };
 
@@ -3163,7 +3306,7 @@
                     window.removeEventListener('mousemove', handleMouseMove);
                     window.removeEventListener('mouseup', handleMouseUp);
                 };
-            }, [followModalPos, likesModalPos, giftModalPos, subscribeModalPos, rewardModalPos, goalsFollowsModalPos, goalsLikesModalPos, goalsSharesModalPos, goalsCoinsModalPos, topgifterModalPos, toplikerModalPos, queueModalPos, rouletteModalPos, lasteventsModalPos, welcomeModalPos, chatModalPos, floatingChatPos]);
+            }, []);
 
             // Broadcast real-time config updates to the 5 preview iframes
             React.useEffect(() => {
@@ -3439,6 +3582,7 @@
                     }
                 }
 
+                let reconnectTimer = null;
                 function connectChatStream() {
                     const streamUrl = (window.location.protocol === 'file:' ? 'http://localhost:3000' : '') + '/api/chat/stream';
                     eventSource = new EventSource(streamUrl);
@@ -3489,7 +3633,8 @@
                     };
 
                     eventSource.onerror = () => {
-                        setTimeout(() => {
+                        if (reconnectTimer) clearTimeout(reconnectTimer);
+                        reconnectTimer = setTimeout(() => {
                             if (eventSource && eventSource.readyState === EventSource.CLOSED) {
                                 connectChatStream();
                             }
@@ -3500,7 +3645,11 @@
                 connectChatStream();
 
                 return () => {
+                    if (reconnectTimer) clearTimeout(reconnectTimer);
                     if (eventSource) eventSource.close();
+                    if (chatBroadcast) {
+                        try { chatBroadcast.close(); } catch (_) {}
+                    }
                 };
             }, []);
 
@@ -3622,8 +3771,9 @@
                         sendConfigToIframe('iframe-player', overlays);
                     } else if (activeSub === 'queue') {
                         sendConfigToIframe('iframe-queue', overlays);
-                    } else if (activeSub === 'roulette') {
+                    } else if (activeSub === 'roulette' || activeControlSub === 'roulette') {
                         sendConfigToIframe('iframe-roulette', overlays);
+                        sendConfigToIframe('iframe-control-roulette-page', overlays);
                     } else if (activeSub === 'alerts') {
                         sendConfigToIframe('iframe-alerts-follow', overlays);
                         sendConfigToIframe('iframe-alerts-like', overlays);
@@ -3895,6 +4045,13 @@
                 setTimeout(() => setSaveStatus(''), 3000);
             };
 
+            const showToast = (msg, type = 'info') => {
+                triggerSaveBadge(msg);
+            };
+            if (typeof window !== 'undefined') {
+                window.showToast = showToast;
+            }
+
              const toggleRouletteActive = async (enabled) => {
                 try {
                     // 1. Guardar en config local
@@ -3996,14 +4153,103 @@
             // Custom specific Overlay config saves
             // Mapa de claves por subpanel para forzar guardado completo aunque no estén en dirtyKeys
             const SUBPANEL_KEYS = {
-                'Salida de Audio': ['yt_audio_route', 'route_audio_to'],
+                'Sonido OBS': ['enableOverlayAudio', 'route_audio_to'],
+                'Salida de Audio': ['yt_audio_route', 'route_audio_to', 'enableOverlayAudio'],
                 'YouTube Player': [
                     'yt_card_width', 'yt_card_radius', 'yt_card_position', 'yt_show_requester',
                     'yt_show_progress', 'yt_show_artist', 'yt_show_status_dot', 'yt_artwork_size',
                     'yt_card_layout_mode', 'yt_video_display_mode', 'yt_bg_video_opacity', 'yt_bg_video_blur',
                     'yt_artwork_aspect_ratio', 'yt_card_theme', 'yt_requester_pos', 'yt_title_font_size',
                     'yt_artist_font_size', 'yt_requester_size', 'yt_accent_color', 'yt_accent2_color',
-                    'yt_audio_route', 'route_audio_to'
+                    'yt_audio_route', 'route_audio_to', 'yt_auto_advance'
+                ],
+                'Chat TTS': [
+                    'chatTtsEnabled', 'chatTtsLanguage', 'chatTtsSpeed', 'chatTtsPitch', 'chatTtsVolume',
+                    'chatTtsRandomVoice', 'chatTtsVoice', 'chatTtsAllowAll', 'chatTtsAllowFollowers',
+                    'chatTtsAllowSubscribers', 'chatTtsAllowModerators', 'chatTtsAllowTeam',
+                    'chatTtsAllowTopGifters', 'chatTtsType', 'chatTtsCommand', 'chatTtsFilterLetterSpam',
+                    'chatTtsFilterMentions', 'chatTtsFilterCommands', 'chatTtsMaxCommentLength',
+                    'chatTtsUserCooldown', 'chatTtsMaxQueueLength', 'chatTtsChargePoints',
+                    'chatTtsCost', 'chatTtsMessageTemplate', 'chatTtsSpecialUsers'
+                ],
+                'Player': [
+                    'playerOpacity', 'playerRadius', 'playerFontSize', 'playerColor', 'playerShowCardBg',
+                    'playerBorderWidth', 'playerBorderStyle', 'playerBorderColor', 'playerBorderOpacity',
+                    'playerShowAccentBorder', 'playerAccentBorderWidth', 'playerShowShadow',
+                    'playerShadowColor', 'playerShadowBlur', 'playerShadowOpacity'
+                ],
+                'Queue': [
+                    'queueOpacity', 'queueRadius', 'queueFontSize', 'queueShowCardBg',
+                    'queueBorderWidth', 'queueBorderStyle', 'queueBorderColor', 'queueBorderOpacity',
+                    'queueShowAccentBorder', 'queueAccentBorderWidth', 'queueShowSweepBorder',
+                    'queueShowShadow', 'queueShadowColor', 'queueShadowBlur', 'queueShadowOpacity'
+                ],
+                'Ruleta': [
+                    'rouletteOverlayEnabled', 'rouletteWidth', 'rouletteHeight', 'rouletteRadius', 'rouletteDuration',
+                    'rouletteOpacity', 'rouletteShowCardBg', 'rouletteShowShadow', 'rouletteBorderWidth',
+                    'rouletteBorderStyle', 'rouletteBorderColor', 'rouletteBorderOpacity'
+                ],
+                'Seguidores': [
+                    'enableFollowAlert', 'followsAlertMsg', 'followAudioUrl', 'followOpacity',
+                    'followRadius', 'followFontSize', 'followShowLottie', 'followPlayAudio',
+                    'followAudioVolume', 'followTtsEnabled', 'followRainbowText', 'followBounceText',
+                    'followShowCard', 'followFontFamily', 'followTextShadow', 'followBorderWidth',
+                    'followBorderColor', 'followBorderOpacity', 'followBorderStyle', 'followMediaSpacing'
+                ],
+                'Likes': [
+                    'enableLikeAlert', 'likesAlertMsg', 'minLikesAlert', 'likeAudioUrl',
+                    'likeOpacity', 'likeRadius', 'likeFontSize', 'likeShowLottie', 'likePlayAudio',
+                    'likeAudioVolume', 'likeTtsEnabled', 'likeRainbowText', 'likeBounceText',
+                    'likeShowCard', 'likeFontFamily', 'likeTextShadow', 'likeHeartSize',
+                    'likeUsernameSize', 'likeMessageSize', 'likeWrapperHeight', 'likeHeartColorStart',
+                    'likeHeartColorEnd', 'likeHeartBorderColor', 'likeHeartBorderWidth', 'likeAvatarSize',
+                    'likeAvatarBorderColor', 'likeAvatarBorderWidth', 'likeBorderWidth', 'likeBorderColor',
+                    'likeBorderOpacity', 'likeBorderStyle', 'likeMediaSpacing'
+                ],
+                'Regalos': [
+                    'enableGiftAlert', 'giftsAlertMsg', 'minCoinsAlert', 'giftAudioUrl',
+                    'giftOpacity', 'giftRadius', 'giftFontSize', 'giftShowLottie', 'giftPlayAudio',
+                    'giftAudioVolume', 'giftTtsEnabled', 'giftRainbowText', 'giftBounceText',
+                    'giftShowCard', 'giftFontFamily', 'giftTextShadow', 'quieremeVideoUrl',
+                    'quieremeVideoCustomUrl', 'giftIconSize', 'giftIconOffsetX', 'giftIconOffsetY',
+                    'giftIconScale', 'giftIconOverride', 'giftBorderWidth', 'giftBorderColor',
+                    'giftBorderOpacity', 'giftBorderStyle', 'giftMediaSpacing', 'giftWrapperHeight',
+                    'giftLottieSize', 'giftTextTopOffset'
+                ],
+                'Suscriptores': [
+                    'enableSubscribeAlert', 'subsAlertMsg', 'subscribeAudioUrl', 'subscribeOpacity',
+                    'subscribeRadius', 'subscribeFontSize', 'subscribeShowLottie', 'subscribePlayAudio',
+                    'subscribeAudioVolume', 'subscribeTtsEnabled', 'subscribeRainbowText',
+                    'subscribeBounceText', 'subscribeShowCard', 'subscribeFontFamily',
+                    'subscribeTextShadow', 'subscribeBorderWidth', 'subscribeBorderColor',
+                    'subscribeBorderOpacity', 'subscribeBorderStyle', 'subscribeMediaSpacing'
+                ],
+                'Canjes': [
+                    'enableRewardAlert', 'rewardAlertMsg', 'rewardAudioUrl', 'rewardOpacity',
+                    'rewardRadius', 'rewardFontSize', 'rewardShowLottie', 'rewardPlayAudio',
+                    'rewardAudioVolume', 'rewardTtsEnabled', 'rewardRainbowText', 'rewardBounceText',
+                    'rewardShowCard', 'rewardFontFamily', 'rewardTextShadow', 'rewardBorderWidth',
+                    'rewardBorderColor', 'rewardBorderOpacity', 'rewardBorderStyle',
+                    'rewardMediaSpacing', 'rewardGiftScale', 'rewardGiftOffsetX', 'rewardGiftOffsetY'
+                ],
+                'Top Gifter': [
+                    'topgifter_show_crown', 'topgifter_show_coin_symbol', 'topgifter_max',
+                    'topgifter_rainbow_username', 'topgifter_bounce_username', 'topgifter_bounce_coins',
+                    'topgifter_rainbow_rank', 'topgifter_bounce_rank', 'topgifter_first_place_color',
+                    'topgifter_second_place_color', 'topgifter_third_place_color'
+                ],
+                'Top Liker': [
+                    'topliker_show_crown', 'topliker_max', 'topliker_rainbow_username',
+                    'topliker_bounce_username', 'topliker_rainbow_rank', 'topliker_bounce_rank',
+                    'topliker_first_place_color', 'topliker_second_place_color', 'topliker_third_place_color'
+                ],
+                'Candado': [
+                    'enableLikesYoutubeLock', 'likesTargetForYoutubeLink', 'likesLockAlertMsg', 'controlShowLikesLock'
+                ],
+                'Ticker': [
+                    'ticker_speed', 'ticker_theme', 'ticker_font_size', 'ticker_opacity',
+                    'ticker_radius', 'ticker_show_song', 'ticker_show_top_gifter',
+                    'ticker_show_top_liker', 'ticker_show_goal', 'ticker_separator'
                 ],
                 'Bienvenida': [
                     'welcomeOverlayEnabled', 'welcomeOverlayDuration', 'welcomeOverlayGreetingTemplate',
@@ -4016,6 +4262,11 @@
                     'welcomeOverlayTemplates', 'welcomeOverlayColors', 'welcomeOverlaySounds',
                     'welcomeOverlayUserSounds'
                 ],
+                'Chat Overlay': [
+                    'chatOverlayTheme', 'chatOverlayFontSize', 'chatOverlayAutoHide',
+                    'chatOverlayShowBadges', 'chatOverlayShowAvatars', 'chatOverlayWidth',
+                    'chatOverlayHeight', 'chatOverlayOpacity', 'chatOverlayRadius'
+                ]
             };
 
             const handleSaveOverlaysConfigOnly = async (subpanel = '') => {
@@ -4026,6 +4277,9 @@
                 const panelKeys = SUBPANEL_KEYS[subpanel];
                 if (panelKeys) {
                     panelKeys.forEach(k => { forcedDirty[k] = true; });
+                } else {
+                    // Si el subpanel no está mapeado específicamente, marcar todas las claves presentes como dirty
+                    Object.keys(overlays).forEach(k => { forcedDirty[k] = true; });
                 }
                 const success = await saveOverlaysConfig(overlays, forcedDirty);
                 if (success) {
@@ -4558,9 +4812,13 @@
                 return <i data-lucide={name} style={{ width: size, height: size, display: 'inline-block', verticalAlign: 'middle' }}></i>;
             };
 
+            let _lucideRaf = null;
             React.useEffect(() => {
                 if (window.lucide) {
-                    window.lucide.createIcons();
+                    if (_lucideRaf) cancelAnimationFrame(_lucideRaf);
+                    _lucideRaf = requestAnimationFrame(() => {
+                        try { window.lucide.createIcons(); } catch (_) {}
+                    });
                 }
             });
 
@@ -6559,11 +6817,17 @@
                                         </div>
 
                                         <div className="form-group" style={{ marginTop: '20px' }}>
-                                            <label>Enlace de OBS (Browser Source — 800 × 800 px)</label>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span>Enlace de OBS (Browser Source — 1080 × 1920 px Full HD Vertical)</span>
+                                                <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold' }}>9:16 Vertical</span>
+                                            </label>
                                             <div className="copy-url-row">
-                                                <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/roulette_overlay.html`} onClick={(e) => e.target.select()} />
-                                                <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/roulette_overlay.html`)}>Copiar URL</button>
+                                                <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/roulette_overlay.html?mode=overlay`} onClick={(e) => e.target.select()} />
+                                                <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/roulette_overlay.html?mode=overlay`)}>Copiar URL</button>
                                             </div>
+                                            <small style={{ display: 'block', color: 'var(--text-secondary)', marginTop: '6px', fontSize: '0.78rem' }}>
+                                                💡 <strong>Recomendación OBS:</strong> Configura la Fuente del Navegador con <strong>Ancho: 1080</strong> y <strong>Alto: 1920</strong> (formato vertical Full HD para TikTok Live, Shorts y Reels).
+                                            </small>
                                         </div>
                                     </div>
                                 )}
@@ -6683,6 +6947,30 @@
                                                 </div>
                                             </div>
 
+                                            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '15px' }}>
+                                                <h5 style={{ marginBottom: '12px', color: '#38bdf8', fontWeight: 'bold' }}>↕️ Posición Vertical y Tamaño en OBS</h5>
+                                                <div className="grid-2">
+                                                    <div className="form-group">
+                                                        <label>Posición Vertical: {rouletteYPos === 0 ? 'Centro (0%)' : (rouletteYPos > 0 ? `Abajo (+${rouletteYPos}%)` : `Arriba (${rouletteYPos}%)`)}</label>
+                                                        <input 
+                                                            type="range" 
+                                                            min="-100" max="100" step="1" 
+                                                            value={rouletteYPos} 
+                                                            onChange={(e) => setRouletteVerticalPos(parseInt(e.target.value, 10))}
+                                                        />
+                                                    </div>
+                                                    <div className="form-group">
+                                                        <label>Tamaño de Ruleta: {rouletteWheelSize}px</label>
+                                                        <input 
+                                                            type="range" 
+                                                            min="360" max="800" step="20" 
+                                                            value={rouletteWheelSize} 
+                                                            onChange={(e) => setRouletteWheelSizeVal(parseInt(e.target.value, 10))}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
                                             <button className="btn btn-primary" onClick={() => { handleSaveOverlaysConfigOnly('Ruleta'); setShowRoulettePersonalize(false); }} style={{ width: '100%' }}>
                                                 {renderIcon('save')} Guardar Diseño de la Ruleta
                                             </button>
@@ -6731,7 +7019,7 @@
                                                     <label className="switch">
                                                         <input 
                                                             type="checkbox" 
-                                                            checked={overlays.enableOverlayAudio !== undefined ? overlays.enableOverlayAudio : false} 
+                                                            checked={overlays.enableOverlayAudio !== undefined ? overlays.enableOverlayAudio : true} 
                                                             onChange={(e) => setOverlays({ ...overlays, enableOverlayAudio: e.target.checked })} 
                                                         />
                                                         <span className="slider"></span>
@@ -11099,8 +11387,8 @@
                                                           Agrega este enlace en OBS como <strong>Fuente de Navegador</strong>. Ajusta el tamaño a 850 × 550 px o ponlo en pantalla completa agregando <code>?fullscreen=true</code> al final.
                                                       </p>
                                                       <div className="copy-url-row" style={{ display: 'flex', gap: '10px' }}>
-                                                          <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/youtube_player_overlay.html${ytPlayerFullscreen ? '?obs=true' : ''}`} onClick={(e) => e.target.select()} style={{ flex: 1 }} />
-                                                          <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/youtube_player_overlay.html${ytPlayerFullscreen ? '?obs=true' : ''}`)}>Copiar URL</button>
+                                                          <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/youtube_player_overlay.html${ytPlayerFullscreen ? '?fullscreen=true' : ''}`} onClick={(e) => e.target.select()} style={{ flex: 1 }} />
+                                                          <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/youtube_player_overlay.html${ytPlayerFullscreen ? '?fullscreen=true' : ''}`)}>Copiar URL</button>
                                                       </div>
                                                       <div style={{ marginTop: '10px' }}>
                                                           <label className="toggle-switch-label" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
@@ -11181,8 +11469,10 @@
                                                                       >
                                                                           <option value="bottom-left">Abajo Izquierda</option>
                                                                           <option value="bottom-right">Abajo Derecha</option>
+                                                                          <option value="bottom-center">Abajo Centro (Vertical TikTok)</option>
                                                                           <option value="top-left">Arriba Izquierda</option>
                                                                           <option value="top-right">Arriba Derecha</option>
+                                                                          <option value="top-center">Arriba Centro</option>
                                                                           <option value="center">Centrado</option>
                                                                       </select>
                                                                   </div>
@@ -11499,6 +11789,70 @@
                                                            </div>
                                                        )}
                                                    </div>
+                                              
+                                                    {/* Section 5: Salida y Control de Audio */}
+                                                    <div style={{ border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden', background: 'rgba(0,0,0,0.15)', backdropFilter: 'blur(10px)' }}>
+                                                        <div 
+                                                            onClick={() => setYtOverlaySection(ytOverlaySection === 'audio' ? null : 'audio')}
+                                                            style={{ 
+                                                                display: 'flex', 
+                                                                justifyContent: 'space-between', 
+                                                                alignItems: 'center', 
+                                                                padding: '12px 16px', 
+                                                                background: ytOverlaySection === 'audio' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(255,255,255,0.02)', 
+                                                                cursor: 'pointer', 
+                                                                borderBottom: ytOverlaySection === 'audio' ? '1px solid rgba(139, 92, 246, 0.25)' : 'none', 
+                                                                transition: 'all 0.2s ease', 
+                                                                userSelect: 'none' 
+                                                            }}
+                                                        >
+                                                            <span style={{ fontWeight: '600', fontSize: '0.88rem', color: ytOverlaySection === 'audio' ? '#a78bfa' : '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <span>🔊</span> Salida y Control de Audio
+                                                            </span>
+                                                            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', transform: ytOverlaySection === 'audio' ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}>▼</span>
+                                                        </div>
+                                                        {ytOverlaySection === 'audio' && (
+                                                            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '15px' }} className="animate-fade-in">
+                                                                <div className="form-group">
+                                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        <span>📡 Enrutamiento del Sonido</span>
+                                                                    </label>
+                                                                    <select 
+                                                                        value={overlays.yt_audio_route || overlays.route_audio_to || 'obs'}
+                                                                        onChange={(e) => {
+                                                                            const val = e.target.value;
+                                                                            setOverlays({ ...overlays, yt_audio_route: val, route_audio_to: val });
+                                                                        }}
+                                                                        style={{ width: '100%', height: '40px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid var(--border-glass)', borderRadius: '10px', padding: '0 10px' }}
+                                                                    >
+                                                                        <option value="obs">🔊 OBS Studio (Recomendado - Stream y tus audífonos desde OBS)</option>
+                                                                        <option value="dashboard">💻 Solo Panel de Control (Tu navegador reproduce el sonido)</option>
+                                                                        <option value="both">🎧 Ambos (OBS Studio + Panel de Control simultáneos)</option>
+                                                                        <option value="none">🔇 Mute Total (Solo visual en OBS, sin sonido)</option>
+                                                                    </select>
+                                                                    <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.74rem', marginTop: '6px', lineHeight: '1.4' }}>
+                                                                        💡 En OBS Studio, recuerda marcar la opción <strong>"Controlar audio a través de OBS"</strong> en las propiedades de la fuente de navegador para monitorear y ajustar el volumen en el mezclador de OBS.
+                                                                    </p>
+                                                                </div>
+                                                                <div className="toggle-row" style={{ padding: '8px 0', borderBottom: 'none' }}>
+                                                                    <div>
+                                                                        <span style={{ fontSize: '0.84rem', fontWeight: '600', display: 'block' }}>Avance Automático de Cola ⏭</span>
+                                                                        <span style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.4)' }}>
+                                                                            Pasa a la siguiente canción automáticamente al terminar el video y otorga puntos al peticionario
+                                                                        </span>
+                                                                    </div>
+                                                                    <label className="switch">
+                                                                        <input 
+                                                                            type="checkbox" 
+                                                                            checked={overlays.yt_auto_advance !== false} 
+                                                                            onChange={(e) => setOverlays({ ...overlays, yt_auto_advance: e.target.checked })} 
+                                                                        />
+                                                                        <span className="slider"></span>
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                               </div>
                                           </div>
                                       </div>
@@ -11804,14 +12158,8 @@
                                                                     setIsDraggingYtProgress(true);
                                                                     setYtProgress(prev => ({ ...prev, elapsed: targetSec }));
                                                                     
-                                                                    // Enviar el postMessage al iframe local para respuesta visual instantánea
-                                                                    const iframe = document.getElementById('iframe-ytplayer');
-                                                                    if (iframe && iframe.contentWindow) {
-                                                                        iframe.contentWindow.postMessage({
-                                                                            action: 'ytSeek',
-                                                                            payload: { elapsed: targetSec }
-                                                                        }, '*');
-                                                                    }
+                                                                    // Enviar el postMessage a los iframes para respuesta visual instantánea
+                                                                    postToYtIframes({ action: 'ytSeek', payload: { elapsed: targetSec } });
                                                                 }}
                                                                 onMouseUp={async (e) => {
                                                                     const targetSec = parseInt(e.target.value);
@@ -11820,6 +12168,7 @@
                                                                         try {
                                                                             await window.db.collection('systemConfig').doc('activeYoutubeVideo').update({
                                                                                 elapsed: targetSec,
+                                                                                isUserSeek: true,
                                                                                 timestamp: Date.now()
                                                                             });
                                                                         } catch (err) {
@@ -11834,6 +12183,7 @@
                                                                         try {
                                                                             await window.db.collection('systemConfig').doc('activeYoutubeVideo').update({
                                                                                 elapsed: targetSec,
+                                                                                isUserSeek: true,
                                                                                 timestamp: Date.now()
                                                                             });
                                                                         } catch (err) {
@@ -11950,7 +12300,7 @@
                                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '65px' }}>
                                                             <div style={{ height: '62px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                                                 <button 
-                                                                    onClick={handleStopActiveYoutubeVideo} 
+                                                                    onClick={handleSkipActiveYoutubeSong} 
                                                                     title="Saltar a la siguiente canción"
                                                                     style={{ 
                                                                         width: '46px', 
@@ -11998,11 +12348,8 @@
                                                                  setIsDraggingYtVolume(true);
                                                                  setActiveVideo(prev => ({ ...prev, volume: val }));
                                                                  
-                                                                 // Enviar volumen al iframe de preview del dashboard para respuesta inmediata
-                                                                 const iframeObs = document.getElementById('iframe-ytplayer');
-                                                                 if (iframeObs && iframeObs.contentWindow) {
-                                                                     iframeObs.contentWindow.postMessage({ action: 'ytSetVolume', payload: { volume: val } }, '*');
-                                                                 }
+                                                                 // Enviar volumen a los iframes para respuesta inmediata
+                                                                 postToYtIframes({ action: 'ytSetVolume', payload: { volume: val } });
                                                              }}
                                                              onMouseUp={async (e) => {
                                                                  const val = parseInt(e.target.value);
@@ -12266,8 +12613,15 @@
                                                     className="btn btn-secondary" 
                                                     onClick={() => {
                                                         const url = `${currentOrigin}/chat_overlay.html?mode=overlay`;
-                                                        navigator.clipboard.writeText(url);
-                                                        if (typeof triggerSaveBadge === 'function') triggerSaveBadge('📋 Enlace de Overlay OBS copiado');
+                                                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                                                            navigator.clipboard.writeText(url).then(() => {
+                                                                if (typeof triggerSaveBadge === 'function') triggerSaveBadge('📋 Enlace de Overlay OBS copiado');
+                                                            }).catch(() => {
+                                                                if (typeof triggerSaveBadge === 'function') triggerSaveBadge('⚠️ Copia manual: ' + url);
+                                                            });
+                                                        } else {
+                                                            if (typeof triggerSaveBadge === 'function') triggerSaveBadge('⚠️ Copia manual: ' + url);
+                                                        }
                                                     }}
                                                     style={{ padding: '7px 13px', fontSize: '0.82rem', borderColor: '#a855f7', color: '#c084fc', background: 'rgba(168, 85, 247, 0.08)', display: 'flex', alignItems: 'center', gap: '6px' }}
                                                     title="Copiar URL para agregar como fuente de navegador en OBS"
@@ -12521,16 +12875,52 @@
                                                     Gestiona los participantes, añade opciones manuales y haz girar la ruleta desde el panel.
                                                 </p>
                                             </div>
-                                            <button className="btn btn-secondary" onClick={() => {
-                                                const iframe = document.getElementById('iframe-control-roulette-page');
-                                                if (iframe) iframe.src = iframe.src;
-                                            }} style={{ padding: '8px 16px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                🔄 Reiniciar Ruleta
-                                            </button>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button 
+                                                    type="button" 
+                                                    className="btn btn-green" 
+                                                    onClick={() => {
+                                                        ['iframe-control-roulette-page', 'iframe-roulette'].forEach(id => {
+                                                            const iframe = document.getElementById(id);
+                                                            if (iframe && iframe.contentWindow) {
+                                                                iframe.contentWindow.postMessage({ action: 'triggerTestRoulette' }, '*');
+                                                            }
+                                                        });
+                                                        showToast('🎲 Giro de ruleta iniciado');
+                                                    }} 
+                                                    style={{ padding: '8px 16px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                >
+                                                    🎲 Girar Ruleta
+                                                </button>
+                                                <button 
+                                                    type="button" 
+                                                    className="btn btn-secondary" 
+                                                    onClick={() => {
+                                                        ['iframe-control-roulette-page', 'iframe-roulette'].forEach(id => {
+                                                            const iframe = document.getElementById(id);
+                                                            if (iframe && iframe.contentWindow) {
+                                                                iframe.contentWindow.postMessage({ action: 'resetRoulette' }, '*');
+                                                            }
+                                                        });
+                                                        if (window.db) {
+                                                            window.db.collection('notifications').add({
+                                                                type: 'roulette_reset',
+                                                                user: 'Dashboard',
+                                                                message: '🔄 Ruleta reiniciada desde el Dashboard',
+                                                                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                                                            }).catch(() => {});
+                                                        }
+                                                        showToast('🔄 Ruleta reiniciada');
+                                                    }} 
+                                                    style={{ padding: '8px 16px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                >
+                                                    🔄 Reiniciar Ruleta
+                                                </button>
+                                            </div>
                                         </div>
                                         
                                         <div style={{ padding: '10px 15px', background: 'rgba(234, 179, 8, 0.05)', borderRadius: '8px', border: '1px solid rgba(234, 179, 8, 0.15)', fontSize: '0.82rem', color: '#fef08a', lineHeight: '1.4' }}>
-                                            ⚙️ <strong>Instrucciones:</strong> Para controlar la ruleta, haz clic en el botón de engranaje ⚙️ ubicado en la esquina inferior izquierda de la ruleta de abajo. Eso desplegará el panel para configurar participantes, premios y girar la rueda.
+                                            ⚙️ <strong>Instrucciones:</strong> Para configurar participantes y opciones avanzadas, haz clic en el botón de engranaje ⚙️ ubicado en la esquina superior derecha de la ruleta de abajo.
                                         </div>
 
                                         {/* Barra de Visibilidad de Ruleta en OBS */}
@@ -12578,8 +12968,160 @@
                                             </div>
                                         </div>
 
-                                        <div style={{ position: 'relative', width: '100%', height: '600px', background: 'rgba(0,0,0,0.1)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-                                            <iframe id="iframe-control-roulette-page" src="./roulette_overlay.html?v=1.0.4" style={{ width: '100%', height: '100%', border: 'none' }}></iframe>
+                                        {/* Barra de Control de Posición Vertical en OBS */}
+                                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', flexWrap: 'wrap' }}>
+                                            <div style={{ flex: 1, minWidth: '220px' }}>
+                                                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '700', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    ↕️ Posición Vertical en OBS
+                                                </h4>
+                                                <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                                    Mueve la ruleta arriba, al centro o abajo en tu transmisión vertical Full HD.
+                                                </p>
+                                            </div>
+
+                                            {/* Botones de Acceso Rápido */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                <button 
+                                                    type="button" 
+                                                    className="btn btn-secondary" 
+                                                    onClick={() => setRouletteVerticalPos(-75)}
+                                                    style={{ padding: '6px 12px', fontSize: '0.78rem', borderColor: rouletteYPos === -75 ? '#38bdf8' : 'rgba(255,255,255,0.15)', background: rouletteYPos === -75 ? 'rgba(56, 189, 248, 0.15)' : 'transparent', color: rouletteYPos === -75 ? '#38bdf8' : '#fff' }}
+                                                >
+                                                    ⬆️ Arriba
+                                                </button>
+                                                <button 
+                                                    type="button" 
+                                                    className="btn btn-secondary" 
+                                                    onClick={() => setRouletteVerticalPos(0)}
+                                                    style={{ padding: '6px 12px', fontSize: '0.78rem', borderColor: rouletteYPos === 0 ? '#38bdf8' : 'rgba(255,255,255,0.15)', background: rouletteYPos === 0 ? 'rgba(56, 189, 248, 0.15)' : 'transparent', color: rouletteYPos === 0 ? '#38bdf8' : '#fff' }}
+                                                >
+                                                    ⏺️ Centro
+                                                </button>
+                                                <button 
+                                                    type="button" 
+                                                    className="btn btn-secondary" 
+                                                    onClick={() => setRouletteVerticalPos(75)}
+                                                    style={{ padding: '6px 12px', fontSize: '0.78rem', borderColor: rouletteYPos === 75 ? '#38bdf8' : 'rgba(255,255,255,0.15)', background: rouletteYPos === 75 ? 'rgba(56, 189, 248, 0.15)' : 'transparent', color: rouletteYPos === 75 ? '#38bdf8' : '#fff' }}
+                                                >
+                                                    ⬇️ Abajo
+                                                </button>
+                                            </div>
+
+                                            {/* Slider de Posición Vertical */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '220px' }}>
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Arriba</span>
+                                                <input 
+                                                    type="range" 
+                                                    min="-100" 
+                                                    max="100" 
+                                                    step="1" 
+                                                    value={rouletteYPos} 
+                                                    onChange={(e) => setRouletteVerticalPos(parseInt(e.target.value, 10))}
+                                                    style={{ flex: 1, accentColor: '#38bdf8', cursor: 'pointer' }} 
+                                                />
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Abajo</span>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', minWidth: '42px', color: '#38bdf8' }}>
+                                                    {rouletteYPos === 0 ? '0%' : (rouletteYPos > 0 ? `+${rouletteYPos}%` : `${rouletteYPos}%`)}
+                                                </span>
+                                            </div>
+
+                                            {/* Control de Tamaño de Ruleta */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '180px', borderLeft: '1px solid rgba(255,255,255,0.08)', paddingLeft: '15px' }}>
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>🔍 Tamaño:</span>
+                                                <input 
+                                                    type="range" 
+                                                    min="360" 
+                                                    max="800" 
+                                                    step="20" 
+                                                    value={rouletteWheelSize} 
+                                                    onChange={(e) => setRouletteWheelSizeVal(parseInt(e.target.value, 10))}
+                                                    style={{ width: '90px', accentColor: '#38bdf8', cursor: 'pointer' }} 
+                                                />
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#eab308' }}>{rouletteWheelSize}px</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Banner de Enlace y Resolución OBS Full HD Vertical */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(56, 189, 248, 0.04)', padding: '12px 16px', borderRadius: '10px', border: '1px solid rgba(56, 189, 248, 0.15)', flexWrap: 'wrap', gap: '10px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <span style={{ fontSize: '1.2rem' }}>📐</span>
+                                                <div>
+                                                    <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#38bdf8' }}>OBS Browser Source (Full HD 9:16 Vertical)</span>
+                                                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Configura en OBS: Ancho <strong>1080</strong> px × Alto <strong>1920</strong> px (resolución vertical nativa)</span>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <input type="text" className="copy-url-input" style={{ width: '280px', fontSize: '0.78rem', padding: '5px 8px' }} readOnly value={`${currentOrigin}/roulette_overlay.html?mode=overlay`} onClick={(e) => e.target.select()} />
+                                                <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.78rem' }} onClick={() => handleCopyUrl(`${currentOrigin}/roulette_overlay.html?mode=overlay`)}>Copiar URL</button>
+                                            </div>
+                                        </div>
+
+                                        {/* Barra de Previsualización y Conmutador de Formato */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                                            <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                📺 Previsualización en Vivo:
+                                                <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Puedes arrastrar la ruleta directamente para moverla arriba o abajo</span>
+                                            </span>
+                                            <div style={{ display: 'flex', gap: '6px' }}>
+                                                <button 
+                                                    type="button" 
+                                                    className="btn btn-secondary" 
+                                                    onClick={() => setRouletteViewMode('vertical')}
+                                                    style={{ padding: '4px 10px', fontSize: '0.75rem', borderColor: rouletteViewMode === 'vertical' ? '#eab308' : 'rgba(255,255,255,0.1)', background: rouletteViewMode === 'vertical' ? 'rgba(234, 179, 8, 0.15)' : 'transparent', color: rouletteViewMode === 'vertical' ? '#eab308' : '#94a3b8' }}
+                                                >
+                                                    📱 Formato Vertical 9:16 (OBS)
+                                                </button>
+                                                <button 
+                                                    type="button" 
+                                                    className="btn btn-secondary" 
+                                                    onClick={() => setRouletteViewMode('wide')}
+                                                    style={{ padding: '4px 10px', fontSize: '0.75rem', borderColor: rouletteViewMode === 'wide' ? '#eab308' : 'rgba(255,255,255,0.1)', background: rouletteViewMode === 'wide' ? 'rgba(234, 179, 8, 0.15)' : 'transparent', color: rouletteViewMode === 'wide' ? '#eab308' : '#94a3b8' }}
+                                                >
+                                                    🖥️ Vista Ancha
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Contenedor de Previsualización Adaptable */}
+                                        <div style={{ 
+                                            position: 'relative', 
+                                            width: '100%', 
+                                            minHeight: rouletteViewMode === 'vertical' ? '740px' : '620px', 
+                                            background: 'radial-gradient(ellipse at center, rgba(30, 30, 45, 0.4) 0%, rgba(10, 10, 15, 0.6) 100%)', 
+                                            borderRadius: '16px', 
+                                            border: '1px solid rgba(255,255,255,0.06)', 
+                                            display: 'flex', 
+                                            justifyContent: 'center', 
+                                            alignItems: 'center', 
+                                            overflow: 'hidden',
+                                            padding: rouletteViewMode === 'vertical' ? '20px 0' : '0'
+                                        }}>
+                                            <div style={{ 
+                                                position: 'relative', 
+                                                width: rouletteViewMode === 'vertical' ? '390px' : '100%', 
+                                                height: rouletteViewMode === 'vertical' ? '693px' : '620px',
+                                                borderRadius: rouletteViewMode === 'vertical' ? '28px' : '0px',
+                                                boxShadow: rouletteViewMode === 'vertical' ? '0 0 0 8px rgba(255,255,255,0.05), 0 20px 50px rgba(0,0,0,0.8)' : 'none',
+                                                overflow: 'hidden',
+                                                background: rouletteViewMode === 'vertical' ? 'rgba(0,0,0,0.3)' : 'transparent',
+                                                transition: 'all 0.3s ease'
+                                            }}>
+                                                {rouletteViewMode === 'vertical' && (
+                                                    <div style={{ position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)', width: '80px', height: '4px', background: 'rgba(255,255,255,0.2)', borderRadius: '999px', zIndex: 10, pointerEvents: 'none' }}></div>
+                                                )}
+                                                <iframe 
+                                                    id="iframe-control-roulette-page" 
+                                                    src="./roulette_overlay.html?v=2.1.0" 
+                                                    style={{ 
+                                                        width: rouletteViewMode === 'vertical' ? '1080px' : '100%', 
+                                                        height: rouletteViewMode === 'vertical' ? '1920px' : '100%', 
+                                                        transform: rouletteViewMode === 'vertical' ? 'scale(0.361111)' : 'none', 
+                                                        transformOrigin: 'top left', 
+                                                        border: 'none',
+                                                        pointerEvents: 'auto'
+                                                    }}
+                                                ></iframe>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -12908,7 +13450,7 @@
                                             <label className="switch" style={{ transform: 'scale(0.85)' }}>
                                                 <input 
                                                     type="checkbox" 
-                                                    checked={overlays.enableOverlayAudio !== undefined ? overlays.enableOverlayAudio : false} 
+                                                    checked={overlays.enableOverlayAudio !== undefined ? overlays.enableOverlayAudio : true} 
                                                     onChange={(e) => {
                                                         const updated = { ...overlays, enableOverlayAudio: e.target.checked };
                                                         _setOverlays(updated);

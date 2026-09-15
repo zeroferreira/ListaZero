@@ -31,13 +31,18 @@ const firebaseConfig = {
     let spinAgainRestoreTimerNested = null;
     let shakeTimeout = null;
 
+    const searchStr = String((window.location && window.location.search) || '');
+    const hashStr = String((window.location && window.location.hash) || '');
     const isOverlayMode = !!(
       window.obsstudio ||
-      window.location.search.includes('mode=overlay') ||
-      window.location.search.includes('obs=true') ||
-      window.location.search.includes('overlay=true') ||
-      window.location.hash.includes('overlay')
+      searchStr.includes('mode=overlay') ||
+      searchStr.includes('obs=true') ||
+      searchStr.includes('overlay=true') ||
+      hashStr.includes('overlay')
     );
+    if (isOverlayMode && typeof document !== 'undefined' && document.body) {
+      document.body.classList.add('is-overlay', 'is-vertical-obs');
+    }
 
     const safeStorage = {
       getItem: (key) => {
@@ -82,7 +87,7 @@ const firebaseConfig = {
     }
     let currentDay = getLocalDayKey();
     let activeSourceTab = 'list';
-    const wheelState = { x: 0, y: 0, size: 560 };
+    const wheelState = { x: 0, y: 0, size: 560, yPercent: 0, xPercent: 0 };
     let dragData = null;
     let resizeData = null;
     let liveSpinEntriesOverride = null;
@@ -311,7 +316,9 @@ const firebaseConfig = {
     }
 
     function getObsOverlayUrl() {
-      return new URL('roulette_overlay.html', window.location.href).toString().split('#')[0];
+      const u = new URL('roulette_overlay.html', window.location.href);
+      u.searchParams.set('mode', 'overlay');
+      return u.toString().split('#')[0];
     }
 
     function getRouletteLiveRef() {
@@ -467,7 +474,73 @@ const firebaseConfig = {
       }
     }
 
+    let audioCtx = null;
+    function getAudioContext() {
+      try {
+        if (!audioCtx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) audioCtx = new AudioContext();
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+      } catch (e) {}
+      return audioCtx;
+    }
+
+    function playSyntheticSound(name) {
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        if (name === 'tick') {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(800, now);
+          osc.frequency.exponentialRampToValueAtTime(120, now + 0.02);
+          gain.gain.setValueAtTime(0.25, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.02);
+        } else if (name === 'win') {
+          const notes = [523.25, 659.25, 783.99, 1046.50];
+          notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            const noteStart = now + idx * 0.09;
+            osc.frequency.setValueAtTime(freq, noteStart);
+            gain.gain.setValueAtTime(0, noteStart);
+            gain.gain.linearRampToValueAtTime(0.2, noteStart + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, noteStart + 0.5);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(noteStart);
+            osc.stop(noteStart + 0.55);
+          });
+        } else if (name === 'spin') {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(180, now);
+          osc.frequency.exponentialRampToValueAtTime(360, now + 0.25);
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.3);
+        }
+      } catch (e) {}
+    }
+
     function playSound(name) {
+      playSyntheticSound(name);
+
       const src = soundSources[name];
       if (!src) return;
 
@@ -485,8 +558,11 @@ const firebaseConfig = {
 
       if (sound.dataset.missing === '1') return;
 
-      sound.currentTime = 0;
-      sound.play().catch(() => {});
+      try {
+        sound.currentTime = 0;
+        const p = sound.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch (e) {}
     }
 
     function togglePanel() {
@@ -545,14 +621,112 @@ const firebaseConfig = {
     }
 
     function getMaxWheelSize() {
+      if (isOverlayMode || window.innerWidth >= 900) {
+        return 850;
+      }
       const panelSpace = (document.body.classList.contains('panel-open') && window.innerWidth > 980) ? 360 : 0;
-      const maxByWidth = Math.max(260, Math.min(760, window.innerWidth - panelSpace - 60));
-      const maxByHeight = Math.max(260, Math.min(760, window.innerHeight - 120));
-      return Math.max(260, Math.min(maxByWidth, maxByHeight));
+      const maxByWidth = Math.max(300, Math.min(850, window.innerWidth - panelSpace - 30));
+      const maxByHeight = Math.max(300, Math.min(850, window.innerHeight - 60));
+      return Math.max(300, Math.min(maxByWidth, maxByHeight));
     }
 
     function getMinWheelSize() {
-      return 240;
+      return 300;
+    }
+
+    function getStageDimensions() {
+      const gap = 18;
+      const isSpinBtnVisible = !isOverlayMode && !document.body.classList.contains('overlay-disabled');
+      const spinHeight = isSpinBtnVisible ? 58 : 0;
+      const stageWidth = wheelState.size || 560;
+      const stageHeight = (wheelState.size || 560) + (isSpinBtnVisible ? (gap + spinHeight) : 0);
+      return { stageWidth, stageHeight };
+    }
+
+    function getMaxTravel() {
+      const { stageWidth, stageHeight } = getStageDimensions();
+      const containerW = (isOverlayMode ? window.innerWidth : (rouletteContainer && rouletteContainer.clientWidth)) || window.innerWidth;
+      const containerH = (isOverlayMode ? window.innerHeight : (rouletteContainer && rouletteContainer.clientHeight)) || window.innerHeight;
+      
+      const padX = isOverlayMode ? 20 : 12;
+      const padY = isOverlayMode ? 32 : 12;
+      
+      const maxTravelX = Math.max(0, (containerW - stageWidth) / 2 - padX);
+      const maxTravelY = Math.max(0, (containerH - stageHeight) / 2 - padY);
+      
+      return { maxTravelX, maxTravelY, containerW, containerH };
+    }
+
+    function updateWheelPixelsFromPercent() {
+      const { maxTravelX, maxTravelY } = getMaxTravel();
+      const yp = Number.isFinite(wheelState.yPercent) ? wheelState.yPercent : 0;
+      const xp = Number.isFinite(wheelState.xPercent) ? wheelState.xPercent : 0;
+      
+      wheelState.y = Math.round((yp / 100) * maxTravelY);
+      wheelState.x = Math.round((xp / 100) * maxTravelX);
+    }
+
+    function updateWheelPercentFromPixels() {
+      const { maxTravelX, maxTravelY } = getMaxTravel();
+      if (maxTravelY > 0) {
+        wheelState.yPercent = Math.max(-100, Math.min(100, Math.round((wheelState.y / maxTravelY) * 100)));
+      } else {
+        wheelState.yPercent = 0;
+      }
+      if (maxTravelX > 0) {
+        wheelState.xPercent = Math.max(-100, Math.min(100, Math.round((wheelState.x / maxTravelX) * 100)));
+      } else {
+        wheelState.xPercent = 0;
+      }
+    }
+
+    function clampWheelState() {
+      const { maxTravelX, maxTravelY } = getMaxTravel();
+      wheelState.size = Math.max(getMinWheelSize(), Math.min(850, wheelState.size || 560));
+      wheelState.x = Math.max(-maxTravelX, Math.min(maxTravelX, wheelState.x || 0));
+      wheelState.y = Math.max(-maxTravelY, Math.min(maxTravelY, wheelState.y || 0));
+    }
+
+    function applyWheelState(options = {}) {
+      wheelState.size = Math.max(getMinWheelSize(), Math.min(850, wheelState.size || 560));
+      if (options.usePercent !== false) {
+        updateWheelPixelsFromPercent();
+      }
+      clampWheelState();
+      wrapper.style.width = `${wheelState.size}px`;
+      wrapper.style.height = `${wheelState.size}px`;
+      stage.style.transform = `translate(${wheelState.x}px, ${wheelState.y}px)`;
+    }
+
+    function applyWheelStateFromData(incoming) {
+      if (!incoming || typeof incoming !== 'object') return;
+      if (Number.isFinite(incoming.size)) wheelState.size = incoming.size;
+      if (Number.isFinite(incoming.yPercent)) {
+        wheelState.yPercent = incoming.yPercent;
+      } else if (Number.isFinite(incoming.y)) {
+        wheelState.y = incoming.y;
+        updateWheelPercentFromPixels();
+      }
+      if (Number.isFinite(incoming.xPercent)) {
+        wheelState.xPercent = incoming.xPercent;
+      } else if (Number.isFinite(incoming.x)) {
+        wheelState.x = incoming.x;
+        updateWheelPercentFromPixels();
+      }
+      applyWheelState();
+    }
+
+    function notifyWheelStateToDashboard() {
+      if (window.parent && window.parent !== window) {
+        try {
+          window.parent.postMessage({
+            action: 'wheelPositionChanged',
+            yPercent: wheelState.yPercent,
+            xPercent: wheelState.xPercent,
+            size: wheelState.size
+          }, '*');
+        } catch (_) {}
+      }
     }
 
     function saveWheelState() {
@@ -569,25 +743,6 @@ const firebaseConfig = {
       } catch (_) {}
     }
 
-    function clampWheelState() {
-      const rect = rouletteContainer.getBoundingClientRect();
-      const gap = 18;
-      const spinHeight = 58;
-      wheelState.size = Math.max(getMinWheelSize(), Math.min(getMaxWheelSize(), wheelState.size || getMaxWheelSize()));
-      const stageHeight = wheelState.size + gap + spinHeight;
-      const maxX = Math.max(0, rect.width / 2 - wheelState.size / 2 - 14);
-      const maxY = Math.max(0, rect.height / 2 - stageHeight / 2 - 14);
-      wheelState.x = Math.max(-maxX, Math.min(maxX, wheelState.x || 0));
-      wheelState.y = Math.max(-maxY, Math.min(maxY, wheelState.y || 0));
-    }
-
-    function applyWheelState() {
-      clampWheelState();
-      wrapper.style.width = `${wheelState.size}px`;
-      wrapper.style.height = `${wheelState.size}px`;
-      stage.style.transform = `translate(${wheelState.x}px, ${wheelState.y}px)`;
-    }
-
     function loadWheelState() {
       wheelState.size = Math.min(560, getMaxWheelSize());
       try {
@@ -597,12 +752,17 @@ const firebaseConfig = {
           if (parsed && typeof parsed === 'object') {
             if (Number.isFinite(parsed.x)) wheelState.x = parsed.x;
             if (Number.isFinite(parsed.y)) wheelState.y = parsed.y;
+            if (Number.isFinite(parsed.yPercent)) wheelState.yPercent = parsed.yPercent;
+            if (Number.isFinite(parsed.xPercent)) wheelState.xPercent = parsed.xPercent;
             if (Number.isFinite(parsed.size)) wheelState.size = parsed.size;
           }
         }
       } catch (_) {}
       applyWheelState();
+      notifyWheelStateToDashboard();
     }
+
+    let lastThrottledLayoutBroadcast = 0;
 
     function startDrag(evt) {
       if (isOverlayMode || evt.target.closest('.resize-handle') || isSpinning) return;
@@ -613,6 +773,7 @@ const firebaseConfig = {
         baseY: wheelState.y
       };
       wrapper.classList.add('dragging');
+      stage.classList.add('dragging');
     }
 
     function startResize(evt, corner) {
@@ -630,7 +791,18 @@ const firebaseConfig = {
       if (dragData) {
         wheelState.x = dragData.baseX + (evt.clientX - dragData.startX);
         wheelState.y = dragData.baseY + (evt.clientY - dragData.startY);
-        applyWheelState();
+        updateWheelPercentFromPixels();
+        applyWheelState({ usePercent: false });
+        notifyWheelStateToDashboard();
+
+        const now = Date.now();
+        if (now - lastThrottledLayoutBroadcast > 150) {
+          lastThrottledLayoutBroadcast = now;
+          publishRouletteLiveState({
+            type: 'layout',
+            wheelState
+          });
+        }
         return;
       }
       if (resizeData) {
@@ -641,6 +813,7 @@ const firebaseConfig = {
         const delta = Math.max(dx * sx, dy * sy);
         wheelState.size = resizeData.startSize + delta;
         applyWheelState();
+        notifyWheelStateToDashboard();
       }
     }
 
@@ -649,8 +822,10 @@ const firebaseConfig = {
         dragData = null;
         resizeData = null;
         wrapper.classList.remove('dragging');
+        stage.classList.remove('dragging');
         applyWheelState();
         saveWheelState();
+        notifyWheelStateToDashboard();
       }
     }
 
@@ -694,15 +869,22 @@ const firebaseConfig = {
 
     function applyOverlayEnabled(enabled, options = {}) {
       overlayEnabled = enabled;
-      document.body.classList.toggle('overlay-disabled', !enabled);
-      if (rouletteContainer) {
-        rouletteContainer.style.display = enabled ? 'flex' : 'none';
+      if (isOverlayMode) {
+        document.body.classList.toggle('overlay-disabled', !enabled);
+        if (rouletteContainer) {
+          rouletteContainer.style.display = enabled ? 'flex' : 'none';
+        }
+      } else {
+        // En el panel de control o vista previa, mantener visible el contenedor para configurar y girar
+        if (rouletteContainer) {
+          rouletteContainer.style.display = 'flex';
+        }
       }
       if (overlayStatus) {
         overlayStatus.textContent = enabled ? 'Estado: ACTIVO' : 'Estado: DESACTIVADO';
       }
       safeStorage.setItem('rouletteOverlayEnabled', enabled ? '1' : '0');
-      if (!enabled) resetWinner({ broadcast: false });
+      if (!enabled && isOverlayMode) resetWinner({ broadcast: false });
     }
 
     function setOverlayEnabledRemote(enabled) {
@@ -785,12 +967,29 @@ const firebaseConfig = {
 
       // Listener para comandos remotos (bot)
       if (unsubNotifications) unsubNotifications();
+      const notificationToleranceStart = new Date(Date.now() - 2 * 60 * 1000);
+      let initialNotificationsHandled = false;
+      const handledNotificationIds = new Set();
+
       unsubNotifications = db.collection('notifications')
-        .where('timestamp', '>', firebase.firestore.Timestamp.now())
+        .where('timestamp', '>', notificationToleranceStart)
         .onSnapshot(snap => {
+          if (!initialNotificationsHandled) {
+            initialNotificationsHandled = true;
+            snap.docs.forEach(doc => handledNotificationIds.add(doc.id));
+            return;
+          }
           snap.docChanges().forEach(change => {
             if (change.type === 'added') {
-              const data = change.doc.data();
+              const docId = change.doc.id;
+              if (handledNotificationIds.has(docId)) return;
+              handledNotificationIds.add(docId);
+              if (handledNotificationIds.size > 500) {
+                const first = handledNotificationIds.values().next().value;
+                handledNotificationIds.delete(first);
+              }
+
+              const data = change.doc.data() || {};
               if (data.type === 'roulette_spin') {
                 console.log('🎲 Comando de giro recibido del bot');
                 spinWheel();
@@ -805,6 +1004,8 @@ const firebaseConfig = {
               }
             }
           });
+        }, err => {
+          console.warn("Error en listener de notificaciones de roulette:", err);
         });
 
       // Escuchar personalización visual de la ruleta desde el panel de control
@@ -878,6 +1079,9 @@ const firebaseConfig = {
         if (data.themeKey && THEMES[data.themeKey] && data.updatedBy !== rouletteLiveClientId) {
           applyTheme(data.themeKey, { broadcast: false });
         }
+        if (data.wheelState && data.updatedBy !== rouletteLiveClientId) {
+          applyWheelStateFromData(data.wheelState);
+        }
         if (data.type === 'overlay_toggle' && data.overlayToggleToken && data.overlayToggleToken !== lastHandledOverlayToggleToken) {
           lastHandledOverlayToggleToken = data.overlayToggleToken;
           applyOverlayEnabled(data.overlayEnabled !== false, { broadcast: false });
@@ -918,10 +1122,7 @@ const firebaseConfig = {
         }
         if (data.type === 'layout' && data.updatedBy !== rouletteLiveClientId) {
           if (data.wheelState) {
-            if (Number.isFinite(data.wheelState.x)) wheelState.x = data.wheelState.x;
-            if (Number.isFinite(data.wheelState.y)) wheelState.y = data.wheelState.y;
-            if (Number.isFinite(data.wheelState.size)) wheelState.size = data.wheelState.size;
-            applyWheelState();
+            applyWheelStateFromData(data.wheelState);
           }
           if (Array.isArray(data.manualParticipants)) {
             manualParticipants = [...data.manualParticipants];
@@ -1193,13 +1394,26 @@ const firebaseConfig = {
     }
 
     function drawWheel(sourceEntries = null) {
-      const width = canvas.width;
-      const height = canvas.height;
+      const baseSize = 800;
+      const targetResolution = 1600; // 2x Full HD supersampling buffer
+      if (canvas.width !== targetResolution || canvas.height !== targetResolution) {
+        canvas.width = targetResolution;
+        canvas.height = targetResolution;
+      }
+      
+      ctx.clearRect(0, 0, targetResolution, targetResolution);
+      
+      ctx.save();
+      const scale = targetResolution / baseSize;
+      ctx.scale(scale, scale);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      const width = baseSize;
+      const height = baseSize;
       const cx = width / 2;
       const cy = height / 2;
       const radius = Math.min(width, height) / 2 - 40;
-      
-      ctx.clearRect(0, 0, width, height);
       
       const entries = getWheelEntries(sourceEntries);
       if (entries.length === 0) {
@@ -1212,6 +1426,7 @@ const firebaseConfig = {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('SIN PARTICIPANTES', cx, cy);
+        ctx.restore();
         return;
       }
 
@@ -1354,6 +1569,8 @@ const firebaseConfig = {
       ctx.arc(cx - 15, cy - 15, 10, 0, 2 * Math.PI);
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
       ctx.fill();
+
+      ctx.restore();
     }
 
     function adjustColor(hex, amt) {
@@ -1378,7 +1595,7 @@ const firebaseConfig = {
 
     function spinWheel(options = {}) {
       const remotePayload = options.payload || null;
-      if (!overlayEnabled) return;
+      if (!overlayEnabled && isOverlayMode) return;
 
       // Hallazgo 5: Si viene un payload remoto y estamos girando, cancelamos forzosamente la
       // animación anterior para que el overlay de OBS se sincronice inmediatamente.
@@ -1840,6 +2057,11 @@ const firebaseConfig = {
         if (!event.data) return;
         if (event.data.action === 'triggerTestRoulette') {
             spinWheel();
+        } else if (event.data.action === 'resetRoulette') {
+            excludedParticipants.clear();
+            extraDuplicateCounts.clear();
+            updateParticipants();
+            resetWinner();
         } else if (event.data.action === 'updateConfig') {
             const data = event.data.payload || {};
             const root = document.documentElement;
@@ -1882,6 +2104,22 @@ const firebaseConfig = {
             if (typeof applyOverlayEnabled === 'function') {
                 applyOverlayEnabled(event.data.enabled, { broadcast: false });
             }
+        } else if (event.data.action === 'setWheelPosition') {
+            const data = event.data || {};
+            if (Number.isFinite(data.yPercent)) {
+                wheelState.yPercent = Math.max(-100, Math.min(100, data.yPercent));
+            }
+            if (Number.isFinite(data.xPercent)) {
+                wheelState.xPercent = Math.max(-100, Math.min(100, data.xPercent));
+            }
+            if (Number.isFinite(data.size)) {
+                wheelState.size = Math.max(getMinWheelSize(), Math.min(getMaxWheelSize(), data.size));
+            }
+            applyWheelState();
+            saveWheelState();
+            notifyWheelStateToDashboard();
+        } else if (event.data.action === 'getWheelState') {
+            notifyWheelStateToDashboard();
         }
     });
 

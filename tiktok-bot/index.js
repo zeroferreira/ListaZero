@@ -326,10 +326,10 @@ let overlayAlertsConfig = {
     chatTtsPitch: 50,
     chatTtsVolume: 80,
     chatTtsType: 'any',
-    chatTtsCommand: '!tts',
+    chatTtsCommand: 'tts',
     chatTtsMessageTemplate: '{comment}',
     enableOverlayAudio: true,
-    route_audio_to: 'dashboard',
+    route_audio_to: 'obs',
     chatOverlayEnabled: true,
     chatOverlayTheme: 'cyber',
     chatOverlayFontSize: 14,
@@ -343,9 +343,10 @@ let overlayAlertsConfig = {
 };
 
 /**
- * Genera audio TTS nativo en macOS devolviendo una Data URI base64 (data:audio/mp4;base64,...)
- * Esto asegura que OBS Studio Browser Source y cualquier navegador pueda reproducir el audio
- * instantáneamente con <audio> sin depender de APIs caídas ni de SpeechSynthesis del navegador.
+ * Genera audio TTS nativo en macOS devolviendo una Data URI base64 (data:audio/mp4;base64,... o data:audio/wav;base64,...)
+ * Utiliza spawnSync sin shell para prevenir fallos de sintaxis con comillas, signos y emojis.
+ * Especifica compresión estándar AAC en contenedor m4af (o fallback WAVE) para máxima compatibilidad
+ * con Chromium y OBS Studio Browser Source sin depender de APIs externas ni SpeechSynthesis.
  */
 function generateTtsAudio(text, voiceName, speedVal, lang) {
     if (!text || !text.trim()) return null;
@@ -353,7 +354,8 @@ function generateTtsAudio(text, voiceName, speedVal, lang) {
     if (process.platform === 'darwin') {
         try {
             const os = require('os');
-            const tmpFile = path.join(os.tmpdir(), `tts_${Date.now()}_${Math.random().toString(36).substring(7)}.m4a`);
+            const { spawnSync } = require('child_process');
+            const tmpM4aFile = path.join(os.tmpdir(), `tts_${Date.now()}_${Math.random().toString(36).substring(7)}.m4a`);
             
             let selectedVoice = voiceName;
             const targetLang = String(lang || overlayAlertsConfig.chatTtsLanguage || 'es-MX').toLowerCase();
@@ -395,18 +397,65 @@ function generateTtsAudio(text, voiceName, speedVal, lang) {
             const speed = (speedVal !== null && speedVal !== undefined) ? Number(speedVal) : (Number(overlayAlertsConfig.chatTtsSpeed) || 50);
             const rate = Math.max(90, Math.min(350, Math.round(90 + (speed / 50) * 85)));
             
-            // Limpiar texto para evitar errores de sintaxis en shell
-            const cleanText = text.replace(/[\"\\\`\$]/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500);
+            const cleanText = text.replace(/\s+/g, ' ').trim().substring(0, 500);
             if (!cleanText) return null;
             
-            const { execSync } = require('child_process');
-            execSync(`say -v "${selectedVoice}" -r ${rate} -o "${tmpFile}" "${cleanText}"`, { timeout: 8000 });
+            // 1. Intentar compresión estándar AAC en m4a con la voz seleccionada
+            let sayRes = spawnSync('say', [
+                '-v', selectedVoice,
+                '-r', String(rate),
+                '--file-format=m4af',
+                '--data-format=aac',
+                '-o', tmpM4aFile,
+                cleanText
+            ], { timeout: 8000 });
+
+            // Si falló con la voz específica (no instalada en macOS), reintentar con Paulina o voz default
+            if ((sayRes.status !== 0 || !fs.existsSync(tmpM4aFile) || fs.statSync(tmpM4aFile).size === 0) && selectedVoice !== 'Paulina') {
+                sayRes = spawnSync('say', [
+                    '-v', 'Paulina',
+                    '-r', String(rate),
+                    '--file-format=m4af',
+                    '--data-format=aac',
+                    '-o', tmpM4aFile,
+                    cleanText
+                ], { timeout: 8000 });
+            }
+
+            // Si aún no existe o falló, reintentar sin flag de voz (voz default del sistema en AAC)
+            if (sayRes.status !== 0 || !fs.existsSync(tmpM4aFile) || fs.statSync(tmpM4aFile).size === 0) {
+                sayRes = spawnSync('say', [
+                    '-r', String(rate),
+                    '--file-format=m4af',
+                    '--data-format=aac',
+                    '-o', tmpM4aFile,
+                    cleanText
+                ], { timeout: 8000 });
+            }
             
-            if (fs.existsSync(tmpFile)) {
-                const buf = fs.readFileSync(tmpFile);
-                try { fs.unlinkSync(tmpFile); } catch (_) {}
+            if (fs.existsSync(tmpM4aFile)) {
+                const buf = fs.readFileSync(tmpM4aFile);
+                try { fs.unlinkSync(tmpM4aFile); } catch (_) {}
                 if (buf.length > 0) {
                     return `data:audio/mp4;base64,${buf.toString('base64')}`;
+                }
+            }
+
+            // Fallback secundario ultra-compatible: WAVE PCM
+            const tmpWavFile = path.join(os.tmpdir(), `tts_${Date.now()}_${Math.random().toString(36).substring(7)}.wav`);
+            const wavRes = spawnSync('say', [
+                '-r', String(rate),
+                '--file-format=WAVE',
+                '--data-format=LEI16',
+                '-o', tmpWavFile,
+                cleanText
+            ], { timeout: 8000 });
+
+            if (fs.existsSync(tmpWavFile)) {
+                const wavBuf = fs.readFileSync(tmpWavFile);
+                try { fs.unlinkSync(tmpWavFile); } catch (_) {}
+                if (wavBuf.length > 0) {
+                    return `data:audio/wav;base64,${wavBuf.toString('base64')}`;
                 }
             }
         } catch (err) {
@@ -2211,6 +2260,7 @@ function startBot() {
     app.post('/api/overlays/config', async (req, res) => {
         try {
             const newConfig = req.body || {};
+            overlayAlertsConfig = { ...overlayAlertsConfig, ...newConfig };
             await setDoc(docFn(db, 'systemConfig', 'overlayAlertsConfig'), newConfig, { merge: true });
 
             // Si el toggle de la ruleta cambió, sincronizar también en system/status
@@ -2239,13 +2289,20 @@ function startBot() {
     });
 
     app.post('/api/client-log', (req, res) => {
-        const { level, message, source } = req.body;
+        const { level, message, source } = req.body || {};
         console.log(`\x1b[33m[CLIENT-LOG][${source || 'unknown'}][${level || 'log'}]\x1b[0m`, message);
         try {
-            const fs = require('fs');
-            const path = require('path');
+            const logFile = path.join(__dirname, 'client_logs.txt');
             const logLine = `[${new Date().toISOString()}][${source || 'unknown'}][${level || 'log'}] ${message}\n`;
-            fs.appendFileSync(path.join(__dirname, 'client_logs.txt'), logLine, 'utf8');
+            
+            // Rotación automática si supera 5 MB para proteger disco y rendimiento
+            fs.stat(logFile, (err, stats) => {
+                if (!err && stats && stats.size > 5 * 1024 * 1024) {
+                    const oldLog = path.join(__dirname, 'client_logs.old.txt');
+                    try { fs.renameSync(logFile, oldLog); } catch (_) {}
+                }
+                fs.appendFile(logFile, logLine, 'utf8', () => {});
+            });
         } catch (e) {
             console.error("Error writing client log to file:", e);
         }
@@ -2378,7 +2435,7 @@ function startBot() {
             if (showProgressBar !== undefined) timerState.showProgressBar = Boolean(showProgressBar);
             if (showMeta !== undefined)      timerState.showMeta       = Boolean(showMeta);
             if (showLabel !== undefined)     timerState.showLabel      = Boolean(showLabel);
-            await saveTimerToFirestore();
+            await saveTimerToFirestore(true);
             res.json({ success: true, timerState });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -2394,7 +2451,7 @@ function startBot() {
             timerState.endsAt  = Date.now() + dur * 1000;
             timerState.pausedAt         = null;
             timerState.remainingOnPause = 0;
-            await saveTimerToFirestore();
+            await saveTimerToFirestore(true);
             res.json({ success: true, timerState, endsAt: timerState.endsAt });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -2411,7 +2468,7 @@ function startBot() {
             timerState.state   = 'paused';
             timerState.pausedAt = Date.now();
             timerState.endsAt  = null;
-            await saveTimerToFirestore();
+            await saveTimerToFirestore(true);
             res.json({ success: true, timerState });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -2428,7 +2485,7 @@ function startBot() {
             timerState.endsAt = Date.now() + (timerState.remainingOnPause || 0);
             timerState.pausedAt         = null;
             timerState.remainingOnPause = 0;
-            await saveTimerToFirestore();
+            await saveTimerToFirestore(true);
             res.json({ success: true, timerState });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -2442,7 +2499,7 @@ function startBot() {
             timerState.endsAt           = null;
             timerState.pausedAt         = null;
             timerState.remainingOnPause = 0;
-            await saveTimerToFirestore();
+            await saveTimerToFirestore(true);
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -2461,7 +2518,7 @@ function startBot() {
             } else {
                 return res.status(400).json({ error: 'El timer no está activo' });
             }
-            await saveTimerToFirestore();
+            await saveTimerToFirestore(true);
             res.json({ success: true, timerState });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -2946,15 +3003,157 @@ function startBot() {
       console.log("❌ Desconectado de Cider");
     });
 
-    ciderSocket.on("API:Playback", (event) => {
+    ciderSocket.on("API:Playback", async (event) => {
       try {
         const { data, type } = event || {};
-        if (type === "playbackStatus.nowPlayingItemDidChange" || type === "playbackStatus.nowPlayingItemDidChangeV2") {
-            const name = data?.name || data?.title || 'Sin título';
-            const artist = data?.artistName || data?.artist || 'Desconocido';
-            console.log(`🎵 [Cider Link] Cambió la canción actual a: "${name}" - "${artist}"`);
+        const changeEvents = [
+          "playbackStatus.nowPlayingItemDidChange",
+          "playbackStatus.nowPlayingItemDidChangeV2"
+        ];
+        if (!changeEvents.includes(type)) return;
+
+        const name = data?.name || data?.title || '';
+        const artist = data?.artistName || data?.artist || '';
+        const playingAmId = String((data?.playParams?.id) || data?.appleMusicId || data?.id || '').trim();
+
+        if (!name || !artist) return;
+        console.log(`🎵 [Cider Backend] Reproduciendo: "${name}" - "${artist}" [AM ID: ${playingAmId}]`);
+
+        if (!db) return;
+
+        // ── Funciones de matching robustas (sin conectores, sin paréntesis) ──
+        const _cleanText = (str) => {
+          if (!str) return "";
+          return String(str)
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+            .replace(/\b(feat|ft|featuring|with|con|y|and|x|vs|vol|volume|pt|parte)\b\.?/gi, " ")
+            .replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+        };
+        const _tokens = (str) => _cleanText(str).split(" ").filter(t => t.length > 0);
+        const _pure = (str) => _cleanText(String(str).replace(/\([\s\S]*?\)/g, " ").replace(/\[[\s\S]*?\]/g, " "));
+
+        const _artistMatch = (a, b) => {
+          const ca = _cleanText(a).replace(/\s+/g, "");
+          const cb = _cleanText(b).replace(/\s+/g, "");
+          if (!ca || !cb) return false;
+          if (ca === cb || ca.includes(cb) || cb.includes(ca)) return true;
+          const ta = _tokens(a), tb = _tokens(b);
+          if (!ta.length || !tb.length) return false;
+          const [sh, lo] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+          if (sh.every(t => lo.includes(t))) return true;
+          if (sh.filter(t => t.length >= 4 && lo.includes(t)).length >= 1) return true;
+          return false;
+        };
+        const _songMatch = (a, b) => {
+          const ca = _cleanText(a).replace(/\s+/g, "");
+          const cb = _cleanText(b).replace(/\s+/g, "");
+          if (!ca || !cb) return false;
+          if (ca === cb || ca.includes(cb) || cb.includes(ca)) return true;
+          const pa = _pure(a).replace(/\s+/g, ""), pb = _pure(b).replace(/\s+/g, "");
+          if (pa && pb && (pa === pb || pa.includes(pb) || pb.includes(pa))) return true;
+          const ta = _tokens(a), tb = _tokens(b);
+          if (!ta.length || !tb.length) return false;
+          const [sh, lo] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+          const sig = sh.filter(t => t.length >= 2 || !isNaN(t));
+          if (!sig.length) return false;
+          const hits = sig.filter(t => lo.includes(t));
+          if (hits.length === sig.length) return true;
+          if (sig.length >= 3 && (hits.length / sig.length) >= 0.7) return true;
+          return false;
+        };
+        const _isMatch = (cider, req) => {
+          if (playingAmId && String(req.appleMusicId || '').trim() === playingAmId) return true;
+          if (_artistMatch(cider.artist, req.artista) && _songMatch(cider.song, req.cancion)) return true;
+          if (_artistMatch(cider.artist, req.cancion) && _songMatch(cider.song, req.artista)) return true;
+          const combined = `${cider.artist} ${cider.song}`;
+          if (_songMatch(combined, req.cancion) && _artistMatch(combined, req.artista)) return true;
+          return false;
+        };
+
+        // ── Obtener fecha actual en zona horaria de la transmisión ──
+        const todayKey = (() => {
+          const d = new Date();
+          try {
+            const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit' });
+            const parts = {};
+            fmt.formatToParts(d).forEach(p => { parts[p.type] = p.value; });
+            return `${parts.year}-${parts.month}-${parts.day}`;
+          } catch (_) {
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          }
+        })();
+
+        // ── Obtener solicitudes de hoy (ya marcadas o no) ──
+        const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+        const solicSnap = await getDocsFn(queryFn(collectionFn(db, 'solicitudes'), whereFn('ts', '>=', startOfToday)));
+
+        // ── Obtener IDs ya reproducidos hoy ──
+        const playedDocSnap = await getDocFn(docFn(db, 'playedSongs', todayKey));
+        const alreadyPlayedIds = new Set(playedDocSnap.exists() ? (playedDocSnap.data()?.songs || []) : []);
+
+        // ── Buscar coincidencia ──
+        let matchedDoc = null;
+        let matchedData = null;
+        for (const docSnap of solicSnap.docs) {
+          const reqData = docSnap.data();
+          const docId = docSnap.id;
+          if (alreadyPlayedIds.has(docId)) continue; // ya fue marcado
+          if (_isMatch({ artist, song: name }, reqData)) {
+            matchedDoc = docId;
+            matchedData = reqData;
+            break;
+          }
         }
-      } catch (_) {}
+
+        if (!matchedDoc || !matchedData) {
+          console.log(`🔍 [Cider Backend] Sin coincidencia para: "${name}" - "${artist}"`);
+          return;
+        }
+
+        console.log(`✅ [Cider Backend] Coincidencia: "${matchedData.cancion}" - "${matchedData.artista}" (doc: ${matchedDoc})`);
+
+        // ── Construir todos los IDs a registrar ──
+        const idsToMark = new Set([matchedDoc]);
+        if (matchedData.id) idsToMark.add(String(matchedData.id));
+        // Legacy sanitizado: usuario-cancion-artista-hora
+        const u = String(matchedData.usuario || '').trim();
+        const c = String(matchedData.cancion || '').trim();
+        const a = String(matchedData.artista || '').trim();
+        const h = String(matchedData.hora || '').trim();
+        if (u && c && a) {
+          const legacyId = `${u}-${c}-${a}-${h}`.replace(/[^a-zA-Z0-9-]/g, '');
+          if (legacyId) idsToMark.add(legacyId);
+        }
+
+        const idsArr = Array.from(idsToMark);
+
+        // ── Marcar en playedSongs ──
+        await setDocFn(docFn(db, 'playedSongs', todayKey), {
+          songs: arrayUnion(...idsArr),
+          lastUpdated: serverTimestampFn()
+        }, { merge: true });
+
+        // ── Otorgar puntos al solicitante ──
+        if (u) {
+          const uKey = u.replace(/^@/, '').toLowerCase();
+          const totalsRef = docFn(db, 'playedSongs', 'userTotals');
+          const totalsPayload = { lastUpdated: serverTimestampFn() };
+          totalsPayload[`totals.${uKey}`] = increment(1);
+          totalsPayload[`counts.${todayKey}.${uKey}`] = increment(1);
+          await setDocFn(totalsRef, totalsPayload, { merge: true });
+
+          const statsRef = docFn(db, 'userStats', uKey);
+          await setDocFn(statsRef, {
+            totalPoints: increment(25),
+            lastUpdated: serverTimestampFn()
+          }, { merge: true });
+
+          console.log(`💰 [Cider Backend] +25 pts para @${uKey} por "${matchedData.cancion}"`);
+        }
+
+      } catch (err) {
+        console.error("❌ [Cider Backend] Error procesando API:Playback:", err.message || err);
+      }
     });
 
     // Inicializar conexión TikTok
@@ -3549,16 +3748,20 @@ function setupListeners() {
         updateLiveStatus(false); // Actualizar estado a OFFLINE
         if (!manualDisconnect) {
             console.log('🔄 Volviendo a buscar Live...');
-            setTimeout(connectToLive, 10000); 
+            if (retryTimeoutId) clearTimeout(retryTimeoutId);
+            retryTimeoutId = setTimeout(connectToLive, 10000); 
         } else {
             console.log('⏹️ Desconexión manual activa. No se reintentará conexión.');
         }
     });
     
-    // Ocultado intencionalmente para no ensuciar la consola
-    // tiktokLiveConnection.on('error', (err) => {
-    //     console.error('⚠️ Error de conexión TikTok:', err);
-    // });
+    // Capturar errores del emitter para evitar que Node.js termine el proceso por 'error' sin listener
+    tiktokLiveConnection.on('error', (err) => {
+        const msg = err && err.message ? err.message : String(err || '');
+        if (msg) {
+            console.warn('⚠️ [TikTok Live Warn]:', msg);
+        }
+    });
  
     tiktokLiveConnection.on('streamEnd', async () => {
         console.log('🏁 El stream ha terminado.');
@@ -3843,15 +4046,35 @@ function setupListeners() {
                 let commentQualifies = false;
                 let cleanedMsg = msg;
                 const filterType = overlayAlertsConfig.chatTtsType || 'any'; // 'any', 'dot', 'slash', 'command'
-                const ttsCommand = String(overlayAlertsConfig.chatTtsCommand || '!tts').trim().toLowerCase();
+                const ttsCommand = String(overlayAlertsConfig.chatTtsCommand || 'tts').trim().toLowerCase();
+                const ttsCmdClean = ttsCommand.replace(/^[!/.]/, '');
 
-                // 1. Si el mensaje empieza con el comando explícito de TTS (ej: !tts Hola), SIEMPRE califica
-                if (ttsCommand && lowerMsg.startsWith(ttsCommand)) {
+                // 1. Si el mensaje empieza con el comando explícito de TTS (ej: tts hola, !tts hola, .tts hola, /tts hola)
+                const commandPrefixes = [
+                    `!${ttsCmdClean}`,
+                    `/${ttsCmdClean}`,
+                    `.${ttsCmdClean}`,
+                    ttsCmdClean
+                ];
+
+                let matchedCmd = null;
+                for (const prefix of commandPrefixes) {
+                    if (lowerMsg === prefix) {
+                        matchedCmd = prefix;
+                        break;
+                    }
+                    if (lowerMsg.startsWith(prefix + ' ')) {
+                        matchedCmd = prefix;
+                        break;
+                    }
+                }
+
+                if (matchedCmd) {
                     commentQualifies = true;
-                    cleanedMsg = msg.substring(ttsCommand.length).trim();
+                    cleanedMsg = msg.substring(matchedCmd.length).trim();
                 } else if (filterType === 'any') {
                     // Modo "Cualquier mensaje": califica siempre que no sea otro comando de bot (ej: !sr, !puntos, etc.)
-                    if (!msg.startsWith('!')) {
+                    if (!msg.startsWith('!') && !msg.startsWith('/')) {
                         commentQualifies = true;
                         cleanedMsg = msg.trim();
                     }
@@ -3862,7 +4085,6 @@ function setupListeners() {
                     commentQualifies = true;
                     cleanedMsg = msg.substring(1).trim();
                 } else if (filterType === 'command') {
-                    // Si era modo command y no empezó con ttsCommand, no califica
                     commentQualifies = false;
                 }
 
@@ -4258,7 +4480,8 @@ function setupListeners() {
         // ── DEDUPLICACIÓN INTELIGENTE PARA RACHAS (STREAKS) ──
         let lastCount = 0;
         const newCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
-        const msgId = data.msgId ? String(data.msgId) : '';
+        const rawMsgId = data.msgId || data.id || data.groupId || (data.gift && data.gift.msg_id) || `${data.uniqueId}_${data.giftId || (data.gift && data.gift.id) || 'gift'}_${data.groupId || ''}`;
+        const msgId = String(rawMsgId);
         if (msgId) {
             if (!global.processedGiftsMap) {
                 global.processedGiftsMap = new Map();
@@ -4319,7 +4542,15 @@ function setupListeners() {
             }
         } catch (_) {}
 
-        const isGiftFinal = (data.repeatEnd === undefined) ? true : (data.repeatEnd === true);
+        const isGiftType1 = Number(data.giftType || (data.gift && data.gift.gift_type) || (data.giftDetails && data.giftDetails.gift_type) || 1) === 1;
+        const isRepeatEnd = Boolean(
+            data.repeatEnd === true || 
+            data.repeatEnd === 1 || 
+            data.repeat_end === 1 || 
+            (data.giftDetails && data.giftDetails.repeat_end === 1) ||
+            (data.gift && data.gift.repeat_end === 1)
+        );
+        const isGiftFinal = !isGiftType1 || isRepeatEnd;
         const isQuiereme = (giftKey === 'heartme');
         
         // ── Otorgar insignia z0-Fan (se hace en el primer envío o en el evento final) ──
@@ -4371,9 +4602,20 @@ function setupListeners() {
         }
 
 
-        // Escribimos la notificación de regalo si es el evento final de la racha,
-        // o si es un Quiéreme en su primer envío de la racha (para asegurar la alerta instantánea en OBS).
-        if ((isGiftFinal || (isQuiereme && lastCount === 0)) && db) {
+        // Escribimos la notificación de regalo asegurando que se envíe EXACTAMENTE UNA VEZ por regalo/racha.
+        if (!global.alertedGiftsSet) {
+            global.alertedGiftsSet = new Set();
+        }
+        const alreadyAlerted = global.alertedGiftsSet.has(msgId);
+        const shouldTriggerNotification = !alreadyAlerted && (isGiftFinal || (isQuiereme && lastCount === 0));
+
+        if (shouldTriggerNotification && db) {
+            global.alertedGiftsSet.add(msgId);
+            if (global.alertedGiftsSet.size > 2000) {
+                const first = global.alertedGiftsSet.values().next().value;
+                global.alertedGiftsSet.delete(first);
+            }
+
             const actualCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
             const totalCoins = coins * actualCount;
             const minCoins = Number(overlayAlertsConfig.minCoinsAlert) || 1;
@@ -4603,6 +4845,20 @@ function setupListeners() {
         const uid = data.uniqueId;
         const profilePic = data.profilePictureUrl;
 
+        // Debounce: evitar procesar o alertar múltiples follows del mismo usuario en <15s
+        const now = Date.now();
+        const lastFollowTime = recentFollowsMap.get(uid) || 0;
+        if (now - lastFollowTime < 15000) {
+            console.log(`⏱️ Follow ignorado por debounce (<15s) para @${uid}`);
+            return;
+        }
+        recentFollowsMap.set(uid, now);
+        if (recentFollowsMap.size > 2000) {
+            for (const [k, time] of recentFollowsMap.entries()) {
+                if (now - time > 60000) recentFollowsMap.delete(k);
+            }
+        }
+
         // Actualizar foto de perfil y niveles
         if (profilePic) {
             const extra = {};
@@ -4751,6 +5007,7 @@ function isUserInLive(uid) {
 const sessionFollows = new Map(); // uid -> count
 const sessionShares  = new Map(); // uid -> count
 let sessionTotalCoins = 0;       // coins acumuladas
+const recentFollowsMap = new Map(); // uid -> timestamp ms (debounce de eventos de follow duplicados)
 
 // Sincronizar contadores de sesión a Firestore (globalStats/general) para que los overlays los lean
 let _syncCountersTimeout = null;
@@ -4910,38 +5167,52 @@ async function loadTimerFromFirestore() {
     }
 }
 
-async function saveTimerToFirestore() {
+let _saveTimerTimeout = null;
+async function saveTimerToFirestore(immediate = false) {
     if (!db) return;
-    try {
-        await setDoc(doc(db, 'systemConfig', 'timerConfig'), {
-            state:            timerState.state,
-            endsAt:           timerState.endsAt,
-            label:            timerState.label,
-            primaryColor:     timerState.primaryColor,
-            secondsPerGift:   timerState.secondsPerGift,
-            secondsPerCoin:   timerState.secondsPerCoin !== undefined ? timerState.secondsPerCoin : 0,
-            secondsPerFollow: timerState.secondsPerFollow !== undefined ? timerState.secondsPerFollow : 0,
-            secondsPerLike:   timerState.secondsPerLike !== undefined ? timerState.secondsPerLike : 0,
-            secondsPerSubscribe: timerState.secondsPerSubscribe !== undefined ? timerState.secondsPerSubscribe : 300,
-            secondsPerShare:  timerState.secondsPerShare !== undefined ? timerState.secondsPerShare : 0,
-            secondsPerChatMessage: timerState.secondsPerChatMessage !== undefined ? timerState.secondsPerChatMessage : 0,
-            multiplierEnabled: timerState.multiplierEnabled !== undefined ? timerState.multiplierEnabled : false,
-            multiplierValue:  timerState.multiplierValue !== undefined ? timerState.multiplierValue : 1.5,
-            actionOnExpiry:   timerState.actionOnExpiry || '-',
-            timerOpacity:     timerState.timerOpacity !== undefined ? timerState.timerOpacity : 0.85,
-            timerRadius:      timerState.timerRadius !== undefined ? timerState.timerRadius : 22,
-            timerFontSize:    timerState.timerFontSize !== undefined ? timerState.timerFontSize : 14,
-            timerTheme:       timerState.theme || timerState.timerTheme || 'neon',
-            timerWidth:       timerState.timerWidth !== undefined ? timerState.timerWidth : 300,
-            timerHeight:      timerState.timerHeight !== undefined ? timerState.timerHeight : 135,
-            progressHeight:   timerState.progressHeight !== undefined ? timerState.progressHeight : 3,
-            showProgressBar:  timerState.showProgressBar !== undefined ? timerState.showProgressBar : true,
-            showMeta:         timerState.showMeta !== undefined ? timerState.showMeta : true,
-            showLabel:        timerState.showLabel !== undefined ? timerState.showLabel : true,
-            updatedAt:        serverTimestamp()
-        }, { merge: true });
-    } catch (e) {
-        console.error('Error guardando timer en Firestore:', e);
+    if (_saveTimerTimeout) {
+        clearTimeout(_saveTimerTimeout);
+        _saveTimerTimeout = null;
+    }
+
+    const runSave = async () => {
+        try {
+            await setDoc(doc(db, 'systemConfig', 'timerConfig'), {
+                state:            timerState.state,
+                endsAt:           timerState.endsAt,
+                label:            timerState.label,
+                primaryColor:     timerState.primaryColor,
+                secondsPerGift:   timerState.secondsPerGift,
+                secondsPerCoin:   timerState.secondsPerCoin !== undefined ? timerState.secondsPerCoin : 0,
+                secondsPerFollow: timerState.secondsPerFollow !== undefined ? timerState.secondsPerFollow : 0,
+                secondsPerLike:   timerState.secondsPerLike !== undefined ? timerState.secondsPerLike : 0,
+                secondsPerSubscribe: timerState.secondsPerSubscribe !== undefined ? timerState.secondsPerSubscribe : 300,
+                secondsPerShare:  timerState.secondsPerShare !== undefined ? timerState.secondsPerShare : 0,
+                secondsPerChatMessage: timerState.secondsPerChatMessage !== undefined ? timerState.secondsPerChatMessage : 0,
+                multiplierEnabled: timerState.multiplierEnabled !== undefined ? timerState.multiplierEnabled : false,
+                multiplierValue:  timerState.multiplierValue !== undefined ? timerState.multiplierValue : 1.5,
+                actionOnExpiry:   timerState.actionOnExpiry || '-',
+                timerOpacity:     timerState.timerOpacity !== undefined ? timerState.timerOpacity : 0.85,
+                timerRadius:      timerState.timerRadius !== undefined ? timerState.timerRadius : 22,
+                timerFontSize:    timerState.timerFontSize !== undefined ? timerState.timerFontSize : 14,
+                timerTheme:       timerState.theme || timerState.timerTheme || 'neon',
+                timerWidth:       timerState.timerWidth !== undefined ? timerState.timerWidth : 300,
+                timerHeight:      timerState.timerHeight !== undefined ? timerState.timerHeight : 135,
+                progressHeight:   timerState.progressHeight !== undefined ? timerState.progressHeight : 3,
+                showProgressBar:  timerState.showProgressBar !== undefined ? timerState.showProgressBar : true,
+                showMeta:         timerState.showMeta !== undefined ? timerState.showMeta : true,
+                showLabel:        timerState.showLabel !== undefined ? timerState.showLabel : true,
+                updatedAt:        serverTimestamp()
+            }, { merge: true });
+        } catch (e) {
+            console.error('Error guardando timer en Firestore:', e);
+        }
+    };
+
+    if (immediate) {
+        return runSave();
+    } else {
+        _saveTimerTimeout = setTimeout(runSave, 1500);
     }
 }
 
@@ -5797,7 +6068,11 @@ function getLocalDateKey() {
     }
 }
 
-// Mantener el proceso vivo
+// Mantener el proceso vivo ante excepciones y promesas no manejadas
 process.on('uncaughtException', (err) => {
-    console.error('Error no capturado:', err);
+    console.error('⚠️ [FATAL] Excepción no capturada (uncaughtException):', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.warn('⚠️ [WARN] Promesa no manejada capturada (unhandledRejection):', reason);
 });

@@ -391,6 +391,7 @@
         let isCardPlaying = false;
         let playTimeout = null;
         let playExitTimeout = null;
+        let watchdogTimer = null;
 
         // ─── Cooldown Inteligente de Audio ────────────────────────────────────────
         // Registra el timestamp (ms) de la última vez que sonó el audio por usuario.
@@ -413,10 +414,13 @@
         /**
          * Determina si el audio puede reproducirse para un usuario dado.
          * Retorna true si nunca ha sonado, cooldown desactivado, o ha pasado el tiempo configurado.
+         * Las pruebas manuales (isTest) siempre permiten el audio para facilitar testing en el dashboard.
          * @param {string} uid - ID único del usuario (uniqueId)
+         * @param {boolean} [isTest=false] - Indica si es una prueba manual
          * @returns {boolean}
          */
-        function canPlayAudioForUser(uid) {
+        function canPlayAudioForUser(uid, isTest = false) {
+            if (isTest) return true; // Pruebas directas desde el dashboard siempre suenan
             if (config.welcomeOverlayCooldownEnabled === false) return true; // siempre suena
             const key = String(uid || '').toLowerCase().trim();
             if (!key) return true;
@@ -536,16 +540,24 @@
 
                 // 2. Escuchar la colección de notificaciones del Bot
                 let isInitialLoad = true;
+                const processedDocIds = new Set();
                 unsubNotifications = db.collection('notifications')
                     .where('timestamp', '>', startedAt)
                     .onSnapshot(snap => {
                         if (isInitialLoad) {
                             isInitialLoad = false;
+                            snap.docs.forEach(d => processedDocIds.add(d.id));
                             console.log("[Firebase] Carga inicial de bienvenidas ignorada para evitar reproducir alertas viejas.");
                             return;
                         }
                         snap.docChanges().forEach(change => {
                             if (change.type === 'added') {
+                                if (processedDocIds.has(change.doc.id)) return;
+                                processedDocIds.add(change.doc.id);
+                                if (processedDocIds.size > 500) {
+                                    const first = processedDocIds.values().next().value;
+                                    processedDocIds.delete(first);
+                                }
                                 const data = change.doc.data();
                                 // Capturar eventos de tipo join (entrada)
                                 if (data.type === 'join' && config.welcomeOverlayEnabled) {
@@ -663,6 +675,8 @@
 
         // Agregar bienvenida a la cola (máximo 15 para evitar acumulación excesiva)
         function addWelcome(data) {
+            if (!data) return;
+            if (config.welcomeOverlayEnabled === false && !data.isTest) return;
             welcomeQueue.push(data);
             if (welcomeQueue.length > 15) {
                 welcomeQueue.splice(0, welcomeQueue.length - 15);
@@ -675,166 +689,199 @@
             if (isCardPlaying || welcomeQueue.length === 0) return;
             isCardPlaying = true;
 
-            const next = welcomeQueue.shift();
-
-            // Rellenar datos en la tarjeta
-            userAvatar.src = next.profilePic || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%232a1015'/%3E%3C/svg%3E";
-            userDisplay.textContent = next.user || next.uniqueId;
-            
-            // 1. Determinar el rol prioritario del usuario
-            const userRoles = next.roles || [];
-            let resolvedRole = 'default';
-            
-            // Prioridad: streamer > moderator > subscriber > vip > donador > follower > default
-            if (userRoles.includes('streamer')) resolvedRole = 'streamer';
-            else if (userRoles.includes('moderator')) resolvedRole = 'moderator';
-            else if (userRoles.includes('subscriber')) resolvedRole = 'subscriber';
-            else if (userRoles.includes('vip')) resolvedRole = 'vip';
-            else if (userRoles.includes('donador')) resolvedRole = 'donador';
-            else if (userRoles.includes('follower')) resolvedRole = 'follower';
-            
-            // 2. Cargar los textos e insignias según el rol
-            const roleLabels = {
-                streamer: '👑 Creador',
-                moderator: '🛡️ Moderador',
-                subscriber: '⚡ Suscriptor',
-                vip: '⭐ VIP',
-                donador: '💎 Donador',
-                follower: '✨ Seguidor',
-                default: '👋 Bienvenido'
-            };
-            
-            roleBadge.textContent = roleLabels[resolvedRole];
-            roleBadge.className = `role-badge role-${resolvedRole}`;
-            
-            // 3. Obtener la plantilla de saludo para este rol
-            let welcomeMsg = '';
-            if (config.welcomeOverlayTemplates && config.welcomeOverlayTemplates[resolvedRole]) {
-                welcomeMsg = config.welcomeOverlayTemplates[resolvedRole];
-            } else {
-                // Fallbacks si no están definidas las plantillas por rol
-                const defaultTemplates = {
-                    streamer: '👑 ¡El creador {nickname} ha entrado! 👑',
-                    moderator: '🛡️ ¡El moderador {nickname} está en la sala! 👋',
-                    subscriber: '⚡ ¡El suscriptor {nickname} se unió! ❤️',
-                    vip: '⭐ ¡El VIP {nickname} acaba de llegar! 🌟',
-                    donador: '💎 ¡El donador {nickname} ha entrado! 💎',
-                    follower: '✨ ¡El seguidor {nickname} se unió! 👋',
-                    default: config.welcomeOverlayGreetingTemplate || '¡Acaba de entrar al Live! 👋'
-                };
-                welcomeMsg = defaultTemplates[resolvedRole];
-            }
-            
-            welcomeMsg = (welcomeMsg || '')
-                .replace(/{nickname}/g, next.user || next.uniqueId)
-                .replace(/{user}/g, next.uniqueId)
-                .replace(/{username}/g, next.uniqueId);
-            
-            msgText.textContent = welcomeMsg;
-            
-            // 4. Cambiar el color del brillo según el rol
-            let glowColor = '';
-            if (config.welcomeOverlayColors && config.welcomeOverlayColors[resolvedRole]) {
-                glowColor = config.welcomeOverlayColors[resolvedRole];
-            } else {
-                const defaultColors = {
-                    streamer: '#a855f7', // violet
-                    moderator: '#3b82f6', // blue
-                    subscriber: '#ec4899', // pink
-                    vip: '#eab308', // gold
-                    donador: '#06b6d4', // cyan
-                    follower: '#10b981', // emerald
-                    default: config.welcomeOverlayColor || '#a855f7'
-                };
-                glowColor = defaultColors[resolvedRole];
-            }
-            
-            // Aplicar color neón dinámicamente
-            if (avatarGlow) {
-                avatarGlow.style.background = `linear-gradient(135deg, ${glowColor}, #ec4899)`;
-                avatarGlow.style.boxShadow = `0 0 20px ${glowColor}cc`;
-                document.documentElement.style.setProperty('--welcome-glow-color', glowColor);
-                const rgb = hexToRgb(glowColor);
-                if (rgb) {
-                    document.documentElement.style.setProperty('--welcome-glow-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
-                }
-            }
-            
-            // 5. Determinar y reproducir el sonido para este usuario o rol
-            const lowerUid = String(next.uniqueId || '').toLowerCase().trim();
-            const lowerNick = String(next.user || '').toLowerCase().trim();
-            let soundKeyOrUrl = '';
-            
-            // Prioridad 1: Audio de usuario específico
-            if (config.welcomeOverlayUserSounds && (config.welcomeOverlayUserSounds[lowerUid] || config.welcomeOverlayUserSounds[lowerNick])) {
-                soundKeyOrUrl = config.welcomeOverlayUserSounds[lowerUid] || config.welcomeOverlayUserSounds[lowerNick];
-            } 
-            // Prioridad 2: Audio asignado al rol
-            else if (config.welcomeOverlaySounds && config.welcomeOverlaySounds[resolvedRole]) {
-                soundKeyOrUrl = config.welcomeOverlaySounds[resolvedRole];
-            } 
-            // Prioridad 3: Audio predeterminado general
-            else {
-                soundKeyOrUrl = config.welcomeOverlaySoundUrl || 'mixkit-2017';
-            }
-            
-            // Biblioteca de sonidos Mixkit predefinidos
-            const soundLibrary = {
-                'mixkit-2017': 'https://assets.mixkit.co/active_storage/sfx/2017/2017-84.wav', // campana elegante
-                'retro-arcade': 'https://assets.mixkit.co/active_storage/sfx/1435/1435-200.wav', // retro arcade enter
-                'sci-fi-reveal': 'https://assets.mixkit.co/active_storage/sfx/2568/2568-200.wav', // sci-fi zoom
-                'soft-bubble': 'https://assets.mixkit.co/active_storage/sfx/2869/2869-200.wav', // soft bubble
-                'none': ''
-            };
-            
-            const resolvedSoundUrl = soundLibrary[soundKeyOrUrl] || soundKeyOrUrl;
-            
-            // ─── Cooldown Inteligente de Audio ───────────────────────────────────
-            // Solo reproducir el audio si el usuario no ha sido saludado recientemente
-            // (o si ha estado ausente más de 9 minutos desde la última vez que sonó).
-            const audioAllowed = canPlayAudioForUser(next.uniqueId);
-
-            if (config.welcomeOverlaySoundEnabled && resolvedSoundUrl && resolvedSoundUrl !== 'none' && audioAllowed) {
-                audio.src = resolvedSoundUrl;
-                audio.volume = config.welcomeOverlaySoundVolume / 100;
-                audio.currentTime = 0;
-                audio.play()
-                    .then(() => {
-                        // Registrar que el audio acaba de sonar para este usuario
-                        markAudioPlayedForUser(next.uniqueId);
-                        console.log(`[Audio] ✅ Sonido reproducido para @${next.uniqueId}. Cooldown activo por ${audioCooldownMs / 60000} min.`);
-                    })
-                    .catch(e => console.log("[Audio] Blocked or error playing welcome sound:", e));
-            } else if (!audioAllowed) {
-                // Calcular tiempo restante del cooldown para log informativo
-                const last = lastAudioPlayedAt.get(String(next.uniqueId || '').toLowerCase().trim());
-                const remaining = last ? Math.ceil((audioCooldownMs - (Date.now() - last)) / 1000) : 0;
-                console.log(`[Audio] 🔇 Cooldown activo para @${next.uniqueId}. Faltan ~${remaining}s. Tarjeta visible sin audio.`);
-            }
-            // ─────────────────────────────────────────────────────────────────────
-
-            // Mostrar tarjeta (animación de entrada)
-            container.className = 'active';
-
-            // Tiempo de espera antes de ocultar
-            const durationMs = (config.welcomeOverlayDuration || 5) * 1000;
-            
-            if (playTimeout) clearTimeout(playTimeout);
-            if (playExitTimeout) clearTimeout(playExitTimeout);
-
-            playTimeout = setTimeout(() => {
-                // Iniciar animación de salida
-                container.className = 'exit';
-                
-                // Esperar a que acabe la animación de salida para liberar
-                playExitTimeout = setTimeout(() => {
-                    playExitTimeout = null;
-                    container.className = '';
+            try {
+                const next = welcomeQueue.shift();
+                if (!next) {
                     isCardPlaying = false;
-                    // Llamar recursivamente para el siguiente en cola
-                    processQueue();
-                }, 600); // Duración de la animación exit css
-            }, durationMs);
+                    return;
+                }
+
+                // Avatar fallback dinámico ante URLs caídas o rotas de TikTok CDN
+                const fallbackAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%232a1015'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23a855f7' font-size='40'%3E👤%3C/text%3E%3C/svg%3E";
+                userAvatar.onerror = function() {
+                    this.onerror = null;
+                    this.src = fallbackAvatar;
+                };
+                userAvatar.src = next.profilePic || fallbackAvatar;
+                userDisplay.textContent = next.user || next.uniqueId;
+                
+                // 1. Determinar el rol prioritario del usuario
+                const userRoles = next.roles || [];
+                let resolvedRole = 'default';
+                
+                // Prioridad: streamer > moderator > subscriber > vip > donador > follower > default
+                if (userRoles.includes('streamer')) resolvedRole = 'streamer';
+                else if (userRoles.includes('moderator')) resolvedRole = 'moderator';
+                else if (userRoles.includes('subscriber')) resolvedRole = 'subscriber';
+                else if (userRoles.includes('vip')) resolvedRole = 'vip';
+                else if (userRoles.includes('donador')) resolvedRole = 'donador';
+                else if (userRoles.includes('follower')) resolvedRole = 'follower';
+                
+                // 2. Cargar los textos e insignias según el rol
+                const roleLabels = {
+                    streamer: '👑 Creador',
+                    moderator: '🛡️ Moderador',
+                    subscriber: '⚡ Suscriptor',
+                    vip: '⭐ VIP',
+                    donador: '💎 Donador',
+                    follower: '✨ Seguidor',
+                    default: '👋 Bienvenido'
+                };
+                
+                roleBadge.textContent = roleLabels[resolvedRole];
+                roleBadge.className = `role-badge role-${resolvedRole}`;
+                
+                // 3. Obtener la plantilla de saludo para este rol
+                let welcomeMsg = '';
+                if (config.welcomeOverlayTemplates && config.welcomeOverlayTemplates[resolvedRole]) {
+                    welcomeMsg = config.welcomeOverlayTemplates[resolvedRole];
+                } else {
+                    // Fallbacks si no están definidas las plantillas por rol
+                    const defaultTemplates = {
+                        streamer: '👑 ¡El creador {nickname} ha entrado! 👑',
+                        moderator: '🛡️ ¡El moderador {nickname} está en la sala! 👋',
+                        subscriber: '⚡ ¡El suscriptor {nickname} se unió! ❤️',
+                        vip: '⭐ ¡El VIP {nickname} acaba de llegar! 🌟',
+                        donador: '💎 ¡El donador {nickname} ha entrado! 💎',
+                        follower: '✨ ¡El seguidor {nickname} se unió! 👋',
+                        default: config.welcomeOverlayGreetingTemplate || '¡Acaba de entrar al Live! 👋'
+                    };
+                    welcomeMsg = defaultTemplates[resolvedRole];
+                }
+                
+                welcomeMsg = (welcomeMsg || '')
+                    .replace(/{nickname}/g, next.user || next.uniqueId)
+                    .replace(/{user}/g, next.uniqueId)
+                    .replace(/{username}/g, next.uniqueId);
+                
+                msgText.textContent = welcomeMsg;
+                
+                // 4. Cambiar el color del brillo según el rol
+                let glowColor = '';
+                if (config.welcomeOverlayColors && config.welcomeOverlayColors[resolvedRole]) {
+                    glowColor = config.welcomeOverlayColors[resolvedRole];
+                } else {
+                    const defaultColors = {
+                        streamer: '#a855f7', // violet
+                        moderator: '#3b82f6', // blue
+                        subscriber: '#ec4899', // pink
+                        vip: '#eab308', // gold
+                        donador: '#06b6d4', // cyan
+                        follower: '#10b981', // emerald
+                        default: config.welcomeOverlayColor || '#a855f7'
+                    };
+                    glowColor = defaultColors[resolvedRole];
+                }
+                
+                // Aplicar color neón dinámicamente
+                if (avatarGlow) {
+                    avatarGlow.style.background = `linear-gradient(135deg, ${glowColor}, #ec4899)`;
+                    avatarGlow.style.boxShadow = `0 0 20px ${glowColor}cc`;
+                    document.documentElement.style.setProperty('--welcome-glow-color', glowColor);
+                    const rgb = hexToRgb(glowColor);
+                    if (rgb) {
+                        document.documentElement.style.setProperty('--welcome-glow-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+                    }
+                }
+                
+                // 5. Determinar y reproducir el sonido para este usuario o rol
+                const lowerUid = String(next.uniqueId || '').toLowerCase().trim();
+                const lowerNick = String(next.user || '').toLowerCase().trim();
+                let soundKeyOrUrl = '';
+                
+                // Prioridad 1: Audio de usuario específico
+                if (config.welcomeOverlayUserSounds && (config.welcomeOverlayUserSounds[lowerUid] || config.welcomeOverlayUserSounds[lowerNick])) {
+                    soundKeyOrUrl = config.welcomeOverlayUserSounds[lowerUid] || config.welcomeOverlayUserSounds[lowerNick];
+                } 
+                // Prioridad 2: Audio asignado al rol
+                else if (config.welcomeOverlaySounds && config.welcomeOverlaySounds[resolvedRole]) {
+                    soundKeyOrUrl = config.welcomeOverlaySounds[resolvedRole];
+                } 
+                // Prioridad 3: Audio predeterminado general
+                else {
+                    soundKeyOrUrl = config.welcomeOverlaySoundUrl || 'mixkit-2017';
+                }
+                
+                // Biblioteca de sonidos Mixkit predefinidos
+                const soundLibrary = {
+                    'mixkit-2017': 'https://assets.mixkit.co/active_storage/sfx/2017/2017-84.wav', // campana elegante
+                    'retro-arcade': 'https://assets.mixkit.co/active_storage/sfx/1435/1435-200.wav', // retro arcade enter
+                    'sci-fi-reveal': 'https://assets.mixkit.co/active_storage/sfx/2568/2568-200.wav', // sci-fi zoom
+                    'soft-bubble': 'https://assets.mixkit.co/active_storage/sfx/2869/2869-200.wav', // soft bubble
+                    'none': ''
+                };
+                
+                const resolvedSoundUrl = soundLibrary[soundKeyOrUrl] || soundKeyOrUrl;
+                
+                // ─── Cooldown Inteligente de Audio ───────────────────────────────────
+                // Solo reproducir el audio si el usuario no ha sido saludado recientemente
+                // (o si ha estado ausente más de 9 minutos desde la última vez que sonó).
+                const isTest = Boolean(next.isTest);
+                const audioAllowed = canPlayAudioForUser(next.uniqueId, isTest);
+
+                if (config.welcomeOverlaySoundEnabled && resolvedSoundUrl && resolvedSoundUrl !== 'none' && audioAllowed) {
+                    audio.src = resolvedSoundUrl;
+                    audio.volume = Math.max(0, Math.min(1, (Number(config.welcomeOverlaySoundVolume) || 40) / 100));
+                    audio.currentTime = 0;
+                    audio.play()
+                        .then(() => {
+                            if (!isTest) {
+                                // Registrar que el audio acaba de sonar para este usuario
+                                markAudioPlayedForUser(next.uniqueId);
+                            }
+                            const cooldownMin = getAudioCooldownMs() / 60000;
+                            console.log(`[Audio] ✅ Sonido reproducido para @${next.uniqueId}.${!isTest ? ` Cooldown activo por ${cooldownMin} min.` : ' (Modo Test)'}`);
+                        })
+                        .catch(e => console.log("[Audio] Blocked or error playing welcome sound:", e));
+                } else if (!audioAllowed) {
+                    // Calcular tiempo restante del cooldown para log informativo
+                    const last = lastAudioPlayedAt.get(String(next.uniqueId || '').toLowerCase().trim());
+                    const remaining = last ? Math.ceil((getAudioCooldownMs() - (Date.now() - last)) / 1000) : 0;
+                    console.log(`[Audio] 🔇 Cooldown activo para @${next.uniqueId}. Faltan ~${remaining}s. Tarjeta visible sin audio.`);
+                }
+                // ─────────────────────────────────────────────────────────────────────
+
+                // Mostrar tarjeta (animación de entrada)
+                container.className = 'active';
+
+                // Tiempo de espera antes de ocultar
+                const durationMs = Math.max(2000, (Number(config.welcomeOverlayDuration) || 5) * 1000);
+                
+                // Watchdog de seguridad: desbloquea la cola si algo falla o se congela inesperadamente
+                if (watchdogTimer) clearTimeout(watchdogTimer);
+                watchdogTimer = setTimeout(() => {
+                    if (isCardPlaying) {
+                        console.warn('[Welcome Watchdog] Cola desbloqueada automáticamente por timeout de seguridad');
+                        container.className = '';
+                        isCardPlaying = false;
+                        processQueue();
+                    }
+                }, Math.max(10000, durationMs + 4000));
+
+                if (playTimeout) clearTimeout(playTimeout);
+                if (playExitTimeout) clearTimeout(playExitTimeout);
+
+                playTimeout = setTimeout(() => {
+                    // Iniciar animación de salida
+                    container.className = 'exit';
+                    
+                    // Esperar a que acabe la animación de salida para liberar
+                    playExitTimeout = setTimeout(() => {
+                        playExitTimeout = null;
+                        if (watchdogTimer) clearTimeout(watchdogTimer);
+                        container.className = '';
+                        isCardPlaying = false;
+                        // Llamar recursivamente para el siguiente en cola
+                        processQueue();
+                    }, 600); // Duración de la animación exit css
+                }, durationMs);
+            } catch (err) {
+                console.error("[Welcome Overlay] Error procesando tarjeta de bienvenida:", err);
+                if (watchdogTimer) clearTimeout(watchdogTimer);
+                container.className = '';
+                isCardPlaying = false;
+                setTimeout(processQueue, 500);
+            }
         }
 
         // Soporte para pruebas instantáneas y actualización de config desde el dashboard
@@ -875,7 +922,7 @@
                 applyStyles();
             } else if (event.data.action === 'triggerTestAlert' && event.data.payload && event.data.payload.type === 'join') {
                 console.log("🧪 Test Join recibido por postMessage:", event.data.payload);
-                addWelcome(event.data.payload);
+                addWelcome({ ...event.data.payload, isTest: true });
             }
         });
     </script>

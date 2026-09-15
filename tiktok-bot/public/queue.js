@@ -1237,7 +1237,7 @@
       
       // PRIORIDAD 1: Usar el ID real de Firestore si existe
       const realId = String(req.docId || req.id || req.songId || req.requestId || '').trim();
-      if (realId) return sanitizeSongId(realId);
+      if (realId) return realId;
 
       // FALLBACK: Recrear el formato HH:mm:ss desde el timestamp
       let d;
@@ -2507,6 +2507,122 @@
       } catch (_) {}
     }
 
+    // Funciones de normalización y matching robusto para Cider
+    const cleanMatchText = (str) => {
+      if (!str) return "";
+      return String(str)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // Sin acentos
+        .toLowerCase()
+        .replace(/\b(feat|ft|featuring|with|con|y|and|x|vs|vol|volume|pt|parte)\b\.?/gi, " ")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    };
+
+    const getMatchTokens = (str) => {
+      return cleanMatchText(str).split(" ").filter(t => t.length > 0);
+    };
+
+    const stripMatchParentheses = (str) => {
+      if (!str) return "";
+      return String(str)
+        .replace(/\([\s\S]*?\)/g, " ")
+        .replace(/\[[\s\S]*?\]/g, " ")
+        .trim();
+    };
+
+    const matchArtist = (artistA, artistB) => {
+      const cleanA = cleanMatchText(artistA);
+      const cleanB = cleanMatchText(artistB);
+      if (!cleanA || !cleanB) return false;
+
+      // 1. Compacto idéntico o substring directo
+      const compA = cleanA.replace(/\s+/g, "");
+      const compB = cleanB.replace(/\s+/g, "");
+      if (compA === compB || compA.includes(compB) || compB.includes(compA)) {
+        return true;
+      }
+
+      // 2. Coincidencia por tokens (ej: "Bizarrap & Quevedo" vs "Bizarrap")
+      const tokensA = getMatchTokens(artistA);
+      const tokensB = getMatchTokens(artistB);
+      if (!tokensA.length || !tokensB.length) return false;
+
+      const [shorter, longer] = tokensA.length <= tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA];
+      const allShorterInLonger = shorter.every(t => longer.includes(t));
+      if (allShorterInLonger) return true;
+
+      const significantMatches = shorter.filter(t => t.length >= 4 && longer.includes(t));
+      if (significantMatches.length >= 1) return true;
+
+      return false;
+    };
+
+    const matchSong = (songA, songB) => {
+      const cleanA = cleanMatchText(songA);
+      const cleanB = cleanMatchText(songB);
+      if (!cleanA || !cleanB) return false;
+
+      // 1. Compacto idéntico o substring directo
+      const compA = cleanA.replace(/\s+/g, "");
+      const compB = cleanB.replace(/\s+/g, "");
+      if (compA === compB || compA.includes(compB) || compB.includes(compA)) {
+        return true;
+      }
+
+      // 2. Comparación sin paréntesis (ej: "Santa (feat. Rvssian)" -> "Santa")
+      const pureA = cleanMatchText(stripMatchParentheses(songA)).replace(/\s+/g, "");
+      const pureB = cleanMatchText(stripMatchParentheses(songB)).replace(/\s+/g, "");
+      if (pureA && pureB && (pureA === pureB || pureA.includes(pureB) || pureB.includes(pureA))) {
+        return true;
+      }
+
+      // 3. Tokens de canción
+      const tokensA = getMatchTokens(songA);
+      const tokensB = getMatchTokens(songB);
+      if (!tokensA.length || !tokensB.length) return false;
+
+      const [shorter, longer] = tokensA.length <= tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA];
+      const sigShorter = shorter.filter(t => t.length >= 2 || !isNaN(t));
+      if (sigShorter.length > 0) {
+        const matches = sigShorter.filter(t => longer.includes(t));
+        if (matches.length === sigShorter.length) return true;
+        if (sigShorter.length >= 3 && (matches.length / sigShorter.length) >= 0.7) return true;
+      }
+
+      return false;
+    };
+
+    const isCiderSongMatch = (cider, req) => {
+      if (!cider || !req) return false;
+
+      // 1. Apple Music ID exacto
+      const ciderAmId = String(cider.appleMusicId || '').trim();
+      const reqAmId = String(req.appleMusicId || '').trim();
+      if (ciderAmId && reqAmId && ciderAmId === reqAmId) {
+        return true;
+      }
+
+      // 2. Coincidencia normal: Artista y Canción
+      const artMatch = matchArtist(cider.artist, req.artista);
+      const sngMatch = matchSong(cider.song, req.cancion);
+      if (artMatch && sngMatch) return true;
+
+      // 3. Coincidencia invertida: usuario puso canción en artista y artista en canción
+      const swappedArt = matchArtist(cider.artist, req.cancion);
+      const swappedSng = matchSong(cider.song, req.artista);
+      if (swappedArt && swappedSng) return true;
+
+      // 4. Caso especial: Cider incluye el artista en el título de la canción
+      const combinedCider = `${cider.artist} ${cider.song}`;
+      const sngInCombined = matchSong(combinedCider, req.cancion);
+      const artInCombined = matchArtist(combinedCider, req.artista);
+      if (sngInCombined && artInCombined) return true;
+
+      return false;
+    };
+
     // Function to check current playing track against the queue
     function checkCurrentTrackAgainstQueue() {
       if (!currentCiderTrack || !currentCiderTrack.artist || !currentCiderTrack.song) return;
@@ -2520,52 +2636,34 @@
       const key = `${playingAppleMusicId}|${artist}|${song}|${requesterId}`;
       if (lastAutoMarkedSong === key) return; 
 
-      // Normalización segura para comparación
-      const normalize = (str) => {
-          if (!str) return "";
-          return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      };
-      
-      const targetArtist = normalize(artist);
-      const targetSong = normalize(song);
-
-      if (targetArtist.length < 2 || targetSong.length < 2) return;
-
       // Filtrar canciones NO reproducidas
       const candidates = allRequests.filter(req => {
-          const id = generateSongId(req);
-          return !playedSongIds.has(id) && !normalizedPlayedSongIds.has(normalizeId(id));
+        const docId = String(req.docId || req.id || '').trim();
+        const genId = generateSongId(req);
+        const isPlayed = (docId && (playedSongIds.has(docId) || normalizedPlayedSongIds.has(normalizeId(docId)))) ||
+                         (genId && (playedSongIds.has(genId) || normalizedPlayedSongIds.has(normalizeId(genId))));
+        return !isPlayed;
       });
 
-      // Lógica de Matching (Prioridad: ID > Match Exacto > Match Parcial)
+      // Lógica de Matching (Prioridad: ID > Match Robusto Artista/Canción)
       const findMatch = () => {
-          // 1. Coincidencia por Apple Music ID (si existe)
-          if (playingAppleMusicId) {
-             const idMatch = candidates.find(req => String(req.appleMusicId || '').trim() === playingAppleMusicId);
-             if (idMatch) {
-               console.log(`✅ MATCH POR ID: ${playingAppleMusicId} -> ${idMatch.artista} - ${idMatch.cancion}`);
-               return idMatch;
-             }
+        // 1. Coincidencia por Apple Music ID (si existe)
+        if (playingAppleMusicId) {
+          const idMatch = candidates.find(req => String(req.appleMusicId || '').trim() === playingAppleMusicId);
+          if (idMatch) {
+            console.log(`✅ MATCH CIDER POR ID: ${playingAppleMusicId} -> ${idMatch.artista} - ${idMatch.cancion}`);
+            return idMatch;
           }
+        }
 
-          // 2. Coincidencia por Texto (Artista y Canción)
-          for (const req of candidates) {
-              const reqArtist = normalize(req.artista);
-              const reqSong = normalize(req.cancion);
-
-              // Match Exacto (o contenido completo)
-              const artistMatch = reqArtist.includes(targetArtist) || targetArtist.includes(reqArtist);
-              const songMatch = reqSong.includes(targetSong) || targetSong.includes(reqSong);
-
-              const swappedMatch = (reqArtist.includes(targetSong) || targetSong.includes(reqArtist)) &&
-                                   (reqSong.includes(targetArtist) || targetArtist.includes(reqSong));
-
-              if ((artistMatch && songMatch) || swappedMatch) {
-                  console.log(`✅ MATCH POR TEXTO: "${targetArtist} - ${targetSong}" vs "${reqArtist} - ${reqSong}"`);
-                  return req;
-              }
+        // 2. Coincidencia Robusta por Texto (Artista y Canción)
+        for (const req of candidates) {
+          if (isCiderSongMatch({ artist, song, appleMusicId: playingAppleMusicId }, req)) {
+            console.log(`✅ MATCH CIDER: "${artist} - ${song}" vs "${req.artista} - ${req.cancion}"`);
+            return req;
           }
-          return null;
+        }
+        return null;
       };
 
       const match = findMatch();
@@ -2573,7 +2671,7 @@
       if (match) {
         console.log(`✨ Auto-marking song as played: ${match.artista} - ${match.cancion}`);
         const generatedId = generateSongId(match);
-        markSongAsPlayed(generatedId);
+        markSongAsPlayed(generatedId, { skip: false }, match);
         lastAutoMarkedSong = key;
       } else {
         console.log(`🔍 No match found for Cider track: ${artist} - ${song} (AM ID: ${playingAppleMusicId})`);
@@ -2680,41 +2778,100 @@
         checkCurrentTrackAgainstQueue();
     }
 
-    function markSongAsPlayed(id, options) {
-      if (!id) return;
+    function markSongAsPlayed(id, options, match) {
+      if (!id && !match) return;
       const doSkip = !!(options && options.skip === true);
-      try {
-        playedSongIds.add(id);
-        normalizedPlayedSongIds.add(normalizeId(id));
-        if (doSkip) {
-            skippedSongIds.add(id);
-        } else {
-            skippedSongIds.delete(id);
+
+      // Recopilar todos los identificadores posibles para asegurar sincronización 100%
+      const idsToAdd = new Set();
+      if (id) idsToAdd.add(String(id).trim());
+      if (match) {
+        if (match.docId) idsToAdd.add(String(match.docId).trim());
+        if (match.id) idsToAdd.add(String(match.id).trim());
+        if (match.songId) idsToAdd.add(String(match.songId).trim());
+        const san = sanitizeSongId(match.docId || match.id || id);
+        if (san) idsToAdd.add(san);
+
+        // Fallback clásico: usuario-cancion-artista-hora
+        const u = match.usuario || match.user || match.username || '';
+        const c = match.cancion || match.songName || match.song || match.name || '';
+        const a = match.artista || match.artistName || match.artist || '';
+        const h = match.hora || '';
+        if (u && c && a) {
+          const legacyId = sanitizeSongId(`${u}-${c}-${a}-${h}`);
+          if (legacyId) idsToAdd.add(legacyId);
         }
+      } else if (id) {
+        const san = sanitizeSongId(id);
+        if (san) idsToAdd.add(san);
+      }
+
+      try {
+        idsToAdd.forEach(itemId => {
+          playedSongIds.add(itemId);
+          normalizedPlayedSongIds.add(normalizeId(itemId));
+          if (doSkip) {
+            skippedSongIds.add(itemId);
+          } else {
+            skippedSongIds.delete(itemId);
+          }
+        });
         playedSongsLoaded = true;
         renderQueue();
       } catch (_) {}
+
       try {
         const localSkipped = getLocalSkippedMap();
         const arr = Array.isArray(localSkipped[currentDay]) ? localSkipped[currentDay] : [];
-        if (doSkip) {
-          if (!arr.includes(id)) arr.push(id);
-        } else {
-          localSkipped[currentDay] = arr.filter(x => x !== id);
-        }
-        localSkipped[currentDay] = Array.isArray(localSkipped[currentDay]) ? localSkipped[currentDay] : arr;
+        idsToAdd.forEach(itemId => {
+          if (doSkip) {
+            if (!arr.includes(itemId)) arr.push(itemId);
+          } else {
+            const idx = arr.indexOf(itemId);
+            if (idx > -1) arr.splice(idx, 1);
+          }
+        });
+        localSkipped[currentDay] = arr;
         setLocalSkippedMap(localSkipped);
       } catch (_) {}
+
       if (!db) return;
+
+      const idsArray = Array.from(idsToAdd);
       const payload = {
-        songs: firebase.firestore.FieldValue.arrayUnion(id),
+        songs: firebase.firestore.FieldValue.arrayUnion(...idsArray),
         lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
       };
-      if (doSkip) payload.skipped = firebase.firestore.FieldValue.arrayUnion(id);
-      else payload.skipped = firebase.firestore.FieldValue.arrayRemove(id);
+      if (doSkip) payload.skipped = firebase.firestore.FieldValue.arrayUnion(...idsArray);
+      else payload.skipped = firebase.firestore.FieldValue.arrayRemove(...idsArray);
+
       db.collection('playedSongs').doc(currentDay).set(payload, { merge: true })
-      .then(() => console.log("Song marked as played:", id))
-      .catch(err => console.error("Error marking song as played:", err));
+        .then(() => console.log("Song marked as played in Firestore:", idsArray))
+        .catch(err => console.error("Error marking song as played:", err));
+
+      // Otorgar puntos y actualizar userTotals si no es skip
+      const requesterUser = match && (match.usuario || match.username || match.user);
+      if (requesterUser && !doSkip) {
+        const u = String(requesterUser).trim().replace(/^@/, '').toLowerCase();
+        if (u) {
+          try {
+            const totalsRef = db.collection('playedSongs').doc('userTotals');
+            const totalsPayload = { lastUpdated: firebase.firestore.FieldValue.serverTimestamp() };
+            totalsPayload[`totals.${u}`] = firebase.firestore.FieldValue.increment(1);
+            totalsPayload[`counts.${currentDay}.${u}`] = firebase.firestore.FieldValue.increment(1);
+            totalsRef.set(totalsPayload, { merge: true }).catch(() => {});
+
+            const statsRef = db.collection('userStats').doc(u);
+            statsRef.set({
+              totalPoints: firebase.firestore.FieldValue.increment(25),
+              lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true }).catch(() => {});
+            console.log(`💰 Puntos otorgados a @${u} por reproducción en Cider (+25 pts)`);
+          } catch (e) {
+            console.warn("Error actualizando puntos de usuario en queue.js:", e);
+          }
+        }
+      }
     }
 
     const currentDay = getLocalDateKey();

@@ -647,7 +647,7 @@
   let pendingTargetState = null;
   let currentVolume   = 100;
   let hasSetInitialVolume = false;
-  let routeAudioTo    = 'dashboard';
+  let routeAudioTo    = 'obs';
   let isDashboardAudioLeader = true; // 'obs' (predeterminado) | 'dashboard' | 'none' | 'both'
 
   // Debounce handle para applyCardStyles layout recalculation
@@ -735,10 +735,13 @@
         });
         if (startState !== 'playing' && typeof ytPlayer.pauseVideo === 'function') {
           ytPlayer.pauseVideo();
+        } else if (startState === 'playing' && typeof ytPlayer.playVideo === 'function') {
+          ytPlayer.playVideo();
         }
         if (typeof ytPlayer.setPlaybackQuality === 'function') {
           ytPlayer.setPlaybackQuality(quality);
         }
+        updatePlayerMuteState(currentVolume);
         return;
       } catch (e) {
         console.warn("⚠️ Error al reutilizar el reproductor, recreando...", e);
@@ -771,6 +774,10 @@
       originParam = 'https://www.youtube.com'; 
     }
 
+    const isPreview = params.get('preview') === 'true';
+    const isForceMuted = params.get('mute') === 'true' || params.get('muted') === 'true';
+    const shouldMuteInit = isPreview || isForceMuted || routeAudioTo === 'dashboard' || routeAudioTo === 'none';
+
     ytPlayer = new YT.Player('yt-player', {
       host: 'https://www.youtube.com',
       height: '100%',
@@ -786,7 +793,7 @@
         'showinfo': 0,
         'iv_load_policy': 3,
         'enablejsapi': 1,
-        'mute': 1, // Iniciar SILENCIADO para cumplir políticas de Autoplay y evitar congelamientos
+        'mute': shouldMuteInit ? 1 : 0, // Iniciar silenciado solo si la salida no es OBS o está forzado
         'modestbranding': 1,
         'autohide': 1,
         'cc_load_policy': 0,
@@ -1039,7 +1046,7 @@
     }
 
     // Elapsed / seek
-    if (typeof data.elapsed === 'number' && (data.isUserSeek || videoChanged)) {
+    if (typeof data.elapsed === 'number' && (data.isUserSeek || videoChanged || Math.abs(elapsedSec - data.elapsed) > 4)) {
       elapsedSec = data.elapsed;
       lastFirestoreElapsed = data.elapsed;
       if (ytPlayer && typeof ytPlayer.seekTo === 'function') {
@@ -1053,6 +1060,7 @@
     // Actualizar volumen ANTES de applyState para que syncPlayerState use el valor correcto
     if (typeof data.volume === 'number') {
       currentVolume = data.volume;
+      hasSetInitialVolume = true;
     }
 
     // FIX: applyState actualiza solo la UI (dot, timer, label).
@@ -1225,6 +1233,7 @@
   let autoplayBanner = null;
 
   function showAutoplayUnlockBanner() {
+    if (isObs) return; // En OBS nunca mostrar banners intrusivos en stream
     if (autoplayBanner) return;
     autoplayBanner = document.createElement('div');
     autoplayBanner.id = 'autoplay-unlock-banner';
@@ -1283,8 +1292,6 @@
   function startWatchdog() {
     if (watchdogInterval) clearInterval(watchdogInterval);
     watchdogInterval = setInterval(() => {
-      if (isObs && routeAudioTo === 'dashboard') return;
-
       if (currentState !== 'playing' || !ytPlayer || typeof ytPlayer.getPlayerState !== 'function') {
         stuckCount = 0;
         stuckTimeCount = 0;
@@ -1310,7 +1317,7 @@
             ytPlayer.playVideo();
           } catch (e) {}
         }
-        if (stuckCount >= 4) {
+        if (stuckCount >= 4 && !isObs) {
           showAutoplayUnlockBanner();
         }
         if (stuckCount >= 8) {
@@ -1330,61 +1337,55 @@
   }
 
   // ─── Progress timer (visual only, no audio) ──
-  // OPT-1: requestAnimationFrame en lugar de setInterval para sincronizar
-  // el timer con el render loop del navegador/OBS y evitar drift visual.
   function startTimer() {
     stopTimer();
-    let lastTick = performance.now();
-    function tick(now) {
-      // Si el estado ya no es 'playing', detenemos el loop sin cancelar
-      if (currentState !== 'playing') { timerInterval = null; return; }
+    function tick() {
+      if (currentState !== 'playing') {
+        stopTimer();
+        return;
+      }
 
-      if (now - lastTick >= 1000) {
-        lastTick = now;
-
-        // 1. Sincronizar duráción desde la API si aún no se cargó
-        if (ytPlayer && typeof ytPlayer.getDuration === 'function') {
-          const ytDuration = ytPlayer.getDuration();
-          if (ytDuration > 0 && durationSec !== ytDuration) {
-            durationSec = ytDuration;
-            timeTotal.textContent = fmtTime(durationSec);
-          }
+      // 1. Sincronizar duración desde la API si aún no se cargó
+      if (ytPlayer && typeof ytPlayer.getDuration === 'function') {
+        const ytDuration = ytPlayer.getDuration();
+        if (ytDuration > 0 && durationSec !== ytDuration) {
+          durationSec = ytDuration;
+          timeTotal.textContent = fmtTime(durationSec);
         }
+      }
 
-        // 2. Sincronizar posición exacta desde la API
-        if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
-          const ytCurrent = ytPlayer.getCurrentTime();
-          if (typeof ytCurrent === 'number') {
-            elapsedSec = Math.floor(ytCurrent);
-          } else {
-            elapsedSec++;
-          }
+      // 2. Sincronizar posición exacta desde la API
+      if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+        const ytCurrent = ytPlayer.getCurrentTime();
+        if (typeof ytCurrent === 'number') {
+          elapsedSec = Math.floor(ytCurrent);
         } else {
           elapsedSec++;
         }
-
-        // 3. Detectar fin del video
-        if (durationSec > 0 && elapsedSec >= durationSec) {
-          elapsedSec = durationSec;
-          updateProgress();
-          applyState('ended');
-          // FIX: reportar el fin a Firestore desde el timer también,
-          // ya que applyState('ended') establece currentState='ended' ANTES
-          // de que onStateChange(0) pueda disparar, bloqueando su guard.
-          reportEndedToFirestore();
-          timerInterval = null;
-          return; // Salir del loop
-        }
-        updateProgress();
+      } else {
+        elapsedSec++;
       }
-      timerInterval = requestAnimationFrame(tick);
+
+      // 3. Detectar fin del video
+      if (durationSec > 0 && elapsedSec >= durationSec) {
+        elapsedSec = durationSec;
+        updateProgress();
+        applyState('ended');
+        reportEndedToFirestore();
+        stopTimer();
+        return;
+      }
+      updateProgress();
     }
-    timerInterval = requestAnimationFrame(tick);
+    tick(); // Tick inmediato para refresco visual al instante
+    timerInterval = setInterval(tick, 1000);
   }
 
   function stopTimer() {
-    if (timerInterval) cancelAnimationFrame(timerInterval);
-    timerInterval = null;
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
   }
 
   function updateProgress() {
@@ -1508,7 +1509,7 @@
 
     // ERROR H: Solo actualizar routeAudioTo y llamar updatePlayerMuteState si el valor cambió.
     // Llamarlo en cada config update causaba micro-silencio/pop en el audio del Dashboard.
-    const newAudioRoute = cfg.yt_audio_route || cfg.route_audio_to || 'dashboard';
+    const newAudioRoute = cfg.yt_audio_route || cfg.route_audio_to || 'obs';
     if (newAudioRoute !== routeAudioTo) {
       routeAudioTo = newAudioRoute;
       updatePlayerMuteState(currentVolume);
@@ -1533,12 +1534,18 @@
     } else if (pos === 'bottom-right') {
       document.body.style.alignItems = 'flex-end';
       document.body.style.justifyContent = 'flex-end';
+    } else if (pos === 'bottom-center') {
+      document.body.style.alignItems = 'flex-end';
+      document.body.style.justifyContent = 'center';
     } else if (pos === 'top-left') {
       document.body.style.alignItems = 'flex-start';
       document.body.style.justifyContent = 'flex-start';
     } else if (pos === 'top-right') {
       document.body.style.alignItems = 'flex-start';
       document.body.style.justifyContent = 'flex-end';
+    } else if (pos === 'top-center') {
+      document.body.style.alignItems = 'flex-start';
+      document.body.style.justifyContent = 'center';
     } else if (pos === 'center') {
       document.body.style.alignItems = 'center';
       document.body.style.justifyContent = 'center';

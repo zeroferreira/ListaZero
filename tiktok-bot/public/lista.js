@@ -4415,8 +4415,10 @@
 
           songItems.forEach(item => {
             const songId = item.getAttribute('data-song-id');
-            const isPlayed = playedSongIds.includes(songId);
-            const isSkipped = skippedSet.has(String(songId || ''));
+            const docId = item.getAttribute('data-doc-id');
+            // Verificar contra songId Y docId para compatibilidad con marcados desde queue_overlay
+            const isPlayed = playedSongIds.includes(songId) || (docId && playedSongIds.includes(docId));
+            const isSkipped = skippedSet.has(String(songId || '')) || (docId && skippedSet.has(String(docId)));
             const iconEl = item.querySelector('.play-icon');
 
             if (isPlayed) {

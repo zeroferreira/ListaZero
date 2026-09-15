@@ -1057,6 +1057,12 @@
                 lottie: "https://assets10.lottiefiles.com/packages/lf20_like.json", // Corazón gigante explotando
                 audio: "https://www.myinstants.com/media/sounds/pop-sound.mp3", // Sonido pop burbuja
                 color: "#ef4444"
+            },
+            points: {
+                title: "Consulta de Puntos",
+                lottie: null,
+                audio: "https://www.soundjay.com/buttons/sounds/button-4.mp3",
+                color: "#f59e0b"
             }
         };
 
@@ -1212,7 +1218,7 @@
                             }
 
                             // Validar que sea un tipo de alerta soportado
-                            if (!['follow', 'subscribe', 'gift', 'like', 'chat', 'reward'].includes(data.type)) return;
+                            if (!['follow', 'subscribe', 'gift', 'like', 'chat', 'reward', 'points'].includes(data.type)) return;
 
                             const playAudioAndTts = shouldPlayAudioHere(window.location.hostname, window.activeDashboardHost, window.activeDashboardTime);
 
@@ -1239,6 +1245,8 @@
                             console.log(`🔔 [${data.type}] ${data.user || data.uniqueId || '?'} — mostrando alerta (reproducir sonido/TTS: ${playAudioAndTts})`);
                             addAlert({
                                 ...data,
+                                id: docId,
+                                _docId: docId,
                                 playAudioAndTts: playAudioAndTts
                             });
                         });
@@ -1494,6 +1502,44 @@
                 root.style.setProperty('--card-bg-opacity', opacity);
                 root.style.setProperty('--card-border-radius', radius + 'px');
                 root.style.setProperty('--font-size-base', fontSize + 'px');
+            }
+        }
+
+        // =============================================
+        //  COORDINACIÓN DE AUDIO ENTRE FUENTES OBS
+        // =============================================
+        const claimedAudioDocIds = new Set();
+        let alertAudioChannel = null;
+        try {
+            if (typeof BroadcastChannel !== 'undefined') {
+                alertAudioChannel = new BroadcastChannel('zero_fm_audio_alerts');
+                alertAudioChannel.onmessage = (e) => {
+                    if (e.data && e.data.action === 'audioClaimed' && e.data.docId) {
+                        claimedAudioDocIds.add(e.data.docId);
+                    }
+                };
+            }
+        } catch (_) {}
+
+        function tryClaimAudioLock(docId) {
+            if (!docId) return true;
+            try {
+                const lockKey = 'zero_fm_audio_lock_' + docId;
+                const existing = localStorage.getItem(lockKey);
+                const now = Date.now();
+                if (existing) {
+                    const parsed = parseInt(existing, 10);
+                    if (!isNaN(parsed) && (now - parsed < 20000)) {
+                        return false; // Ya tomado por otra fuente de OBS
+                    }
+                }
+                localStorage.setItem(lockKey, String(now));
+                setTimeout(() => {
+                    try { localStorage.removeItem(lockKey); } catch (_) {}
+                }, 25000);
+                return true;
+            } catch (_) {
+                return true;
             }
         }
 
@@ -1879,6 +1925,17 @@
                 showLottie = false;
                 ttsEnabled = true;
                 showCard = false;
+            } else if (type === 'points') {
+                enableAlert = true;
+                playAudio = false;
+                alertVolume = 30;
+                showLottie = false;
+                ttsEnabled = false;
+                rainbowText = false;
+                bounceText = true;
+                showCard = true;
+                fontFamily = 'Outfit';
+                textShadow = '3d-retro';
             }
 
 
@@ -1903,9 +1960,26 @@
             }
             console.log("[alerts_overlay] Reproduciendo alerta. Parámetros: showLottie =", showLottie);
 
+            // Coordinación de audio/TTS multi-fuente OBS para evitar duplicación entre escenas o navegadores
+            const docId = data.id || data._docId || (data.user + '_' + data.type + '_' + (data.timestamp || ''));
+            let canPlaySound = playAudioAndTts;
+            if (canPlaySound && docId) {
+                if (claimedAudioDocIds.has(docId) || !tryClaimAudioLock(docId)) {
+                    console.log(`🔇 [Audio Overlay] Sonido/TTS ya tomado por otra fuente de OBS para ${docId}`);
+                    canPlaySound = false;
+                } else {
+                    claimedAudioDocIds.add(docId);
+                    if (alertAudioChannel) {
+                        try {
+                            alertAudioChannel.postMessage({ action: 'audioClaimed', docId: docId });
+                        } catch (_) {}
+                    }
+                }
+            }
+
             // Si es de tipo chat (TTS silencioso sin card visual), procesar directamente
             if (type === 'chat') {
-                triggerTTS(data, ttsEnabled && playAudioAndTts, () => {
+                triggerTTS(data, ttsEnabled && canPlaySound, () => {
                     isAlertPlaying = false;
                     processQueue();
                 });
@@ -1916,7 +1990,7 @@
             const $wrapper = $("#alertWrapper");
 
             // Limpiar clases previas de tipo
-            $wrapper.removeClass("type-follow type-gift type-subscribe type-like type-reward anim-enter anim-exit");
+            $wrapper.removeClass("type-follow type-gift type-subscribe type-like type-reward type-points anim-enter anim-exit");
             $wrapper.addClass(`type-${type}`);
 
             // Rellenar títulos e información
@@ -2412,13 +2486,21 @@
                 // Si no se muestra Lottie, solo mostramos el avatar si existe
                 if (data.profilePic) {
                     $userAvatar.attr("src", data.profilePic).show();
+                } else if (type === 'points') {
+                    const $badgeContainer = $("<div>").addClass("fallback-badge-container");
+                    $badgeContainer.html(`
+                        <svg class="trophy-svg" viewBox="0 0 100 100" fill="none" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="50" cy="50" r="42" fill="#f59e0b" stroke="#fef3c7" stroke-width="4" />
+                            <text x="50" y="65" font-size="44" font-family="Outfit, sans-serif" font-weight="900" fill="#ffffff" text-anchor="middle">★</text>
+                        </svg>
+                    `);
+                    $mediaContainer.append($badgeContainer);
                 }
             }
 
             // Reproducir Audio
-            if (playAudio && playAudioAndTts) {
-                const isQuieremeVideoActive = $(".quiereme-video-container").length > 0;
-                
+            const isQuieremeVideoActive = $(".quiereme-video-container").length > 0;
+            if (playAudio && canPlaySound) {
                 if (isQuieremeVideoActive) {
                     const videoEl = document.getElementById("quieremeVideo");
                     if (videoEl) {
@@ -2442,13 +2524,18 @@
                     // Forzar play con manejo de políticas del navegador
                     audioEl.play().catch(e => console.warn("[Audio] Interacción bloqueada por el navegador:", e));
                 }
+            } else if (isQuieremeVideoActive) {
+                const videoEl = document.getElementById("quieremeVideo");
+                if (videoEl) {
+                    videoEl.muted = true;
+                }
             }
 
             // Disparar explosión de partículas de colores (Confeti)
             spawnParticles(theme.color, type);
 
             // TTS (Text to Speech) - Leer mensaje en voz alta
-            triggerTTS(data, ttsEnabled && playAudioAndTts);
+            triggerTTS(data, ttsEnabled && canPlaySound);
 
             // Mostrar el overlay con animación
             $wrapper.css("display", "flex").addClass("anim-enter");
@@ -2495,7 +2582,8 @@
             gift:      ['🪙', '💰', '✨', '💛'],
             subscribe: ['✨', '💎', '⚡', '🌀'],
             like:      ['❤️', '💗', '💖', '💝'],
-            reward:    ['🎁', '⭐', '✨', '💜']
+            reward:    ['🎁', '⭐', '✨', '💜'],
+            points:    ['⭐', '🪙', '✨', '💛']
         };
 
         function spawnParticles(color, type) {
