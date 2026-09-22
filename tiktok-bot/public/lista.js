@@ -7090,12 +7090,24 @@ function shouldShowStatsTicker() {
 
 
       // ===== SISTEMA DE CANJE DE PUNTOS =====
+      // Configuración del sistema de puntos
+      const POINTS_CONFIG = {
+        SONG_REQUEST: 25,
+        DAILY_BONUS: 5,
+        CHECKIN_MIN: 1,
+        CHECKIN_MAX: 12,
+        STREAK_MULTIPLIER: 2,
+        VIP_BONUS: 40,
+        LIKES_PER_POINT: 300 // Este valor es solo para visualización
+      };
+
       const rewardsModal = document.getElementById('rewards-modal');
       const rewardsOpenBtn = document.getElementById('menu-rewards-open');
       const rewardsCloseBtn = document.getElementById('rewards-close-x');
       const rewardsUserSelect = document.getElementById('rewards-user-select');
       const rewardsUserInfo = document.getElementById('rewards-user-info');
       const rewardsUserPoints = document.getElementById('rewards-user-points');
+
       async function updateRewardsPoints(u) {
         try {
           const bd = await computeUserBreakdown(u);
@@ -7105,35 +7117,18 @@ function shouldShowStatsTicker() {
           if (rewardsUserPoints) rewardsUserPoints.textContent = '0';
         }
       }
-      rewardsOpenBtn?.addEventListener('click', async () => {
-        const u = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser();
-        await updateRewardsPoints(u);
-        rewardsModal.hidden = false;
-        renderPointsBreakdownExplanation();
-      });
-      rewardsUserSelect?.addEventListener('change', async () => {
-        const u = rewardsUserSelect.value || (typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser());
-        await updateRewardsPoints(u);
-      });
-      rewardsOpenBtn?.addEventListener('click', async () => {
-        try {
-          const u = typeof getCurrentSelectedUser === 'function' ? getCurrentSelectedUser() : getCurrentUser();
-          const data = getGamificationDataForUser(u) || {};
-          await renderPersonalStatsForUser(data, u);
-          rewardsModal.hidden = false;
-          renderPointsBreakdownExplanation();
-        } catch (_) {
-          rewardsModal.hidden = false;
-        }
-      });
+
       document.addEventListener('click', (e) => {
-        const btn = e.target && e.target.closest('.points-tab');
+        const btn = e.target && e.target.closest('#rewards-modal .points-tab');
         if (!btn) return;
         const tab = btn.getAttribute('data-tab') || 'redeem';
-        const panels = document.querySelectorAll('.points-panel');
+        const modal = document.getElementById('rewards-modal');
+        if (!modal) return;
+        const panels = modal.querySelectorAll('.points-panel');
         panels.forEach(p => p.classList.remove('active'));
-        document.getElementById('points-' + tab)?.classList.add('active');
-        const tabs = document.querySelectorAll('.points-tab');
+        const targetPanel = modal.querySelector('#points-' + tab);
+        if (targetPanel) targetPanel.classList.add('active');
+        const tabs = modal.querySelectorAll('.points-tab');
         tabs.forEach(t => t.classList.remove('active'));
         btn.classList.add('active');
         if (tab === 'breakdown') {
@@ -7149,6 +7144,7 @@ function shouldShowStatsTicker() {
         const vipPoints = POINTS_CONFIG.VIP_BONUS || 40;
         const dailyPoints = POINTS_CONFIG.DAILY_BONUS || 5;
         const likesPerPoint = (POINTS_CONFIG && typeof POINTS_CONFIG.LIKES_PER_POINT === 'number') ? POINTS_CONFIG.LIKES_PER_POINT : 300;
+        const mult = (POINTS_CONFIG && typeof POINTS_CONFIG.STREAK_MULTIPLIER === 'number') ? POINTS_CONFIG.STREAK_MULTIPLIER : 2;
 
         // Calcular ejemplos
         const exampleCount = 100;
@@ -7218,19 +7214,6 @@ function shouldShowStatsTicker() {
       console.log('Botón abrir:', rewardsOpenBtn ? '✅' : '❌');
       console.log('Botón cerrar:', rewardsCloseBtn ? '✅' : '❌');
 
-      // Configuración del sistema de puntos
-      // NOTA: Esta es la configuración global para la UI.
-      // Los valores reales deben coincidir con lo que el bot usa.
-      const POINTS_CONFIG = {
-        SONG_REQUEST: 25,
-        DAILY_BONUS: 5,
-        CHECKIN_MIN: 1,
-        CHECKIN_MAX: 12,
-        STREAK_MULTIPLIER: 2,
-        VIP_BONUS: 40,
-        LIKES_PER_POINT: 300 // Este valor es solo para visualización
-      };
-
       // Configuración de niveles
       const LEVELS = [
         { level: 1, name: 'Novato', xpRequired: 0 },
@@ -7299,14 +7282,16 @@ function shouldShowStatsTicker() {
           name: 'TIRO DE RULETA',
           description: 'Compra 1 tiro de ruleta (75 pts). Tu canción solo se tocará si tu nombre sale elegido en la ruleta.',
           cost: 75,
-          icon: '🎡'
+          icon: '🎡',
+          cooldownType: 'none'
         },
         {
           id: 'roulette_spin_3',
           name: '3 TIROS DE RULETA',
           description: 'Compra 3 tiros de ruleta (200 pts). Tu canción solo se tocará si tu nombre sale elegido en la ruleta.',
           cost: 200,
-          icon: '🎡'
+          icon: '🎡',
+          cooldownType: 'none'
         }
       ];
 
@@ -7326,7 +7311,8 @@ function shouldShowStatsTicker() {
               REWARDS.forEach((r) => { if (r && r.id && !byId.has(String(r.id))) remote.push(r); });
               REWARDS = remote;
               // Si el modal está abierto, refrescarlo
-              if (document.getElementById('rewards-modal').style.display === 'flex') {
+              const rm = document.getElementById('rewards-modal');
+              if (rm && !rm.hidden) {
                 renderRewardsModal();
               }
             }
@@ -12308,6 +12294,22 @@ function shouldShowStatsTicker() {
                 }
               });
             }
+            // Compatibilidad con campos planos legacy con punto (ej. "lastRedeemedAt.next")
+            Object.keys(d.data || {}).forEach(k => {
+              if (k.startsWith('lastRedeemedAt.')) {
+                const rid = k.substring('lastRedeemedAt.'.length);
+                const tsStr = d.data[k];
+                if (tsStr && (!mergedLastRedeemedAt[rid] || new Date(tsStr).getTime() > new Date(mergedLastRedeemedAt[rid]).getTime())) {
+                  mergedLastRedeemedAt[rid] = tsStr;
+                }
+              } else if (k.startsWith('lastRedeemedSessionId.')) {
+                const rid = k.substring('lastRedeemedSessionId.'.length);
+                const sid = d.data[k];
+                if (sid) {
+                  mergedLastRedeemedSessionId[rid] = sid;
+                }
+              }
+            });
           });
 
           let maxPoints = 0;
@@ -14955,17 +14957,33 @@ function shouldShowStatsTicker() {
             // Agregar usuario a VIP (permanente)
             try {
               const normUser = String(request.userId).toLowerCase().replace(/^@/, '');
-              // Buscar el documento del usuario en users o crear referencia directa
               await db.collection('vipUsers').doc(normUser).set({
                 name: request.userId,
+                activatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 addedAt: new Date().toISOString(),
                 addedBy: 'reward_system'
-              });
+              }, { merge: true });
               console.log('✅ Usuario agregado a VIP:', request.userId);
             } catch (error) {
               console.error('Error al agregar usuario a VIP:', error);
               showErrorNotification('Error al procesar la recompensa. Contacta al administrador.');
               return;
+            }
+          } else if (request.rewardId === 'vip_day') {
+            // Agregar usuario a VIP (24 horas)
+            try {
+              const normUser = String(request.userId).toLowerCase().replace(/^@/, '');
+              const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+              await db.collection('vipUsers').doc(normUser).set({
+                name: request.userId,
+                activatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                addedAt: new Date().toISOString(),
+                expiresAt: expiresAt,
+                addedBy: 'reward_vip_day'
+              }, { merge: true });
+              console.log('✅ Usuario agregado a VIP por 1 día:', request.userId);
+            } catch (error) {
+              console.error('Error al agregar usuario a VIP por día:', error);
             }
           }
 
@@ -14975,9 +14993,17 @@ function shouldShowStatsTicker() {
             processedAt: new Date().toISOString()
           });
 
+          // Invalidar caché en memoria del usuario
+          if (window.__sessionBreakdownCache) {
+            const uKey = String(request.userId || '').trim().replace(/^@/, '').toLowerCase();
+            delete window.__sessionBreakdownCache[uKey];
+          }
+
           const successMessage = request.rewardId === 'become_fan'
-            ? 'Solicitud aprobada exitosamente. ¡El usuario ahora es VIP!'
-            : 'Solicitud aprobada exitosamente. Los puntos ya fueron descontados.';
+            ? 'Solicitud aprobada exitosamente. ¡El usuario ahora es VIP permanente!'
+            : request.rewardId === 'vip_day'
+              ? 'Solicitud aprobada exitosamente. ¡El usuario es VIP por 24 horas!'
+              : 'Solicitud aprobada exitosamente. Los puntos ya fueron descontados.';
           showSuccessNotification(successMessage);
 
           // Recargar lista
@@ -15037,6 +15063,12 @@ function shouldShowStatsTicker() {
           });
 
           await batch.commit();
+
+          // Invalidar caché en memoria del usuario
+          if (window.__sessionBreakdownCache) {
+            const uKey = String(request.userId || '').trim().replace(/^@/, '').toLowerCase();
+            delete window.__sessionBreakdownCache[uKey];
+          }
 
           showSuccessNotification(`Solicitud rechazada. Se devolvieron ${request.cost} puntos a ${request.userId}.`);
 
@@ -15345,7 +15377,11 @@ function shouldShowStatsTicker() {
 
           // 3. Show Target Section
           if (sectionId === 'badges') document.getElementById('badges-section').hidden = false;
-          else if (sectionId === 'rewards') document.getElementById('rewards-section').hidden = false;
+          else if (sectionId === 'rewards') {
+            document.getElementById('rewards-section').hidden = false;
+            if (typeof populateAdminUserFilter === 'function') populateAdminUserFilter();
+            if (typeof loadRewardRequests === 'function') loadRewardRequests();
+          }
           else if (sectionId === 'rewards-config') {
             document.getElementById('rewards-config-section').hidden = false;
             renderRewardsConfig();
@@ -15419,41 +15455,84 @@ function shouldShowStatsTicker() {
       // ===== FUNCIONES PARA MODAL DE CANJE DE PUNTOS =====
 
       // Función para renderizar el modal de recompensas
-      // Función para renderizar el modal de recompensas
       async function renderRewardsModal() {
         console.log('🔄 Renderizando modal de recompensas...');
-        const targetUser = getCurrentSelectedUser();
-        const userData = getGamificationDataForUser(targetUser);
-        console.log('👤 Usuario objetivo:', targetUser, 'Puntos (local):', userData.points);
+
+        // Obtener usuario del selector o de la variable global
+        let targetUser = (rewardsUserSelect && rewardsUserSelect.value) ? rewardsUserSelect.value : (currentSelectedUser || '');
+        if (targetUser === 'Usuario') targetUser = '';
 
         // Intentar refrescar configuración y sesión de LIVE activa antes de calcular cooldowns
         try { await loadRewardsConfig(); } catch (_) { }
         try { await loadCurrentLiveSession(); } catch (_) { }
 
-        let effectivePoints = Number(userData.points || 0);
-        let userStatsDoc = null;
+        const rewardsContainer = document.getElementById('rewards-list');
+        const pendingContainer = document.getElementById('pending-requests');
 
-        // Actualizar información del usuario
-        rewardsUserInfo.textContent = targetUser;
+        // SI NO HAY USUARIO SELECCIONADO:
+        if (!targetUser) {
+          if (rewardsUserInfo) rewardsUserInfo.textContent = 'Ningún usuario seleccionado';
+          if (rewardsUserPoints) rewardsUserPoints.textContent = '—';
+
+          if (rewardsContainer) {
+            rewardsContainer.innerHTML = `
+              <div style="grid-column: 1 / -1; text-align: center; padding: 25px 15px; background: rgba(255,107,0,0.08); border: 1px dashed rgba(255,107,0,0.4); border-radius: 12px; color: var(--text-color, #333);">
+                <div style="font-size: 2rem; margin-bottom: 8px;">👤</div>
+                <h4 style="margin: 0 0 6px 0; font-size: 1.1rem; color: #ff6b00;">Selecciona tu usuario</h4>
+                <p style="margin: 0; font-size: 0.9rem; opacity: 0.85;">Por favor selecciona tu nombre en el menú desplegable superior para ver tus puntos disponibles y canjear tus premios.</p>
+              </div>
+            `;
+          }
+          if (pendingContainer) {
+            pendingContainer.innerHTML = '<p class="no-pending" style="text-align:center; padding:15px; opacity:0.7;">Selecciona tu usuario para ver tus solicitudes pendientes.</p>';
+          }
+          return;
+        }
+
+        // SI HAY USUARIO SELECCIONADO:
+        if (rewardsUserInfo) rewardsUserInfo.textContent = targetUser;
+
+        // 1. Calcular puntos con computeUserBreakdown (autoritativo, descuenta redemptionsSpent)
+        let breakdownPoints = 0;
+        try {
+          const bd = await computeUserBreakdown(targetUser, { force: true });
+          if (bd && typeof bd.total === 'number') {
+            breakdownPoints = Math.max(0, bd.total);
+          }
+        } catch (e) {
+          console.warn('Error calculando breakdown en rewards:', e);
+        }
+
+        // 2. Obtener documento en Firestore para consultar cooldowns y totalPoints guardados
+        let userStatsDoc = null;
+        let cloudPoints = 0;
         try {
           const best = await fetchBestUserStatsDoc(targetUser);
           if (best && best.data) {
             userStatsDoc = best.data;
-            const cloudPoints = Number((best.data || {}).totalPoints || 0);
-            effectivePoints = cloudPoints;
+            cloudPoints = Number(best.data.totalPoints || 0);
           }
-          rewardsUserPoints.textContent = String(effectivePoints);
-        } catch (_) {
-          rewardsUserPoints.textContent = String(effectivePoints);
+        } catch (e) {
+          console.warn('Error obteniendo userStatsDoc en rewards:', e);
         }
+
+        const userData = getGamificationDataForUser(targetUser) || {};
+        const localPoints = Number(userData.points || 0);
+
+        // Puntos efectivos: el valor más alto entre breakdown calculado y cloud points
+        let effectivePoints = Math.max(breakdownPoints, cloudPoints, localPoints);
+
+        if (rewardsUserPoints) rewardsUserPoints.textContent = String(effectivePoints);
+
+        // Mantener consistencia local
         try {
-          userData.points = Math.max(0, Number(effectivePoints) || 0);
-          userData._cloudSyncedPoints = userData.points;
+          userData.points = effectivePoints;
+          userData._cloudSyncedPoints = effectivePoints;
           saveGamificationDataForUser(userData, targetUser);
         } catch (_) { }
 
         // Renderizar las tarjetas de recompensas
-        const rewardsContainer = document.getElementById('rewards-list');
+        if (!rewardsContainer) return;
         rewardsContainer.innerHTML = '';
 
         const now = Date.now();
@@ -15469,7 +15548,9 @@ function shouldShowStatsTicker() {
           let cooldownLabel = '';
           let cooldownDetailMsg = '36 horas entre usos.';
 
-          if (cooldownType === 'once_per_live') {
+          if (cooldownType === 'disabled' || cooldownType === 'none') {
+            isOnCooldown = false;
+          } else if (cooldownType === 'once_per_live') {
             const redeemedSessions = (userStatsDoc && userStatsDoc.lastRedeemedSessionId) || {};
             const sessionId = window.currentLiveSessionId || new Date().toISOString().slice(0, 10);
             if (redeemedSessions[reward.id] === sessionId) {
@@ -15521,6 +15602,7 @@ function shouldShowStatsTicker() {
             extraInfo = `<div class="reward-hint-info">ℹ️ Esta acción puede tardar unos minutos en procesarse.</div>`;
           }
 
+          const safeTarget = targetUser.replace(/'/g, "\\'");
           rewardCard.innerHTML = `
             <div class="reward-icon">${reward.icon}</div>
             <div class="reward-info">
@@ -15530,7 +15612,7 @@ function shouldShowStatsTicker() {
               ${extraInfo}
             </div>
             <button class="reward-btn" ${btnDisabled ? 'disabled' : ''} 
-                    onclick="requestReward('${reward.id}', '${targetUser}', ${reward.cost})">
+                    onclick="requestReward('${reward.id}', '${safeTarget}', ${reward.cost})">
               ${btnText}
             </button>
           `;
@@ -15545,12 +15627,31 @@ function shouldShowStatsTicker() {
       // Función para solicitar una recompensa (global)
       window.requestReward = async function (rewardId, username, cost) {
         console.log('🎁 Solicitando recompensa:', rewardId, 'para usuario:', username, 'costo:', cost);
-        const btn = document.querySelector(`.reward-card button[onclick*="${rewardId}"]`);
+
+        if (!username || username === 'Usuario' || username.trim() === '') {
+          showMessageModal({
+            title: '👤 Selecciona tu usuario',
+            message: 'Por favor, selecciona tu nombre de usuario en el menú desplegable antes de canjear una recompensa.'
+          });
+          const sel = document.getElementById('rewards-user-select');
+          if (sel) sel.focus();
+          return;
+        }
+
+        const btn = document.querySelector(`.reward-card button[onclick*="'${rewardId}'"]`) || document.querySelector(`.reward-card button[onclick*="${rewardId}"]`);
         if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
+        let shouldReenableBtn = true;
 
         try {
-          console.log('📊 Obteniendo datos del usuario...');
+          if (!window.db) {
+            throw new Error('No hay conexión con la base de datos.');
+          }
+
           const normUser = normalizeUserKey(username);
+          if (!normUser) {
+            throw new Error('Nombre de usuario no válido.');
+          }
+
           const userDocRef = window.db.collection('userStats').doc(normUser);
 
           // Obtener documento consolidado de usuario para asegurar consistencia entre alias/mayúsculas
@@ -15558,85 +15659,77 @@ function shouldShowStatsTicker() {
           const userDocData = (bestStats && bestStats.data) ? bestStats.data : {};
 
           let currentPoints = Number(userDocData.totalPoints || 0);
+          try {
+            const bd = await computeUserBreakdown(username, { force: true });
+            if (bd && typeof bd.total === 'number') {
+              currentPoints = Math.max(currentPoints, bd.total);
+            }
+          } catch (_) { }
+
           let userLastRedeemed = userDocData.lastRedeemedAt || {};
           let userLastRedeemedSession = userDocData.lastRedeemedSessionId || {};
           let profilePic = userDocData.profilePic || '';
 
-          if (!bestStats) {
-            const userDoc = await userDocRef.get();
-            if (userDoc.exists) {
-              const data = userDoc.data();
-              currentPoints = Number(data.totalPoints || 0);
-              userLastRedeemed = data.lastRedeemedAt || {};
-              userLastRedeemedSession = data.lastRedeemedSessionId || {};
-              profilePic = data.profilePic || '';
-            } else {
-              const localData = getGamificationDataForUser(username);
-              currentPoints = localData.points || 0;
-            }
-          }
-
-          console.log('🔍 Buscando recompensa en configuración...');
           const reward = REWARDS.find(r => r.id === rewardId);
           if (!reward) {
             showErrorNotification('Recompensa no encontrada.');
-            if (btn) { btn.disabled = false; btn.textContent = 'Canjear'; }
+            shouldReenableBtn = false;
             return;
           }
 
           // Validación de Cooldown dinámico en el momento del canje (doble check)
           const cooldownType = reward.cooldownType || window.rewardsCooldownType || '36_hours';
-          if (cooldownType === 'once_per_live') {
-            const sessionId = window.currentLiveSessionId || new Date().toISOString().slice(0, 10);
-            if (userLastRedeemedSession[rewardId] === sessionId) {
-              showErrorNotification('Ya canjeaste esta recompensa en este LIVE. Solo se permite 1 vez por sesión en vivo.');
-              if (btn) { btn.disabled = true; btn.textContent = 'Ya canjeado'; }
-              return;
-            }
-          } else if (cooldownType === 'once_per_day') {
-            if (userLastRedeemed[rewardId]) {
-              const lastDate = new Date(userLastRedeemed[rewardId]);
-              const today = new Date();
-              const isSameDay = lastDate.getFullYear() === today.getFullYear() &&
-                                lastDate.getMonth() === today.getMonth() &&
-                                lastDate.getDate() === today.getDate();
-              if (isSameDay) {
-                showErrorNotification('Ya has canjeado esta recompensa hoy. Inténtalo de nuevo mañana.');
-                if (btn) { btn.disabled = true; btn.textContent = 'Canjeado hoy'; }
+          if (cooldownType !== 'disabled' && cooldownType !== 'none') {
+            if (cooldownType === 'once_per_live') {
+              const sessionId = window.currentLiveSessionId || new Date().toISOString().slice(0, 10);
+              if (userLastRedeemedSession[rewardId] === sessionId) {
+                showErrorNotification('Ya canjeaste esta recompensa en este LIVE. Solo se permite 1 vez por sesión en vivo.');
+                if (btn) { btn.disabled = true; btn.textContent = 'Ya canjeado'; }
+                shouldReenableBtn = false;
                 return;
               }
-            }
-          } else if (cooldownType === '36_hours') {
-            if (userLastRedeemed[rewardId]) {
-              const lastTime = new Date(userLastRedeemed[rewardId]).getTime();
-              const COOLDOWN_MS = 36 * 60 * 60 * 1000;
-              if (Date.now() - lastTime < COOLDOWN_MS) {
-                showErrorNotification('Debes esperar 36 horas antes de canjear esto nuevamente.');
-                if (btn) { btn.disabled = true; btn.textContent = 'En espera...'; }
-                return;
+            } else if (cooldownType === 'once_per_day') {
+              if (userLastRedeemed[rewardId]) {
+                const lastDate = new Date(userLastRedeemed[rewardId]);
+                const today = new Date();
+                const isSameDay = lastDate.getFullYear() === today.getFullYear() &&
+                                  lastDate.getMonth() === today.getMonth() &&
+                                  lastDate.getDate() === today.getDate();
+                if (isSameDay) {
+                  showErrorNotification('Ya has canjeado esta recompensa hoy. Inténtalo de nuevo mañana.');
+                  if (btn) { btn.disabled = true; btn.textContent = 'Canjeado hoy'; }
+                  shouldReenableBtn = false;
+                  return;
+                }
+              }
+            } else if (cooldownType === '36_hours') {
+              if (userLastRedeemed[rewardId]) {
+                const lastTime = new Date(userLastRedeemed[rewardId]).getTime();
+                const COOLDOWN_MS = 36 * 60 * 60 * 1000;
+                if (Date.now() - lastTime < COOLDOWN_MS) {
+                  showErrorNotification('Debes esperar 36 horas antes de canjear esto nuevamente.');
+                  if (btn) { btn.disabled = true; btn.textContent = 'En espera...'; }
+                  shouldReenableBtn = false;
+                  return;
+                }
               }
             }
           }
-
-          console.log('👤 Puntos actuales (DB):', currentPoints);
 
           if (currentPoints < cost) {
-            showErrorNotification('No tienes suficientes puntos para esta recompensa.');
-            if (btn) { btn.disabled = false; btn.textContent = 'Canjear'; }
+            showErrorNotification(`No tienes suficientes puntos para esta recompensa. Tienes ${currentPoints} y cuesta ${cost}.`);
+            if (btn) { btn.disabled = true; btn.textContent = 'Insuficiente'; }
+            shouldReenableBtn = false;
             return;
           }
-
-          // Crear solicitud de recompensa en Firestore
-          const requestRef = db.collection('rewardRequests').doc();
-          const requestId = requestRef.id;
 
           let extraFields = {};
           if (rewardId === 'roulette_spin_1' || rewardId === 'roulette_spin_3') {
             const spins = rewardId === 'roulette_spin_3' ? 3 : 1;
             const song = String(prompt('¿Qué canción quieres meter a la ruleta? (Título)', '') || '').trim();
             if (!song) {
-              showErrorNotification('Canje cancelado: falta el título de la canción.');
-              if (btn) { btn.disabled = false; btn.textContent = 'Canjear'; }
+              showErrorNotification('Canje cancelado: se requiere el título de la canción para la ruleta.');
+              shouldReenableBtn = true;
               return;
             }
             const artist = String(prompt('¿Qué artista? (Opcional)', '') || '').trim();
@@ -15650,7 +15743,24 @@ function shouldShowStatsTicker() {
               rouletteSong: song,
               rouletteArtist: artist
             };
+          } else {
+            // Confirmación para el resto de recompensas
+            const confirmed = await showConfirmation({
+              icon: reward.icon || '🎁',
+              title: `Canjear ${reward.name}`,
+              message: `¿Estás seguro de canjear "${reward.name}" por ${cost} puntos?`,
+              confirmText: 'Sí, Canjear',
+              cancelText: 'Cancelar'
+            });
+            if (!confirmed) {
+              shouldReenableBtn = true;
+              return;
+            }
           }
+
+          // Crear solicitud de recompensa en Firestore
+          const requestRef = window.db.collection('rewardRequests').doc();
+          const requestId = requestRef.id;
 
           const rewardRequest = {
             id: requestId,
@@ -15665,40 +15775,37 @@ function shouldShowStatsTicker() {
             ...extraFields
           };
 
-          // --- ACTUALIZACIÓN OPTIMISTA PREVIA ---
-          const optimisticPoints = Math.max(0, currentPoints - cost);
-          const pointsDisplay = document.getElementById('user-points-display');
-          if (pointsDisplay) pointsDisplay.textContent = `${optimisticPoints} pts`;
-
-          console.log('💾 Guardando solicitud en Firestore...');
+          const newTotalPoints = Math.max(0, currentPoints - cost);
 
           // Usar batch para actualizar solicitud y restar puntos atómicamente
-          const batch = db.batch();
+          const batch = window.db.batch();
 
           // 1. Crear solicitud
           batch.set(requestRef, rewardRequest);
 
           // 2. Restar puntos al usuario Y ACTUALIZAR COOLDOWN
+          const updatedLastRedeemed = { ...(userLastRedeemed || {}) };
+          updatedLastRedeemed[rewardId] = new Date().toISOString();
+          const liveSessionId = window.currentLiveSessionId || new Date().toISOString().slice(0, 10);
+          const updatedLastRedeemedSession = { ...(userLastRedeemedSession || {}) };
+          updatedLastRedeemedSession[rewardId] = liveSessionId;
+
           const updatePayload = {
-            totalPoints: firebase.firestore.FieldValue.increment(-cost),
+            totalPoints: newTotalPoints,
+            lastRedeemedAt: updatedLastRedeemed,
+            lastRedeemedSessionId: updatedLastRedeemedSession,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
           };
-          // Guardar el timestamp de este canje específico
-          updatePayload[`lastRedeemedAt.${rewardId}`] = new Date().toISOString();
-          // Guardar el ID de sesión de live para el cooldown once_per_live
-          const liveSessionId = window.currentLiveSessionId || new Date().toISOString().slice(0, 10);
-          updatePayload[`lastRedeemedSessionId.${rewardId}`] = liveSessionId;
 
           batch.set(userDocRef, updatePayload, { merge: true });
 
-          // Si el mejor documento del usuario correspondía a otra clave alias, actualizarlo también
           if (bestStats && bestStats.key && bestStats.key !== normUser) {
             const aliasDocRef = window.db.collection('userStats').doc(bestStats.key);
             batch.set(aliasDocRef, updatePayload, { merge: true });
           }
 
-          // 3. Crear alerta de notificación para streaming en vivo
-          const notificationRef = db.collection('notifications').doc();
+          // 3. Crear alerta de notificación para streaming en vivo / overlays
+          const notificationRef = window.db.collection('notifications').doc();
           const notificationData = {
             type: 'reward',
             user: username,
@@ -15710,61 +15817,56 @@ function shouldShowStatsTicker() {
           batch.set(notificationRef, notificationData);
 
           await batch.commit();
-
           console.log('✅ Solicitud guardada y puntos descontados');
 
+          // Invalidar caché en memoria del usuario
+          if (window.__sessionBreakdownCache) {
+            delete window.__sessionBreakdownCache[normUser];
+            delete window.__sessionBreakdownCache[String(username).trim().replace(/^@/, '').toLowerCase()];
+          }
+
           // Actualizar localmente también para reflejo inmediato en UI
-          const userData = getGamificationDataForUser(username);
-          userData.points = Math.max(0, currentPoints - cost);
-          userData._cloudSyncedPoints = userData.points;
+          const userData = getGamificationDataForUser(username) || {};
+          userData.points = newTotalPoints;
+          userData._cloudSyncedPoints = newTotalPoints;
           saveGamificationDataForUser(userData, username);
 
-          // --- ACTUALIZACIÓN VISUAL CRÍTICA ---
-          // Actualizar inmediatamente el header para que el usuario vea la resta de puntos
-          try {
-            // 1. Actualizar elemento del DOM directamente si existe
-            const headerPointsEl = document.getElementById('user-points-display');
-            if (headerPointsEl) headerPointsEl.textContent = `${userData.points} pts`;
-
-            // 2. Llamar a la función oficial de actualización de UI
-            await updateUserHeaderUI(username);
-          } catch (e) { console.warn('Error actualizando header tras canje:', e); }
-
-          // 3. Forzar notificación visual inmediata para el Admin (si es Admin el que está en otra pestaña)
-          // Escribimos en una colección temporal o usamos un flag global si estamos en la misma sesión
-          // Pero lo más importante es que al Admin le aparezca el regalo
-          if (typeof checkAdminNotifications === 'function') {
-            // Simular notificación localmente por si soy admin
-            checkAdminNotifications();
-          }
+          // Actualizar elementos visuales en el DOM inmediatamente
+          const pointsEl = document.getElementById('rewards-user-points');
+          if (pointsEl) pointsEl.textContent = String(newTotalPoints);
+          const userPointsEl = document.getElementById('user-points');
+          if (userPointsEl) userPointsEl.textContent = String(newTotalPoints);
+          try { await updateUserHeaderUI(username, userData); } catch (_) { }
 
           if (rewardId === 'roulette_spin_1' || rewardId === 'roulette_spin_3') {
             showMessageModal({
               title: '🎡 Tiro(s) de ruleta comprado(s)',
-              message: `Tu canje quedó registrado.\n\nTu canción solo se tocará si tu nombre sale elegido en la ruleta.\n\nSe han descontado ${cost} puntos.`
+              message: `¡Tu canje quedó registrado exitosamente!\n\nCanción: "${extraFields.rouletteSong}"\nSe han descontado ${cost} puntos.\nTu canción solo se tocará si tu nombre sale elegido en la ruleta durante el LIVE.`
             });
           } else {
             showMessageModal({
               title: '✅ Solicitud Enviada',
-              message: `Has solicitado "${reward.name}".\n\nSe han descontado ${cost} puntos. El administrador revisará tu solicitud pronto.`
+              message: `Has solicitado "${reward.name}".\n\nSe han descontado ${cost} puntos. El DJ revisará tu solicitud pronto.`
             });
           }
 
           // Actualizar el modal
-          console.log('🔄 Actualizando modal...');
+          shouldReenableBtn = false;
           await renderRewardsModal();
 
         } catch (error) {
           console.error('Error al solicitar recompensa:', error);
           showMessageModal({
             title: '❌ Error',
-            message: 'Error al procesar la solicitud: ' + error.message
+            message: 'Error al procesar la solicitud: ' + (error.message || error)
           });
         } finally {
-          // Restaurar botón (aunque el modal se actualiza)
-          if (btn) { btn.disabled = false; btn.textContent = 'Canjear'; }
+          if (shouldReenableBtn && btn) {
+            btn.disabled = false;
+            btn.textContent = 'Canjear';
+          }
         }
-      }
+      };
 
       // Función para renderizar solicitudes pendientes
       async function renderPendingRequests(username) {
@@ -15785,7 +15887,7 @@ function shouldShowStatsTicker() {
           });
 
           if (pendingRequests.length === 0) {
-            pendingContainer.innerHTML = '<p>No tienes solicitudes pendientes.</p>';
+            pendingContainer.innerHTML = '<p class="no-pending">No tienes solicitudes pendientes.</p>';
             return;
           }
 
@@ -15810,11 +15912,21 @@ function shouldShowStatsTicker() {
         console.log('🎁 Abriendo modal de recompensas...');
         closeMenu();
         hideSearchResults();
-        currentSelectedUser = getCurrentUser();
-        console.log('👤 Usuario actual:', currentSelectedUser);
-        await populateRewardsUserSelector();
-        await renderRewardsModal();
+
+        // Determinar usuario actual preferido
+        let userCandidate = currentSelectedUser;
+        if (!userCandidate || userCandidate === 'Usuario') {
+          const urlParams = new URLSearchParams(window.location.search);
+          userCandidate = urlParams.get('user') || localStorage.getItem('currentUser') || localStorage.getItem('savedUsername') || '';
+        }
+        if (userCandidate === 'Usuario') userCandidate = '';
+
+        currentSelectedUser = userCandidate;
+
+        await populateRewardsUserSelector(currentSelectedUser);
         rewardsModal.hidden = false;
+        await renderRewardsModal();
+        renderPointsBreakdownExplanation();
         console.log('✅ Modal de recompensas abierto');
       });
 
@@ -15822,9 +15934,23 @@ function shouldShowStatsTicker() {
         rewardsModal.hidden = true;
       });
 
+      rewardsModal?.addEventListener('click', (e) => {
+        if (e.target === rewardsModal) {
+          rewardsModal.hidden = true;
+        }
+      });
+
       // Event listener para selector de usuario en recompensas
       rewardsUserSelect?.addEventListener('change', async (e) => {
-        currentSelectedUser = e.target.value || getCurrentUser();
+        const chosen = e.target.value || '';
+        currentSelectedUser = chosen;
+        if (chosen) {
+          try {
+            localStorage.setItem('currentUser', chosen);
+            localStorage.setItem('savedUsername', chosen);
+          } catch (_) { }
+          try { await updateUserHeaderUI(chosen); } catch (_) { }
+        }
         await renderRewardsModal();
       });
 
@@ -15839,7 +15965,7 @@ function shouldShowStatsTicker() {
       });
 
       // Función para poblar el selector de usuarios del modal de recompensas
-      async function populateRewardsUserSelector() {
+      async function populateRewardsUserSelector(selectedUser = '') {
         if (!rewardsUserSelect) {
           console.log('❌ No se encontró el selector de usuarios de recompensas');
           return;
@@ -15852,7 +15978,7 @@ function shouldShowStatsTicker() {
             const allSolicitudes = await getAllCombinedSolicitudes({ allTime: (typeof allTime !== 'undefined' ? allTime : false) });
             (allSolicitudes || []).forEach(s => {
               const u = String(s?.usuario || '').trim();
-              if (u) set.add(u);
+              if (u && u.toLowerCase() !== 'usuario' && u.toLowerCase() !== 'test') set.add(u);
             });
           } catch (_) { }
 
@@ -15860,7 +15986,7 @@ function shouldShowStatsTicker() {
             const cached = JSON.parse(localStorage.getItem('knownUsers') || '[]') || [];
             cached.forEach(name => {
               const u = String(name || '').trim();
-              if (u) set.add(u);
+              if (u && u.toLowerCase() !== 'usuario' && u.toLowerCase() !== 'test') set.add(u);
             });
           } catch (_) { }
 
@@ -15868,7 +15994,10 @@ function shouldShowStatsTicker() {
             const dbRef = window.db || db;
             if (dbRef) {
               const statsSnap = await dbRef.collection('userStats').get();
-              statsSnap.forEach(doc => { if (doc.id) set.add(String(doc.id).trim()); });
+              statsSnap.forEach(doc => {
+                const id = String(doc.id || '').trim();
+                if (id && id.toLowerCase() !== 'usuario' && id.toLowerCase() !== 'test') set.add(id);
+              });
             }
           } catch (_) { }
 
@@ -15878,40 +16007,61 @@ function shouldShowStatsTicker() {
               const usersSnap = await dbRef.collection('users').get();
               usersSnap.forEach(doc => {
                 const d = doc.data() || {};
-                if (d.name) set.add(String(d.name).trim());
+                const name = String(d.name || '').trim();
+                if (name && name.toLowerCase() !== 'usuario' && name.toLowerCase() !== 'test') set.add(name);
               });
             }
           } catch (_) { }
 
-          const users = Array.from(set);
+          const target = selectedUser || currentSelectedUser || '';
+          if (target && target.toLowerCase() !== 'usuario') {
+            set.add(target);
+          }
 
+          const users = Array.from(set).filter(Boolean);
           users.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
           // Construir opciones del selector
-          const options = '<option value="">Selecciona un usuario</option>' +
-            users.map(user => `<option value="${user}">${user}</option>`).join('');
+          let optionsHtml = '<option value="">-- Selecciona tu usuario --</option>';
+          users.forEach(u => {
+            optionsHtml += `<option value="${u}">${u}</option>`;
+          });
 
-          rewardsUserSelect.innerHTML = options;
+          rewardsUserSelect.innerHTML = optionsHtml;
 
-          // Si no hay usuarios, mostrar mensaje
-          if (users.length === 0) {
-            rewardsUserSelect.innerHTML = '<option value="">No hay usuarios disponibles</option>';
+          // Seleccionar el usuario objetivo si coincide
+          if (target && target.toLowerCase() !== 'usuario') {
+            const matchingOption = Array.from(rewardsUserSelect.options).find(
+              opt => opt.value.toLowerCase() === target.toLowerCase()
+            );
+            if (matchingOption) {
+              rewardsUserSelect.value = matchingOption.value;
+              currentSelectedUser = matchingOption.value;
+            } else {
+              const newOpt = new Option(target, target, true, true);
+              rewardsUserSelect.add(newOpt);
+              rewardsUserSelect.value = target;
+              currentSelectedUser = target;
+            }
+          } else {
+            rewardsUserSelect.value = '';
           }
         } catch (error) {
           console.error('Error al cargar usuarios para recompensas:', error);
-          // Fallback a localStorage si hay error
           const solicitudes = JSON.parse(localStorage.getItem('solicitudes') || '[]');
           const users = [...new Set(solicitudes
             .map(s => s.usuario)
-            .filter(user => user && user.trim() !== '')
+            .filter(user => user && user.trim() !== '' && user.toLowerCase() !== 'usuario')
           )];
 
           users.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
-          const options = '<option value="">Selecciona un usuario</option>' +
-            users.map(user => `<option value="${user}">${user}</option>`).join('');
+          let optionsHtml = '<option value="">-- Selecciona tu usuario --</option>';
+          users.forEach(u => {
+            optionsHtml += `<option value="${u}">${u}</option>`;
+          });
 
-          rewardsUserSelect.innerHTML = options;
+          rewardsUserSelect.innerHTML = optionsHtml;
         }
       }
 
