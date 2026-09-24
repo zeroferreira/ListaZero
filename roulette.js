@@ -1,4 +1,4 @@
-const firebaseConfig = {
+var firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || {
       apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
       authDomain: "zero-strom-web.firebaseapp.com",
       projectId: "zero-strom-web",
@@ -7,10 +7,10 @@ const firebaseConfig = {
       appId: "1:758369466349:web:f2ced362a5a049c70b59e4"
     };
 
-    const localConfig = window.ZERO_FM_FIREBASE || firebaseConfig;
-    if (firebase.apps && firebase.apps.length > 0) {
+    var localConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || firebaseConfig;
+    if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length > 0) {
         // Already initialized
-    } else {
+    } else if (typeof firebase !== 'undefined') {
         firebase.initializeApp(localConfig);
     }
     const db = firebase.firestore();

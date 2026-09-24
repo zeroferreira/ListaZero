@@ -503,6 +503,32 @@
             }
         }
 
+        /* =============================================
+           EMPTY STATE
+        ============================================= */
+        #emptyState {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 0.9em;
+            padding: 12px 18px;
+            font-weight: 600;
+            background: rgba(10, 10, 20, 0.65);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: var(--topgifter-radius, 22px);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35);
+            display: none;
+            margin: 10px auto;
+            max-width: 90%;
+            animation: pulse-glow-empty 2.2s infinite ease-in-out;
+        }
+
+        @keyframes pulse-glow-empty {
+            0%, 100% { opacity: 0.85; transform: scale(1); }
+            50%      { opacity: 1;    transform: scale(1.02); }
+        }
+
     </style>
 </head>
 
@@ -534,6 +560,7 @@
             </div>
         </div>
     </div>
+    <div id="emptyState">👑 Top Donadores • Esperando regalos en el Live...</div>
 
     <script>
         // =============================================
@@ -722,11 +749,16 @@
                     if (doc.exists) {
                         const data = doc.data();
                         if (data && Array.isArray(data.list)) {
-                            console.log("[Firebase] Ranking Top Gifters actualizado ✓");
-                            hasFirebaseData = true;
-                            if (initialPreviewTimeout) {
+                            const hasRealItems = data.list.length > 0;
+                            console.log("[Firebase] Ranking Top Gifters actualizado ✓ (" + data.list.length + " usuarios)");
+                            hasFirebaseData = hasRealItems;
+                            if (hasRealItems && initialPreviewTimeout) {
                                 clearTimeout(initialPreviewTimeout);
                                 initialPreviewTimeout = null;
+                            }
+                            if (hasRealItems && previewInterval) {
+                                clearInterval(previewInterval);
+                                previewInterval = null;
                             }
                             window.lastRealRanking = data.list;
                             if (!window.isTestActive) {
@@ -817,9 +849,20 @@
                 }
             });
 
-            // Si la lista está vacía, no hay nada más que hacer
+            // Si la lista está vacía
             if (list.length === 0) {
+                const urlParams = new URLSearchParams(window.location.search);
+                const isPreviewRequested = urlParams.get('preview') === '1' || urlParams.get('preview') === 'true' || urlParams.get('test') === '1';
+                if (isPreviewRequested || !hasFirebaseData) {
+                    if (!previewInterval && !window.isTestActive) {
+                        window.preview();
+                    }
+                } else {
+                    $('#emptyState').fadeIn(200);
+                }
                 return;
+            } else {
+                $('#emptyState').hide();
             }
 
             // 2. Procesar cada usuario de la lista en orden
@@ -1028,14 +1071,21 @@
 
             updateSettings(false);
 
-            // Si no hay datos del bot en Firebase, iniciar preview
+            const urlParams = new URLSearchParams(window.location.search);
+            const isPreviewParam = urlParams.get('preview') === '1' || urlParams.get('preview') === 'true' || urlParams.get('test') === '1';
+
             if (initialPreviewTimeout) clearTimeout(initialPreviewTimeout);
-            initialPreviewTimeout = setTimeout(function() {
-                initialPreviewTimeout = null;
-                if (!hasFirebaseData) {
-                    window.preview && window.preview();
-                }
-            }, 1500);
+            if (isPreviewParam) {
+                window.preview && window.preview();
+            } else {
+                // Si no hay datos del bot en Firebase, iniciar preview
+                initialPreviewTimeout = setTimeout(function() {
+                    initialPreviewTimeout = null;
+                    if (!hasFirebaseData && (!window.lastRealRanking || window.lastRealRanking.length === 0)) {
+                        window.preview && window.preview();
+                    }
+                }, 1500);
+            }
         });
 
         window.isTestActive = false;

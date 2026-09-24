@@ -478,7 +478,7 @@
     loadSettings();
 
     // Configuración de Firebase (Tomada de index.html)
-    const firebaseConfig = {
+    var firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || {
       apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
       authDomain: "zero-strom-web.firebaseapp.com",
       projectId: "zero-strom-web",
@@ -491,7 +491,7 @@
     try {
       if (typeof firebase !== 'undefined' && firebase.apps) {
         if (!firebase.apps.length) {
-          const localConfig = window.ZERO_FM_FIREBASE || firebaseConfig;
+          const localConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || firebaseConfig;
           firebase.initializeApp(localConfig);
         }
         db = firebase.firestore();

@@ -277,7 +277,7 @@ let config = {
     requireVipForSr: false,
     allowPointsCommand: true,
     likesPerPoint: 300,
-    commandAliases: ["!zr", "!sr", "!pedir", "!cancion"],
+    commandAliases: ["zr", "!zr", "!sr", "!pedir", "!cancion"],
     ignoreExampleQuery: "artista cancion"
 };
 
@@ -592,28 +592,57 @@ function buildTikTokConnectionOptions() {
 }
 
 function getSrAliases() {
-    const base = Array.isArray(config.commandAliases) && config.commandAliases.length > 0
+    const rawList = Array.isArray(config.commandAliases) && config.commandAliases.length > 0
         ? config.commandAliases
-        : ["!sr", "!pedir", "!cancion"];
+        : ["zr", "!zr", "!sr", "!pedir", "!cancion"];
     const set = new Set();
-    ["!zr", ...base].forEach(a => {
-        const v = String(a || '').trim();
-        if (v) set.add(v);
+
+    // Siempre garantizar variantes de zr y sr (los comandos principales del canal)
+    const primaryShorts = ['zr', '!zr', '/zr', '.zr', 'sr', '!sr', '/sr', '.sr'];
+    primaryShorts.forEach(s => set.add(s.toLowerCase()));
+
+    rawList.forEach(a => {
+        const v = String(a || '').trim().toLowerCase();
+        if (!v) return;
+        set.add(v);
+
+        // Extraer raíz sin símbolos de prefijo (!, /, ., #)
+        const clean = v.replace(/^[!/.,#]+/, '').trim();
+        if (clean) {
+            set.add(`!${clean}`);
+            set.add(`/${clean}`);
+            set.add(`.${clean}`);
+            // Si es un acrónimo corto (<= 4 letras) o fue configurado explícitamente sin prefijo
+            if (clean.length <= 4 || !/^[!/.,#]/.test(v)) {
+                set.add(clean);
+            }
+        }
     });
-    return Array.from(set);
+
+    // Ordenar de mayor a menor longitud para que coincidencias más largas tengan prioridad
+    return Array.from(set).sort((a, b) => b.length - a.length);
 }
 
 function parseSrCommand(message, aliases) {
-    const msg = String(message || '');
+    const msg = String(message || '').trim();
+    if (!msg) return null;
     const lower = msg.toLowerCase();
-    for (const alias of (aliases || [])) {
-        const a = String(alias || '').trim();
+    const aliasList = Array.isArray(aliases) && aliases.length > 0 ? aliases : getSrAliases();
+
+    for (const alias of aliasList) {
+        const a = String(alias || '').trim().toLowerCase();
         if (!a) continue;
-        const aLower = a.toLowerCase();
-        if (!lower.startsWith(aLower)) continue;
+        if (!lower.startsWith(a)) continue;
+
         const nextChar = msg.charAt(a.length);
-        if (nextChar && !/\s/.test(nextChar)) continue;
-        return { alias: a, query: msg.substring(a.length).trim() };
+        // Permitir espacios o separadores comunes (:, -, ,, .) o fin de cadena
+        if (nextChar && !/[\s:,.-]/.test(nextChar)) continue;
+
+        let query = msg.substring(a.length).trim();
+        // Limpiar separadores iniciales que el usuario haya escrito (ej: "zr: cancion" -> "cancion")
+        query = query.replace(/^[:,.-]+\s*/, '').trim();
+
+        return { alias: a, query };
     }
     return null;
 }
@@ -1594,7 +1623,7 @@ function startBot() {
             try {
                 delete require.cache[require.resolve(fbConfigFile)];
                 const fbConfig = require(fbConfigFile);
-                res.send(`window.ZERO_FM_FIREBASE = ${JSON.stringify(fbConfig)};`);
+                res.send(`window.ZERO_FM_FIREBASE = ${JSON.stringify(fbConfig)}; window.firebaseConfig = window.ZERO_FM_FIREBASE; var firebaseConfig = window.ZERO_FM_FIREBASE;`);
             } catch (e) {
                 res.status(500).send(`console.error("Error reading firebase-config.js:", ${JSON.stringify(e.message)});`);
             }
@@ -1607,7 +1636,7 @@ function startBot() {
                 messagingSenderId: "758369466349",
                 appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
                 databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
-            };`);
+            }; window.firebaseConfig = window.ZERO_FM_FIREBASE; var firebaseConfig = window.ZERO_FM_FIREBASE;`);
         }
     });
 
@@ -2102,7 +2131,7 @@ function startBot() {
                 requireVipForSr: false,
                 allowPointsCommand: true,
                 likesPerPoint: 300,
-                commandAliases: ["!zr", "!sr", "!pedir", "!cancion"],
+                commandAliases: ["zr", "!zr", "!sr", "!pedir", "!cancion"],
                 ignoreExampleQuery: "artista cancion"
             };
 
@@ -2988,19 +3017,26 @@ function startBot() {
 
     // Conexión a Cider (Reproductor)
     ciderSocket = io(getCiderUrl(), {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       reconnectionDelay: 2000,
       reconnectionDelayMax: 5000,
       randomizationFactor: 0
     });
 
     ciderSocket.on("connect", () => {
-      console.log("✅ Conectado a Cider (Reproductor)");
+      console.log(`✅ Conectado a Cider (Reproductor en ${getCiderUrl()})`);
       try { flushCiderQueue(); } catch (_) {}
     });
 
-    ciderSocket.on("disconnect", () => {
-      console.log("❌ Desconectado de Cider");
+    ciderSocket.on("connect_error", (err) => {
+      if (!ciderSocket._lastErrTime || Date.now() - ciderSocket._lastErrTime > 30000) {
+        console.warn(`⚠️ Aviso Cider (${getCiderUrl()}): ${err && err.message ? err.message : err}. Los pedidos se guardarán en lista visual y cola.`);
+        ciderSocket._lastErrTime = Date.now();
+      }
+    });
+
+    ciderSocket.on("disconnect", (reason) => {
+      console.log(`❌ Desconectado de Cider (${reason || 'desconocido'})`);
     });
 
     ciderSocket.on("API:Playback", async (event) => {
@@ -4073,8 +4109,9 @@ function setupListeners() {
                     commentQualifies = true;
                     cleanedMsg = msg.substring(matchedCmd.length).trim();
                 } else if (filterType === 'any') {
-                    // Modo "Cualquier mensaje": califica siempre que no sea otro comando de bot (ej: !sr, !puntos, etc.)
-                    if (!msg.startsWith('!') && !msg.startsWith('/')) {
+                    // Modo "Cualquier mensaje": califica siempre que no sea otro comando de bot (ej: !sr, !puntos, zr, etc.)
+                    const isSrCandidate = !!parseSrCommand(msg, getSrAliases());
+                    if (!msg.startsWith('!') && !msg.startsWith('/') && !isSrCandidate) {
                         commentQualifies = true;
                         cleanedMsg = msg.trim();
                     }
@@ -4425,10 +4462,10 @@ function setupListeners() {
             }
             
             // Log de depuración para permisos
-            if (requireVip && !isVip) {
-                console.log(`🔍 DEBUG PERMISOS: ReqVIP=${requireVip}, UserVIP=${isVip} (Sub=${isSubscriber}, Mod=${isModerator}, Fan=${isSuperFan})`);
+            if (requireVip && !isVipFinal) {
+                console.log(`🔍 DEBUG PERMISOS: ReqVIP=${requireVip}, UserVIP=${isVipFinal} (Sub=${isSubscriber}, Mod=${isModerator}, Fan=${isSuperFan})`);
                 console.log(`🚫 ${displayName} intentó pedir, pero no tiene permiso.`);
-                pushSrEvent({ source: 'chat', user: userId, displayName, userId, query: msg, isVip, accepted: false, denied: 'notVip' });
+                pushSrEvent({ source: 'chat', user: userId, displayName, userId, query: msg, isVip: isVipFinal, accepted: false, denied: 'notVip' });
                 return;
             }
 
@@ -4454,7 +4491,7 @@ function setupListeners() {
                     source: 'tiktokChat',
                     profilePhoto: profilePic // Pasar la foto de perfil al procesador
                 });
-                pushSrEvent({ source: 'chat', user: userKey, displayName: displayNameBest, userId, query: rawQuery, isVip, accepted: !!result?.ok, queueSaved: !!result?.queueSaved, ciderSent: !!result?.ciderSent, ciderQueued: !!result?.ciderQueued, error: result?.ok ? '' : (result?.error || '') });
+                pushSrEvent({ source: 'chat', user: userKey, displayName: displayNameBest, userId, query: rawQuery, isVip: isVipFinal, accepted: !!result?.ok, queueSaved: !!result?.queueSaved, ciderSent: !!result?.ciderSent, ciderQueued: !!result?.ciderQueued, error: result?.ok ? '' : (result?.error || '') });
             }
         }
     });

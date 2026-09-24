@@ -486,7 +486,7 @@
         if (contentEl) contentEl.innerHTML = buildHtml(stats);
       }
 
-      const firebaseConfig = {
+      var firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || {
         apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
         authDomain: "zero-strom-web.firebaseapp.com",
         projectId: "zero-strom-web",
@@ -501,7 +501,7 @@
       let unsubGeneral = null;
       try {
         if (typeof firebase !== 'undefined' && firebase.apps) {
-          const localConfig = window.ZERO_FM_FIREBASE || firebaseConfig;
+          const localConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || firebaseConfig;
           if (!firebase.apps.length) firebase.initializeApp(localConfig);
           db = firebase.firestore();
         }
@@ -538,23 +538,17 @@
         const ref = db.collection('globalStats').doc('general');
 
         try {
-          ref.get({ source: 'server' }).then((doc) => {
+          ref.get().then((doc) => {
             if (doc && doc.exists) setFromDoc(doc.data() || {});
-            else setUnavailable();
-          }).catch(() => {
-            setUnavailable();
-          });
-        } catch (_) {
-          setUnavailable();
-        }
+          }).catch(() => {});
+        } catch (_) {}
 
         if (unsubGeneral) unsubGeneral();
-        unsubGeneral = ref.onSnapshot({ includeMetadataChanges: true }, (doc) => {
+        unsubGeneral = ref.onSnapshot((doc) => {
           if (!doc || !doc.exists) return;
-          if (doc.metadata && doc.metadata.fromCache) return;
           setFromDoc(doc.data() || {});
-        }, () => {
-          setUnavailable();
+        }, (err) => {
+          console.warn('[Ticker] Error en listener de stats:', err);
         });
       }
 

@@ -851,11 +851,11 @@
         //  STATE
         // =============================================
         let cfg = {
-            goalType:       P_TYPE   || 'follows',
-            goalTarget:     P_TARGET || 500,
-            goalLabel:      P_LABEL  || '¡Meta de seguidores!',
+            goalType:       P_TYPE   || 'likes',
+            goalTarget:     P_TARGET || 1000,
+            goalLabel:      P_LABEL  || '¡Meta de likes!',
             goalRewardText: '¡Desbloqueas una canción especial!',
-            primaryColor:   P_COLOR  || '#ec4899',
+            primaryColor:   P_COLOR  || '#ff0a2f',
             enabled:        true,
             autoLoop:       false,
             layoutMode:     'premium',
@@ -945,7 +945,18 @@
                         console.log('[Firebase] goalOverlayConfig actualizado ✓', d);
 
                         // URL params take priority over Firestore config
-                        cfg.goalType       = P_TYPE   || d.goalType       || cfg.goalType;
+                        if (!P_TYPE) {
+                            if (d['likes'] && d['likes'].enabled !== false) {
+                                cfg.goalType = 'likes';
+                            } else if (d.goalType) {
+                                cfg.goalType = d.goalType;
+                            } else {
+                                const available = ['likes', 'follows', 'coins', 'shares'].find(t => d[t] && d[t].enabled);
+                                cfg.goalType = available || cfg.goalType || 'likes';
+                            }
+                        } else {
+                            cfg.goalType = P_TYPE;
+                        }
                         
                         const typeConfig = d[cfg.goalType] || {};
                         cfg.goalTarget     = P_TARGET || typeConfig.goalTarget     || d.goalTarget     || cfg.goalTarget;
@@ -1537,30 +1548,39 @@
         //  PREVIEW (mock data when no Firebase)
         // =============================================
         function showPreview() {
-            console.log('[Goal] Mostrando preview (sin Firebase)');
+            console.log('[Goal] Mostrando preview en goal_overlay');
+            const targetType = P_TYPE || cfg.goalType || 'likes';
+            const defaultTargets = { likes: 1000, follows: 100, coins: 500, shares: 50 };
+            const defaultLabels = { likes: '¡Meta de likes! ❤️', follows: '¡Meta de seguidores! 👥', coins: '¡Meta de monedas! 🪙', shares: '¡Meta de compartidos! 🔁' };
+            const defaultColors = { likes: '#ff0a2f', follows: '#7c3aed', coins: '#eab308', shares: '#10b981' };
+
             cfg = {
-                goalType:       P_TYPE   || 'follows',
-                goalTarget:     P_TARGET || 500,
-                goalLabel:      P_LABEL  || '¡Meta de seguidores!',
-                goalRewardText: '¡Desbloqueas una canción especial!',
-                primaryColor:   P_COLOR  || '#ec4899',
+                ...cfg,
+                goalType:       targetType,
+                goalTarget:     P_TARGET || cfg.goalTarget || defaultTargets[targetType] || 500,
+                goalLabel:      P_LABEL  || cfg.goalLabel  || defaultLabels[targetType]  || '¡Meta!',
+                goalRewardText: cfg.goalRewardText || '¡Desbloqueas una canción especial!',
+                primaryColor:   P_COLOR  || cfg.primaryColor || defaultColors[targetType] || '#ff0a2f',
                 enabled:        true,
-                layoutMode:     'premium',
-                barHeight:      18,
-                barRadius:      100,
-                barBgColor:     'rgba(255, 255, 255, 0.06)',
-                fontFamily:     'Outfit',
-                fontSize:       14,
-                textColor:      '#ffffff',
-                showIcon:       true,
-                showReward:     true,
-                showPercentage: true,
-                customWidth:    500,
-                showCardBg:     true
+                layoutMode:     cfg.layoutMode     || 'premium',
+                barHeight:      cfg.barHeight      || 18,
+                barRadius:      cfg.barRadius      || 100,
+                barBgColor:     cfg.barBgColor     || 'rgba(255, 255, 255, 0.06)',
+                fontFamily:     cfg.fontFamily     || 'Outfit',
+                fontSize:       cfg.fontSize       || 14,
+                textColor:      cfg.textColor      || '#ffffff',
+                showIcon:       cfg.showIcon       !== false,
+                showReward:     cfg.showReward     !== false,
+                showPercentage: cfg.showPercentage !== false,
+                customWidth:    cfg.customWidth    || 500,
+                showCardBg:     cfg.showCardBg     !== false
             };
             applyConfig();
             const card = document.getElementById('goalCard');
-            card.classList.add('visible');
+            if (card) {
+                card.style.display = 'block';
+                card.classList.add('visible');
+            }
             // 65% progress demo
             const mockVal = Math.round(cfg.goalTarget * 0.65);
             updateProgress(mockVal);
@@ -1573,6 +1593,12 @@
             // Apply initial config (URL params / defaults)
             applyConfig();
             
+            const isPreviewParam = params.get('preview') === '1' || params.get('preview') === 'true' || params.get('test') === '1';
+            if (isPreviewParam) {
+                showPreview();
+                return;
+            }
+
             setTimeout(() => {
                 if (!hasFirebase) {
                     showPreview();
