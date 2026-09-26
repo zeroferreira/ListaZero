@@ -400,22 +400,125 @@ var firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE 
       return 0;
     }
 
+    const userPhotoCache = new Map(); // cleanName -> photoUrl
+
     function getWinnerPhotoUrl(name) {
       const accentHex = getComputedStyle(document.documentElement).getPropertyValue('--roulette-accent-color').trim().replace('#', '') || '00e5ff';
-      const normalize = (s) => String(s || '').toLowerCase().trim();
-      const matching = allRequests
-        .filter(req => {
-          const reqName = normalize(req.displayName || req.usuario || req.user || '');
-          return reqName === normalize(name);
-        })
-        .sort((a, b) => getReqTimeMs(b) - getReqTimeMs(a));
+      const cleanName = normalizeParticipantName(name);
+      if (!cleanName) return 'https://ui-avatars.com/api/?name=W&background=' + accentHex + '&color=000&size=150&bold=true';
 
-      const winnerReq = matching.find(req => String(req.profilePhoto || req.profilePic || req.photoUrl || req.avatar || req.userPhoto || '').trim());
-      const photo = winnerReq ? String(winnerReq.profilePhoto || winnerReq.profilePic || winnerReq.photoUrl || winnerReq.avatar || winnerReq.userPhoto || '').trim() : '';
-      if (photo) {
-        return photo;
+      // 1. Revisar caché en memoria
+      if (userPhotoCache.has(cleanName)) {
+        return userPhotoCache.get(cleanName);
       }
-      return 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=' + accentHex + '&color=000&size=150&bold=true';
+
+      // 2. Buscar en solicitudes de canjes (rouletteRewardRequests)
+      if (Array.isArray(rouletteRewardRequests)) {
+        const rewMatch = rouletteRewardRequests.find(req => {
+          const n = normalizeParticipantName(req.userId || req.displayName || req.user || '');
+          return n === cleanName;
+        });
+        if (rewMatch) {
+          const p = String(rewMatch.profilePhoto || rewMatch.profilePic || rewMatch.photoUrl || rewMatch.avatar || rewMatch.userPhoto || rewMatch.profilePictureUrl || rewMatch.avatarUrl || '').trim();
+          if (p) {
+            userPhotoCache.set(cleanName, p);
+            return p;
+          }
+        }
+      }
+
+      // 3. Buscar en solicitudes de canciones (allRequests)
+      if (Array.isArray(allRequests)) {
+        const matching = allRequests
+          .filter(req => {
+            const reqName = normalizeParticipantName(req.displayName || req.usuario || req.user || '');
+            return reqName === cleanName;
+          })
+          .sort((a, b) => getReqTimeMs(b) - getReqTimeMs(a));
+
+        const winnerReq = matching.find(req => String(req.profilePhoto || req.profilePic || req.photoUrl || req.avatar || req.userPhoto || req.profilePictureUrl || req.avatarUrl || req.foto || '').trim());
+        const photo = winnerReq ? String(winnerReq.profilePhoto || winnerReq.profilePic || winnerReq.photoUrl || winnerReq.avatar || winnerReq.userPhoto || winnerReq.profilePictureUrl || winnerReq.avatarUrl || winnerReq.foto || '').trim() : '';
+        if (photo) {
+          userPhotoCache.set(cleanName, photo);
+          return photo;
+        }
+      }
+
+      // Fallback temporal si aún no se resuelve de la base de datos
+      return 'https://ui-avatars.com/api/?name=' + encodeURIComponent(cleanName) + '&background=' + accentHex + '&color=000&size=150&bold=true';
+    }
+
+    async function fetchWinnerPhotoFromFirestore(cleanName) {
+      if (!db || !cleanName) return null;
+      if (userPhotoCache.has(cleanName)) return userPhotoCache.get(cleanName);
+
+      try {
+        // 1. Intentar en userStats (documento directo con nombre normalizado)
+        const uDoc = await db.collection('userStats').doc(cleanName).get();
+        if (uDoc.exists) {
+          const d = uDoc.data() || {};
+          const p = d.profilePic || d.profilePictureUrl || d.avatar || (d.gamification && d.gamification.profilePic);
+          if (p) {
+            userPhotoCache.set(cleanName, p);
+            return p;
+          }
+        }
+
+        // 2. Intentar en liveUsers (usuarios detectados en el live de TikTok)
+        const liveDoc = await db.collection('liveUsers').doc(cleanName).get();
+        if (liveDoc.exists) {
+          const d = liveDoc.data() || {};
+          const p = d.profilePic || d.profilePictureUrl || d.avatar;
+          if (p) {
+            userPhotoCache.set(cleanName, p);
+            return p;
+          }
+        }
+
+        // 3. Búsqueda por aliases en userStats
+        const qAlias = await db.collection('userStats').where('aliases', 'array-contains', cleanName).limit(1).get();
+        if (!qAlias.empty) {
+          const d = qAlias.docs[0].data() || {};
+          const p = d.profilePic || d.profilePictureUrl || (d.gamification && d.gamification.profilePic);
+          if (p) {
+            userPhotoCache.set(cleanName, p);
+            return p;
+          }
+        }
+
+        // 4. Búsqueda por tiktokId en userStats
+        const qTiktok = await db.collection('userStats').where('tiktokId', '==', cleanName).limit(1).get();
+        if (!qTiktok.empty) {
+          const d = qTiktok.docs[0].data() || {};
+          const p = d.profilePic || d.profilePictureUrl || (d.gamification && d.gamification.profilePic);
+          if (p) {
+            userPhotoCache.set(cleanName, p);
+            return p;
+          }
+        }
+      } catch (err) {
+        console.warn('Error consultando foto de Firestore para ruleta:', err);
+      }
+      return null;
+    }
+
+    function preloadParticipantPhotos() {
+      if (!db || !Array.isArray(rouletteParticipants) || rouletteParticipants.length === 0) return;
+      const uniqueNames = Array.from(new Set(rouletteParticipants.map(normalizeParticipantName).filter(Boolean)));
+
+      uniqueNames.forEach(cleanName => {
+        if (userPhotoCache.has(cleanName)) return;
+
+        // Comprobar si ya existe en solicitudes locales
+        const fromLocal = getWinnerPhotoUrl(cleanName);
+        if (fromLocal && !fromLocal.includes('ui-avatars.com')) {
+          userPhotoCache.set(cleanName, fromLocal);
+          return;
+        }
+
+        // Pre-cargar de Firestore en segundo plano para que esté lista antes del tiro
+        fetchWinnerPhotoFromFirestore(cleanName).catch(() => {});
+      });
     }
 
     async function publishRouletteLiveState(payload) {
@@ -1223,6 +1326,7 @@ var firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE 
       liveSpinEntriesOverride = null; // Important: Clear override when participants change
       renderParticipantsList();
       drawWheel();
+      preloadParticipantPhotos();
     }
 
 
@@ -1818,12 +1922,46 @@ var firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE 
       if (options.winnerToken) {
         lastHandledLiveWinnerToken = options.winnerToken;
       }
+      const cleanName = normalizeParticipantName(name);
       winnerName.innerText = name;
-      const fallbackPhoto = getWinnerPhotoUrl(name);
-      winnerPhoto.src = String(options.photoUrl || fallbackPhoto || '').trim() || fallbackPhoto;
-      winnerPhoto.onerror = () => {
-        winnerPhoto.src = fallbackPhoto;
+      const accentHex = getComputedStyle(document.documentElement).getPropertyValue('--roulette-accent-color').trim().replace('#', '') || '00e5ff';
+      const safeFallback = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(cleanName || name) + '&background=' + accentHex + '&color=000&size=150&bold=true';
+
+      const cachedOrFoundPhoto = getWinnerPhotoUrl(name);
+      const initialPhoto = String(options.photoUrl || cachedOrFoundPhoto || '').trim() || safeFallback;
+
+      winnerPhoto.onerror = function() {
+        this.onerror = null; // Evitar loop infinito
+        this.src = safeFallback;
       };
+      winnerPhoto.src = initialPhoto;
+
+      // Si la foto inicial fue el fallback genérico de iniciales, resolver de Firestore y actualizar en vivo
+      if (!options.photoUrl && (!cachedOrFoundPhoto || cachedOrFoundPhoto.includes('ui-avatars.com'))) {
+        fetchWinnerPhotoFromFirestore(cleanName).then(remotePhoto => {
+          if (remotePhoto && winnerOverlay.classList.contains('show') && normalizeParticipantName(winnerName.innerText) === cleanName) {
+            winnerPhoto.onerror = function() {
+              this.onerror = null;
+              this.src = safeFallback;
+            };
+            winnerPhoto.src = remotePhoto;
+            userPhotoCache.set(cleanName, remotePhoto);
+
+            if (options.broadcast !== false && options.winnerToken) {
+              publishRouletteLiveState({
+                type: 'winner',
+                winner: {
+                  token: options.winnerToken,
+                  name,
+                  photoUrl: remotePhoto,
+                  entries: Array.isArray(options.sourceEntries) ? options.sourceEntries.slice() : getWheelEntries(),
+                  finalRotation: Number.isFinite(options.finalRotation) ? options.finalRotation : currentRotation
+                }
+              });
+            }
+          }
+        }).catch(() => {});
+      }
       
       winnerOverlay.classList.add('show');
       if (!(alreadySameWinner && options.quietIfSame)) {

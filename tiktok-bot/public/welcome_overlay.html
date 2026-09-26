@@ -529,6 +529,7 @@
                             if (data.welcomeOverlayColors !== undefined) config.welcomeOverlayColors = data.welcomeOverlayColors || {};
                             if (data.welcomeOverlaySounds !== undefined) config.welcomeOverlaySounds = data.welcomeOverlaySounds || {};
                             if (data.welcomeOverlayUserSounds !== undefined) config.welcomeOverlayUserSounds = data.welcomeOverlayUserSounds || {};
+                            if (data.welcomeOverlaySoundUrl !== undefined) config.welcomeOverlaySoundUrl = data.welcomeOverlaySoundUrl;
 
                             // Aplicar estilos dinámicos
                             applyStyles();
@@ -673,13 +674,28 @@
             }
         }
 
-        // Agregar bienvenida a la cola (máximo 15 para evitar acumulación excesiva)
+        // Agregar bienvenida a la cola de forma inteligente y fluida
         function addWelcome(data) {
             if (!data) return;
             if (config.welcomeOverlayEnabled === false && !data.isTest) return;
+
+            // Deduplicación en cola: no agregar al mismo usuario si ya está en la fila esperando
+            const userKey = String(data.uniqueId || '').toLowerCase().trim();
+            if (userKey && !data.isTest) {
+                const alreadyQueued = welcomeQueue.some(item => 
+                    String(item.uniqueId || '').toLowerCase().trim() === userKey
+                );
+                if (alreadyQueued) {
+                    console.log(`[Queue] @${userKey} ya está esperando en cola, omitiendo duplicado.`);
+                    return;
+                }
+            }
+
             welcomeQueue.push(data);
-            if (welcomeQueue.length > 15) {
-                welcomeQueue.splice(0, welcomeQueue.length - 15);
+
+            // Si la cola supera el límite máximo seguro (50), conservar los más recientes sin cortar los primeros
+            if (welcomeQueue.length > 50) {
+                welcomeQueue = welcomeQueue.slice(-50);
             }
             processQueue();
         }
@@ -844,8 +860,19 @@
                 // Mostrar tarjeta (animación de entrada)
                 container.className = 'active';
 
-                // Tiempo de espera antes de ocultar
-                const durationMs = Math.max(2000, (Number(config.welcomeOverlayDuration) || 5) * 1000);
+                // Duración adaptativa inteligente según el tamaño de la cola:
+                // Si hay pocos usuarios, mostrar el tiempo completo configurado (ej: 4-5s).
+                // Si hay una ráfaga o muchos usuarios en espera, acelerar automáticamente para que todos se vean sin atrasar el stream.
+                const baseDurationSec = Math.max(1.5, Number(config.welcomeOverlayDuration) || 4);
+                let durationMs = baseDurationSec * 1000;
+
+                if (welcomeQueue.length >= 6) {
+                    durationMs = Math.max(1400, baseDurationSec * 350); // Turbo si hay avalancha de gente (> 6 esperando)
+                } else if (welcomeQueue.length >= 3) {
+                    durationMs = Math.max(2000, baseDurationSec * 600); // Rápido si hay varios (3 a 5 esperando)
+                } else if (welcomeQueue.length >= 1) {
+                    durationMs = Math.max(2500, baseDurationSec * 850); // Fluido si hay otro esperando
+                }
                 
                 // Watchdog de seguridad: desbloquea la cola si algo falla o se congela inesperadamente
                 if (watchdogTimer) clearTimeout(watchdogTimer);
@@ -870,10 +897,13 @@
                         playExitTimeout = null;
                         if (watchdogTimer) clearTimeout(watchdogTimer);
                         container.className = '';
-                        isCardPlaying = false;
-                        // Llamar recursivamente para el siguiente en cola
-                        processQueue();
-                    }, 600); // Duración de la animación exit css
+                        
+                        // Breve pausa de 70ms para que el motor CSS resetee la animación y la siguiente tarjeta entre con fluidez
+                        setTimeout(() => {
+                            isCardPlaying = false;
+                            processQueue();
+                        }, 70);
+                    }, 500); // Duración de la animación exit css (0.5s)
                 }, durationMs);
             } catch (err) {
                 console.error("[Welcome Overlay] Error procesando tarjeta de bienvenida:", err);

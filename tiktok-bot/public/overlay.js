@@ -661,8 +661,8 @@
       const oldImg = headerEl.querySelector('.header-profile-pic');
       if (oldImg) oldImg.remove();
       
-      let profilePicUrl = null;
-      if (db && data.usuario) {
+      let profilePicUrl = String(data.profilePhoto || data.profilePic || data.avatarUrl || data.photoUrl || '').trim() || null;
+      if (!profilePicUrl && db && data.usuario) {
           try {
              // Buscar documento de usuario (intentar normalizar clave)
              const rawUser = String(data.usuario).trim().replace(/^@/, '').toLowerCase();
@@ -696,6 +696,10 @@
           img.src = profilePicUrl;
           img.className = 'header-profile-pic';
           img.alt = uname;
+          img.onerror = () => {
+              img.remove();
+              headerEl.classList.remove('has-profile-pic');
+          };
           // Insertar al principio
           headerEl.insertBefore(img, headerEl.firstChild);
       }

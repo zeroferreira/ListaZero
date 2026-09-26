@@ -2296,7 +2296,7 @@
               if (artistEl) artistEl.innerText = artist;
 
               if (settings.showAlbumArt) {
-                  const dbCover = String(req.cover || req.coverUrl || '').trim();
+                  const dbCover = String(req.cover || req.coverUrl || req.artworkUrl || '').trim();
                   const hasDbCover = dbCover && (dbCover.startsWith('http://') || dbCover.startsWith('https://'));
                   const fallbackArtwork = generateDynamicFallback(song, artist);
 
@@ -2324,7 +2324,7 @@
               const artist = String(req.artista || req.artistName || req.artist || '').trim();
               const song = String(req.cancion || req.songName || req.song || req.name || '').trim();
 
-              const dbCover = String(req.cover || req.coverUrl || '').trim();
+              const dbCover = String(req.cover || req.coverUrl || req.artworkUrl || '').trim();
               const hasDbCover = dbCover && (dbCover.startsWith('http://') || dbCover.startsWith('https://'));
               const fallbackArtwork = generateDynamicFallback(song, artist);
 
@@ -2861,12 +2861,31 @@
             totalsPayload[`counts.${currentDay}.${u}`] = firebase.firestore.FieldValue.increment(1);
             totalsRef.set(totalsPayload, { merge: true }).catch(() => {});
 
-            const statsRef = db.collection('userStats').doc(u);
-            statsRef.set({
-              totalPoints: firebase.firestore.FieldValue.increment(25),
-              lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true }).catch(() => {});
-            console.log(`💰 Puntos otorgados a @${u} por reproducción en Cider (+25 pts)`);
+            // ⚠️ Protección anti-doble otorgamiento:
+            // Si el bot de TikTok está corriendo, él ya otorgó los puntos
+            // vía el webhook de Cider (index.js). Verificamos el flag en Firestore.
+            db.collection('globalStats').doc('general').get().then((generalSnap) => {
+              let botIsActive = false;
+              if (generalSnap.exists) {
+                const generalData = generalSnap.data() || {};
+                const lastUpdate = generalData.lastUpdate && generalData.lastUpdate.toMillis
+                  ? generalData.lastUpdate.toMillis()
+                  : 0;
+                botIsActive = generalData.botActive === true && (Date.now() - lastUpdate) < 90000;
+              }
+              if (!botIsActive) {
+                const statsRef = db.collection('userStats').doc(u);
+                statsRef.set({
+                  totalPoints: firebase.firestore.FieldValue.increment(25),
+                  lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true }).catch(() => {});
+                console.log(`💰 Puntos otorgados a @${u} por reproducción en Cider (+25 pts) [modo standalone]`);
+              } else {
+                console.log(`ℹ️ Puntos por reproducción de @${u} ya otorgados por el bot de TikTok. Skipping duplicado.`);
+              }
+            }).catch((err) => {
+              console.warn("Error comprobando botActive para puntos en queue.js:", err);
+            });
           } catch (e) {
             console.warn("Error actualizando puntos de usuario en queue.js:", e);
           }

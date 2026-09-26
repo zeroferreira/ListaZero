@@ -3827,6 +3827,9 @@ function setupListeners() {
     });
 
     // CHAT
+    // Cache de usuarios saludados recientemente (para evitar spam por reconexiones rápidas de TikTok)
+    const recentWelcomedUsers = new Map(); // uid -> timestamp
+
     // ─── PRESENCIA: registrar entrada de usuarios al live (evento 'member') ────
     tiktokLiveConnection.on('member', async (data) => {
         if (data && data.action === 3) {
@@ -3837,17 +3840,17 @@ function setupListeners() {
         const uid = data && data.uniqueId ? String(data.uniqueId).trim() : '';
         if (uid) {
             markUserPresent(uid);
-            // console.log(`👤 @${uid} entró al live.`);
 
             if (db && typeof addDoc === 'function' && typeof collection === 'function' && overlayAlertsConfig && overlayAlertsConfig.welcomeOverlayEnabled !== false) {
-                const isSubscriber = data.isSubscriber;
-                const isModerator = data.isModerator;
-                const isFollower = data.isFollower || (data.followInfo && (data.followInfo.followStatus === 1 || data.followInfo.followStatus === 2));
+                const isSubscriber = Boolean(data.isSubscriber);
+                const isModerator = Boolean(data.isModerator);
+                const isFollower = Boolean(data.isFollower || (data.followInfo && (data.followInfo.followStatus === 1 || data.followInfo.followStatus === 2)));
                 const isStreamer = uid.toLowerCase() === TIKTOK_USERNAME.toLowerCase();
 
+                // Permitir para todos por defecto, salvo que el usuario active filtros específicos
                 let allowed = false;
-                if (overlayAlertsConfig.welcomeOverlayAllowAll === true) {
-                    allowed = true;
+                if (overlayAlertsConfig.welcomeOverlayAllowAll !== false) {
+                    allowed = true; // Por defecto TODOS los usuarios son bienvenidos
                 } else {
                     if (overlayAlertsConfig.welcomeOverlayAllowFollowers === true && isFollower) {
                         allowed = true;
@@ -3865,7 +3868,35 @@ function setupListeners() {
 
                 if (allowed) {
                     try {
-                        const avatarUrl = data.profilePictureUrl || `https://i.pravatar.cc/100?img=${Math.floor(Math.random() * 70) + 1}`;
+                        const lowerUid = uid.toLowerCase();
+                        const nowMs = Date.now();
+
+                        // Cooldown inteligente por usuario:
+                        // Si está activado (default true), usa los minutos configurados (default 9 min)
+                        // Si está desactivado, aplica un margen anti-rebote de 20s para ignorar paquetes de red repetidos
+                        const cooldownMin = overlayAlertsConfig.welcomeOverlayCooldownEnabled !== false
+                            ? (Number(overlayAlertsConfig.welcomeOverlayCooldownMinutes) || 9)
+                            : 0.33; // 20 segundos
+                        const cooldownMs = cooldownMin * 60 * 1000;
+
+                        const lastWelcome = recentWelcomedUsers.get(lowerUid);
+                        if (lastWelcome && (nowMs - lastWelcome) < cooldownMs) {
+                            // Usuario ya saludado recientemente en este rango de tiempo
+                            return;
+                        }
+                        recentWelcomedUsers.set(lowerUid, nowMs);
+
+                        // Limpieza periódica del mapa en memoria si crece demasiado
+                        if (recentWelcomedUsers.size > 2000) {
+                            const cutoff = nowMs - cooldownMs;
+                            for (const [userKey, time] of recentWelcomedUsers.entries()) {
+                                if (time < cutoff) recentWelcomedUsers.delete(userKey);
+                            }
+                        }
+
+                        const avatarUrl = data.profilePictureUrl 
+                            || (data.userDetails && (data.userDetails.profilePictureUrl || (data.userDetails.profilePictureUrls && data.userDetails.profilePictureUrls[0])))
+                            || `https://i.pravatar.cc/100?img=${Math.floor(Math.random() * 70) + 1}`;
                         const nickname = data.nickname || uid;
                         
                         // Determinar los roles del usuario para bienvenidas personalizadas
@@ -3884,38 +3915,36 @@ function setupListeners() {
                             roles.push('donador');
                         }
                         if (isFollower) roles.push('follower');
-                        
-                        // Filtrado inteligente: solo escribir en Firestore para destacados, o para un usuario común de vez en cuando (5% de probabilidad)
-                        // Esto reduce más de un 95% el consumo de cuota de Firestore (evita RESOURCE_EXHAUSTED)
-                        const isFeaturedUser = roles.includes('streamer') || roles.includes('moderator') || roles.includes('subscriber') || roles.includes('vip') || roles.includes('donador');
-                        const isLuckyRegularUser = !isFeaturedUser && Math.random() < 0.05; // 5% de probabilidad para usuarios comunes
-                        
-                        if (isFeaturedUser || isLuckyRegularUser) {
-                            // Guardar/Actualizar el registro en liveUsers para el registro histórico del mes
-                            const { doc, setDoc, serverTimestamp, increment } = require('firebase/firestore');
+
+                        console.log(`👋 [Bienvenida] @${uid} (${nickname}) entró al Live. Rol: ${roles.join(', ') || 'común'}`);
+
+                        // Enviar notificación en tiempo real para el overlay de bienvenida (¡A TODOS!)
+                        await addDoc(collection(db, 'notifications'), {
+                            type: 'join',
+                            user: nickname,
+                            uniqueId: uid,
+                            profilePic: avatarUrl,
+                            message: '¡Entró al Live!',
+                            roles: roles,
+                            timestamp: serverTimestamp()
+                        });
+
+                        // Guardar/Actualizar el registro en liveUsers para el registro histórico del mes (asíncrono seguro)
+                        try {
                             const now = new Date();
                             const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-                            
-                            await setDoc(doc(db, 'liveUsers', uid), {
+                            const { doc: docInst, setDoc: setDocInst, increment: incInst } = require('firebase/firestore');
+                            await setDocInst(docInst(db, 'liveUsers', uid), {
                                 uniqueId: uid,
                                 nickname: nickname,
                                 profilePic: avatarUrl,
                                 roles: roles,
-                                joinCount: increment(1),
+                                joinCount: incInst(1),
                                 lastJoined: serverTimestamp(),
                                 monthJoined: currentMonth
                             }, { merge: true });
-
-                            // Enviar notificación en tiempo real para el overlay
-                            await addDoc(collection(db, 'notifications'), {
-                                type: 'join',
-                                user: nickname,
-                                uniqueId: uid,
-                                profilePic: avatarUrl,
-                                message: '¡Entró al Live!',
-                                roles: roles,
-                                timestamp: serverTimestamp()
-                            });
+                        } catch (errLive) {
+                            // Si cuota o red de liveUsers falla, no afecta la alerta en pantalla
                         }
                     } catch (e) {
                         console.error('⚠️ Error enviando notificación de bienvenida a Firestore:', e);
@@ -5067,6 +5096,7 @@ function syncSessionCountersToFirestore(immediate = false) {
                 streamTotalLikes: streamTotalLikesCounter,
                 likesGoalStartOffset: likesGoalStartOffset, // Guardar offset para persistencia tras reinicios
                 sessionCoins:   sessionTotalCoins,
+                botActive:      true, // ← Flag para que queue.js sepa que el bot está corriendo (evita doble puntos)
                 lastUpdate:     serverTimestamp()
             }, { merge: true });
         } catch (e) {
@@ -5959,7 +5989,8 @@ async function handleSongRequest(user, query, options = {}) {
             day: currentDay,
             genre: genre,
             liveCode: liveCode || '',
-            profilePhoto: options.profilePhoto || '', // NUEVO: Guardar foto de perfil
+            profilePhoto: options.profilePhoto || options.profilePic || '',
+            profilePic: options.profilePhoto || options.profilePic || '',
             link: options.link || ''
         };
         requestData.source = 'tiktok';
