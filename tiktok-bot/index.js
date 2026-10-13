@@ -240,17 +240,118 @@ try {
 const PROFILES_DIR = path.join(__dirname, 'profiles');
 const ACTIVE_PROFILE_FILE = path.join(PROFILES_DIR, 'active_profile.json');
 
-// Asegurar que exista la carpeta de perfiles
+// Asegurar que exista la carpeta de perfiles y los 3 perfiles estándar
 if (!fs.existsSync(PROFILES_DIR)) {
-    fs.mkdirSync(PROFILES_DIR);
+    fs.mkdirSync(PROFILES_DIR, { recursive: true });
 }
 
+function ensureDefaultProfiles() {
+    try {
+        const defaultMusicFb = `const firebaseConfig = {
+    apiKey:            "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+    authDomain:        "zero-strom-web.firebaseapp.com",
+    projectId:         "zero-strom-web",
+    storageBucket:     "zero-strom-web.firebasestorage.app",
+    messagingSenderId: "758369466349",
+    appId:             "1:758369466349:web:f2ced362a5a049c70b59e4",
+    databaseURL:       "https://zero-strom-web-default-rtdb.firebaseio.com"
+};
+
+if (typeof window !== 'undefined') {
+    window.ZERO_FM_FIREBASE = firebaseConfig;
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = firebaseConfig;
+}
+`;
+
+        const defaultGamingFb = `const firebaseConfig = {
+  apiKey: "AIzaSyC9zlwtUUq7eNUoZ1QVcEOY4-NI_4fKU5Y",
+  authDomain: "zer0-gaming.firebaseapp.com",
+  projectId: "zer0-gaming",
+  storageBucket: "zer0-gaming.firebasestorage.app",
+  messagingSenderId: "512862504825",
+  appId: "1:512862504825:web:a0cea40d1435e74d6851a8",
+  measurementId: "G-LTZW7V5X7P"
+};
+
+if (typeof window !== 'undefined') {
+    window.ZERO_FM_FIREBASE = firebaseConfig;
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = firebaseConfig;
+}
+`;
+
+        const baseMusicConfig = {
+            allowSubscribers: true,
+            allowModerators: true,
+            allowSuperFans: true,
+            minCoinsForVip: 30,
+            vipDurationSession: true,
+            sessionId: "",
+            ttTargetIdc: "",
+            dashboardPort: 3000,
+            ciderUrl: "http://192.168.100.7:10767",
+            mockCider: false,
+            requireVipForSr: false,
+            allowPointsCommand: true,
+            likesPerPoint: 300,
+            commandAliases: ["zr", "!zr", "!sr", "!pedir", "!cancion"],
+            ignoreExampleQuery: "artista cancion",
+            eulerApiKey: "euler_OGVhNzY2MGYwM2IwZDExNTcyY2IzOTQ5NWMwOGY4NDJlMGUzNDEzZWMzNTM1MmU1OWU5YzA3"
+        };
+
+        const profilesToEnsure = [
+            { name: 'zer0ferreira', username: 'zer0ferreira', fb: defaultMusicFb, isGaming: false },
+            { name: 'zeroferreira', username: 'zeroferreira', fb: defaultMusicFb, isGaming: false },
+            { name: 'gamez', username: 'game.zer0', fb: defaultGamingFb, isGaming: true }
+        ];
+
+        for (const p of profilesToEnsure) {
+            const pDir = path.join(PROFILES_DIR, p.name);
+            if (!fs.existsSync(pDir)) {
+                fs.mkdirSync(pDir, { recursive: true });
+            }
+            const pCfg = path.join(pDir, 'config.json');
+            if (!fs.existsSync(pCfg)) {
+                const cfgData = {
+                    ...baseMusicConfig,
+                    tiktokUsername: p.username,
+                    ...(p.isGaming ? { ciderUrl: "http://localhost:10767" } : {})
+                };
+                fs.writeFileSync(pCfg, JSON.stringify(cfgData, null, 2));
+            }
+            const pFb = path.join(pDir, 'firebase-config.js');
+            if (!fs.existsSync(pFb)) {
+                fs.writeFileSync(pFb, p.fb);
+            }
+        }
+
+        const legacyMuzic = path.join(PROFILES_DIR, 'muzic');
+        if (fs.existsSync(legacyMuzic)) {
+            try {
+                fs.rmSync(legacyMuzic, { recursive: true, force: true });
+            } catch (_) {}
+        }
+    } catch (e) {
+        console.warn("⚠️ Advertencia al asegurar perfiles por defecto:", e.message);
+    }
+}
+ensureDefaultProfiles();
+
 // Cargar perfil activo
-let activeProfile = 'zeroferreira';
+let activeProfile = 'zer0ferreira';
 if (fs.existsSync(ACTIVE_PROFILE_FILE)) {
     try {
         const raw = fs.readFileSync(ACTIVE_PROFILE_FILE, 'utf8');
-        activeProfile = JSON.parse(raw).activeProfile || 'zeroferreira';
+        const parsed = JSON.parse(raw).activeProfile;
+        if (parsed && fs.existsSync(path.join(PROFILES_DIR, parsed))) {
+            activeProfile = parsed;
+        } else {
+            activeProfile = 'zer0ferreira';
+            fs.writeFileSync(ACTIVE_PROFILE_FILE, JSON.stringify({ activeProfile: 'zer0ferreira' }, null, 2));
+        }
     } catch (_) {}
 }
 
@@ -476,7 +577,10 @@ try {
     if (activeProfile === 'zeroferreira' && (config.tiktokUsername === 'testuser2' || !config.tiktokUsername)) {
         config.tiktokUsername = 'zeroferreira';
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-    } else if (activeProfile === 'videojuegos' && (config.tiktokUsername === 'videojuegos' || config.tiktokUsername === 'testuser2' || !config.tiktokUsername)) {
+    } else if (activeProfile === 'zer0ferreira' && (config.tiktokUsername === 'testuser2' || !config.tiktokUsername)) {
+        config.tiktokUsername = 'zer0ferreira';
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    } else if ((activeProfile === 'videojuegos' || activeProfile === 'gamez') && (config.tiktokUsername === 'videojuegos' || config.tiktokUsername === 'gamez' || config.tiktokUsername === 'testuser2' || !config.tiktokUsername)) {
         config.tiktokUsername = 'game.zer0';
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
     }
