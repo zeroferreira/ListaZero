@@ -4934,13 +4934,16 @@ function setupListeners() {
     //                   totalLikeCount = acumulativo global del stream
     // TikFinity suma likeCount directamente por usuario, igual que hacemos aquí.
     tiktokLiveConnection.on('like', (data) => {
-        const uniqueId = String(data && data.uniqueId || '').trim();
-        const nickname = String(data && data.nickname || uniqueId || 'Usuario').trim();
-        const rawLikeCount = Number(data && data.likeCount);
-        const safeLikeCount = Number.isFinite(rawLikeCount) ? Math.floor(rawLikeCount) : 0;
+        // Extracción robusta de usuario (soporta objetos planos o anidados en data.user)
+        const uniqueId = String((data && (data.uniqueId || (data.user && (data.user.uniqueId || data.user.id)) || data.userId)) || '').trim();
+        const nickname = String((data && (data.nickname || (data.user && (data.user.nickname || data.user.displayName)))) || uniqueId || 'Usuario').trim();
+        const profilePic = String((data && (data.profilePictureUrl || (data.user && (data.user.profilePictureUrl || (data.user.avatarThumb && data.user.avatarThumb.urlList && data.user.avatarThumb.urlList[0]))))) || '').trim();
+        
+        const rawLikeCount = Number(data && (data.likeCount !== undefined ? data.likeCount : (data.count !== undefined ? data.count : 1)));
+        const safeLikeCount = Number.isFinite(rawLikeCount) && rawLikeCount > 0 ? Math.floor(rawLikeCount) : 1;
 
         // ⚡ TOTAL LIKE COUNT GLOBAL: contador más confiable del stream
-        const rawTotal = Number(data && data.totalLikeCount);
+        const rawTotal = Number(data && (data.totalLikeCount !== undefined ? data.totalLikeCount : data.total));
         if (Number.isFinite(rawTotal) && rawTotal > lastKnownTotalLikeCount) {
             if (likesGoalStartOffset === null) {
                 // Inicializar offset restando la suma actual de likes de sesión para preservar el progreso acumulado
@@ -4952,7 +4955,7 @@ function setupListeners() {
             streamTotalLikesCounter = rawTotal; // totalLikeCount ya ES el acumulado real
         }
 
-        // Si TikTok no manda usuario o el batch es 0, ignorar
+        // Si TikTok no manda usuario o el batch es 0, registrar el total y omitir atribución
         if (!uniqueId || safeLikeCount <= 0) return;
 
         // likeCount = likes en este batch específico → sumar directo
@@ -4965,12 +4968,12 @@ function setupListeners() {
         const current = likeBuffer.get(uniqueId) || {
             userId: uniqueId,
             displayName: nickname,
-            profilePic: data.profilePictureUrl || '',
+            profilePic: profilePic,
             likes: 0
         };
         current.displayName = nickname || current.displayName || uniqueId;
-        if (data.profilePictureUrl) {
-            current.profilePic = data.profilePictureUrl;
+        if (profilePic) {
+            current.profilePic = profilePic;
         }
         current.likes += delta;
         likeBuffer.set(uniqueId, current);
@@ -4982,11 +4985,11 @@ function setupListeners() {
         sessionLikerDetails.set(uniqueId, {
             username: uniqueId,
             nickname: nickname || uniqueId,
-            profilePictureUrl: data.profilePictureUrl || '',
+            profilePictureUrl: profilePic || (current && current.profilePic) || '',
             lastActive: Date.now()
         });
 
-        console.log(`❤️ @${nickname} +${delta} likes → sesión: ${sessionTotal} | stream total: ${streamTotalLikesCounter}`);
+        console.log(`❤️ @${nickname} (${uniqueId}) +${delta} likes → sesión: ${sessionTotal} | stream total: ${streamTotalLikesCounter}`);
 
         // Actualizar top liker si corresponde (con debounce)
         if (sessionTotal > currentTopLiker.count) {
