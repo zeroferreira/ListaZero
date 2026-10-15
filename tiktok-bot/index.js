@@ -1721,7 +1721,7 @@ function startBot() {
 
     // Endpoint dinámico para servir configuración de Firebase a los overlays
     app.get('/firebase-config.js', (req, res) => {
-        const fbConfigFile = PROFILE_FB_CONFIG_FILE;
+        const fbConfigFile = path.join(PROFILES_DIR, activeProfile, 'firebase-config.js');
         res.setHeader('Content-Type', 'application/javascript');
         if (fs.existsSync(fbConfigFile)) {
             try {
@@ -3552,6 +3552,43 @@ function extractUserLevels(data) {
     return { memberLevel, gifterLevel };
 }
 
+function extractUserInfo(data) {
+    if (!data) return { uniqueId: '', nickname: 'Usuario', profilePictureUrl: '' };
+    const userObj = data.user || data.userDetails || data.sender || data.fromUser || {};
+    
+    const uniqueId = String(
+        data.uniqueId || 
+        userObj.uniqueId || 
+        data.userId || 
+        userObj.id || 
+        userObj.userId || 
+        data.secUid || 
+        ''
+    ).trim();
+    
+    const nickname = String(
+        data.nickname || 
+        userObj.nickname || 
+        data.displayName || 
+        userObj.displayName || 
+        uniqueId || 
+        'Usuario'
+    ).trim();
+    
+    let profilePictureUrl = String(
+        data.profilePictureUrl || 
+        userObj.profilePictureUrl || 
+        (data.userDetails && (data.userDetails.profilePictureUrl || (Array.isArray(data.userDetails.profilePictureUrls) && data.userDetails.profilePictureUrls[0]))) ||
+        (userObj.avatarThumb && Array.isArray(userObj.avatarThumb.urlList) && userObj.avatarThumb.urlList[0]) ||
+        (userObj.avatarMedium && Array.isArray(userObj.avatarMedium.urlList) && userObj.avatarMedium.urlList[0]) ||
+        (userObj.avatarLarge && Array.isArray(userObj.avatarLarge.urlList) && userObj.avatarLarge.urlList[0]) ||
+        (Array.isArray(data.profilePictureUrls) && data.profilePictureUrls[0]) ||
+        ''
+    ).trim();
+    
+    return { uniqueId, nickname, profilePictureUrl };
+}
+
 async function updateUserProfilePic(userId, displayName, url, extraFields = {}) {
     if (!db) return;
     
@@ -3713,9 +3750,8 @@ function setupListeners() {
     async function handleSubscription(data) {
         if (overlayAlertsConfig.enableSubscribeAlert === false) return;
 
-        const displayName = data.nickname;
-        const uid = data.uniqueId;
-        const profilePic = data.profilePictureUrl;
+        const { uniqueId: uid, nickname: displayName, profilePictureUrl: profilePic } = extractUserInfo(data);
+        if (!uid) return;
         
         // Marcar presencia activa en el live
         markUserPresent(uid);
@@ -3941,7 +3977,7 @@ function setupListeners() {
             handleSubscription(data);
             return;
         }
-        const uid = data && data.uniqueId ? String(data.uniqueId).trim() : '';
+        const { uniqueId: uid, nickname, profilePictureUrl: avatarUrlRaw } = extractUserInfo(data);
         if (uid) {
             markUserPresent(uid);
 
@@ -3949,7 +3985,7 @@ function setupListeners() {
                 const isSubscriber = Boolean(data.isSubscriber);
                 const isModerator = Boolean(data.isModerator);
                 const isFollower = Boolean(data.isFollower || (data.followInfo && (data.followInfo.followStatus === 1 || data.followInfo.followStatus === 2)));
-                const isStreamer = uid.toLowerCase() === TIKTOK_USERNAME.toLowerCase();
+                const isStreamer = uid.replace(/^@/, '').toLowerCase() === String(TIKTOK_USERNAME || '').replace(/^@/, '').toLowerCase();
 
                 // Permitir para todos por defecto, salvo que el usuario active filtros específicos
                 let allowed = false;
@@ -3998,10 +4034,8 @@ function setupListeners() {
                             }
                         }
 
-                        const avatarUrl = data.profilePictureUrl 
-                            || (data.userDetails && (data.userDetails.profilePictureUrl || (data.userDetails.profilePictureUrls && data.userDetails.profilePictureUrls[0])))
+                        const avatarUrl = avatarUrlRaw 
                             || `https://i.pravatar.cc/100?img=${Math.floor(Math.random() * 70) + 1}`;
-                        const nickname = data.nickname || uid;
                         
                         // Determinar los roles del usuario para bienvenidas personalizadas
                         const roles = [];
@@ -4070,10 +4104,9 @@ function setupListeners() {
         }
 
         const msg = data.comment;
-        const lowerMsg = msg.toLowerCase();
-        const displayName = data.nickname;
-        const userId = data.uniqueId;
-        const profilePic = data.profilePictureUrl;
+        const lowerMsg = (msg || '').toLowerCase();
+        const { uniqueId: userId, nickname: displayName, profilePictureUrl: profilePic } = extractUserInfo(data);
+        if (!userId) return;
 
         // Marcar presencia activa en el live
         markUserPresent(userId);
@@ -4109,7 +4142,7 @@ function setupListeners() {
         const isFollower = data.isFollower || (data.followInfo && (data.followInfo.followStatus === 1 || data.followInfo.followStatus === 2));
         
         // FIX: Comparación de usuario insensible a mayúsculas para el streamer
-        const isStreamer = userId.toLowerCase() === TIKTOK_USERNAME.toLowerCase();
+        const isStreamer = userId.replace(/^@/, '').toLowerCase() === String(TIKTOK_USERNAME || '').replace(/^@/, '').toLowerCase();
         
         const isVip = isSubscriber || isModerator || isSuperFan || isStreamer || tempVipUsers.has(userId);
         const requireVip = config.requireVipForSr === true; // Strict check
@@ -4631,6 +4664,9 @@ function setupListeners() {
 
     // REGALOS
     tiktokLiveConnection.on('gift', async (data) => {
+        const { uniqueId: uid, nickname: displayName, profilePictureUrl: profilePic } = extractUserInfo(data);
+        if (!uid) return;
+
         // DIAGNOSTIC LOG FOR GIFTS
         try {
             const logEntry = {
@@ -4639,8 +4675,8 @@ function setupListeners() {
                 giftId: data.giftId || data.gift?.id || '',
                 diamondCount: data.diamondCount || '',
                 giftDetails: data.gift || null,
-                nickname: data.nickname || '',
-                uniqueId: data.uniqueId || ''
+                nickname: displayName,
+                uniqueId: uid
             };
             const logPath = path.join(__dirname, 'gift_logs.json');
             fs.appendFileSync(logPath, JSON.stringify(logEntry) + '\n');
@@ -4650,7 +4686,7 @@ function setupListeners() {
         // ── DEDUPLICACIÓN INTELIGENTE PARA RACHAS (STREAKS) ──
         let lastCount = 0;
         const newCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
-        const rawMsgId = data.msgId || data.id || data.groupId || (data.gift && data.gift.msg_id) || `${data.uniqueId}_${data.giftId || (data.gift && data.gift.id) || 'gift'}_${data.groupId || ''}`;
+        const rawMsgId = data.msgId || data.id || data.groupId || (data.gift && data.gift.msg_id) || `${uid}_${data.giftId || (data.gift && data.gift.id) || 'gift'}_${data.groupId || ''}`;
         const msgId = String(rawMsgId);
         if (msgId) {
             if (!global.processedGiftsMap) {
@@ -4674,9 +4710,6 @@ function setupListeners() {
         const giftName = data.giftName || data.gift?.name || data.gift?.giftName || '';
         const giftKey = normalizeComparableText(giftName);
         const coins = Number(data.diamondCount || data.gift?.diamondCount || data.giftDetails?.diamondCount || 0) || 0;
-        const uid = data.uniqueId;
-        const displayName = data.nickname;
-        const profilePic = data.profilePictureUrl;
         
         // Actualizar foto de perfil
         if (profilePic) {
@@ -4935,9 +4968,7 @@ function setupListeners() {
     // TikFinity suma likeCount directamente por usuario, igual que hacemos aquí.
     tiktokLiveConnection.on('like', (data) => {
         // Extracción robusta de usuario (soporta objetos planos o anidados en data.user)
-        const uniqueId = String((data && (data.uniqueId || (data.user && (data.user.uniqueId || data.user.id)) || data.userId)) || '').trim();
-        const nickname = String((data && (data.nickname || (data.user && (data.user.nickname || data.user.displayName)))) || uniqueId || 'Usuario').trim();
-        const profilePic = String((data && (data.profilePictureUrl || (data.user && (data.user.profilePictureUrl || (data.user.avatarThumb && data.user.avatarThumb.urlList && data.user.avatarThumb.urlList[0]))))) || '').trim();
+        const { uniqueId, nickname, profilePictureUrl: profilePic } = extractUserInfo(data);
         
         const rawLikeCount = Number(data && (data.likeCount !== undefined ? data.likeCount : (data.count !== undefined ? data.count : 1)));
         const safeLikeCount = Number.isFinite(rawLikeCount) && rawLikeCount > 0 ? Math.floor(rawLikeCount) : 1;
@@ -5014,9 +5045,8 @@ function setupListeners() {
 
     // SEGUIDORES (FOLLOW)
     tiktokLiveConnection.on('follow', async (data) => {
-        const displayName = data.nickname;
-        const uid = data.uniqueId;
-        const profilePic = data.profilePictureUrl;
+        const { uniqueId: uid, nickname: displayName, profilePictureUrl: profilePic } = extractUserInfo(data);
+        if (!uid) return;
 
         // Debounce: evitar procesar o alertar múltiples follows del mismo usuario en <15s
         const now = Date.now();
@@ -5091,9 +5121,8 @@ function setupListeners() {
 
     // ─── COMPARTIDOS (SHARE) ───────────────────────────────────────────────────
     tiktokLiveConnection.on('share', async (data) => {
-        const displayName = data.nickname || data.uniqueId || 'Usuario';
-        const uid = data.uniqueId || '';
-        const profilePic = data.profilePictureUrl || '';
+        const { uniqueId: uid, nickname: displayName, profilePictureUrl: profilePic } = extractUserInfo(data);
+        if (!uid) return;
 
         // Marcar presencia activa en el live
         markUserPresent(uid);
