@@ -1,3 +1,28 @@
+let currentBotProfile = '';
+let currentBotUser = '';
+
+// Detectar perfil activo del bot al abrir la extensión
+(async () => {
+  try {
+    const res = await fetch('http://localhost:3000/api/status');
+    const data = await res.json();
+    if (data && (data.activeProfile || data.tiktokUsername)) {
+      currentBotProfile = data.activeProfile || '';
+      currentBotUser = data.tiktokUsername || currentBotProfile;
+      const infoBox = document.getElementById('bot-profile-info');
+      const nameEl = document.getElementById('active-profile-name');
+      const userEl = document.getElementById('active-profile-user');
+      if (infoBox && nameEl && userEl) {
+        nameEl.textContent = currentBotProfile || 'Principal';
+        userEl.textContent = '@' + currentBotUser;
+        infoBox.style.display = 'block';
+      }
+    }
+  } catch (_) {
+    // Si el bot no está corriendo, se mantiene oculto
+  }
+})();
+
 document.getElementById('sync-btn').addEventListener('click', async () => {
   const statusBox = document.getElementById('status-box');
   statusBox.className = 'status';
@@ -36,7 +61,8 @@ document.getElementById('sync-btn').addEventListener('click', async () => {
 
           const data = await response.json();
           if (data.ok) {
-            statusBox.textContent = `✅ Cookies sincronizadas (sessionid ${ttTargetIdc ? '+ ' + ttTargetIdc : ''}). ¡El bot ya está autenticado!`;
+            const profileMsg = currentBotProfile ? ` para el perfil [${currentBotProfile}] (@${currentBotUser})` : '';
+            statusBox.textContent = `✅ Cookies sincronizadas${profileMsg}. ¡El bot ya está autenticado!`;
             statusBox.className = 'status success';
           } else {
             statusBox.textContent = '❌ Error del bot: ' + (data.error || 'Desconocido');

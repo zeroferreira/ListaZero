@@ -1755,6 +1755,7 @@ function startBot() {
             }
         }
         res.json({
+            activeProfile: activeProfile,
             tiktokUsername: TIKTOK_USERNAME,
             tiktokState: (tiktokLiveConnection && tiktokLiveConnection.isConnected) ? 'connected' : 'disconnected',
             isConnecting: !!isConnecting,
