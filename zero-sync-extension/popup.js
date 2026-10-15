@@ -17,28 +17,36 @@ document.getElementById('sync-btn').addEventListener('click', async () => {
 
       const sessionId = cookie.value;
 
-      // 2. Enviar el sessionId al bot local en puerto 3000
-      try {
-        const response = await fetch('http://localhost:3000/api/tiktok/session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ sessionId })
-        });
+      // Obtener también 'tt-target-idc' si existe
+      chrome.cookies.get({
+        url: 'https://www.tiktok.com',
+        name: 'tt-target-idc'
+      }, async (idcCookie) => {
+        const ttTargetIdc = idcCookie ? idcCookie.value : '';
 
-        const data = await response.json();
-        if (data.ok) {
-          statusBox.textContent = '✅ Cookie sincronizada con éxito. ¡El bot ya está autenticado!';
-          statusBox.className = 'status success';
-        } else {
-          statusBox.textContent = '❌ Error del bot: ' + (data.error || 'Desconocido');
+        // 2. Enviar sessionId y ttTargetIdc al bot local en puerto 3000
+        try {
+          const response = await fetch('http://localhost:3000/api/tiktok/session', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ sessionId, ttTargetIdc })
+          });
+
+          const data = await response.json();
+          if (data.ok) {
+            statusBox.textContent = `✅ Cookies sincronizadas (sessionid ${ttTargetIdc ? '+ ' + ttTargetIdc : ''}). ¡El bot ya está autenticado!`;
+            statusBox.className = 'status success';
+          } else {
+            statusBox.textContent = '❌ Error del bot: ' + (data.error || 'Desconocido');
+            statusBox.className = 'status error';
+          }
+        } catch (err) {
+          statusBox.textContent = '❌ No se pudo conectar al bot. Asegúrate de tener el bot ejecutándose en http://localhost:3000';
           statusBox.className = 'status error';
         }
-      } catch (err) {
-        statusBox.textContent = '❌ No se pudo conectar al bot. Asegúrate de tener el bot ejecutándose en http://localhost:3000';
-        statusBox.className = 'status error';
-      }
+      });
     });
   } catch (err) {
     statusBox.textContent = '❌ Error al acceder a las cookies: ' + err.message;
