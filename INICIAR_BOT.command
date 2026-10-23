@@ -48,10 +48,18 @@ echo ""
 # Bucle de ejecución (reinicia automáticamente si se cae)
 while true
 do
+    if [ -f "compile_dashboard.js" ]; then
+        echo "🔧 Sincronizando overlays y compilando Dashboard..."
+        node compile_dashboard.js
+    fi
     echo "🚀 Iniciando Bot..."
     node index.js
     EXITCODE=$?
     echo ""
+    if [ $EXITCODE -eq 42 ]; then
+        echo "🔌 [INFO] El bot fue apagado manualmente desde el Dashboard."
+        break
+    fi
     echo "⚠️ [ALERTA] El bot se detuvo (código de salida: $EXITCODE)."
     echo "⏳ Reiniciando de forma automática en 5 segundos..."
     sleep 5

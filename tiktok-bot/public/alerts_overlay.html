@@ -1111,6 +1111,7 @@
                     console.log("[Firebase] Nueva instancia creada ✓");
                 }
                 db = firebase.firestore();
+                try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (_) {}
                 console.log("[Firebase] Alertas conectadas ✓ [Tipo URL: " + urlType + "]");
 
                 // Desuscribir anteriores si existen
@@ -1132,8 +1133,16 @@
                         console.warn("[Firebase] Error al cargar overlayAlertsConfig:", err);
                     });
                 // Función unificada para determinar si este cliente debe reproducir audio/TTS
+                let isPreviewIframe = false;
+                try { isPreviewIframe = window.self !== window.top; } catch (_) { isPreviewIframe = true; }
+
                 function shouldPlayAudioHere(currentHost, activeHost, activeTime) {
                     const config = window.overlayAlertsConfig || {};
+                    // Si es un iframe de vista previa dentro del Dashboard, no reproducir audio de Firestore aquí
+                    // (el Dashboard principal o la fuente real de OBS/TikTok Live Studio se encargan)
+                    if (isPreviewIframe) {
+                        return false;
+                    }
                     // Si la reproducción de audio en overlays/OBS está explícitamente desactivada
                     if (config.enableOverlayAudio === false) {
                         return false;
@@ -1150,12 +1159,6 @@
                         }
                     }
 
-                    // Si es una dirección IP remota (panel de control secundario), silenciar
-                    const isIP = (h) => /^[0-9.]+$/.test(h) && h !== '127.0.0.1';
-                    if (isIP(currentHost)) {
-                        return false;
-                    }
-                    
                     return true;
                 }
 
@@ -1224,6 +1227,10 @@
                             }
                             if (!['follow', 'subscribe', 'gift', 'like', 'chat', 'reward', 'points'].includes(data.type)) return;
 
+                            // Si estamos en el iframe de vista previa del Dashboard y es una alerta de prueba (isTest),
+                            // ya se mostró inmediatamente vía postMessage (triggerTestAlert), evitar duplicarla
+                            if (isPreviewIframe && data.isTest) return;
+
                             const playAudioAndTts = shouldPlayAudioHere(window.location.hostname, window.activeDashboardHost, window.activeDashboardTime);
 
                             // Filtrar por tipo si está fijado en la URL
@@ -1236,9 +1243,9 @@
                                 // Solo Quiéreme exacto
                                 if (!_isQuiereme) return;
                             } else if (urlType === 'gift') {
-                                // Regalos normales — excluye Quiéreme (tiene su propia fuente)
+                                // Regalos — solo excluye Quiéreme si se especificó &exclude=quiereme
                                 if (data.type !== 'gift') return;
-                                if (_isQuiereme) return;
+                                if (excludeQuiereme && _isQuiereme) return;
                             } else if (urlType !== 'all' && data.type !== 'chat') {
                                 if (data.type !== urlType) return;
                             } else {
@@ -1963,9 +1970,12 @@
             console.log("[alerts_overlay] Reproduciendo alerta. Parámetros: showLottie =", showLottie);
 
             // Coordinación de audio/TTS multi-fuente OBS para evitar duplicación entre escenas o navegadores
+            // (Los iframes de vista previa del Dashboard nunca bloquean a OBS)
+            let isIframeCtx = false;
+            try { isIframeCtx = window.self !== window.top; } catch (_) { isIframeCtx = true; }
             const docId = data.id || data._docId || (data.user + '_' + data.type + '_' + (data.timestamp || ''));
             let canPlaySound = playAudioAndTts;
-            if (canPlaySound && docId) {
+            if (!isIframeCtx && canPlaySound && docId) {
                 if (claimedAudioDocIds.has(docId) || !tryClaimAudioLock(docId)) {
                     console.log(`🔇 [Audio Overlay] Sonido/TTS ya tomado por otra fuente de OBS para ${docId}`);
                     canPlaySound = false;

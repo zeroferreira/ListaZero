@@ -14,6 +14,7 @@ var firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE 
         firebase.initializeApp(localConfig);
     }
     const db = firebase.firestore();
+    try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (_) {}
 
     // Firestore Unsubscribe references
     let unsubSolicitudes = null;

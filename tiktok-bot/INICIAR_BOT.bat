@@ -52,10 +52,18 @@ start http://localhost:%DASH_PORT%/
 echo.
 
 :loop
+if exist "compile_dashboard.js" (
+  echo [INFO] Sincronizando overlays y compilando Dashboard...
+  node compile_dashboard.js
+)
 echo [INFO] Iniciando Bot...
 node index.js
 set "EXITCODE=%ERRORLEVEL%"
 echo.
+if "!EXITCODE!"=="42" (
+  echo [INFO] El bot fue apagado manualmente desde el Dashboard.
+  exit /b 0
+)
 echo [ALERTA] El bot se cerro (codigo !EXITCODE!).
 echo [INFO] Reiniciando en 5 segundos...
 timeout /t 5

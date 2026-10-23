@@ -40,6 +40,7 @@ function startLiveHeartbeat() {
     liveHeartbeatInterval = setInterval(async () => {
         try { updateLiveStatus(true); } catch (_) {}
         try { await syncRoomLikesFromApi(); } catch (_) {}
+        try { syncSessionCountersToFirestore(true); } catch (_) {}
     }, 60 * 1000);
 }
 function initStatusUpdater(firebaseConfig) {
@@ -198,42 +199,7 @@ where = whereFn;
 getDocs = getDocsFn;
 limit = require('firebase/firestore').limit;
 
-// Inicializar Firebase DB Principal
-try {
-    // Verificar si ya existe la app por defecto para evitar "app/duplicate-app"
-    let app;
-    const { getApps, getApp } = require('firebase/app');
-    
-    if (getApps().length === 0) {
-        app = initializeApp({
-          apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-          authDomain: "zero-strom-web.firebaseapp.com",
-          projectId: "zero-strom-web",
-          storageBucket: "zero-strom-web.appspot.com",
-          messagingSenderId: "758369466349",
-          appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
-          databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
-        });
-        console.log("🔥 Firebase inicializado correctamente.");
-    } else {
-        app = getApp(); // Usar la existente
-        console.log("🔥 Reutilizando instancia de Firebase existente.");
-    }
-    
-    db = getFirestoreFn(app);
-    rtdb = getDatabase(app);
-    try {
-        const { getAuth, signInAnonymously } = require('firebase/auth');
-        const auth = getAuth(app);
-        firebaseAuthPromise = signInAnonymously(auth).catch((e) => {
-            console.warn('⚠️ No se pudo autenticar Firebase (anon):', e && e.message ? e.message : String(e));
-        });
-    } catch (_) {
-        firebaseAuthPromise = Promise.resolve();
-    }
-} catch (e) {
-    console.error("Error inicializando Firebase:", e);
-}
+// La inicialización de Firebase DB Principal se realiza tras cargar el perfil activo (ver más abajo)
 // -----------------------------------
 
 // --- CONFIGURACIÓN ESTATICA Y MULTIUSUARIO ---
@@ -444,18 +410,29 @@ let overlayAlertsConfig = {
 };
 
 /**
+ * Ejecuta el comando 'say' de macOS de forma asíncrona (no bloqueante) con timeout.
+ */
+function runSayAsync(args, timeoutMs = 8000) {
+    const { execFile } = require('child_process');
+    return new Promise((resolve) => {
+        execFile('say', args, { timeout: timeoutMs }, (error) => {
+            resolve({ status: error ? (error.code || 1) : 0, error });
+        });
+    });
+}
+
+/**
  * Genera audio TTS nativo en macOS devolviendo una Data URI base64 (data:audio/mp4;base64,... o data:audio/wav;base64,...)
- * Utiliza spawnSync sin shell para prevenir fallos de sintaxis con comillas, signos y emojis.
+ * Utiliza execFile asíncrono sin shell para no bloquear el Event Loop y prevenir fallos con comillas, signos y emojis.
  * Especifica compresión estándar AAC en contenedor m4af (o fallback WAVE) para máxima compatibilidad
  * con Chromium y OBS Studio Browser Source sin depender de APIs externas ni SpeechSynthesis.
  */
-function generateTtsAudio(text, voiceName, speedVal, lang) {
+async function generateTtsAudio(text, voiceName, speedVal, lang) {
     if (!text || !text.trim()) return null;
     
     if (process.platform === 'darwin') {
         try {
             const os = require('os');
-            const { spawnSync } = require('child_process');
             const tmpM4aFile = path.join(os.tmpdir(), `tts_${Date.now()}_${Math.random().toString(36).substring(7)}.m4a`);
             
             let selectedVoice = voiceName;
@@ -502,41 +479,41 @@ function generateTtsAudio(text, voiceName, speedVal, lang) {
             if (!cleanText) return null;
             
             // 1. Intentar compresión estándar AAC en m4a con la voz seleccionada
-            let sayRes = spawnSync('say', [
+            let sayRes = await runSayAsync([
                 '-v', selectedVoice,
                 '-r', String(rate),
                 '--file-format=m4af',
                 '--data-format=aac',
                 '-o', tmpM4aFile,
                 cleanText
-            ], { timeout: 8000 });
+            ], 8000);
 
             // Si falló con la voz específica (no instalada en macOS), reintentar con Paulina o voz default
             if ((sayRes.status !== 0 || !fs.existsSync(tmpM4aFile) || fs.statSync(tmpM4aFile).size === 0) && selectedVoice !== 'Paulina') {
-                sayRes = spawnSync('say', [
+                sayRes = await runSayAsync([
                     '-v', 'Paulina',
                     '-r', String(rate),
                     '--file-format=m4af',
                     '--data-format=aac',
                     '-o', tmpM4aFile,
                     cleanText
-                ], { timeout: 8000 });
+                ], 8000);
             }
 
             // Si aún no existe o falló, reintentar sin flag de voz (voz default del sistema en AAC)
             if (sayRes.status !== 0 || !fs.existsSync(tmpM4aFile) || fs.statSync(tmpM4aFile).size === 0) {
-                sayRes = spawnSync('say', [
+                sayRes = await runSayAsync([
                     '-r', String(rate),
                     '--file-format=m4af',
                     '--data-format=aac',
                     '-o', tmpM4aFile,
                     cleanText
-                ], { timeout: 8000 });
+                ], 8000);
             }
             
             if (fs.existsSync(tmpM4aFile)) {
-                const buf = fs.readFileSync(tmpM4aFile);
-                try { fs.unlinkSync(tmpM4aFile); } catch (_) {}
+                const buf = await fs.promises.readFile(tmpM4aFile);
+                try { await fs.promises.unlink(tmpM4aFile); } catch (_) {}
                 if (buf.length > 0) {
                     return `data:audio/mp4;base64,${buf.toString('base64')}`;
                 }
@@ -544,17 +521,17 @@ function generateTtsAudio(text, voiceName, speedVal, lang) {
 
             // Fallback secundario ultra-compatible: WAVE PCM
             const tmpWavFile = path.join(os.tmpdir(), `tts_${Date.now()}_${Math.random().toString(36).substring(7)}.wav`);
-            const wavRes = spawnSync('say', [
+            await runSayAsync([
                 '-r', String(rate),
                 '--file-format=WAVE',
                 '--data-format=LEI16',
                 '-o', tmpWavFile,
                 cleanText
-            ], { timeout: 8000 });
+            ], 8000);
 
             if (fs.existsSync(tmpWavFile)) {
-                const wavBuf = fs.readFileSync(tmpWavFile);
-                try { fs.unlinkSync(tmpWavFile); } catch (_) {}
+                const wavBuf = await fs.promises.readFile(tmpWavFile);
+                try { await fs.promises.unlink(tmpWavFile); } catch (_) {}
                 if (wavBuf.length > 0) {
                     return `data:audio/wav;base64,${wavBuf.toString('base64')}`;
                 }
@@ -587,20 +564,53 @@ try {
     
     console.log(`📂 Configuración cargada del perfil [${activeProfile}]:`, config);
     
-    // Cargar credenciales Firebase Web para actualizar estado LIVE
+    // Cargar credenciales Firebase Web del perfil activo (para DB principal y estado LIVE)
     const fbConfigFile = PROFILE_FB_CONFIG_FILE;
+    let activeFbConfig = {
+        apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+        authDomain: "zero-strom-web.firebaseapp.com",
+        projectId: "zero-strom-web",
+        storageBucket: "zero-strom-web.firebasestorage.app",
+        messagingSenderId: "758369466349",
+        appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
+        databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
+    };
     if (fs.existsSync(fbConfigFile)) {
-        const fbConfig = require(fbConfigFile);
-        initStatusUpdater(fbConfig);
-    } else {
-        // Fallback config si no existe el archivo
-        initStatusUpdater({
-          apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-          authDomain: "zero-strom-web.firebaseapp.com",
-          projectId: "zero-strom-web",
-          appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
-          databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
-        });
+        delete require.cache[require.resolve(fbConfigFile)];
+        activeFbConfig = require(fbConfigFile);
+    }
+
+    initStatusUpdater(activeFbConfig);
+
+    // Inicializar Firebase DB Principal con la configuración del perfil activo
+    try {
+        let app;
+        const { getApps, getApp } = require('firebase/app');
+        const existingDefault = getApps().find(a => a.name === '[DEFAULT]');
+        if (!existingDefault) {
+            app = initializeApp(activeFbConfig);
+            console.log(`🔥 Firebase inicializado correctamente para el perfil [${activeProfile}] (${activeFbConfig.projectId}).`);
+        } else {
+            app = existingDefault;
+            console.log("🔥 Reutilizando instancia de Firebase existente.");
+        }
+        db = getFirestoreFn(app);
+        try {
+            rtdb = activeFbConfig.databaseURL ? getDatabase(app) : null;
+        } catch (rtdbErr) {
+            rtdb = null;
+        }
+        try {
+            const { getAuth, signInAnonymously } = require('firebase/auth');
+            const auth = getAuth(app);
+            firebaseAuthPromise = signInAnonymously(auth).catch((e) => {
+                console.warn('⚠️ No se pudo autenticar Firebase (anon):', e && e.message ? e.message : String(e));
+            });
+        } catch (_) {
+            firebaseAuthPromise = Promise.resolve();
+        }
+    } catch (fbErr) {
+        console.error("Error inicializando Firebase para perfil activo:", fbErr);
     }
 } catch (e) {
     console.error("Error cargando config:", e);
@@ -642,8 +652,19 @@ function isDuplicate(msgId) {
     return false;
 }
 
+function cleanupTikTokConnection() {
+    if (tiktokLiveConnection) {
+        try {
+            tiktokLiveConnection.removeAllListeners();
+        } catch (_) {}
+        try {
+            tiktokLiveConnection.disconnect();
+        } catch (_) {}
+        tiktokLiveConnection = null;
+    }
+}
+
 function buildTikTokConnectionOptions() {
-    console.log("🔍 DEBUG CONFIG:", { eulerApiKey: config.eulerApiKey, keys: Object.keys(config), __dirname });
     const sessionId = String(config.sessionId || '').trim();
     const ttTargetIdc = String(config.ttTargetIdc || '').trim();
 
@@ -1090,33 +1111,37 @@ async function getCanonicalUserKey(userId, displayName) {
         // console.log(`🔗 Usando alias para ${uid || name} -> ${userKey}`);
     }
 
-    // FUSIÓN AUTOMÁTICA AL VUELO: Si no está aliased en memoria, pero el nickname ('name') tiene un
-    // documento en Firestore, creamos automáticamente la vinculación y fusionamos para evitar duplicados.
+    // FUSIÓN AUTOMÁTICA AL VUELO: Solo si el documento de nickname ya tenía registrado este mismo tiktokId.
+    // Evita fusiones accidentales cuando dos usuarios distintos tienen el mismo nombre visible (nickname) en TikTok.
     if (uid && name && uid !== name && aliasedKey === uid && db) {
         try {
             const nameDocRef = doc(db, 'userStats', name);
             const nameSnap = await getDoc(nameDocRef);
             if (nameSnap && typeof nameSnap.exists === 'function' && nameSnap.exists()) {
-                console.log(`[AUTO-LINK] Vinculando automáticamente TikTok ID @${uid} con nickname @${name}`);
-                
-                // 1. Crear el vínculo en systemConfig/userAliases
-                await setDoc(doc(db, 'systemConfig', 'userAliases'), {
-                    [uid]: name
-                }, { merge: true });
+                const nameData = nameSnap.data() || {};
+                const registeredTiktokId = String(nameData.tiktokId || '').trim().toLowerCase();
+                if (registeredTiktokId && registeredTiktokId === uid) {
+                    console.log(`[AUTO-LINK] Vinculando automáticamente TikTok ID @${uid} con cuenta previamente verificada @${name}`);
+                    
+                    // 1. Crear el vínculo en systemConfig/userAliases
+                    await setDoc(doc(db, 'systemConfig', 'userAliases'), {
+                        [uid]: name
+                    }, { merge: true });
 
-                // 2. Crear el vínculo en la colección userAliases
-                await setDoc(doc(db, 'userAliases', uid), {
-                    aliasedTo: name,
-                    updatedAt: serverTimestamp()
-                });
+                    // 2. Crear el vínculo en la colección userAliases
+                    await setDoc(doc(db, 'userAliases', uid), {
+                        aliasedTo: name,
+                        updatedAt: serverTimestamp()
+                    });
 
-                // Actualizar mapa en memoria
-                if (USER_ALIASES_MAP) USER_ALIASES_MAP[uid] = name;
-                
-                // 3. Fusionar datos
-                await mergeTwoUsers(uid, name);
-                
-                userKey = name;
+                    // Actualizar mapa en memoria
+                    if (USER_ALIASES_MAP) USER_ALIASES_MAP[uid] = name;
+                    
+                    // 3. Fusionar datos
+                    await mergeTwoUsers(uid, name);
+                    
+                    userKey = name;
+                }
             }
         } catch (e) {
             console.error(`[AUTO-LINK] Error en vinculación automática:`, e);
@@ -1145,8 +1170,13 @@ async function getCanonicalUserKey(userId, displayName) {
                 try {
                     const snap = await getDoc(doc(db, 'userStats', id));
                     if (snap && typeof snap.exists === 'function' && snap.exists()) {
-                        userKey = id;
                         const data = snap.data ? (snap.data() || {}) : {};
+                        const existingTiktokId = String(data.tiktokId || '').trim().toLowerCase();
+                        // Si buscamos por nickname (id !== uid) y el documento ya pertenece a OTRO tiktokId, no mezclarlos
+                        if (uid && id !== uid && id !== aliasedKey && existingTiktokId && existingTiktokId !== uid) {
+                            continue;
+                        }
+                        userKey = id;
                         const dn = String(data.displayName || '').trim();
                         if (dn) bestDisplay = dn;
                         
@@ -1444,7 +1474,11 @@ function startBot() {
         }
         // Usar la función importada al principio, no la global
         db = getFirestore(firebaseApp);
-        rtdb = getDatabase(firebaseApp);
+        try {
+            rtdb = (firebaseConfig && firebaseConfig.databaseURL) ? getDatabase(firebaseApp) : null;
+        } catch (_) {
+            rtdb = null;
+        }
         try {
             const { getAuth, signInAnonymously } = require('firebase/auth');
             const auth = getAuth(firebaseApp);
@@ -1462,7 +1496,11 @@ function startBot() {
                  const { getApp } = require('firebase/app');
                  firebaseApp = getApp();
                  db = getFirestore(firebaseApp);
-                 rtdb = getDatabase(firebaseApp);
+                 try {
+                     rtdb = (firebaseConfig && firebaseConfig.databaseURL) ? getDatabase(firebaseApp) : null;
+                 } catch (_) {
+                     rtdb = null;
+                 }
                  try {
                      const { getAuth, signInAnonymously } = require('firebase/auth');
                      const auth = getAuth(firebaseApp);
@@ -1476,77 +1514,55 @@ function startBot() {
         }
     }
     
+    // Mantener señal de botActive fresca sin sobreescribir los contadores de sesión (sessionLikes/sessionCoins) al iniciar
+    const updateBotActiveHeartbeat = async () => {
+        if (!db) return;
+        try {
+            await setDoc(doc(db, 'globalStats', 'general'), {
+                botActive: true,
+                lastUpdate: serverTimestamp()
+            }, { merge: true });
+        } catch (_) {}
+    };
+
     // Cargar estado inicial del temporizador desde Firestore después de autenticarse
     if (firebaseAuthPromise) {
         firebaseAuthPromise.then(async () => {
             console.log("⏰ Firebase autenticado. Cargando temporizador de Firestore...");
             await loadTimerFromFirestore();
+            await updateBotActiveHeartbeat();
         }).catch((err) => {
             console.warn("⚠️ Error en auth al cargar temporizador:", err);
         });
     } else {
         setTimeout(loadTimerFromFirestore, 1500);
     }
+
+    // Mantener señal de botActive fresca cada 60s para evitar doble otorgamiento de puntos con queue.js
+    setInterval(() => {
+        updateBotActiveHeartbeat();
+    }, 60 * 1000);
     
-    // --- SANEAMIENTO AUTOMÁTICO DE PUNTOS INFLADOS ---
-    // Ejecutar una vez al inicio para corregir usuarios con puntos de likes astronómicos
+    // --- FUSIÓN AUTOMÁTICA DE ALIASES EN EL INICIO ---
     setTimeout(async () => {
         try {
-            console.log("🧹 Ejecutando verificación de puntos inflados...");
-            // Buscar usuarios con más de 5000 puntos de likes (1.5M likes), lo cual es sospechoso
-            const snapshot = await getDocs(query(collection(db, 'userStats'), where('totalLikesPoints', '>', 5000)));
-            
-            if (!snapshot.empty) {
-                console.log(`⚠️ Encontrados ${snapshot.size} usuarios con posibles puntos inflados. Corrigiendo...`);
-                const batch = require('firebase/firestore').writeBatch(db);
-                
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    const inflatedLikesPoints = data.totalLikesPoints || 0;
-                    const totalPoints = data.totalPoints || 0;
-                    
-                    // Asumimos que los puntos de likes están mal y los reseteamos
-                    // Recalculamos el total restando la parte inflada
-                    // Dejamos totalLikes en 0 para evitar que vuelva a calcular mal si el origen estaba corrupto
-                    const newTotalPoints = Math.max(0, totalPoints - inflatedLikesPoints);
-                    
-                    console.log(`🔧 Corrigiendo @${doc.id}: LikesPoints ${inflatedLikesPoints} -> 0 | Total ${totalPoints} -> ${newTotalPoints}`);
-                    
-                    batch.update(doc.ref, {
-                        totalLikesPoints: 0,
-                        totalLikes: 0, // Resetear contador de likes para empezar limpio
-                        totalPoints: newTotalPoints
-                    });
-                });
-                
-                await batch.commit();
-                console.log("✅ Corrección masiva completada.");
-            } else {
-                console.log("✅ No se encontraron usuarios con puntos inflados.");
-            }
-            
-            // --- FUSIÓN AUTOMÁTICA DE ALIASES EN EL INICIO ---
-            try {
-                console.log("🧹 Iniciando fusión automática de usuarios vinculados (aliases)...");
-                const docSnap = await getDoc(doc(db, 'systemConfig', 'userAliases'));
-                if (docSnap.exists()) {
-                    const aliases = docSnap.data() || {};
-                    const aliasPairs = Object.entries(aliases);
-                    console.log(`🔍 Procesando ${aliasPairs.length} vinculaciones para buscar duplicados...`);
-                    for (const [sourceKeyRaw, targetKeyRaw] of aliasPairs) {
-                        const sourceKey = String(sourceKeyRaw).trim().toLowerCase();
-                        const targetKey = String(targetKeyRaw).trim().toLowerCase();
-                        if (sourceKey && targetKey && sourceKey !== targetKey) {
-                            await mergeTwoUsers(sourceKey, targetKey);
-                        }
+            console.log("🧹 Iniciando fusión automática de usuarios vinculados (aliases)...");
+            const docSnap = await getDoc(doc(db, 'systemConfig', 'userAliases'));
+            if (docSnap.exists()) {
+                const aliases = docSnap.data() || {};
+                const aliasPairs = Object.entries(aliases);
+                console.log(`🔍 Procesando ${aliasPairs.length} vinculaciones para buscar duplicados...`);
+                for (const [sourceKeyRaw, targetKeyRaw] of aliasPairs) {
+                    const sourceKey = String(sourceKeyRaw).trim().toLowerCase();
+                    const targetKey = String(targetKeyRaw).trim().toLowerCase();
+                    if (sourceKey && targetKey && sourceKey !== targetKey) {
+                        await mergeTwoUsers(sourceKey, targetKey);
                     }
-                    console.log("✅ Fusión automática de vinculaciones completada.");
                 }
-            } catch (err) {
-                console.error("❌ Error en autofusión de vinculaciones:", err);
+                console.log("✅ Fusión automática de vinculaciones completada.");
             }
-        } catch (e) {
-            console.error("Error en saneamiento automático:", e);
+        } catch (err) {
+            console.error("❌ Error en autofusión de vinculaciones:", err);
         }
     }, 5000); // Esperar 5s a que la conexión se estabilice
 
@@ -1578,6 +1594,32 @@ function startBot() {
     });
 
     app.use(express.json());
+
+    // Endpoint dinámico para servir configuración de Firebase del perfil activo a todos los overlays (ANTES de express.static)
+    app.get('/firebase-config.js', (req, res) => {
+        const fbConfigFile = path.join(PROFILES_DIR, activeProfile, 'firebase-config.js');
+        res.setHeader('Content-Type', 'application/javascript');
+        if (fs.existsSync(fbConfigFile)) {
+            try {
+                delete require.cache[require.resolve(fbConfigFile)];
+                const fbConfig = require(fbConfigFile);
+                res.send(`window.ZERO_FM_FIREBASE = ${JSON.stringify(fbConfig)}; window.firebaseConfig = window.ZERO_FM_FIREBASE; var firebaseConfig = window.ZERO_FM_FIREBASE;`);
+            } catch (e) {
+                res.status(500).send(`console.error("Error reading firebase-config.js:", ${JSON.stringify(e.message)});`);
+            }
+        } else {
+            res.send(`window.ZERO_FM_FIREBASE = {
+                apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+                authDomain: "zero-strom-web.firebaseapp.com",
+                projectId: "zero-strom-web",
+                storageBucket: "zero-strom-web.firebasestorage.app",
+                messagingSenderId: "758369466349",
+                appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
+                databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
+            }; window.firebaseConfig = window.ZERO_FM_FIREBASE; var firebaseConfig = window.ZERO_FM_FIREBASE;`);
+        }
+    });
+
     app.use(express.static(path.join(__dirname, 'public')));
     app.use('/gifts', express.static(path.join(__dirname, '..', 'REGALOS DE TIK TOK PNG By Adbra')));
 
@@ -1596,8 +1638,22 @@ function startBot() {
         const boundary = '--' + boundaryMatch[1];
 
         const chunks = [];
-        req.on('data', chunk => chunks.push(chunk));
+        let totalBytes = 0;
+        const MAX_UPLOAD_BYTES = 250 * 1024 * 1024; // 250 MB máximo
+        let aborted = false;
+        req.on('data', chunk => {
+            if (aborted) return;
+            totalBytes += chunk.length;
+            if (totalBytes > MAX_UPLOAD_BYTES) {
+                aborted = true;
+                res.status(413).json({ error: 'El archivo de video supera el límite de 250 MB.' });
+                try { req.destroy(); } catch (_) {}
+                return;
+            }
+            chunks.push(chunk);
+        });
         req.on('end', () => {
+            if (aborted) return;
             try {
                 const body = Buffer.concat(chunks);
                 const boundaryBuf = Buffer.from(boundary);
@@ -1619,12 +1675,13 @@ function startBot() {
                     const nextBoundary = body.indexOf(boundaryBuf, dataStart);
                     const dataEnd = nextBoundary === -1 ? body.length : nextBoundary - 2; // -2 para \r\n
 
-                    // Solo procesar partes que sean archivos de video
+                    // Solo procesar partes que sean archivos de video (.mp4 o .mov)
                     if (headerStr.includes('filename=') && (headerStr.includes('video') || headerStr.includes('.mp4') || headerStr.includes('.mov'))) {
                         const filenameMatch = headerStr.match(/filename="([^"]+)"/);
                         if (filenameMatch) {
                             const originalName = filenameMatch[1];
-                            savedExt = path.extname(originalName).toLowerCase() || '.mp4';
+                            const rawExt = path.extname(originalName).toLowerCase();
+                            savedExt = (rawExt === '.mov' || rawExt === '.mp4') ? rawExt : '.mp4';
                             const destPath = path.join(__dirname, '..', 'QUIEREME' + savedExt);
                             const fileData = body.slice(dataStart, dataEnd);
                             fs.writeFileSync(destPath, fileData);
@@ -1719,31 +1776,6 @@ function startBot() {
         next();
     });
 
-    // Endpoint dinámico para servir configuración de Firebase a los overlays
-    app.get('/firebase-config.js', (req, res) => {
-        const fbConfigFile = path.join(PROFILES_DIR, activeProfile, 'firebase-config.js');
-        res.setHeader('Content-Type', 'application/javascript');
-        if (fs.existsSync(fbConfigFile)) {
-            try {
-                delete require.cache[require.resolve(fbConfigFile)];
-                const fbConfig = require(fbConfigFile);
-                res.send(`window.ZERO_FM_FIREBASE = ${JSON.stringify(fbConfig)}; window.firebaseConfig = window.ZERO_FM_FIREBASE; var firebaseConfig = window.ZERO_FM_FIREBASE;`);
-            } catch (e) {
-                res.status(500).send(`console.error("Error reading firebase-config.js:", ${JSON.stringify(e.message)});`);
-            }
-        } else {
-            res.send(`window.ZERO_FM_FIREBASE = {
-                apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-                authDomain: "zero-strom-web.firebaseapp.com",
-                projectId: "zero-strom-web",
-                storageBucket: "zero-strom-web.firebasestorage.app",
-                messagingSenderId: "758369466349",
-                appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
-                databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
-            }; window.firebaseConfig = window.ZERO_FM_FIREBASE; var firebaseConfig = window.ZERO_FM_FIREBASE;`);
-        }
-    });
-
     app.get('/api/status', (req, res) => {
         const nets = os.networkInterfaces();
         const localIps = [];
@@ -1834,21 +1866,23 @@ function startBot() {
             fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
             console.log(`🔑 Session ID sincronizado automáticamente desde la extensión.`);
             
-            // Si estaba conectado, reconectar para aplicar la nueva sesión
+            // Si estaba conectado o reintentando, reconectar para aplicar la nueva sesión
             if (retryTimeoutId) {
                 clearTimeout(retryTimeoutId);
                 retryTimeoutId = null;
             }
             isRetrying = false;
 
-            if (tiktokLiveConnection && tiktokLiveConnection.isConnected) {
+            if (tiktokLiveConnection) {
                 console.log("🔄 Reiniciando conexión para usar la nueva sesión...");
-                try { tiktokLiveConnection.disconnect(); } catch (_) {}
+                cleanupTikTokConnection();
                 isConnecting = false;
                 tiktokConnectionOptions = buildTikTokConnectionOptions();
                 tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
                 setupListeners();
-                connectToLive();
+                if (!manualDisconnect) {
+                    connectToLive();
+                }
             }
             
             res.json({ ok: true, message: 'Session ID guardado con éxito' });
@@ -1873,6 +1907,10 @@ function startBot() {
                 config.sessionId = body.sessionId;
                 configChanged = true;
             }
+            if (body.ttTargetIdc !== undefined && body.ttTargetIdc !== config.ttTargetIdc) {
+                config.ttTargetIdc = String(body.ttTargetIdc || '').trim();
+                configChanged = true;
+            }
             if (configChanged) {
                 fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
                 console.log(`💾 Configuración de TikTok actualizada manualmente: Username = ${config.tiktokUsername}`);
@@ -1884,9 +1922,7 @@ function startBot() {
             }
             isRetrying = false;
 
-            if (tiktokLiveConnection) {
-                try { tiktokLiveConnection.disconnect(); } catch (_) {}
-            }
+            cleanupTikTokConnection();
             
             isConnecting = false;
             tiktokConnectionOptions = buildTikTokConnectionOptions();
@@ -1911,9 +1947,8 @@ function startBot() {
                 retryTimeoutId = null;
             }
             isRetrying = false;
-            if (tiktokLiveConnection) {
-                try { tiktokLiveConnection.disconnect(); } catch (_) {}
-            }
+            cleanupTikTokConnection();
+            stopLiveHeartbeat();
             updateLiveStatus(false);
             res.json({ ok: true, message: 'Desconectado manualmente.' });
         } catch (err) {
@@ -1926,8 +1961,11 @@ function startBot() {
         try {
             res.json({ ok: true, message: 'Servidor apagándose...' });
             console.log('🔌 Apagando el servidor por solicitud del usuario...');
+            cleanupTikTokConnection();
+            stopLiveHeartbeat();
+            updateLiveStatus(false);
             setTimeout(() => {
-                process.exit(0);
+                process.exit(42);
             }, 1000);
         } catch (err) {
             console.error('Error al apagar el servidor:', err);
@@ -1939,6 +1977,8 @@ function startBot() {
         try {
             res.json({ ok: true, message: 'Servidor reiniciándose...' });
             console.log('🔄 Reiniciando el bot por solicitud del usuario...');
+            cleanupTikTokConnection();
+            stopLiveHeartbeat();
             setTimeout(() => {
                 process.exit(0);
             }, 1000);
@@ -1948,30 +1988,47 @@ function startBot() {
         }
     });
 
-    // Endpoint para ejecutar ACTUALIZAR.bat (actualización desde GitHub)
+    // Endpoint para ejecutar ACTUALIZAR (actualización desde GitHub en Windows y macOS)
     app.post('/api/server/update', (req, res) => {
         try {
             const { spawn } = require('child_process');
-            const batPath = path.join(__dirname, 'ACTUALIZAR.bat');
             const fs = require('fs');
 
-            if (!fs.existsSync(batPath)) {
-                return res.status(404).json({ ok: false, error: 'ACTUALIZAR.bat no encontrado en la carpeta del bot.' });
+            if (process.platform === 'win32') {
+                const batPath = path.join(__dirname, 'ACTUALIZAR.bat');
+                if (!fs.existsSync(batPath)) {
+                    return res.status(404).json({ ok: false, error: 'ACTUALIZAR.bat no encontrado en la carpeta del bot.' });
+                }
+
+                // Lanzar ACTUALIZAR.bat en modo silencioso para que no abra ventana
+                const child = spawn('cmd.exe', ['/c', `"${batPath}" /silent`], {
+                    detached: true,
+                    stdio: 'ignore',
+                    windowsHide: true,
+                    shell: false
+                });
+                child.unref();
+
+                console.log('📦 Ejecutando ACTUALIZAR.bat /silent — el bot se reiniciará cuando termine...');
+                return res.json({ ok: true, message: 'Actualización iniciada. El bot descargará la última versión y se reiniciará automáticamente.' });
+            } else {
+                const cmdPath = path.join(__dirname, '..', 'ACTUALIZAR.command');
+                if (!fs.existsSync(cmdPath)) {
+                    return res.status(404).json({ ok: false, error: 'ACTUALIZAR.command no encontrado en la carpeta principal.' });
+                }
+
+                const child = spawn('/bin/bash', [cmdPath, '--silent'], {
+                    cwd: path.join(__dirname, '..'),
+                    detached: true,
+                    stdio: 'ignore'
+                });
+                child.unref();
+
+                console.log('📦 Ejecutando ACTUALIZAR.command --silent — el bot se reiniciará cuando termine...');
+                return res.json({ ok: true, message: 'Actualización iniciada en macOS. El bot descargará la última versión y se reiniciará automáticamente.' });
             }
-
-            // Lanzar ACTUALIZAR.bat en modo silencioso para que no abra ventana
-            const child = spawn('cmd.exe', ['/c', `"${batPath}" /silent`], {
-                detached: true,
-                stdio: 'ignore',
-                windowsHide: true,
-                shell: false
-            });
-            child.unref();
-
-            console.log('📦 Ejecutando ACTUALIZAR.bat /silent — el bot se reiniciará cuando termine...');
-            res.json({ ok: true, message: 'Actualización iniciada. El bot descargará la última versión y se reiniciará automáticamente.' });
         } catch (err) {
-            console.error('Error al ejecutar ACTUALIZAR.bat:', err);
+            console.error('Error al ejecutar actualización:', err);
             res.status(500).json({ ok: false, error: err.message });
         }
     });
@@ -2139,6 +2196,8 @@ function startBot() {
             const newConfig = req.body || {};
             const oldUser = config.tiktokUsername;
             const oldSession = config.sessionId;
+            const oldIdc = config.ttTargetIdc;
+            const oldEuler = config.eulerApiKey;
             const next = { ...config, ...newConfig };
             if (!next.tiktokUsername) next.tiktokUsername = oldUser;
             config = next;
@@ -2146,14 +2205,22 @@ function startBot() {
             fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
             console.log(`💾 Configuración actualizada: Modo Estricto (VIP) = ${config.requireVipForSr ? 'ACTIVADO 🔒' : 'DESACTIVADO 🔓'}`);
 
-            if (oldUser !== config.tiktokUsername || oldSession !== config.sessionId) {
+            if (oldUser !== config.tiktokUsername || oldSession !== config.sessionId || oldIdc !== config.ttTargetIdc || oldEuler !== config.eulerApiKey) {
                 console.log("🔄 Cambio de credenciales detectado. Reiniciando conexión...");
                 TIKTOK_USERNAME = config.tiktokUsername;
-                isConnecting = false;
-                if (tiktokLiveConnection) {
-                    tiktokLiveConnection.disconnect();
+                if (retryTimeoutId) {
+                    clearTimeout(retryTimeoutId);
+                    retryTimeoutId = null;
                 }
-                setTimeout(connectToLive, 1000);
+                isRetrying = false;
+                isConnecting = false;
+                cleanupTikTokConnection();
+                tiktokConnectionOptions = buildTikTokConnectionOptions();
+                tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
+                setupListeners();
+                if (!manualDisconnect) {
+                    setTimeout(connectToLive, 1000);
+                }
             }
             res.json({ success: true, config });
         } catch (e) {
@@ -2251,7 +2318,10 @@ function startBot() {
             };
 
             fs.writeFileSync(path.join(targetDir, 'config.json'), JSON.stringify(default_config, null, 2));
-            fs.writeFileSync(path.join(targetDir, 'firebase-config.js'), `module.exports = ${JSON.stringify(default_fb, null, 2)};`);
+            fs.writeFileSync(
+                path.join(targetDir, 'firebase-config.js'),
+                `var firebaseConfig = ${JSON.stringify(default_fb, null, 2)};\nif (typeof window !== 'undefined') {\n    window.ZERO_FM_FIREBASE = firebaseConfig;\n    window.firebaseConfig = firebaseConfig;\n}\nif (typeof module !== 'undefined' && module.exports) {\n    module.exports = firebaseConfig;\n}\n`
+            );
 
             res.json({ success: true, profile: cleanProfileName });
         } catch (e) {
@@ -2492,6 +2562,9 @@ function startBot() {
         if (type === 'share')  sessionShares.set('test_share_' + Date.now(), 1);
         if (type === 'like') {
             sessionLikes.set('test_like_' + Date.now(), 100);
+            if (likesGoalStartOffset !== null) {
+                streamTotalLikesCounter += 100;
+            }
         }
         if (type === 'coin') sessionTotalCoins += 100;
         syncSessionCountersToFirestore();
@@ -2932,6 +3005,7 @@ function startBot() {
                     uniqueId: 'zerofm_lover',
                     profilePic: avatarUrl,
                     message: followsMsg.replace(/{user}/g, 'ZeroFM_Lover'),
+                    isTest: true,
                     timestamp: serverTimestampFn()
                 };
             } else if (type === 'like') {
@@ -2943,6 +3017,7 @@ function startBot() {
                     profilePic: avatarUrl,
                     likes: likesCount,
                     message: likesMsg.replace(/{user}/g, 'SuperLiker').replace(/{likes}/g, likesCount.toLocaleString()).replace(/{total}/g, (likesCount + 1250).toLocaleString()),
+                    isTest: true,
                     timestamp: serverTimestampFn()
                 };
             } else if (type === 'gift_rose') {
@@ -2984,6 +3059,32 @@ function startBot() {
                     isTest: true,
                     timestamp: serverTimestampFn()
                 };
+            } else if (type === 'gift_ticket') {
+                mockData = {
+                    type: 'gift',
+                    user: 'TicketMaster_FM',
+                    uniqueId: 'ticketmaster_fm',
+                    profilePic: avatarUrl,
+                    giftName: 'Ticket',
+                    coins: 1,
+                    repeatCount: 1,
+                    message: giftsMsg.replace(/{user}/g, 'TicketMaster_FM').replace(/{giftName}/g, 'Ticket').replace(/{repeatCount}/g, '1').replace(/{coins}/g, '1').replace(/{total}/g, '50').replace(/{totalCoins}/g, '50'),
+                    isTest: true,
+                    timestamp: serverTimestampFn()
+                };
+            } else if (type === 'reward') {
+                const rewardsMsg = overlayConfig.rewardsAlertMsg || "¡Ha canjeado {reward} por {cost} pts!";
+                mockData = {
+                    type: 'reward',
+                    user: 'TesterCanje',
+                    uniqueId: 'testercanje',
+                    profilePic: avatarUrl,
+                    rewardName: 'Destacar Canción VIP',
+                    cost: 500,
+                    message: rewardsMsg.replace(/{user}/g, 'TesterCanje').replace(/{reward}/g, 'Destacar Canción VIP').replace(/{cost}/g, '500'),
+                    isTest: true,
+                    timestamp: serverTimestampFn()
+                };
             } else if (type === 'subscribe') {
                 mockData = {
                     type: 'subscribe',
@@ -2991,6 +3092,7 @@ function startBot() {
                     uniqueId: 'musiccollector',
                     profilePic: avatarUrl,
                     message: subsMsg.replace(/{user}/g, 'MusicCollector'),
+                    isTest: true,
                     timestamp: serverTimestampFn()
                 };
             } else if (type === 'like_lock_blocked') {
@@ -3009,12 +3111,13 @@ function startBot() {
                     uniqueId: 'zerofm_bot',
                     profilePic: '',
                     message: formattedMsg,
+                    isTest: true,
                     timestamp: serverTimestampFn()
                 };
             } else if (type === 'chat') {
                 const customMsg = req.body.customText || "¡Hola! Este es un mensaje de prueba leído por el lector de chat.";
                 const activeVoice = overlayConfig.chatTtsVoice;
-                const audioData = generateTtsAudio(customMsg, activeVoice, overlayConfig.chatTtsSpeed, overlayConfig.chatTtsLanguage);
+                const audioData = await generateTtsAudio(customMsg, activeVoice, overlayConfig.chatTtsSpeed, overlayConfig.chatTtsLanguage);
 
                 mockData = {
                     type: 'chat',
@@ -3025,11 +3128,13 @@ function startBot() {
                     audioData: audioData,
                     speedOverride: null,
                     pitchOverride: null,
+                    isTest: true,
                     timestamp: serverTimestampFn()
                 };
             } else if (type === 'join' || type.startsWith('join_')) {
                 const role = type.startsWith('join_') ? type.split('_')[1] : 'default';
                 const roles = role !== 'default' ? [role] : [];
+                const customUser = (req.body && req.body.userData && typeof req.body.userData === 'object') ? req.body.userData : null;
                 
                 const roleNames = {
                     streamer: 'Creador (Tú)',
@@ -3043,11 +3148,12 @@ function startBot() {
                 
                 mockData = {
                     type: 'join',
-                    user: roleNames[role] || 'Seguidor Pro 🔥',
-                    uniqueId: role === 'default' ? 'seguidorpro' : `test_${role}`,
-                    profilePic: `https://i.pravatar.cc/100?img=${Math.floor(Math.random() * 70) + 1}`,
+                    user: (customUser && customUser.user) || roleNames[role] || 'Seguidor Pro 🔥',
+                    uniqueId: (customUser && customUser.uniqueId) || (role === 'default' ? 'seguidorpro' : `test_${role}`),
+                    profilePic: (customUser && customUser.profilePic) || `https://i.pravatar.cc/100?img=${Math.floor(Math.random() * 70) + 1}`,
                     message: '¡Acaba de entrar al Live! 👋',
-                    roles: roles,
+                    roles: (customUser && Array.isArray(customUser.roles)) ? customUser.roles : roles,
+                    isTest: true,
                     timestamp: serverTimestampFn()
                 };
             } else {
@@ -3278,13 +3384,14 @@ function startBot() {
         if (u) {
           const uKey = u.replace(/^@/, '').toLowerCase();
           const totalsRef = docFn(db, 'playedSongs', 'userTotals');
-          const totalsPayload = { lastUpdated: serverTimestampFn() };
-          totalsPayload[`totals.${uKey}`] = increment(1);
-          totalsPayload[`counts.${todayKey}.${uKey}`] = increment(1);
-          await setDocFn(totalsRef, totalsPayload, { merge: true });
+          await setDocFn(totalsRef, {
+            lastUpdated: serverTimestampFn(),
+            totals: { [uKey]: increment(1) },
+            counts: { [todayKey]: { [uKey]: increment(1) } }
+          }, { merge: true });
 
           const statsRef = docFn(db, 'userStats', uKey);
-          await setDocFn(statsRef, {
+          await setDoc(statsRef, {
             totalPoints: increment(25),
             lastUpdated: serverTimestampFn()
           }, { merge: true });
@@ -3849,6 +3956,13 @@ function setupListeners() {
                     } else {
                         likesGoalStartOffset = null;
                     }
+                    if (genData.sessionCoins !== undefined && genData.sessionCoins !== null) {
+                        const cVal = Number(genData.sessionCoins);
+                        if (Number.isFinite(cVal) && cVal > sessionTotalCoins) {
+                            sessionTotalCoins = cVal;
+                            console.log(`🟢 Recuperado sessionCoins de Firestore: ${sessionTotalCoins}`);
+                        }
+                    }
                 }
             } catch (e) {
                 console.error('⚠️ Error recuperando likesGoalStartOffset de general:', e);
@@ -3920,14 +4034,18 @@ function setupListeners() {
     // Solo un listener de 'disconnected' principal que maneja ambas cosas
     tiktokLiveConnection.on('disconnected', () => {
         console.log('🔴 Desconectado del live.');
+        isConnecting = false;
         resetLikeTracking({ resetSession: false, resetTopLiker: false });
         stopLiveHeartbeat();
         updateLiveStatus(false); // Actualizar estado a OFFLINE
         if (!manualDisconnect) {
             console.log('🔄 Volviendo a buscar Live...');
+            isRetrying = true;
+            retryTimeoutEnd = Date.now() + 10000;
             if (retryTimeoutId) clearTimeout(retryTimeoutId);
             retryTimeoutId = setTimeout(connectToLive, 10000); 
         } else {
+            isRetrying = false;
             console.log('⏹️ Desconexión manual activa. No se reintentará conexión.');
         }
     });
@@ -4382,7 +4500,7 @@ function setupListeners() {
                                 .replace(/{comment}/g, cleanedMsg);
 
                             const activeVoice = voiceOverride || overlayAlertsConfig.chatTtsVoice;
-                            const audioData = generateTtsAudio(speechText, activeVoice, speedOverride, overlayAlertsConfig.chatTtsLanguage);
+                            const audioData = await generateTtsAudio(speechText, activeVoice, speedOverride, overlayAlertsConfig.chatTtsLanguage);
 
                             try {
                                 await addDoc(collection(db, 'notifications'), {
@@ -4668,7 +4786,13 @@ function setupListeners() {
         const { uniqueId: uid, nickname: displayName, profilePictureUrl: profilePic } = extractUserInfo(data);
         if (!uid) return;
 
-        // DIAGNOSTIC LOG FOR GIFTS
+        // Deduplicación a nivel de paquete Webcast (descarta paquetes idénticos por retransmisión)
+        const pktId = String(data.msgId || data.id || (data.gift && data.gift.msg_id) || '');
+        if (pktId && isDuplicate('gift_pkt_' + pktId)) {
+            return;
+        }
+
+        // DIAGNOSTIC LOG FOR GIFTS (asíncrono con rotación automática a los 5 MB)
         try {
             const logEntry = {
                 timestamp: new Date().toISOString(),
@@ -4680,37 +4804,115 @@ function setupListeners() {
                 uniqueId: uid
             };
             const logPath = path.join(__dirname, 'gift_logs.json');
-            fs.appendFileSync(logPath, JSON.stringify(logEntry) + '\n');
+            fs.stat(logPath, (statErr, stats) => {
+                if (!statErr && stats && stats.size > 5 * 1024 * 1024) {
+                    fs.rename(logPath, path.join(__dirname, 'gift_logs.old.json'), () => {
+                        fs.appendFile(logPath, JSON.stringify(logEntry) + '\n', () => {});
+                    });
+                } else {
+                    fs.appendFile(logPath, JSON.stringify(logEntry) + '\n', () => {});
+                }
+            });
         } catch (e) {
             console.error('Error writing diagnostic gift log:', e);
         }
-        // ── DEDUPLICACIÓN INTELIGENTE PARA RACHAS (STREAKS) ──
-        let lastCount = 0;
-        const newCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
-        const rawMsgId = data.msgId || data.id || data.groupId || (data.gift && data.gift.msg_id) || `${uid}_${data.giftId || (data.gift && data.gift.id) || 'gift'}_${data.groupId || ''}`;
-        const msgId = String(rawMsgId);
-        if (msgId) {
-            if (!global.processedGiftsMap) {
-                global.processedGiftsMap = new Map();
-            }
-            lastCount = global.processedGiftsMap.get(msgId) || 0;
-            if (newCount <= lastCount) {
-                // Ya procesamos este conteo o uno mayor para este regalo
-                return;
-            }
-            global.processedGiftsMap.set(msgId, newCount);
-            
-            // Limpieza periódica para evitar fugas de memoria
-            if (global.processedGiftsMap.size > 2000) {
-                const firstKey = global.processedGiftsMap.keys().next().value;
-                global.processedGiftsMap.delete(firstKey);
-            }
-        }
-        const delta = newCount - lastCount;
 
+        const giftId = String(data.giftId || data.gift?.id || data.gift?.giftId || 'gift');
+        const groupId = String(data.groupId || data.gift?.groupId || data.giftDetails?.groupId || '');
         const giftName = data.giftName || data.gift?.name || data.gift?.giftName || '';
         const giftKey = normalizeComparableText(giftName);
         const coins = Number(data.diamondCount || data.gift?.diamondCount || data.giftDetails?.diamondCount || 0) || 0;
+        const newCount = Math.max(1, Number(data.repeatCount || data.repeatcount || (data.gift && data.gift.repeat_count) || 1) || 1);
+
+        const rawGiftType = data.giftType !== undefined
+            ? data.giftType
+            : (data.gift && data.gift.gift_type !== undefined
+                ? data.gift.gift_type
+                : (data.giftDetails && data.giftDetails.gift_type !== undefined
+                    ? data.giftDetails.gift_type
+                    : 1));
+        const isGiftType1 = Number(rawGiftType) === 1;
+        const isRepeatEnd = Boolean(
+            data.repeatEnd === true || 
+            data.repeatEnd === 1 || 
+            data.repeat_end === 1 || 
+            (data.giftDetails && data.giftDetails.repeat_end === 1) ||
+            (data.gift && data.gift.repeat_end === 1)
+        );
+        const isGiftFinal = !isGiftType1 || isRepeatEnd;
+        const isQuiereme = (giftKey === 'heartme' || giftKey === 'quiereme' || Number(giftId) === 7934);
+
+        // ── SEGUIMIENTO PRECISO DE RACHAS (STREAKS) ──
+        if (!global.activeGiftStreaks) {
+            global.activeGiftStreaks = new Map();
+        }
+        if (!global.giftCoinRemainder) {
+            global.giftCoinRemainder = new Map();
+        }
+
+        let lastCount = 0;
+        let delta = newCount;
+        let streakObj = null;
+        const nowMs = Date.now();
+
+        if (isGiftType1) {
+            const streakKey = groupId ? `${uid}_${giftId}_${groupId}` : `${uid}_${giftId}`;
+            let existing = global.activeGiftStreaks.get(streakKey);
+
+            // Si llega un paquete repeatEnd duplicado de una racha que acaba de terminar hace <5s, ignorar
+            if (existing && existing.ended && isRepeatEnd && newCount === existing.lastCount && (nowMs - existing.updatedAt < 5000)) {
+                return;
+            }
+
+            // Determinar si es una nueva racha
+            const isNewStreak = !existing || existing.ended || (nowMs - existing.updatedAt > 15000) || (newCount < existing.lastCount && !isRepeatEnd);
+            if (isNewStreak) {
+                if (existing && existing.timer) {
+                    clearTimeout(existing.timer);
+                    existing.timer = null;
+                    if (typeof existing.flushAlert === 'function' && !existing.alerted) {
+                        existing.flushAlert();
+                    }
+                }
+                existing = {
+                    id: `${streakKey}_${nowMs}`,
+                    lastCount: 0,
+                    updatedAt: nowMs,
+                    ended: false,
+                    alerted: false,
+                    timer: null,
+                    flushAlert: null
+                };
+                global.activeGiftStreaks.set(streakKey, existing);
+
+                if (global.activeGiftStreaks.size > 2000) {
+                    const firstKey = global.activeGiftStreaks.keys().next().value;
+                    const oldS = global.activeGiftStreaks.get(firstKey);
+                    if (oldS && oldS.timer) clearTimeout(oldS.timer);
+                    global.activeGiftStreaks.delete(firstKey);
+                }
+            }
+
+            streakObj = existing;
+            lastCount = streakObj.lastCount;
+
+            if (newCount === lastCount && !isRepeatEnd) {
+                // Paquete intermedio repetido con el mismo conteo
+                return;
+            }
+
+            delta = Math.max(0, newCount - lastCount);
+            streakObj.lastCount = Math.max(lastCount, newCount);
+            streakObj.updatedAt = nowMs;
+
+            if (isRepeatEnd) {
+                streakObj.ended = true;
+                if (streakObj.timer) {
+                    clearTimeout(streakObj.timer);
+                    streakObj.timer = null;
+                }
+            }
+        }
         
         // Actualizar foto de perfil
         if (profilePic) {
@@ -4725,16 +4927,20 @@ function setupListeners() {
         // Marcar presencia activa en el live
         markUserPresent(uid);
 
-        const currentAmount = sessionDonations.get(uid) || 0;
-        sessionDonations.set(uid, currentAmount + coins);
+        const totalCoinsFromDelta = coins * delta;
+        if (totalCoinsFromDelta > 0) {
+            const currentAmount = sessionDonations.get(uid) || 0;
+            sessionDonations.set(uid, currentAmount + totalCoinsFromDelta);
+        }
         sessionGifterDetails.set(uid, {
             username: uid,
             nickname: displayName,
             profilePictureUrl: profilePic || ''
         });
         
-        const giftId = data.giftId || data.gift?.id || data.gift?.giftId || '';
-        console.log(`🎁 REGALO: "${giftName}" (ID: ${giftId}, key: "${giftKey}") de ${displayName} — ${coins} diamantes`);
+        if (delta > 0 || isGiftFinal) {
+            console.log(`🎁 REGALO: "${giftName}" (ID: ${giftId}, x${streakObj ? streakObj.lastCount : newCount}, +${delta}) de ${displayName} — ${coins} diamantes c/u`);
+        }
 
         try {
             const totalCoins = Number(sessionDonations.get(uid) || 0);
@@ -4745,20 +4951,9 @@ function setupListeners() {
                 if (k) tempDonadorUsers.add(k);
             }
         } catch (_) {}
-
-        const isGiftType1 = Number(data.giftType || (data.gift && data.gift.gift_type) || (data.giftDetails && data.giftDetails.gift_type) || 1) === 1;
-        const isRepeatEnd = Boolean(
-            data.repeatEnd === true || 
-            data.repeatEnd === 1 || 
-            data.repeat_end === 1 || 
-            (data.giftDetails && data.giftDetails.repeat_end === 1) ||
-            (data.gift && data.gift.repeat_end === 1)
-        );
-        const isGiftFinal = !isGiftType1 || isRepeatEnd;
-        const isQuiereme = (giftKey === 'heartme');
         
         // ── Otorgar insignia z0-Fan (se hace en el primer envío o en el evento final) ──
-        if (isQuiereme && (isGiftFinal || lastCount === 0)) {
+        if (isQuiereme && (lastCount === 0 || (isGiftFinal && delta > 0))) {
             try {
                 await grantZ0FanFromTikTok(uid, displayName);
             } catch (e) {
@@ -4767,7 +4962,7 @@ function setupListeners() {
         }
 
         // ── Acumular en Top Quiéreme (usando delta en tiempo real para no perder nada) ──
-        if (isQuiereme && db) {
+        if (isQuiereme && delta > 0 && db) {
             try {
                 const resolved = await getCanonicalUserKey(uid, displayName);
                 const userKey = resolved.userKey || uid;
@@ -4805,22 +5000,10 @@ function setupListeners() {
             }
         }
 
-
-        // Escribimos la notificación de regalo asegurando que se envíe EXACTAMENTE UNA VEZ por regalo/racha.
-        if (!global.alertedGiftsSet) {
-            global.alertedGiftsSet = new Set();
-        }
-        const alreadyAlerted = global.alertedGiftsSet.has(msgId);
-        const shouldTriggerNotification = !alreadyAlerted && (isGiftFinal || (isQuiereme && lastCount === 0));
-
-        if (shouldTriggerNotification && db) {
-            global.alertedGiftsSet.add(msgId);
-            if (global.alertedGiftsSet.size > 2000) {
-                const first = global.alertedGiftsSet.values().next().value;
-                global.alertedGiftsSet.delete(first);
-            }
-
-            const actualCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
+        // Helper para enviar la notificación visual de regalo una única vez por regalo o racha
+        const sendGiftAlertNotification = async (finalRepeatCount) => {
+            if (!db) return;
+            const actualCount = Math.max(1, Number(finalRepeatCount) || 1);
             const totalCoins = coins * actualCount;
             const minCoins = Number(overlayAlertsConfig.minCoinsAlert) || 1;
             
@@ -4871,27 +5054,59 @@ function setupListeners() {
                     console.error('Error guardando notificación de regalo en Firestore:', e);
                 }
             }
+        };
+
+        if (streakObj) {
+            const shouldAlertNow = !streakObj.alerted && (isGiftFinal || (isQuiereme && lastCount === 0));
+            if (shouldAlertNow) {
+                streakObj.alerted = true;
+                if (streakObj.timer) {
+                    clearTimeout(streakObj.timer);
+                    streakObj.timer = null;
+                }
+                await sendGiftAlertNotification(streakObj.lastCount);
+            } else if (!streakObj.alerted && !isGiftFinal) {
+                // Fallback de 5s por si TikTok omite el paquete repeat_end: 1 al finalizar la racha
+                if (streakObj.timer) clearTimeout(streakObj.timer);
+                streakObj.flushAlert = () => {
+                    if (!streakObj.alerted) {
+                        streakObj.alerted = true;
+                        streakObj.ended = true;
+                        sendGiftAlertNotification(streakObj.lastCount).catch(() => {});
+                    }
+                };
+                streakObj.timer = setTimeout(() => {
+                    streakObj.timer = null;
+                    if (streakObj.flushAlert) streakObj.flushAlert();
+                }, 5000);
+            }
+        } else {
+            // Regalo sin racha (gift_type !== 1): se alerta inmediatamente una sola vez
+            await sendGiftAlertNotification(newCount);
         }
 
-        // --- SISTEMA DE PUNTOS POR DONACIÓN ---
-        // 1 punto por cada 10 monedas (acumulado usando delta en tiempo real para no duplicar ni perder nada)
-        const totalCoinsFromDelta = coins * delta;
-        const pointsFromGift = Math.floor(totalCoinsFromDelta / 10);
-        
-        if (pointsFromGift > 0 && db) {
+        // --- SISTEMA DE PUNTOS Y MONEDAS POR DONACIÓN ---
+        // 1 punto por cada 10 monedas (acumulando residuo por usuario para que regalos de 1 o 5 monedas sí sumen puntos)
+        if (totalCoinsFromDelta > 0 && db) {
             try {
                 const resolved = await getCanonicalUserKey(uid, displayName);
                 const userKey = resolved.userKey || uid;
                 const userRef = doc(db, 'userStats', userKey);
+
+                const prevRem = global.giftCoinRemainder.get(userKey) || 0;
+                const accumulatedCoins = prevRem + totalCoinsFromDelta;
+                const pointsFromGift = Math.floor(accumulatedCoins / 10);
+                global.giftCoinRemainder.set(userKey, accumulatedCoins % 10);
                 
-                // Usamos increment para sumar de forma atómica
                 const giftUpdateData = {
-                    totalPoints: increment(pointsFromGift),
-                    totalGiftPoints: increment(pointsFromGift),
                     totalCoinsDonated: increment(totalCoinsFromDelta),
                     lastActiveAt: serverTimestamp(),
                     displayName: displayName
                 };
+                if (pointsFromGift > 0) {
+                    giftUpdateData.totalPoints = increment(pointsFromGift);
+                    giftUpdateData.totalGiftPoints = increment(pointsFromGift);
+                }
                 // Persistir membresía si viene en el evento de regalo
                 if (data.isSubscriber === true) giftUpdateData.isSubscriber = true;
                 
@@ -4902,18 +5117,18 @@ function setupListeners() {
                 
                 await setDoc(userRef, giftUpdateData, { merge: true });
 
-                
-                console.log(`💎 Puntos otorgados a ${displayName}: +${pointsFromGift} (por ${coins} monedas)`);
-                
-                // Notificar visualmente
-                await addDoc(collection(db, 'notifications'), {
-                    type: 'points_gift',
-                    user: displayName,
-                    points: pointsFromGift,
-                    message: `+${pointsFromGift} puntos por regalo`,
-                    timestamp: serverTimestamp()
-                });
-
+                if (pointsFromGift > 0) {
+                    console.log(`💎 Puntos otorgados a ${displayName}: +${pointsFromGift} (por ${totalCoinsFromDelta} monedas)`);
+                    
+                    // Notificar visualmente
+                    await addDoc(collection(db, 'notifications'), {
+                        type: 'points_gift',
+                        user: displayName,
+                        points: pointsFromGift,
+                        message: `+${pointsFromGift} puntos por regalo`,
+                        timestamp: serverTimestamp()
+                    });
+                }
             } catch (e) {
                 console.error(`Error otorgando puntos por regalo a ${displayName}:`, e);
             }
@@ -4922,30 +5137,23 @@ function setupListeners() {
         // Recalcular rangos (VIP, etc.) con debounce
         scheduleRecalculateDonorRanks();
 
-        // ─── GOAL OVERLAYS: acumular coins de sesión ────────────────────────────
-        if (isGiftFinal) {
-            const actualCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
-            const totalCoinsThisGift = coins * actualCount;
-            sessionTotalCoins += totalCoinsThisGift;
+        // ─── GOAL OVERLAYS Y TIMER EXTENSION (en tiempo real con delta) ─────────
+        if (delta > 0) {
+            sessionTotalCoins += totalCoinsFromDelta;
             syncSessionCountersToFirestore();
 
             // ─── TIMER EXTENSION: extender el countdown por regalos ──────────────
             if (timerState.state === 'running' && timerState.endsAt) {
                 let secondsToAdd = 0;
-                const coinsPerGift = Number(coins) || 0;
-                const repeatCount = Number(data.repeatCount || data.repeatcount || 1) || 1;
-                const totalCoins = coinsPerGift * repeatCount;
                 
                 if (Number(timerState.secondsPerCoin) > 0) {
-                    // Modo Tikfinity: sumar proporcional a las monedas (monedas * segundos_por_moneda)
-                    secondsToAdd = totalCoins * Number(timerState.secondsPerCoin);
-                    console.log(`⏱️ [Tikfinity Mode] Regalo de ${displayName} (${totalCoins} monedas) → +${secondsToAdd}s al timer.`);
-                } else {
-                    // Modo Clásico: sumar un tiempo fijo por regalo recibido (si es > 0)
-                    secondsToAdd = Number(timerState.secondsPerGift || 0);
-                    if (secondsToAdd > 0) {
-                        console.log(`⏱️ [Classic Mode] Regalo de ${displayName} → +${secondsToAdd}s al timer.`);
-                    }
+                    // Modo Tikfinity: sumar proporcional a las monedas (monedas_delta * segundos_por_moneda)
+                    secondsToAdd = totalCoinsFromDelta * Number(timerState.secondsPerCoin);
+                    console.log(`⏱️ [Tikfinity Mode] Regalo de ${displayName} (+${totalCoinsFromDelta} monedas) → +${secondsToAdd}s al timer.`);
+                } else if (Number(timerState.secondsPerGift || 0) > 0) {
+                    // Modo Clásico: sumar tiempo fijo por cada unidad de regalo recibido
+                    secondsToAdd = delta * Number(timerState.secondsPerGift || 0);
+                    console.log(`⏱️ [Classic Mode] Regalo de ${displayName} (x${delta}) → +${secondsToAdd}s al timer.`);
                 }
                 
                 if (secondsToAdd > 0) {
@@ -5779,7 +5987,7 @@ async function connectToLive() {
                     }
                     isRetrying = false;
                     tiktokConnectionOptions = buildTikTokConnectionOptions();
-                    try { if (tiktokLiveConnection) tiktokLiveConnection.disconnect(); } catch (_) {}
+                    cleanupTikTokConnection();
                     tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME, tiktokConnectionOptions);
                     setupListeners();
                     connectToLive();

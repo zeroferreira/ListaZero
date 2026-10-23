@@ -1,4 +1,4 @@
-const firebaseConfig = {
+var firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || {
   apiKey: "AIzaSyC9zlwtUUq7eNUoZ1QVcEOY4-NI_4fKU5Y",
   authDomain: "zer0-gaming.firebaseapp.com",
   projectId: "zer0-gaming",
@@ -10,6 +10,7 @@ const firebaseConfig = {
 
 if (typeof window !== 'undefined') {
     window.ZERO_FM_FIREBASE = firebaseConfig;
+    window.firebaseConfig = firebaseConfig;
 }
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = firebaseConfig;

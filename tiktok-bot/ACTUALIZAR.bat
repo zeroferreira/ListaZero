@@ -39,6 +39,11 @@ if exist "config.json" copy /Y "config.json" "%BACKUP_CFG%" >nul 2>&1
 set "BACKUP_FIREBASE=%TEMP%\zero_fm_firebase_backup_%RANDOM%.js"
 if exist "firebase-config.js" copy /Y "firebase-config.js" "%BACKUP_FIREBASE%" >nul 2>&1
 
+set "BACKUP_PROFILES=%TEMP%\zero_fm_profiles_backup_%RANDOM%"
+if exist "profiles" (
+    xcopy "profiles" "%BACKUP_PROFILES%\" /E /I /Q /Y >nul 2>&1
+)
+
 where git >nul 2>&1
 if errorlevel 1 goto zip
 
@@ -82,7 +87,7 @@ if %RC% geq 8 (
 REM --- Copiar overlays del root del repo a la carpeta padre del bot ---
 set "ROOT_DEST=%DEST%\.."
 echo [INFO] Copiando overlays del root al directorio padre...
-for %%F in (alerts_overlay.html goal_overlay.html welcome_overlay.html topgifter_overlay.html topliker_overlay.html youtube_player_overlay.html stats_ticker_widget.html overlay.html overlay.js overlay.css queue_overlay.html queue.js queue.css roulette_overlay.html roulette.js roulette.css particles.js tops.html lista.html lista.js lista.css styles.css) do (
+for %%F in (alerts_overlay.html goal_overlay.html welcome_overlay.html topgifter_overlay.html topliker_overlay.html youtube_player_overlay.html stats_ticker_widget.html last_events_widget.html overlay.html overlay.js overlay.css queue_overlay.html queue.js queue.css roulette_overlay.html roulette.js roulette.css particles.js tops.html regalos.html lista.html lista.js lista.css styles.css stats.js chat_overlay.html chat.html index.html index.js) do (
     if exist "%TMP%\%%F" (
         copy /Y "%TMP%\%%F" "%ROOT_DEST%\%%F" >nul 2>&1
         echo   Actualizado: %%F
@@ -152,7 +157,7 @@ if %RC% geq 8 (
 REM --- Copiar overlays del root del repo a la carpeta padre del bot ---
 set "ROOT_DEST=%DEST%\.."
 echo [INFO] Copiando overlays del root al directorio padre...
-for %%F in (alerts_overlay.html goal_overlay.html welcome_overlay.html topgifter_overlay.html topliker_overlay.html youtube_player_overlay.html stats_ticker_widget.html overlay.html overlay.js overlay.css queue_overlay.html queue.js queue.css roulette_overlay.html roulette.js roulette.css particles.js tops.html lista.html lista.js lista.css styles.css) do (
+for %%F in (alerts_overlay.html goal_overlay.html welcome_overlay.html topgifter_overlay.html topliker_overlay.html youtube_player_overlay.html stats_ticker_widget.html last_events_widget.html overlay.html overlay.js overlay.css queue_overlay.html queue.js queue.css roulette_overlay.html roulette.js roulette.css particles.js tops.html regalos.html lista.html lista.js lista.css styles.css stats.js chat_overlay.html chat.html index.html index.js) do (
     if exist "%TMP%\ListaZero-main\%%F" (
         copy /Y "%TMP%\ListaZero-main\%%F" "%ROOT_DEST%\%%F" >nul 2>&1
         echo   Actualizado: %%F
@@ -167,6 +172,13 @@ if exist "%BACKUP_CFG%" (
 if exist "%BACKUP_FIREBASE%" (
     copy /Y "%BACKUP_FIREBASE%" "firebase-config.js" >nul 2>&1
     del /Q "%BACKUP_FIREBASE%" >nul 2>&1
+)
+if exist "%BACKUP_PROFILES%" (
+    xcopy "%BACKUP_PROFILES%\*" "profiles\" /E /I /Q /Y >nul 2>&1
+    rd /s /q "%BACKUP_PROFILES%" >nul 2>&1
+)
+if exist "compile_dashboard.js" (
+    node compile_dashboard.js >nul 2>&1
 )
 echo.
 if defined TMP if exist "%TMP%" rd /s /q "%TMP%" >nul 2>&1

@@ -1,7 +1,7 @@
 /**
  * firebase-config.js — Zero FM (Perfil zeroferreira)
  */
-const firebaseConfig = {
+var firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || {
     apiKey:            "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
     authDomain:        "zero-strom-web.firebaseapp.com",
     projectId:         "zero-strom-web",
@@ -13,6 +13,7 @@ const firebaseConfig = {
 
 if (typeof window !== 'undefined') {
     window.ZERO_FM_FIREBASE = firebaseConfig;
+    window.firebaseConfig = firebaseConfig;
 }
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = firebaseConfig;

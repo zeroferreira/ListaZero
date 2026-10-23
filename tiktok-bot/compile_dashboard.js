@@ -83,6 +83,7 @@ function syncRootOverlays() {
     'topliker_overlay.html',
     'youtube_player_overlay.html',
     'stats_ticker_widget.html',
+    'last_events_widget.html',
     'overlay.html',
     'overlay.js',
     'overlay.css',
@@ -100,6 +101,7 @@ function syncRootOverlays() {
     'lista.js',
     'lista.css',
     'styles.css',
+    'stats.js',
     'chat_overlay.html',
     'chat.html'
   ];

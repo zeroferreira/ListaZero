@@ -491,6 +491,7 @@
                     firebase.app();
                 }
                 db = firebase.firestore();
+                try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (_) {}
                 console.log("[Firebase] Bienvenidas conectadas correctamente ✓");
 
                 // Desuscribir listener anterior si existe
@@ -561,7 +562,10 @@
                                 }
                                 const data = change.doc.data();
                                 // Capturar eventos de tipo join (entrada)
-                                if (data.type === 'join' && config.welcomeOverlayEnabled) {
+                                if (data.type === 'join' && (config.welcomeOverlayEnabled || data.isTest)) {
+                                    let isIframe = false;
+                                    try { isIframe = window.self !== window.top; } catch (_) { isIframe = true; }
+                                    if (isIframe && data.isTest) return; // Ya reproducido por postMessage en el preview del Dashboard
                                     console.log("👤 Nuevo usuario en cola para saludar:", data.uniqueId);
                                     addWelcome(data);
                                 }
@@ -833,7 +837,9 @@
                 // Solo reproducir el audio si el usuario no ha sido saludado recientemente
                 // (o si ha estado ausente más de 9 minutos desde la última vez que sonó).
                 const isTest = Boolean(next.isTest);
-                const audioAllowed = canPlayAudioForUser(next.uniqueId, isTest);
+                let isIframePreview = false;
+                try { isIframePreview = window.self !== window.top; } catch (_) { isIframePreview = true; }
+                const audioAllowed = (!isIframePreview || isTest) && canPlayAudioForUser(next.uniqueId, isTest);
 
                 if (config.welcomeOverlaySoundEnabled && resolvedSoundUrl && resolvedSoundUrl !== 'none' && audioAllowed) {
                     audio.src = resolvedSoundUrl;

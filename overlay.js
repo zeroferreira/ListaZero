@@ -495,6 +495,7 @@
           firebase.initializeApp(localConfig);
         }
         db = firebase.firestore();
+        try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (_) {}
       } else {
         console.warn('Firebase SDK not loaded');
       }
