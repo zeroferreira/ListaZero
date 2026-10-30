@@ -1252,7 +1252,7 @@
             const [activeTab, setActiveTab] = React.useState('configuracion');
             const [streamerMode, setStreamerMode] = React.useState(false);
             const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
-            const [activeSub, setActiveSub] = React.useState('player');
+            const [activeSub, setActiveSub] = React.useState('cider');
             const [activeConfigSub, setActiveConfigSub] = React.useState('commands');
             const [saveStatus, setSaveStatus] = React.useState('');
             const [profiles, setProfiles] = React.useState(['zeroferreira']);
@@ -1633,7 +1633,23 @@
                 yt_audio_route: 'obs',
                 route_audio_to: 'obs',
                 enableOverlayAudio: true,
-                yt_auto_advance: true
+                yt_auto_advance: true,
+
+                // Cider Now Playing Widget Config (3 Themes)
+                ciderWidgetTheme: 'vinyl',
+                ciderWidgetWidth: 480,
+                ciderWidgetScale: 1,
+                ciderWidgetOpacity: 0.88,
+                ciderWidgetAccent: '#ff0055',
+                ciderWidgetAccentSec: '#00e5ff',
+                ciderWidgetTitleSize: 20,
+                ciderWidgetShowProgress: true,
+                ciderWidgetShowTime: true,
+                ciderWidgetShowRequester: true,
+                ciderWidgetShowAlbum: true,
+                ciderWidgetShowEq: true,
+                ciderWidgetHideWhenPaused: false,
+                ciderWidgetShowCardBg: true
             });
 
             const [dirtyKeys, setDirtyKeys] = React.useState({});
@@ -3815,10 +3831,13 @@
                         sendConfigToIframe('iframe-ytplayer-persistent', overlays);
                     } else if (activeSub === 'chat') {
                         sendConfigToIframe('iframe-chat-overlay', overlays);
+                    } else if (activeSub === 'cider' || activeControlSub === 'cider') {
+                        sendConfigToIframe('iframe-cider-widget', overlays);
+                        sendConfigToIframe('iframe-control-cider-widget', overlays);
                     }
                 }, 80);
                 return () => clearTimeout(timerId);
-            }, [overlays, goals, timer, lastevents, activeSub]);
+            }, [overlays, goals, timer, lastevents, activeSub, activeControlSub]);
 
             // Helper centralizado para guardar configuración de overlays mezclando solo lo modificado ("dirty")
             const saveOverlaysConfig = async (localOverlays, extraDirtyKeys = {}) => {
@@ -6277,6 +6296,10 @@
                         <div className="overlays-layout">
                             {/* Left overlays subpanels sidebar selectors */}
                             <div className="overlays-sidebar">
+                                <button className={`overlays-menu-item ${activeSub === 'cider' ? 'active' : ''}`} onClick={() => setActiveSub('cider')}>
+                                    <span>🎵 Canción Cider</span>
+                                    <span className="menu-badge" style={{ color: '#ec4899' }}>3 Temas</span>
+                                </button>
                                 <button className={`overlays-menu-item ${activeSub === 'player' ? 'active' : ''}`} onClick={() => setActiveSub('player')}>
                                     <span>💿 Reproductor</span>
                                     <span className="menu-badge">Activo</span>
@@ -6341,11 +6364,246 @@
 
                             {/* Right subpanels details configurations */}
                             <div className="overlays-content">
+
+                                {/* SUBPANEL 0: CIDER NOW PLAYING WIDGET (3 THEMES) */}
+                                {activeSub === 'cider' && (
+                                    <div className="glass-card animate-fade-in">
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                            <div>
+                                                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    🎵 Widget de Canción Actual (Cider) — 3 Estilos
+                                                </h3>
+                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', marginTop: '6px', marginBottom: 0 }}>
+                                                    Muestra en tiempo real la canción que está saliendo de Cider (v1 y v2) con portada HQ, barra de progreso fluida, solicitante e insignia VIP.
+                                                </p>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary"
+                                                    style={{ padding: '7px 14px', fontSize: '0.82rem', borderColor: '#ec4899', color: '#f472b6', background: 'rgba(236, 72, 153, 0.08)' }}
+                                                    onClick={() => {
+                                                        fetch('/api/cider/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }).catch(() => {});
+                                                        const ifr = document.getElementById('iframe-cider-widget');
+                                                        if (ifr && ifr.contentWindow) {
+                                                            ifr.contentWindow.postMessage({ action: 'simulateCider' }, '*');
+                                                        }
+                                                    }}
+                                                >
+                                                    🧪 Simular Canción
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-primary"
+                                                    style={{ padding: '7px 14px', fontSize: '0.82rem' }}
+                                                    onClick={() => handleSaveOverlaysConfigOnly('Cider Widget')}
+                                                >
+                                                    {renderIcon('save')} Guardar Diseño
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Selector Visual de los 3 Temas */}
+                                        <div style={{ marginBottom: '20px' }}>
+                                            <label style={{ fontWeight: '700', fontSize: '0.88rem', color: '#fff', display: 'block', marginBottom: '10px' }}>
+                                                🎨 Elige uno de los 3 Temas Visuales:
+                                            </label>
+                                            <div className="grid-3" style={{ gap: '12px' }}>
+                                                {[
+                                                    {
+                                                        id: 'vinyl',
+                                                        icon: '💿',
+                                                        title: '1. Vinilo Giratorio',
+                                                        desc: 'Carátula con disco de vinilo animado que gira al reproducir y se detiene en pausa.'
+                                                    },
+                                                    {
+                                                        id: 'glass',
+                                                        icon: '🪟',
+                                                        title: '2. Apple Vision Glass',
+                                                        desc: 'Cristal esmerilado atmosférico con fondo dinámico desenfocado de la portada.'
+                                                    },
+                                                    {
+                                                        id: 'cyber',
+                                                        icon: '⚡',
+                                                        title: '3. Cyberpunk Zero FM',
+                                                        desc: 'HUD Broadcast con bordes angulares neón, tipografía futurista y ecualizador LED.'
+                                                    }
+                                                ].map((t) => {
+                                                    const isSelected = (overlays.ciderWidgetTheme || 'vinyl') === t.id;
+                                                    return (
+                                                        <div
+                                                            key={t.id}
+                                                            onClick={() => {
+                                                                const updated = { ...overlays, ciderWidgetTheme: t.id };
+                                                                setOverlays(updated);
+                                                                sendConfigToIframe('iframe-cider-widget', updated);
+                                                            }}
+                                                            style={{
+                                                                padding: '14px',
+                                                                borderRadius: '14px',
+                                                                cursor: 'pointer',
+                                                                background: isSelected ? 'rgba(236, 72, 153, 0.14)' : 'rgba(255, 255, 255, 0.03)',
+                                                                border: isSelected ? '2px solid #ec4899' : '1px solid var(--border-glass)',
+                                                                boxShadow: isSelected ? '0 6px 20px rgba(236, 72, 153, 0.22)' : 'none',
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                                                <strong style={{ fontSize: '0.92rem', color: '#fff' }}>{t.icon} {t.title}</strong>
+                                                                {isSelected && (
+                                                                    <span style={{ fontSize: '0.68rem', background: '#ec4899', color: '#fff', padding: '2px 8px', borderRadius: '99px', fontWeight: '700' }}>
+                                                                        ACTIVO
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.35 }}>
+                                                                {t.desc}
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Vista Previa en Vivo */}
+                                        <div className="preview-panel" style={{ marginBottom: '20px' }}>
+                                            <div className="preview-header">
+                                                <span>📺 Vista Previa Interactiva ({overlays.ciderWidgetTheme === 'glass' ? 'Apple Vision Glass' : overlays.ciderWidgetTheme === 'cyber' ? 'Cyberpunk Zero FM' : 'Vinilo Giratorio'})</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                    <div className="preview-live-dot"></div> Cider Live Widget
+                                                </div>
+                                            </div>
+                                            <iframe
+                                                id="iframe-cider-widget"
+                                                src="./cider_widget.html?preview=true"
+                                                className="preview-iframe"
+                                                style={{ height: '190px', width: '100%', border: 'none' }}
+                                                onLoad={() => sendConfigToIframe('iframe-cider-widget', overlays)}
+                                            ></iframe>
+                                        </div>
+
+                                        {/* Controles de Personalización */}
+                                        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '20px' }}>
+                                            <h4 style={{ marginTop: 0, marginBottom: '14px', fontSize: '0.95rem', color: '#f472b6' }}>⚙️ Personalización del Widget</h4>
+                                            <div className="grid-3">
+                                                <div className="form-group">
+                                                    <label>Ancho de Tarjeta: {overlays.ciderWidgetWidth || 480}px</label>
+                                                    <input
+                                                        type="range"
+                                                        min="340" max="660" step="10"
+                                                        value={overlays.ciderWidgetWidth || 480}
+                                                        onChange={(e) => setOverlays({ ...overlays, ciderWidgetWidth: parseInt(e.target.value, 10) })}
+                                                    />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Opacidad Fondo: {Math.round((overlays.ciderWidgetOpacity !== undefined ? overlays.ciderWidgetOpacity : 0.88) * 100)}%</label>
+                                                    <input
+                                                        type="range"
+                                                        min="0.15" max="1" step="0.05"
+                                                        value={overlays.ciderWidgetOpacity !== undefined ? overlays.ciderWidgetOpacity : 0.88}
+                                                        onChange={(e) => setOverlays({ ...overlays, ciderWidgetOpacity: parseFloat(e.target.value) })}
+                                                    />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Tamaño Título: {overlays.ciderWidgetTitleSize || 20}px</label>
+                                                    <input
+                                                        type="range"
+                                                        min="14" max="30" step="1"
+                                                        value={overlays.ciderWidgetTitleSize || 20}
+                                                        onChange={(e) => setOverlays({ ...overlays, ciderWidgetTitleSize: parseInt(e.target.value, 10) })}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="grid-2" style={{ marginTop: '8px' }}>
+                                                <div className="form-group">
+                                                    <label>Color de Acento Principal</label>
+                                                    <input
+                                                        type="color"
+                                                        value={overlays.ciderWidgetAccent || '#ff0055'}
+                                                        onChange={(e) => setOverlays({ ...overlays, ciderWidgetAccent: e.target.value })}
+                                                        style={{ width: '100%', height: '38px', cursor: 'pointer', border: '1px solid var(--border-glass)', borderRadius: '10px' }}
+                                                    />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Color Secundario / Gradiente</label>
+                                                    <input
+                                                        type="color"
+                                                        value={overlays.ciderWidgetAccentSec || '#00e5ff'}
+                                                        onChange={(e) => setOverlays({ ...overlays, ciderWidgetAccentSec: e.target.value })}
+                                                        style={{ width: '100%', height: '38px', cursor: 'pointer', border: '1px solid var(--border-glass)', borderRadius: '10px' }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '12px' }}>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowProgress !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowProgress: e.target.checked })} />
+                                                    Barra de Progreso
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowTime !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowTime: e.target.checked })} />
+                                                    Tiempos (0:00 / -0:00)
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowRequester !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowRequester: e.target.checked })} />
+                                                    Mostrar Solicitante + Insignia VIP
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowAlbum !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowAlbum: e.target.checked })} />
+                                                    Mostrar Álbum
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowEq !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowEq: e.target.checked })} />
+                                                    Ecualizador Animado
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetHideWhenPaused === true} onChange={(e) => setOverlays({ ...overlays, ciderWidgetHideWhenPaused: e.target.checked })} />
+                                                    Auto-ocultar en Pausa
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {/* Enlaces para OBS (General + Los 3 Temas Directos) */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                            <div className="form-group" style={{ margin: 0, background: 'rgba(236, 72, 153, 0.06)', padding: '14px', borderRadius: '12px', border: '1px dashed rgba(236, 72, 153, 0.4)' }}>
+                                                <label style={{ fontWeight: '700', color: '#f472b6', marginBottom: '6px', display: 'block' }}>
+                                                    🔗 Enlace Principal para OBS (Sincronizado en vivo con el Tema elegido arriba — 540 × 170 px)
+                                                </label>
+                                                <div className="copy-url-row">
+                                                    <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/cider_widget.html`} onClick={(e) => e.target.select()} />
+                                                    <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/cider_widget.html`)}>Copiar URL</button>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid-3" style={{ gap: '10px' }}>
+                                                {[
+                                                    { id: 'vinyl', label: '💿 URL Fija Tema 1 (Vinilo)' },
+                                                    { id: 'glass', label: '🪟 URL Fija Tema 2 (Glass)' },
+                                                    { id: 'cyber', label: '⚡ URL Fija Tema 3 (Cyberpunk)' }
+                                                ].map((u) => (
+                                                    <div key={u.id} style={{ background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '10px', border: '1px solid var(--border-glass)' }}>
+                                                        <label style={{ fontSize: '0.76rem', fontWeight: '600', color: '#ccc', display: 'block', marginBottom: '6px' }}>{u.label}</label>
+                                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                                            <input type="text" className="copy-url-input" style={{ fontSize: '0.74rem', padding: '5px 8px' }} readOnly value={`${currentOrigin}/cider_widget.html?theme=${u.id}`} onClick={(e) => e.target.select()} />
+                                                            <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.74rem' }} onClick={() => handleCopyUrl(`${currentOrigin}/cider_widget.html?theme=${u.id}`)}>Copiar</button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 
                                 {/* SUBPANEL 1: PLAYER */}
                                 {activeSub === 'player' && (
                                     <div className="glass-card">
-                                        <h3 style={{ marginBottom: '10px' }}>💿 Reproductor de Canción Actual (Main Overlay)</h3>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
+                                            <h3 style={{ margin: 0 }}>💿 Reproductor / Alerta de Pedido (Main Overlay)</h3>
+                                            <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem', borderColor: '#ec4899', color: '#f472b6' }} onClick={() => setActiveSub('cider')}>
+                                                🎵 Ir al Widget de Canción Cider (3 Temas) →
+                                            </button>
+                                        </div>
                                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '20px' }}>
                                             Muestra la canción actual reproduciéndose en Cider/Apple Music con carátula de alta resolución y barra de progreso.
                                         </p>
@@ -12099,6 +12357,9 @@
                                 <button className={`config-menu-item ${activeControlSub === 'queue' ? 'active' : ''}`} onClick={() => setActiveControlSub('queue')}>
                                     <span>{renderIcon('list')} {!sidebarCollapsed && " 📋 Cola de Espera"}</span>
                                 </button>
+                                <button className={`config-menu-item ${activeControlSub === 'cider' ? 'active' : ''}`} onClick={() => setActiveControlSub('cider')}>
+                                    <span>{renderIcon('disc')} {!sidebarCollapsed && " 💿 Canción Cider"}</span>
+                                </button>
                                 <button className={`config-menu-item ${activeControlSub === 'lista' ? 'active' : ''}`} onClick={() => setActiveControlSub('lista')}>
                                     <span>{renderIcon('music')} {!sidebarCollapsed && " 🎵 Catálogo"}</span>
                                 </button>
@@ -12920,6 +13181,181 @@
 
                                         <div style={{ position: 'relative', width: '100%', height: '580px', background: 'rgba(0,0,0,0.1)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
                                             <iframe id="iframe-control-queue-tab" src="./queue_overlay.html" style={{ width: '100%', height: '100%', border: 'none' }}></iframe>
+                                        </div>
+                                    </div>
+
+                                    {/* SUBPANEL CONTROL DE STREAM: CIDER NOW PLAYING WIDGET (3 TEMAS) */}
+                                    <div className="glass-card animate-fade-in" style={{ display: activeControlSub === 'cider' ? 'flex' : 'none', flexDirection: 'column', gap: '18px', padding: '20px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px', flexWrap: 'wrap', gap: '12px' }}>
+                                            <div>
+                                                <h3 style={{ margin: 0, color: '#f472b6', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    💿 Control y Widget de Canción Actual (Cider — 3 Temas)
+                                                </h3>
+                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '4px 0 0 0' }}>
+                                                    Monitorea la canción en reproducción de Cider, cambia entre los 3 temas en vivo y copia el enlace para OBS.
+                                                </p>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary"
+                                                    style={{ padding: '8px 14px', fontSize: '0.82rem', borderColor: '#ec4899', color: '#f472b6', background: 'rgba(236, 72, 153, 0.08)' }}
+                                                    onClick={() => {
+                                                        fetch('/api/cider/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }).catch(() => {});
+                                                        ['iframe-control-cider-widget', 'iframe-cider-widget'].forEach((id) => {
+                                                            const ifr = document.getElementById(id);
+                                                            if (ifr && ifr.contentWindow) {
+                                                                ifr.contentWindow.postMessage({ action: 'simulateCider' }, '*');
+                                                            }
+                                                        });
+                                                    }}
+                                                >
+                                                    🧪 Simular Canción
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-primary"
+                                                    style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+                                                    onClick={() => handleSaveOverlaysConfigOnly('Cider Widget')}
+                                                >
+                                                    {renderIcon('save')} Guardar Diseño
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Selector Rápido de los 3 Temas */}
+                                        <div>
+                                            <label style={{ fontWeight: '700', fontSize: '0.86rem', color: '#fff', display: 'block', marginBottom: '10px' }}>
+                                                🎨 Selecciona el Tema en Vivo (cambia al instante en OBS):
+                                            </label>
+                                            <div className="grid-3" style={{ gap: '12px' }}>
+                                                {[
+                                                    { id: 'vinyl', icon: '💿', title: '1. Vinilo Giratorio', desc: 'Carátula con disco de vinilo que gira al reproducir.' },
+                                                    { id: 'glass', icon: '🪟', title: '2. Apple Vision Glass', desc: 'Cristal esmerilado con fondo atmosférico de la portada.' },
+                                                    { id: 'cyber', icon: '⚡', title: '3. Cyberpunk Zero FM', desc: 'HUD Broadcast con bordes neón, Orbitron y ecualizador LED.' }
+                                                ].map((t) => {
+                                                    const isSelected = (overlays.ciderWidgetTheme || 'vinyl') === t.id;
+                                                    return (
+                                                        <div
+                                                            key={t.id}
+                                                            onClick={() => {
+                                                                const updated = { ...overlays, ciderWidgetTheme: t.id };
+                                                                setOverlays(updated);
+                                                                sendConfigToIframe('iframe-control-cider-widget', updated);
+                                                                sendConfigToIframe('iframe-cider-widget', updated);
+                                                            }}
+                                                            style={{
+                                                                padding: '14px',
+                                                                borderRadius: '14px',
+                                                                cursor: 'pointer',
+                                                                background: isSelected ? 'rgba(236, 72, 153, 0.14)' : 'rgba(255, 255, 255, 0.03)',
+                                                                border: isSelected ? '2px solid #ec4899' : '1px solid var(--border-glass)',
+                                                                boxShadow: isSelected ? '0 6px 20px rgba(236, 72, 153, 0.22)' : 'none',
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                                                <strong style={{ fontSize: '0.9rem', color: '#fff' }}>{t.icon} {t.title}</strong>
+                                                                {isSelected && (
+                                                                    <span style={{ fontSize: '0.66rem', background: '#ec4899', color: '#fff', padding: '2px 8px', borderRadius: '99px', fontWeight: '700' }}>
+                                                                        ACTIVO
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.35 }}>{t.desc}</p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Vista Previa en Vivo en Control de Stream */}
+                                        <div className="preview-panel" style={{ margin: 0 }}>
+                                            <div className="preview-header">
+                                                <span>📺 Vista Previa en Tiempo Real ({overlays.ciderWidgetTheme === 'glass' ? 'Apple Vision Glass' : overlays.ciderWidgetTheme === 'cyber' ? 'Cyberpunk Zero FM' : 'Vinilo Giratorio'})</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                    <div className="preview-live-dot"></div> Cider Live
+                                                </div>
+                                            </div>
+                                            <iframe
+                                                id="iframe-control-cider-widget"
+                                                src="./cider_widget.html?preview=true"
+                                                className="preview-iframe"
+                                                style={{ height: '190px', width: '100%', border: 'none' }}
+                                                onLoad={() => sendConfigToIframe('iframe-control-cider-widget', overlays)}
+                                            ></iframe>
+                                        </div>
+
+                                        {/* Controles Rápidos */}
+                                        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <div className="grid-3">
+                                                <div className="form-group">
+                                                    <label>Ancho: {overlays.ciderWidgetWidth || 480}px</label>
+                                                    <input type="range" min="340" max="660" step="10" value={overlays.ciderWidgetWidth || 480} onChange={(e) => setOverlays({ ...overlays, ciderWidgetWidth: parseInt(e.target.value, 10) })} />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Opacidad: {Math.round((overlays.ciderWidgetOpacity !== undefined ? overlays.ciderWidgetOpacity : 0.88) * 100)}%</label>
+                                                    <input type="range" min="0.15" max="1" step="0.05" value={overlays.ciderWidgetOpacity !== undefined ? overlays.ciderWidgetOpacity : 0.88} onChange={(e) => setOverlays({ ...overlays, ciderWidgetOpacity: parseFloat(e.target.value) })} />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Tamaño Título: {overlays.ciderWidgetTitleSize || 20}px</label>
+                                                    <input type="range" min="14" max="30" step="1" value={overlays.ciderWidgetTitleSize || 20} onChange={(e) => setOverlays({ ...overlays, ciderWidgetTitleSize: parseInt(e.target.value, 10) })} />
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', marginTop: '10px' }}>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowProgress !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowProgress: e.target.checked })} />
+                                                    Barra Progreso
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowTime !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowTime: e.target.checked })} />
+                                                    Tiempos
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowRequester !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowRequester: e.target.checked })} />
+                                                    Solicitante + Insignia VIP
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowAlbum !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowAlbum: e.target.checked })} />
+                                                    Álbum
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowEq !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowEq: e.target.checked })} />
+                                                    Ecualizador
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetHideWhenPaused === true} onChange={(e) => setOverlays({ ...overlays, ciderWidgetHideWhenPaused: e.target.checked })} />
+                                                    Ocultar en Pausa
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {/* Enlaces para OBS */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            <div className="form-group" style={{ margin: 0, background: 'rgba(236, 72, 153, 0.06)', padding: '12px 14px', borderRadius: '12px', border: '1px dashed rgba(236, 72, 153, 0.4)' }}>
+                                                <label style={{ fontWeight: '700', color: '#f472b6', marginBottom: '6px', display: 'block', fontSize: '0.82rem' }}>
+                                                    🔗 Enlace Principal OBS (540 × 170 px — Sincronizado con este panel)
+                                                </label>
+                                                <div className="copy-url-row">
+                                                    <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/cider_widget.html`} onClick={(e) => e.target.select()} />
+                                                    <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/cider_widget.html`)}>Copiar URL</button>
+                                                </div>
+                                            </div>
+                                            <div className="grid-3" style={{ gap: '10px' }}>
+                                                {[
+                                                    { id: 'vinyl', label: '💿 URL Tema 1 (Vinilo)' },
+                                                    { id: 'glass', label: '🪟 URL Tema 2 (Glass)' },
+                                                    { id: 'cyber', label: '⚡ URL Tema 3 (Cyberpunk)' }
+                                                ].map((u) => (
+                                                    <div key={u.id} style={{ background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '10px', border: '1px solid var(--border-glass)' }}>
+                                                        <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#ccc', display: 'block', marginBottom: '5px' }}>{u.label}</label>
+                                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                                            <input type="text" className="copy-url-input" style={{ fontSize: '0.73rem', padding: '5px 8px' }} readOnly value={`${currentOrigin}/cider_widget.html?theme=${u.id}`} onClick={(e) => e.target.select()} />
+                                                            <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.73rem' }} onClick={() => handleCopyUrl(`${currentOrigin}/cider_widget.html?theme=${u.id}`)}>Copiar</button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
 

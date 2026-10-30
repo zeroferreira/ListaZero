@@ -900,6 +900,97 @@ let mockCiderIo = null;
 let mockCiderPort = 0;
 let mockCiderQueue = [];
 let mockCiderNowPlaying = null;
+let liveCiderNowPlaying = {
+    song: '',
+    artist: '',
+    album: '',
+    artworkUrl: '',
+    appleMusicId: '',
+    requester: '',
+    badge: '',
+    durationMs: 0,
+    positionMs: 0,
+    updatedAt: 0,
+    isPlaying: false
+};
+let lastSyncedCiderTrackKey = '';
+
+function normalizeCiderMs(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    if (n > 0 && n < 3600) return Math.round(n * 1000);
+    return Math.round(n);
+}
+
+function normalizeCiderArtwork(u) {
+    if (!u) return '';
+    return String(u).trim()
+        .replace(/\{w\}x\{h\}/gi, '600x600')
+        .replace(/\{w\}/gi, '600')
+        .replace(/\{h\}/gi, '600')
+        .replace(/100x100bb/gi, '600x600bb')
+        .replace(/100x100/gi, '600x600');
+}
+
+function updateLiveCiderStateFromEvent(raw, type = '') {
+    if (!raw) return false;
+    const info = raw.info || raw.attributes || raw;
+    const name = String(info.name || info.title || info.songName || raw.name || raw.song || '').trim();
+    const artist = String(info.artistName || info.artist || raw.artistName || raw.artist || '').trim();
+    const album = String(info.albumName || info.album || raw.albumName || raw.album || '').trim();
+    const rawArt = (info.artwork && info.artwork.url) || (raw.artwork && raw.artwork.url) || info.artworkUrl || raw.artworkUrl || '';
+    const amId = String((info.playParams && info.playParams.id) || (raw.playParams && raw.playParams.id) || info.appleMusicId || raw.appleMusicId || info.id || '').trim();
+
+    const durCand = info.durationInMillis ?? info.currentPlaybackDuration ?? info.playbackDuration ?? info.durationMs ?? info.duration ?? raw.durationInMillis ?? raw.currentPlaybackDuration ?? 0;
+    const posCand = info.currentPlaybackTime ?? info.playbackTime ?? info.positionMs ?? info.position ?? raw.currentPlaybackTime ?? raw.playbackTime ?? undefined;
+    const remCand = info.currentPlaybackTimeRemaining ?? info.remainingTime ?? info.timeRemaining ?? info.remainingMs ?? raw.currentPlaybackTimeRemaining ?? undefined;
+
+    const durMs = normalizeCiderMs(durCand);
+    let posMs = posCand !== undefined ? normalizeCiderMs(posCand) : undefined;
+    const remMs = remCand !== undefined ? normalizeCiderMs(remCand) : undefined;
+    if (posMs === undefined && durMs > 0 && remMs !== undefined) {
+        posMs = Math.max(0, durMs - remMs);
+    }
+
+    let isPlaying = liveCiderNowPlaying.isPlaying;
+    if (typeof raw.isPlaying === 'boolean') isPlaying = raw.isPlaying;
+    else if (typeof info.isPlaying === 'boolean') isPlaying = info.isPlaying;
+    else if (raw.state || info.state || raw.status) {
+        const st = String(raw.state || info.state || raw.status).toLowerCase();
+        if (st === 'playing') isPlaying = true;
+        else if (st === 'paused' || st === 'stopped') isPlaying = false;
+    } else if (type === 'playbackStatus.playbackTimeDidChange' || type === 'playbackStatus.nowPlayingItemDidChange' || type === 'playbackStatus.nowPlayingItemDidChangeV2') {
+        isPlaying = true;
+    }
+
+    let changed = false;
+    if (name && artist) {
+        const key = `${name}|${artist}`.toLowerCase();
+        changed = (key !== lastSyncedCiderTrackKey);
+        if (changed) {
+            lastSyncedCiderTrackKey = key;
+            liveCiderNowPlaying.requester = String(raw.requester || '');
+            liveCiderNowPlaying.badge = String(raw.badge || '');
+        }
+        liveCiderNowPlaying.song = name;
+        liveCiderNowPlaying.artist = artist;
+        if (album) liveCiderNowPlaying.album = album;
+        else if (changed) liveCiderNowPlaying.album = '';
+        if (rawArt) liveCiderNowPlaying.artworkUrl = normalizeCiderArtwork(rawArt);
+        else if (changed) liveCiderNowPlaying.artworkUrl = '';
+        if (amId) liveCiderNowPlaying.appleMusicId = amId;
+    }
+    if (durMs > 0) liveCiderNowPlaying.durationMs = durMs;
+    if (posMs !== undefined && Number.isFinite(posMs)) {
+        liveCiderNowPlaying.positionMs = posMs;
+        liveCiderNowPlaying.updatedAt = Date.now();
+    } else if (changed) {
+        liveCiderNowPlaying.positionMs = 0;
+        liveCiderNowPlaying.updatedAt = Date.now();
+    }
+    liveCiderNowPlaying.isPlaying = isPlaying;
+    return changed;
+}
 
 function normalizeComparableText(v) {
     return String(v || '')
@@ -2185,6 +2276,48 @@ function startBot() {
         res.json({ ok: true });
     });
 
+    app.get('/api/cider/now-playing', (req, res) => {
+        const dur = Number(liveCiderNowPlaying.durationMs) || 0;
+        let pos = Number(liveCiderNowPlaying.positionMs) || 0;
+        if (liveCiderNowPlaying.isPlaying && liveCiderNowPlaying.updatedAt > 0 && dur > 0) {
+            pos = Math.min(dur, pos + Math.max(0, Date.now() - liveCiderNowPlaying.updatedAt));
+        }
+        res.json({
+            ok: true,
+            ciderConnected: !!(ciderSocket && ciderSocket.connected),
+            ciderUrl: getCiderUrl(),
+            nowPlaying: {
+                ...liveCiderNowPlaying,
+                positionMs: pos
+            }
+        });
+    });
+
+    app.post('/api/cider/test', async (req, res) => {
+        const body = req.body || {};
+        const sample = {
+            name: body.name || body.song || 'DtMF',
+            artistName: body.artistName || body.artist || 'Bad Bunny',
+            albumName: body.albumName || body.album || 'DeBÍ TiRAR MáS FOToS',
+            artworkUrl: body.artworkUrl || '',
+            requester: body.requester || 'zer0ferreira',
+            badge: body.badge || 'superfan',
+            durationMs: Number(body.durationMs) || 237000,
+            positionMs: Number(body.positionMs) || 52000,
+            isPlaying: true
+        };
+        updateLiveCiderStateFromEvent(sample, 'playbackStatus.nowPlayingItemDidChange');
+        if (db) {
+            try {
+                await setDocFn(docFn(db, 'systemConfig', 'ciderNowPlaying'), {
+                    ...liveCiderNowPlaying,
+                    updatedAt: Date.now()
+                }, { merge: true });
+            } catch (_) {}
+        }
+        res.json({ ok: true, nowPlaying: liveCiderNowPlaying });
+    });
+
     // API para obtener configuración
     app.get('/api/config', (req, res) => {
         res.json(config);
@@ -3236,6 +3369,7 @@ function startBot() {
 
     ciderSocket.on("connect", () => {
       console.log(`✅ Conectado a Cider (Reproductor en ${getCiderUrl()})`);
+      try { ciderSocket.emit("get-playback"); } catch (_) {}
       try { flushCiderQueue(); } catch (_) {}
     });
 
@@ -3253,20 +3387,32 @@ function startBot() {
     ciderSocket.on("API:Playback", async (event) => {
       try {
         const { data, type } = event || {};
+        const trackChangedInLiveState = updateLiveCiderStateFromEvent(data, type || '');
+
         const changeEvents = [
           "playbackStatus.nowPlayingItemDidChange",
-          "playbackStatus.nowPlayingItemDidChangeV2"
+          "playbackStatus.nowPlayingItemDidChangeV2",
+          "get-playback"
         ];
-        if (!changeEvents.includes(type)) return;
+        if (!changeEvents.includes(type) && !trackChangedInLiveState) return;
 
-        const name = data?.name || data?.title || '';
-        const artist = data?.artistName || data?.artist || '';
-        const playingAmId = String((data?.playParams?.id) || data?.appleMusicId || data?.id || '').trim();
+        const info = data?.info || data?.attributes || data || {};
+        const name = info?.name || info?.title || data?.name || data?.title || '';
+        const artist = info?.artistName || info?.artist || data?.artistName || data?.artist || '';
+        const playingAmId = String((info?.playParams?.id) || (data?.playParams?.id) || info?.appleMusicId || data?.appleMusicId || info?.id || data?.id || '').trim();
 
         if (!name || !artist) return;
         console.log(`🎵 [Cider Backend] Reproduciendo: "${name}" - "${artist}" [AM ID: ${playingAmId}]`);
 
         if (!db) return;
+
+        // Publicar estado inicial de la canción en Firestore para el widget de Cider
+        try {
+          await setDocFn(docFn(db, 'systemConfig', 'ciderNowPlaying'), {
+            ...liveCiderNowPlaying,
+            updatedAt: Date.now()
+          }, { merge: true });
+        } catch (_) {}
 
         // ── Funciones de matching robustas (sin conectores, sin paréntesis) ──
         const _cleanText = (str) => {
@@ -3358,6 +3504,19 @@ function startBot() {
         }
 
         console.log(`✅ [Cider Backend] Coincidencia: "${matchedData.cancion}" - "${matchedData.artista}" (doc: ${matchedDoc})`);
+
+        // Actualizar solicitante e insignia en el estado en vivo del widget de Cider
+        liveCiderNowPlaying.requester = String(matchedData.displayName || matchedData.usuario || '').trim();
+        liveCiderNowPlaying.badge = String(matchedData.badge || getBadgeForUser(matchedData.usuario, matchedData.userId, matchedData.displayName) || '').trim();
+        if (!liveCiderNowPlaying.artworkUrl && (matchedData.artworkUrl || matchedData.cover)) {
+          liveCiderNowPlaying.artworkUrl = normalizeCiderArtwork(matchedData.artworkUrl || matchedData.cover);
+        }
+        try {
+          await setDocFn(docFn(db, 'systemConfig', 'ciderNowPlaying'), {
+            ...liveCiderNowPlaying,
+            updatedAt: Date.now()
+          }, { merge: true });
+        } catch (_) {}
 
         // ── Construir todos los IDs a registrar ──
         const idsToMark = new Set([matchedDoc]);
