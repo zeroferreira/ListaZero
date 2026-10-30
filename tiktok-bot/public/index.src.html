@@ -1635,9 +1635,12 @@
                 enableOverlayAudio: true,
                 yt_auto_advance: true,
 
-                // Cider Now Playing Widget Config (3 Themes)
+                // Cider Now Playing Widget Config (3 Themes + Shapes + Fluid Equalizer)
                 ciderWidgetTheme: 'vinyl',
-                ciderWidgetWidth: 480,
+                ciderWidgetLayout: 'horizontal',
+                ciderWidgetCornerStyle: 'theme',
+                ciderWidgetRadius: -1,
+                ciderWidgetWidth: 500,
                 ciderWidgetScale: 1,
                 ciderWidgetOpacity: 0.88,
                 ciderWidgetAccent: '#ff0055',
@@ -1648,6 +1651,10 @@
                 ciderWidgetShowRequester: true,
                 ciderWidgetShowAlbum: true,
                 ciderWidgetShowEq: true,
+                ciderWidgetEqStyle: 'bars',
+                ciderWidgetEqBars: 12,
+                ciderWidgetEqSensitivity: 1.15,
+                ciderWidgetEqColorMode: 'gradient',
                 ciderWidgetHideWhenPaused: false,
                 ciderWidgetShowCardBg: true
             });
@@ -3831,13 +3838,21 @@
                         sendConfigToIframe('iframe-ytplayer-persistent', overlays);
                     } else if (activeSub === 'chat') {
                         sendConfigToIframe('iframe-chat-overlay', overlays);
-                    } else if (activeSub === 'cider' || activeControlSub === 'cider') {
+                    }
+                    if (activeSub === 'cider' || activeControlSub === 'cider') {
                         sendConfigToIframe('iframe-cider-widget', overlays);
                         sendConfigToIframe('iframe-control-cider-widget', overlays);
                     }
-                }, 80);
+                }, 40);
                 return () => clearTimeout(timerId);
             }, [overlays, goals, timer, lastevents, activeSub, activeControlSub]);
+
+            const updateCiderWidgetConfig = (patch) => {
+                const updated = { ...overlays, ...patch };
+                setOverlays(updated);
+                sendConfigToIframe('iframe-cider-widget', updated);
+                sendConfigToIframe('iframe-control-cider-widget', updated);
+            };
 
             // Helper centralizado para guardar configuración de overlays mezclando solo lo modificado ("dirty")
             const saveOverlaysConfig = async (localOverlays, extraDirtyKeys = {}) => {
@@ -6468,7 +6483,7 @@
                                         {/* Vista Previa en Vivo */}
                                         <div className="preview-panel" style={{ marginBottom: '20px' }}>
                                             <div className="preview-header">
-                                                <span>📺 Vista Previa Interactiva ({overlays.ciderWidgetTheme === 'glass' ? 'Apple Vision Glass' : overlays.ciderWidgetTheme === 'cyber' ? 'Cyberpunk Zero FM' : 'Vinilo Giratorio'})</span>
+                                                <span>📺 Vista Previa Interactiva ({overlays.ciderWidgetTheme === 'glass' ? 'Apple Vision Glass' : overlays.ciderWidgetTheme === 'cyber' ? 'Cyberpunk Zero FM' : 'Vinilo Giratorio'} • {overlays.ciderWidgetLayout === 'square' ? 'Cuadrado' : overlays.ciderWidgetLayout === 'pill' ? 'Cápsula' : 'Horizontal'})</span>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                                     <div className="preview-live-dot"></div> Cider Live Widget
                                                 </div>
@@ -6478,22 +6493,141 @@
                                                 src="./cider_widget.html?preview=true"
                                                 allow="autoplay; microphone"
                                                 className="preview-iframe"
-                                                style={{ height: '195px', width: '100%', border: 'none' }}
+                                                style={{ height: overlays.ciderWidgetLayout === 'square' ? '315px' : '195px', width: '100%', border: 'none', transition: 'height 0.35s ease' }}
                                                 onLoad={() => sendConfigToIframe('iframe-cider-widget', overlays)}
                                             ></iframe>
                                         </div>
 
-                                        {/* Controles de Personalización */}
-                                        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '20px' }}>
-                                            <h4 style={{ marginTop: 0, marginBottom: '14px', fontSize: '0.95rem', color: '#f472b6' }}>⚙️ Personalización del Widget</h4>
-                                            <div className="grid-3">
-                                                <div className="form-group">
-                                                    <label>Ancho de Tarjeta: {overlays.ciderWidgetWidth || 480}px</label>
+                                        {/* Forma del Widget y Estilo de Esquinas */}
+                                        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '16px' }}>
+                                            <h4 style={{ marginTop: 0, marginBottom: '12px', fontSize: '0.95rem', color: '#38bdf8' }}>📐 Forma del Widget y Esquinas</h4>
+                                            <div className="grid-3" style={{ gap: '10px', marginBottom: '14px' }}>
+                                                {[
+                                                    { id: 'horizontal', icon: '▬', title: 'Horizontal Clásico', desc: 'Portada a la izquierda e información extendida a la derecha.' },
+                                                    { id: 'square', icon: '◼', title: 'Cuadrado / Compacto', desc: 'Formato tarjeta cuadrada con portada grande centrada arriba.' },
+                                                    { id: 'pill', icon: '💊', title: 'Cápsula Circular', desc: 'Bordes ultra circulares tipo isla dinámica con carátula redonda.' }
+                                                ].map((ly) => {
+                                                    const activeLy = (overlays.ciderWidgetLayout || 'horizontal') === ly.id;
+                                                    return (
+                                                        <div
+                                                            key={ly.id}
+                                                            onClick={() => updateCiderWidgetConfig({ ciderWidgetLayout: ly.id })}
+                                                            style={{
+                                                                padding: '11px 13px',
+                                                                borderRadius: '12px',
+                                                                cursor: 'pointer',
+                                                                background: activeLy ? 'rgba(56, 189, 248, 0.14)' : 'rgba(255, 255, 255, 0.03)',
+                                                                border: activeLy ? '2px solid #38bdf8' : '1px solid var(--border-glass)',
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ fontWeight: '700', fontSize: '0.86rem', color: '#fff', marginBottom: '3px' }}>{ly.icon} {ly.title}</div>
+                                                            <div style={{ fontSize: '0.73rem', color: 'var(--text-secondary)', lineHeight: 1.3 }}>{ly.desc}</div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div className="grid-2" style={{ gap: '14px' }}>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>Estilo de Esquinas (Bordes)</label>
+                                                    <select
+                                                        value={overlays.ciderWidgetCornerStyle || 'theme'}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetCornerStyle: e.target.value, ciderWidgetRadius: -1 })}
+                                                    >
+                                                        <option value="theme">✨ Automático del Tema</option>
+                                                        <option value="sharp">⬜ Cuadradas / Rectas (4px)</option>
+                                                        <option value="soft">▢ Suaves Modernas (16px)</option>
+                                                        <option value="rounded">◯ Muy Circulares / Squircle (34px)</option>
+                                                        <option value="pill">💊 Cápsula Circular Total</option>
+                                                        <option value="chamfer">⬡ Corte Láser Cyber</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>Redondez Manual de Esquinas: {(overlays.ciderWidgetRadius !== undefined && overlays.ciderWidgetRadius >= 0) ? `${overlays.ciderWidgetRadius}px` : 'Automática'}</label>
                                                     <input
                                                         type="range"
-                                                        min="340" max="660" step="10"
-                                                        value={overlays.ciderWidgetWidth || 480}
-                                                        onChange={(e) => setOverlays({ ...overlays, ciderWidgetWidth: parseInt(e.target.value, 10) })}
+                                                        min="-1" max="56" step="1"
+                                                        value={overlays.ciderWidgetRadius !== undefined ? overlays.ciderWidgetRadius : -1}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetRadius: parseInt(e.target.value, 10) })}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Configuración del Ecualizador Fluido */}
+                                        <div style={{ background: 'rgba(236, 72, 153, 0.04)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(236, 72, 153, 0.2)', marginBottom: '16px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                                                <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#f472b6' }}>📊 Ecualizador Musical Fluido (Configurable y Quitable)</h4>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.86rem', color: overlays.ciderWidgetShowEq !== false ? '#10b981' : '#94a3b8' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        style={{ width: 'auto' }}
+                                                        checked={overlays.ciderWidgetShowEq !== false}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetShowEq: e.target.checked })}
+                                                    />
+                                                    {overlays.ciderWidgetShowEq !== false ? '✅ Ecualizador Visible' : '🚫 Ecualizador Oculto'}
+                                                </label>
+                                            </div>
+                                            <div className="grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', opacity: overlays.ciderWidgetShowEq !== false ? 1 : 0.45 }}>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>Estilo del Ecualizador</label>
+                                                    <select
+                                                        value={overlays.ciderWidgetEqStyle || 'bars'}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetEqStyle: e.target.value })}
+                                                    >
+                                                        <option value="bars">📊 Barras Fluidas</option>
+                                                        <option value="wave">〰️ Onda Simétrica</option>
+                                                        <option value="led">🎛️ LED con Picos</option>
+                                                        <option value="dots">🫧 Cápsulas</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>Cantidad de Barras</label>
+                                                    <select
+                                                        value={overlays.ciderWidgetEqBars || 12}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetEqBars: parseInt(e.target.value, 10) })}
+                                                    >
+                                                        <option value={6}>6 Barras (Minimal)</option>
+                                                        <option value={8}>8 Barras (Compacto)</option>
+                                                        <option value={12}>12 Barras (Estudio)</option>
+                                                        <option value={16}>16 Barras (Detallado)</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>Color del Ecualizador</label>
+                                                    <select
+                                                        value={overlays.ciderWidgetEqColorMode || 'gradient'}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetEqColorMode: e.target.value })}
+                                                    >
+                                                        <option value="gradient">🌈 Gradiente Acento</option>
+                                                        <option value="accent">🎨 Color Acento Sólido</option>
+                                                        <option value="white">🤍 Blanco Cristal</option>
+                                                        <option value="rainbow">⚡ Espectro RGB</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>Sensibilidad: {Math.round((overlays.ciderWidgetEqSensitivity || 1.15) * 100)}%</label>
+                                                    <input
+                                                        type="range"
+                                                        min="0.5" max="2.0" step="0.05"
+                                                        value={overlays.ciderWidgetEqSensitivity || 1.15}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetEqSensitivity: parseFloat(e.target.value) })}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Controles de Personalización */}
+                                        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '20px' }}>
+                                            <h4 style={{ marginTop: 0, marginBottom: '14px', fontSize: '0.95rem', color: '#f472b6' }}>⚙️ Dimensiones, Colores y Elementos Visibles</h4>
+                                            <div className="grid-3">
+                                                <div className="form-group">
+                                                    <label>Ancho de Tarjeta: {overlays.ciderWidgetWidth || 500}px</label>
+                                                    <input
+                                                        type="range"
+                                                        min="360" max="680" step="10"
+                                                        value={overlays.ciderWidgetWidth || 500}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetWidth: parseInt(e.target.value, 10) })}
                                                     />
                                                 </div>
                                                 <div className="form-group">
@@ -6502,7 +6636,7 @@
                                                         type="range"
                                                         min="0.15" max="1" step="0.05"
                                                         value={overlays.ciderWidgetOpacity !== undefined ? overlays.ciderWidgetOpacity : 0.88}
-                                                        onChange={(e) => setOverlays({ ...overlays, ciderWidgetOpacity: parseFloat(e.target.value) })}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetOpacity: parseFloat(e.target.value) })}
                                                     />
                                                 </div>
                                                 <div className="form-group">
@@ -6511,7 +6645,7 @@
                                                         type="range"
                                                         min="14" max="30" step="1"
                                                         value={overlays.ciderWidgetTitleSize || 20}
-                                                        onChange={(e) => setOverlays({ ...overlays, ciderWidgetTitleSize: parseInt(e.target.value, 10) })}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetTitleSize: parseInt(e.target.value, 10) })}
                                                     />
                                                 </div>
                                             </div>
@@ -6522,7 +6656,7 @@
                                                     <input
                                                         type="color"
                                                         value={overlays.ciderWidgetAccent || '#ff0055'}
-                                                        onChange={(e) => setOverlays({ ...overlays, ciderWidgetAccent: e.target.value })}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetAccent: e.target.value })}
                                                         style={{ width: '100%', height: '38px', cursor: 'pointer', border: '1px solid var(--border-glass)', borderRadius: '10px' }}
                                                     />
                                                 </div>
@@ -6531,7 +6665,7 @@
                                                     <input
                                                         type="color"
                                                         value={overlays.ciderWidgetAccentSec || '#00e5ff'}
-                                                        onChange={(e) => setOverlays({ ...overlays, ciderWidgetAccentSec: e.target.value })}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetAccentSec: e.target.value })}
                                                         style={{ width: '100%', height: '38px', cursor: 'pointer', border: '1px solid var(--border-glass)', borderRadius: '10px' }}
                                                     />
                                                 </div>
@@ -6539,27 +6673,27 @@
 
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '12px' }}>
                                                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowProgress !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowProgress: e.target.checked })} />
-                                                    Barra de Progreso
-                                                </label>
-                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowTime !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowTime: e.target.checked })} />
-                                                    Tiempos (0:00 / -0:00)
-                                                </label>
-                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowRequester !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowRequester: e.target.checked })} />
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowRequester !== false} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetShowRequester: e.target.checked })} />
                                                     Mostrar Solicitante + Insignia VIP
                                                 </label>
                                                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowAlbum !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowAlbum: e.target.checked })} />
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowAlbum !== false} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetShowAlbum: e.target.checked })} />
                                                     Mostrar Álbum
                                                 </label>
                                                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowEq !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowEq: e.target.checked })} />
-                                                    Ecualizador Animado
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowEq !== false} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetShowEq: e.target.checked })} />
+                                                    Mostrar Ecualizador
                                                 </label>
                                                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetHideWhenPaused === true} onChange={(e) => setOverlays({ ...overlays, ciderWidgetHideWhenPaused: e.target.checked })} />
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowProgress !== false} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetShowProgress: e.target.checked })} />
+                                                    Barra de Progreso
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowTime !== false} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetShowTime: e.target.checked })} />
+                                                    Tiempos (0:00 / -0:00)
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.84rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetHideWhenPaused === true} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetHideWhenPaused: e.target.checked })} />
                                                     Auto-ocultar en Pausa
                                                 </label>
                                             </div>
@@ -13273,7 +13407,7 @@
                                         {/* Vista Previa en Vivo en Control de Stream */}
                                         <div className="preview-panel" style={{ margin: 0 }}>
                                             <div className="preview-header">
-                                                <span>📺 Vista Previa en Tiempo Real ({overlays.ciderWidgetTheme === 'glass' ? 'Apple Vision Glass' : overlays.ciderWidgetTheme === 'cyber' ? 'Cyberpunk Zero FM' : 'Vinilo Giratorio'})</span>
+                                                <span>📺 Vista Previa en Tiempo Real ({overlays.ciderWidgetTheme === 'glass' ? 'Apple Vision Glass' : overlays.ciderWidgetTheme === 'cyber' ? 'Cyberpunk Zero FM' : 'Vinilo Giratorio'} • {overlays.ciderWidgetLayout === 'square' ? 'Cuadrado' : overlays.ciderWidgetLayout === 'pill' ? 'Cápsula' : 'Horizontal'})</span>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                                     <div className="preview-live-dot"></div> Cider Live
                                                 </div>
@@ -13283,50 +13417,134 @@
                                                 src="./cider_widget.html?preview=true"
                                                 allow="autoplay; microphone"
                                                 className="preview-iframe"
-                                                style={{ height: '195px', width: '100%', border: 'none' }}
+                                                style={{ height: overlays.ciderWidgetLayout === 'square' ? '315px' : '195px', width: '100%', border: 'none', transition: 'height 0.35s ease' }}
                                                 onLoad={() => sendConfigToIframe('iframe-control-cider-widget', overlays)}
                                             ></iframe>
                                         </div>
 
-                                        {/* Controles Rápidos */}
+                                        {/* Controles Rápidos: Forma, Esquinas, Ecualizador y Visibilidad */}
                                         <div style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <div className="grid-3" style={{ marginBottom: '10px' }}>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>📐 Forma del Widget</label>
+                                                    <select
+                                                        value={overlays.ciderWidgetLayout || 'horizontal'}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetLayout: e.target.value })}
+                                                    >
+                                                        <option value="horizontal">▬ Horizontal Clásico</option>
+                                                        <option value="square">◼ Cuadrado / Compacto</option>
+                                                        <option value="pill">💊 Cápsula Circular</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>◯ Estilo de Esquinas</label>
+                                                    <select
+                                                        value={overlays.ciderWidgetCornerStyle || 'theme'}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetCornerStyle: e.target.value, ciderWidgetRadius: -1 })}
+                                                    >
+                                                        <option value="theme">✨ Automático del Tema</option>
+                                                        <option value="sharp">⬜ Cuadradas / Rectas (4px)</option>
+                                                        <option value="soft">▢ Suaves (16px)</option>
+                                                        <option value="rounded">◯ Muy Circulares (34px)</option>
+                                                        <option value="pill">💊 Cápsula Total</option>
+                                                        <option value="chamfer">⬡ Corte Láser Cyber</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>Redondez Manual: {(overlays.ciderWidgetRadius !== undefined && overlays.ciderWidgetRadius >= 0) ? `${overlays.ciderWidgetRadius}px` : 'Auto'}</label>
+                                                    <input
+                                                        type="range"
+                                                        min="-1" max="56" step="1"
+                                                        value={overlays.ciderWidgetRadius !== undefined ? overlays.ciderWidgetRadius : -1}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetRadius: parseInt(e.target.value, 10) })}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="grid-3" style={{ marginBottom: '10px' }}>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>📊 Estilo Ecualizador</label>
+                                                    <select
+                                                        value={overlays.ciderWidgetEqStyle || 'bars'}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetEqStyle: e.target.value })}
+                                                    >
+                                                        <option value="bars">📊 Barras Fluidas</option>
+                                                        <option value="wave">〰️ Onda Simétrica</option>
+                                                        <option value="led">🎛️ LED con Picos</option>
+                                                        <option value="dots">🫧 Cápsulas</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>Barras / Color EQ</label>
+                                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                                        <select
+                                                            value={overlays.ciderWidgetEqBars || 12}
+                                                            onChange={(e) => updateCiderWidgetConfig({ ciderWidgetEqBars: parseInt(e.target.value, 10) })}
+                                                        >
+                                                            <option value={6}>6 Barras</option>
+                                                            <option value={8}>8 Barras</option>
+                                                            <option value={12}>12 Barras</option>
+                                                            <option value={16}>16 Barras</option>
+                                                        </select>
+                                                        <select
+                                                            value={overlays.ciderWidgetEqColorMode || 'gradient'}
+                                                            onChange={(e) => updateCiderWidgetConfig({ ciderWidgetEqColorMode: e.target.value })}
+                                                        >
+                                                            <option value="gradient">Gradiente</option>
+                                                            <option value="accent">Acento</option>
+                                                            <option value="white">Blanco</option>
+                                                            <option value="rainbow">RGB</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>Sensibilidad EQ: {Math.round((overlays.ciderWidgetEqSensitivity || 1.15) * 100)}%</label>
+                                                    <input
+                                                        type="range"
+                                                        min="0.5" max="2.0" step="0.05"
+                                                        value={overlays.ciderWidgetEqSensitivity || 1.15}
+                                                        onChange={(e) => updateCiderWidgetConfig({ ciderWidgetEqSensitivity: parseFloat(e.target.value) })}
+                                                    />
+                                                </div>
+                                            </div>
+
                                             <div className="grid-3">
                                                 <div className="form-group">
-                                                    <label>Ancho: {overlays.ciderWidgetWidth || 480}px</label>
-                                                    <input type="range" min="340" max="660" step="10" value={overlays.ciderWidgetWidth || 480} onChange={(e) => setOverlays({ ...overlays, ciderWidgetWidth: parseInt(e.target.value, 10) })} />
+                                                    <label>Ancho: {overlays.ciderWidgetWidth || 500}px</label>
+                                                    <input type="range" min="360" max="680" step="10" value={overlays.ciderWidgetWidth || 500} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetWidth: parseInt(e.target.value, 10) })} />
                                                 </div>
                                                 <div className="form-group">
                                                     <label>Opacidad: {Math.round((overlays.ciderWidgetOpacity !== undefined ? overlays.ciderWidgetOpacity : 0.88) * 100)}%</label>
-                                                    <input type="range" min="0.15" max="1" step="0.05" value={overlays.ciderWidgetOpacity !== undefined ? overlays.ciderWidgetOpacity : 0.88} onChange={(e) => setOverlays({ ...overlays, ciderWidgetOpacity: parseFloat(e.target.value) })} />
+                                                    <input type="range" min="0.15" max="1" step="0.05" value={overlays.ciderWidgetOpacity !== undefined ? overlays.ciderWidgetOpacity : 0.88} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetOpacity: parseFloat(e.target.value) })} />
                                                 </div>
                                                 <div className="form-group">
                                                     <label>Tamaño Título: {overlays.ciderWidgetTitleSize || 20}px</label>
-                                                    <input type="range" min="14" max="30" step="1" value={overlays.ciderWidgetTitleSize || 20} onChange={(e) => setOverlays({ ...overlays, ciderWidgetTitleSize: parseInt(e.target.value, 10) })} />
+                                                    <input type="range" min="14" max="30" step="1" value={overlays.ciderWidgetTitleSize || 20} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetTitleSize: parseInt(e.target.value, 10) })} />
                                                 </div>
                                             </div>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', marginTop: '10px' }}>
                                                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowProgress !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowProgress: e.target.checked })} />
-                                                    Barra Progreso
-                                                </label>
-                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowTime !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowTime: e.target.checked })} />
-                                                    Tiempos
-                                                </label>
-                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowRequester !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowRequester: e.target.checked })} />
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowRequester !== false} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetShowRequester: e.target.checked })} />
                                                     Solicitante + Insignia VIP
                                                 </label>
                                                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowAlbum !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowAlbum: e.target.checked })} />
-                                                    Álbum
-                                                </label>
-                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowEq !== false} onChange={(e) => setOverlays({ ...overlays, ciderWidgetShowEq: e.target.checked })} />
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowEq !== false} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetShowEq: e.target.checked })} />
                                                     Ecualizador
                                                 </label>
                                                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
-                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetHideWhenPaused === true} onChange={(e) => setOverlays({ ...overlays, ciderWidgetHideWhenPaused: e.target.checked })} />
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowAlbum !== false} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetShowAlbum: e.target.checked })} />
+                                                    Álbum
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowProgress !== false} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetShowProgress: e.target.checked })} />
+                                                    Barra Progreso
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetShowTime !== false} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetShowTime: e.target.checked })} />
+                                                    Tiempos
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.ciderWidgetHideWhenPaused === true} onChange={(e) => updateCiderWidgetConfig({ ciderWidgetHideWhenPaused: e.target.checked })} />
                                                     Ocultar en Pausa
                                                 </label>
                                             </div>
