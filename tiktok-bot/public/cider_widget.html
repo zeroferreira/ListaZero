@@ -8,10 +8,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🎵 Canción Actual (Cider) – Zero FM</title>
 
-  <!-- Google Fonts: Outfit, Montserrat, Orbitron, JetBrains Mono -->
+  <!-- Google Fonts: Outfit, Plus Jakarta Sans, Orbitron, JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Montserrat:wght@500;600;700;800&family=Orbitron:wght@600;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Orbitron:wght@600;700;800;900&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
 
   <!-- Socket.IO Client (para conectar directo a Cider v1/v2) -->
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
@@ -22,16 +22,10 @@
   <script src="firebase-config.js"></script>
 
   <style>
-    @layer reset, base, theme, components, utilities;
-
-    @property --animation-reduced {
-      syntax: "*";
-      inherits: false;
-      initial-value: none;
-    }
+    @layer reset, base, components, theme, utilities;
 
     @layer reset {
-      *, *::before, *::after {
+      html, body, div, span, img, button, input, select, label, strong {
         box-sizing: border-box;
         margin: 0;
         padding: 0;
@@ -40,24 +34,37 @@
 
     @layer base {
       :root {
+        --in-oklab: ;
+        --in-oklch: ;
         --widget-theme: vinyl;
-        --widget-width: 480px;
+        --widget-width: 500px;
         --widget-scale: 1;
-        --card-radius: 20px;
+        --card-radius: 24px;
         --card-opacity: 0.88;
         --accent-color: #ff0055;
         --accent-secondary: #00e5ff;
         --accent-rgb: 255, 0, 85;
         --accent-sec-rgb: 0, 229, 255;
-        --bg-rgb: 12, 10, 22;
+        --bg-rgb: 10, 9, 20;
         --text-color: #ffffff;
-        --text-muted: rgba(255, 255, 255, 0.68);
-        --font-main: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+        --text-muted: rgba(255, 255, 255, 0.72);
+        --font-main: 'Plus Jakarta Sans', 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+        --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
         --font-cyber: 'Orbitron', 'Outfit', sans-serif;
         --font-mono: 'JetBrains Mono', monospace;
         --title-size: 20px;
         --artist-size: 14px;
-        --meta-size: 12px;
+        --meta-size: 11.5px;
+        --bass-energy: 0;
+        --mid-energy: 0;
+        --high-energy: 0;
+      }
+
+      @supports (background: linear-gradient(in oklab, white, black)) {
+        :root {
+          --in-oklab: in oklab;
+          --in-oklch: in oklch;
+        }
       }
 
       html, body {
@@ -68,6 +75,7 @@
         color: var(--text-color);
         overflow: hidden;
         -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
         user-select: none;
       }
 
@@ -75,19 +83,21 @@
         display: flex;
         align-items: center;
         justify-content: flex-start;
-        padding: 18px 22px;
+        padding: 18px 24px;
       }
     }
 
     @layer components {
-      /* ─── Wrapper & Container ─── */
+      /* ─── Stage Wrapper ─── */
       #widget-stage {
         position: relative;
         width: var(--widget-width);
-        max-width: calc(100vw - 36px);
+        max-width: calc(100vw - 40px);
         transform: scale(var(--widget-scale));
         transform-origin: left center;
-        transition: opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1), transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+        transition:
+          opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+          transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
       }
 
       #widget-stage.is-hidden-idle {
@@ -96,30 +106,33 @@
         pointer-events: none;
       }
 
-      /* ─── Main Card Base ─── */
+      /* ─── Main Card Surface ─── */
       .cider-card {
         position: relative;
+        isolation: isolate;
         display: flex;
         align-items: center;
         gap: 18px;
         width: 100%;
         padding: 16px 20px;
         border-radius: var(--card-radius);
+        corner-shape: squircle;
         background: rgba(var(--bg-rgb), var(--card-opacity));
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.14);
         box-shadow:
-          0 16px 40px rgba(0, 0, 0, 0.55),
-          inset 0 1px 0 rgba(255, 255, 255, 0.14);
-        backdrop-filter: blur(20px) saturate(160%);
-        -webkit-backdrop-filter: blur(20px) saturate(160%);
+          0 22px 50px -10px rgba(0, 0, 0, 0.68),
+          0 8px 20px -6px rgba(0, 0, 0, 0.45),
+          inset 0 1px 0 rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(24px) saturate(180%);
+        -webkit-backdrop-filter: blur(24px) saturate(180%);
         overflow: hidden;
         contain: layout style;
         transition:
-          border-radius 0.35s ease,
-          background 0.35s ease,
-          border-color 0.35s ease,
-          box-shadow 0.35s ease,
-          padding 0.35s ease;
+          border-radius 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+          background 0.4s ease,
+          border-color 0.4s ease,
+          box-shadow 0.4s ease,
+          padding 0.4s ease;
       }
 
       .cider-card.no-card-bg {
@@ -130,20 +143,79 @@
         -webkit-backdrop-filter: none !important;
       }
 
-      /* Ambient dynamic cover blur layer (especially visible in Glass theme) */
+      .cider-card.no-card-bg .ambient-bg,
+      .cider-card.no-card-bg .ambient-orb,
+      .cider-card.no-card-bg .vision-rim,
+      .cider-card.no-card-bg .vision-grabber {
+        display: none !important;
+      }
+
+      /* ─── Ambient Dynamic Artwork Layers ─── */
       .ambient-bg {
         position: absolute;
-        inset: -35px;
+        inset: -42px;
         background-size: cover;
         background-position: center;
-        filter: blur(36px) saturate(210%) brightness(0.65);
+        filter: blur(38px) saturate(230%) brightness(0.72);
+        opacity: 0.22;
+        z-index: 0;
+        pointer-events: none;
+        transform: scale(calc(1.06 + var(--bass-energy, 0) * 0.08));
+        transition: background-image 0.65s ease, opacity 0.5s ease;
+      }
+
+      .ambient-orb {
+        position: absolute;
+        width: 68%;
+        height: 130%;
+        right: -14%;
+        top: -15%;
+        background-size: cover;
+        background-position: center;
+        filter: blur(50px) saturate(260%) brightness(0.92);
+        mix-blend-mode: soft-light;
         opacity: 0;
         z-index: 0;
         pointer-events: none;
-        transition: background-image 0.6s ease, opacity 0.5s ease;
+        animation: orbFloat 11s ease-in-out infinite alternate;
+        @media (prefers-reduced-motion: reduce) {
+          animation: none;
+        }
       }
 
-      /* ─── Visual Media Block (Cover + Vinyl) ─── */
+      @keyframes orbFloat {
+        0% { transform: translate3d(-6%, -4%, 0) scale(1) rotate(0deg); }
+        100% { transform: translate3d(6%, 5%, 0) scale(1.12) rotate(8deg); }
+      }
+
+      /* Specular rim overlay (used heavily in Apple Vision Glass) */
+      .vision-rim {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        z-index: 4;
+        opacity: 0;
+        transition: opacity 0.35s ease;
+      }
+
+      .vision-grabber {
+        position: absolute;
+        bottom: 5px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 38px;
+        height: 3.5px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.28);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+        pointer-events: none;
+        z-index: 4;
+        opacity: 0;
+        transition: opacity 0.35s ease;
+      }
+
+      /* ─── Visual Media Block (Cover + 3D Glow + Vinyl) ─── */
       .media-visual {
         position: relative;
         flex-shrink: 0;
@@ -152,17 +224,57 @@
         z-index: 2;
       }
 
+      /* Colored 3D ambient shadow behind cover art */
+      .cover-glow {
+        position: absolute;
+        left: 4px;
+        top: 6px;
+        width: 90px;
+        height: 90px;
+        border-radius: 18px;
+        background-size: cover;
+        background-position: center;
+        filter: blur(16px) saturate(240%) brightness(1.1);
+        opacity: calc(0.45 + var(--bass-energy, 0) * 0.42);
+        transform: translateY(4px) scale(calc(0.95 + var(--bass-energy, 0) * 0.14));
+        z-index: 1;
+        pointer-events: none;
+        transition: background-image 0.5s ease;
+      }
+
       .cover-box {
         position: relative;
         width: 96px;
         height: 96px;
-        border-radius: 14px;
+        border-radius: 16px;
+        corner-shape: squircle;
         overflow: hidden;
-        background: linear-gradient(135deg, #1b1730, #0d0b18);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.12);
+        background: linear-gradient(135deg var(--in-oklab), #1e1936, #0d0b18);
+        box-shadow:
+          0 12px 28px -4px rgba(0, 0, 0, 0.62),
+          0 4px 10px rgba(0, 0, 0, 0.4),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.18);
         z-index: 3;
         flex-shrink: 0;
-        transition: transform 0.35s ease, border-radius 0.35s ease, box-shadow 0.35s ease;
+        transform: scale(calc(1 + var(--bass-energy, 0) * 0.028));
+        transition:
+          border-radius 0.35s ease,
+          box-shadow 0.35s ease;
+      }
+
+      /* Subtle glass sheen across album cover */
+      .cover-box::after {
+        content: "" / "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          135deg,
+          rgba(255, 255, 255, 0.22) 0%,
+          rgba(255, 255, 255, 0.04) 36%,
+          transparent 60%
+        );
+        pointer-events: none;
+        z-index: 2;
       }
 
       .cover-img {
@@ -170,7 +282,7 @@
         height: 100%;
         object-fit: cover;
         display: block;
-        transition: transform 0.45s ease, opacity 0.3s ease;
+        transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.35s ease;
       }
 
       .cover-fallback {
@@ -180,83 +292,92 @@
         align-items: center;
         justify-content: center;
         font-size: 36px;
-        background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.3), rgba(var(--accent-sec-rgb), 0.2));
+        background: linear-gradient(
+          135deg var(--in-oklab),
+          rgba(var(--accent-rgb), 0.35),
+          rgba(var(--accent-sec-rgb), 0.22)
+        );
       }
 
-      /* ─── Vinyl Disc (Used in Theme 1: Vinyl) ─── */
+      /* ─── Vinyl Disc (Used in Theme 1: Studio Vinyl) ─── */
       .vinyl-disc {
         position: relative;
-        width: 90px;
-        height: 90px;
-        margin-left: -42px;
+        width: 92px;
+        height: 92px;
+        margin-inline-start: -40px;
         border-radius: 50%;
         background:
-          radial-gradient(circle at center, #111 0%, #111 16%, transparent 16.5%),
+          radial-gradient(circle at center, #0e0e14 0%, #0e0e14 15%, transparent 15.5%),
           repeating-radial-gradient(
             circle at center,
-            #16161d 0px,
-            #16161d 2px,
-            #242430 3px,
-            #121218 4px
+            #13131a 0px,
+            #13131a 1.8px,
+            #232332 2.7px,
+            #0f0f15 3.8px
           );
         box-shadow:
-          0 6px 20px rgba(0, 0, 0, 0.65),
-          inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+          0 10px 26px rgba(0, 0, 0, 0.72),
+          0 0 calc(10px + var(--bass-energy, 0) * 18px) rgba(var(--accent-rgb), calc(0.18 + var(--bass-energy, 0) * 0.35)),
+          inset 0 0 0 1.5px rgba(255, 255, 255, 0.12);
         z-index: 2;
         display: none;
         align-items: center;
         justify-content: center;
-        animation: spinVinyl 5.5s linear infinite;
-        --animation-reduced: spinVinyl 24s linear infinite;
+        animation: spinVinyl 5.2s linear infinite;
         animation-play-state: running;
-        transition: margin-left 0.4s cubic-bezier(0.22, 1, 0.36, 1), transform 0.4s ease;
+        transition: margin-inline-start 0.45s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.15s ease;
+        @media (prefers-reduced-motion: reduce) {
+          animation-duration: 26s;
+        }
       }
 
-      /* Vinyl metallic light reflection */
+      /* Anisotropic vinyl groove light reflections */
       .vinyl-disc::before {
         content: "" / "";
         position: absolute;
         inset: 0;
         border-radius: 50%;
         background: conic-gradient(
-          from 35deg,
+          from 28deg,
           transparent 0deg,
-          rgba(255, 255, 255, 0.14) 25deg,
-          transparent 55deg,
-          transparent 180deg,
-          rgba(255, 255, 255, 0.12) 205deg,
-          transparent 235deg
+          rgba(255, 255, 255, 0.18) 22deg,
+          rgba(var(--accent-sec-rgb), 0.14) 36deg,
+          transparent 58deg,
+          transparent 178deg,
+          rgba(255, 255, 255, 0.16) 202deg,
+          rgba(var(--accent-rgb), 0.14) 216deg,
+          transparent 238deg
         );
         pointer-events: none;
       }
 
       .vinyl-label {
-        width: 34px;
-        height: 34px;
+        width: 35px;
+        height: 35px;
         border-radius: 50%;
         background-size: cover;
         background-position: center;
         background-color: var(--accent-color);
-        border: 2px solid rgba(255, 255, 255, 0.25);
+        border: 2px solid rgba(255, 255, 255, 0.32);
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
         position: relative;
         display: flex;
         align-items: center;
         justify-content: center;
       }
 
-      /* Vinyl center hole */
       .vinyl-label::after {
         content: "" / "";
         width: 7px;
         height: 7px;
         border-radius: 50%;
-        background: #09090f;
-        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: #08080e;
+        border: 1px solid rgba(255, 255, 255, 0.35);
       }
 
       :where(.cider-card[data-playing="false"]) .vinyl-disc {
         animation-play-state: paused;
-        margin-left: -54px;
+        margin-inline-start: -56px;
       }
 
       @keyframes spinVinyl {
@@ -267,7 +388,7 @@
       /* ─── Track Details / Content Area ─── */
       .track-info {
         position: relative;
-        z-index: 2;
+        z-index: 3;
         flex: 1;
         min-width: 0;
         display: flex;
@@ -275,100 +396,133 @@
         gap: 5px;
       }
 
-      /* Top Status Row */
+      /* Top Status + Real Music Equalizer Row */
       .status-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: 10px;
       }
 
       .status-pill {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 3px 9px;
+        padding: 3.5px 10px;
         border-radius: 999px;
-        font-size: 10.5px;
+        font-size: 10px;
         font-weight: 800;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.09em;
         text-transform: uppercase;
         background: rgba(var(--accent-rgb), 0.18);
-        color: #fff;
-        border: 1px solid rgba(var(--accent-rgb), 0.45);
-        box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.22);
+        color: #ffffff;
+        border: 1px solid rgba(var(--accent-rgb), 0.42);
+        box-shadow: 0 2px 12px rgba(var(--accent-rgb), 0.2);
+        transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
       }
 
       .status-dot {
-        width: 6px;
-        height: 6px;
+        width: 6.5px;
+        height: 6.5px;
         border-radius: 50%;
         background: var(--accent-color);
         box-shadow: 0 0 8px var(--accent-color);
+        transform: scale(calc(1 + var(--bass-energy, 0) * 0.35));
       }
 
       :where(.cider-card[data-playing="false"]) .status-dot {
         background: #fbbf24;
         box-shadow: 0 0 8px #fbbf24;
+        transform: scale(1);
       }
 
-      /* Equalizer Bars */
+      /* ─── Real Music-Reactive 12-Band Spectrum Equalizer ─── */
+      .eq-capsule {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+      }
+
       .eq-bars {
         display: inline-flex;
         align-items: flex-end;
-        gap: 2.5px;
-        height: 12px;
+        gap: 2.2px;
+        height: 16px;
+        padding-block: 1px;
       }
 
-      .eq-bar {
-        width: 2.5px;
-        height: 4px;
-        border-radius: 2px;
-        background: var(--accent-color);
-        animation: eqBounce 0.85s ease-in-out infinite alternate;
-        --animation-reduced: none;
+      #eq-bars > .eq-bar {
+        --stagger-time: 0.04s;
+        position: relative;
+        width: 3px;
+        height: 14px;
+        border-radius: 999px;
+        background: linear-gradient(
+          to top var(--in-oklch),
+          var(--accent-color) 0%,
+          var(--accent-secondary) 100%
+        );
+        transform-origin: bottom center;
+        transform: scaleY(var(--eq-level, 0.16));
+        will-change: transform;
+        box-shadow: 0 0 6px rgba(var(--accent-rgb), calc(var(--eq-level, 0.16) * 0.6));
+        animation-delay: calc(var(--sibling-index, 1) * var(--stagger-time));
+        animation-delay: calc(sibling-index() * var(--stagger-time));
+        @media (prefers-reduced-motion: reduce) {
+          transition: transform 0.25s ease;
+        }
       }
 
-      .eq-bar:nth-child(1) { animation-duration: 0.65s; height: 9px; }
-      .eq-bar:nth-child(2) { animation-duration: 0.9s; animation-delay: 0.15s; height: 12px; }
-      .eq-bar:nth-child(3) { animation-duration: 0.55s; animation-delay: 0.3s; height: 7px; }
-      .eq-bar:nth-child(4) { animation-duration: 0.78s; animation-delay: 0.1s; height: 10px; }
-
-      :where(.cider-card[data-playing="false"]) .eq-bar {
-        animation-play-state: paused;
-        height: 3px !important;
-        opacity: 0.45;
+      /* Floating Peak-Hold Cap (visible in Cyber & Studio modes) */
+      .eq-bar::after {
+        content: "" / "";
+        position: absolute;
+        top: -2.5px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        border-radius: 999px;
+        background: #ffffff;
+        opacity: calc(var(--eq-level, 0.16) * 0.85);
       }
 
-      @keyframes eqBounce {
-        0% { height: 3px; }
-        50% { height: 12px; }
-        100% { height: 5px; }
+      :where(.cider-card[data-playing="false"]) #eq-bars > .eq-bar {
+        transform: scaleY(0.15) !important;
+        opacity: 0.4;
+        box-shadow: none;
       }
 
-      /* Title with smooth marquee when overflowing */
+      /* ─── Song Title with Smooth Compositor Marquee ─── */
       .title-viewport {
         width: 100%;
         overflow: hidden;
         white-space: nowrap;
-        mask-image: linear-gradient(to right, #000 0%, #000 92%, transparent 100%);
-        -webkit-mask-image: linear-gradient(to right, #000 0%, #000 92%, transparent 100%);
+        mask-image: linear-gradient(to right, #000 0%, #000 90%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to right, #000 0%, #000 90%, transparent 100%);
       }
 
       .song-title {
         display: inline-block;
+        font-family: var(--font-display);
         font-size: var(--title-size);
         font-weight: 800;
-        line-height: 1.2;
+        line-height: 1.18;
         color: var(--text-color);
-        letter-spacing: -0.01em;
-        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+        letter-spacing: -0.015em;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.38);
       }
 
       .song-title.is-marquee {
-        padding-right: 48px;
+        padding-inline-end: 48px;
         animation: marqueeScroll 11s linear infinite;
-        --animation-reduced: none;
+        @media (prefers-reduced-motion: reduce) {
+          animation: none;
+        }
       }
 
       @keyframes marqueeScroll {
@@ -383,10 +537,11 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        line-height: 1.25;
+        line-height: 1.22;
+        letter-spacing: -0.005em;
       }
 
-      /* Meta Row: Album or Requester + VIP Badge */
+      /* ─── Meta Row: Requester + VIP Badge + Album ─── */
       .meta-row {
         display: flex;
         align-items: center;
@@ -397,7 +552,8 @@
 
       .album-label {
         font-size: var(--meta-size);
-        color: rgba(255, 255, 255, 0.5);
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.52);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -408,22 +564,23 @@
         display: inline-flex;
         align-items: center;
         gap: 5px;
-        padding: 2px 8px;
+        padding: 2px 9px;
         border-radius: 999px;
         font-size: 11px;
         font-weight: 600;
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        color: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.09);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        color: rgba(255, 255, 255, 0.92);
         max-width: 100%;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        backdrop-filter: blur(8px);
       }
 
       .requester-name {
         font-weight: 700;
-        color: #fff;
+        color: #ffffff;
       }
 
       /* Official Zero FM VIP Badges */
@@ -468,70 +625,152 @@
         color: #a7f3d0;
       }
 
-      /* ─── Progress Bar & Timestamps ─── */
+      /* ─── Modern Scrubber Progress Bar & Inline Timestamps ─── */
       .progress-wrap {
         display: flex;
-        flex-direction: column;
-        gap: 4px;
-        margin-top: 4px;
+        align-items: center;
+        gap: 9px;
+        margin-top: 5px;
+        width: 100%;
+      }
+
+      .time-pill {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.68);
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.01em;
+        min-width: 31px;
+        flex-shrink: 0;
+        line-height: 1;
+      }
+
+      .time-pill.time-rem {
+        text-align: right;
+        min-width: 35px;
+        color: rgba(255, 255, 255, 0.52);
       }
 
       .progress-track {
         position: relative;
-        width: 100%;
-        height: 5px;
+        flex: 1;
+        height: 7px;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.13);
+        background: rgba(255, 255, 255, 0.12);
+        box-shadow:
+          inset 0 1px 2px rgba(0, 0, 0, 0.5),
+          0 1px 0 rgba(255, 255, 255, 0.08);
         overflow: visible;
+      }
+
+      /* Subtle unplayed rail micro-groove pattern */
+      .progress-track::before {
+        content: "" / "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: repeating-linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0.06) 0 2px,
+          transparent 0 6px
+        );
+        opacity: 0.65;
+        pointer-events: none;
       }
 
       .progress-fill {
         position: relative;
         height: 100%;
         width: 0%;
-        border-radius: 999px;
-        background: linear-gradient(90deg, var(--accent-color), var(--accent-secondary));
-        box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.55);
-        transition: width 0.25s linear;
+        min-width: 7px;
+        border-radius: inherit;
+        background: linear-gradient(
+          90deg var(--in-oklch),
+          var(--accent-color) 0%,
+          var(--accent-secondary) 100%
+        );
+        box-shadow:
+          0 0 calc(10px + var(--bass-energy, 0) * 10px) rgba(var(--accent-rgb), 0.55),
+          0 0 18px rgba(var(--accent-sec-rgb), 0.28);
+        transition: width 0.12s linear;
       }
 
-      .progress-Dot {
+      /* Animated light shimmer inside the played progress bar */
+      .progress-shimmer {
         position: absolute;
-        right: -4px;
+        inset: 0;
+        border-radius: inherit;
+        overflow: hidden;
+        pointer-events: none;
+      }
+
+      .progress-shimmer::after {
+        content: "" / "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 45%;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(255, 255, 255, 0.45) 50%,
+          transparent 100%
+        );
+        transform: translateX(-120%);
+        animation: shimmerGlide 2.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        @media (prefers-reduced-motion: reduce) {
+          animation: none;
+        }
+      }
+
+      :where(.cider-card[data-playing="false"]) .progress-shimmer::after {
+        animation-play-state: paused;
+        opacity: 0;
+      }
+
+      @keyframes shimmerGlide {
+        0% { transform: translateX(-130%); }
+        100% { transform: translateX(320%); }
+      }
+
+      /* Glowing Scrubber Playhead Thumb */
+      .progress-thumb {
+        position: absolute;
+        right: -5px;
         top: 50%;
-        transform: translateY(-50%);
-        width: 9px;
-        height: 9px;
+        transform: translateY(-50%) scale(calc(1 + var(--bass-energy, 0) * 0.18));
+        width: 11px;
+        height: 11px;
         border-radius: 50%;
         background: #ffffff;
-        box-shadow: 0 0 8px var(--accent-color), 0 0 14px var(--accent-secondary);
-        opacity: 0;
-        transition: opacity 0.25s ease;
-      }
-
-      .time-row {
-        display: flex;
-        justify-content: space-between;
-        font-size: 10.5px;
-        font-weight: 600;
-        color: rgba(255, 255, 255, 0.55);
-        font-variant-numeric: tabular-nums;
+        border: 2px solid var(--accent-secondary);
+        box-shadow:
+          0 0 10px #ffffff,
+          0 0 16px var(--accent-color);
+        transition: transform 0.1s ease, width 0.25s ease, height 0.25s ease, border-radius 0.25s ease;
       }
     }
 
     /* =========================================================================
-       3 TEMAS / ESTILOS VISUALES (con soporte de selector y @container style)
+       3 TEMAS / ESTILOS VISUALES MODERNOS
     ========================================================================= */
     @layer theme {
-      /* ─── TEMA 1: VINYL (Vinilo Giratorio Clásico Moderno) ─── */
+      /* ─── TEMA 1: STUDIO VINYL LUXE (Vinilo Giratorio Moderno) ─── */
       :where([data-theme="vinyl"]) .cider-card {
-        border-radius: var(--card-radius, 20px);
-        border-left: 4px solid var(--accent-color);
-        background: linear-gradient(
-          135deg,
-          rgba(var(--bg-rgb), var(--card-opacity)) 0%,
-          rgba(22, 16, 38, var(--card-opacity)) 100%
-        );
+        border-radius: 24px;
+        padding: 16px 20px;
+        background:
+          linear-gradient(
+            135deg var(--in-oklab),
+            rgba(16, 13, 28, var(--card-opacity)) 0%,
+            rgba(24, 15, 38, calc(var(--card-opacity) * 0.94)) 100%
+          );
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow:
+          0 24px 52px -12px rgba(0, 0, 0, 0.72),
+          inset 0 1px 0 rgba(255, 255, 255, 0.22),
+          inset 3px 0 0 var(--accent-color);
       }
 
       :where([data-theme="vinyl"]) .vinyl-disc {
@@ -539,125 +778,221 @@
       }
 
       :where([data-theme="vinyl"]) .ambient-bg {
-        opacity: 0.16;
+        opacity: 0.28;
       }
 
-      @container style(--widget-theme: vinyl) {
-        .vinyl-disc {
-          display: flex;
-        }
-      }
-
-      /* ─── TEMA 2: GLASS (Apple Vision / Dynamic Glassmorphic) ─── */
+      /* ─── TEMA 2: APPLE VISION PRO (visionOS Spatial Glassmorphic) ─── */
       :where([data-theme="glass"]) .cider-card {
-        border-radius: 28px;
-        padding: 16px 22px;
-        background: rgba(18, 18, 28, calc(var(--card-opacity) * 0.68));
-        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 32px;
+        corner-shape: squircle;
+        padding: 18px 22px 21px;
+        background:
+          linear-gradient(
+            165deg,
+            rgba(255, 255, 255, calc(var(--card-opacity) * 0.20)) 0%,
+            rgba(255, 255, 255, calc(var(--card-opacity) * 0.07)) 48%,
+            rgba(18, 18, 28, calc(var(--card-opacity) * 0.42)) 100%
+          );
+        border: 1px solid rgba(255, 255, 255, 0.18);
         box-shadow:
-          0 20px 50px rgba(0, 0, 0, 0.5),
-          inset 0 1px 1px rgba(255, 255, 255, 0.32),
-          inset 0 -1px 1px rgba(255, 255, 255, 0.08);
-        backdrop-filter: blur(32px) saturate(200%);
-        -webkit-backdrop-filter: blur(32px) saturate(200%);
+          0 30px 68px -12px rgba(0, 0, 0, 0.62),
+          0 6px 20px rgba(0, 0, 0, 0.28),
+          inset 0 1.5px 1px rgba(255, 255, 255, 0.48),
+          inset 0 -1px 1px rgba(255, 255, 255, 0.14);
+        backdrop-filter: blur(44px) saturate(220%) contrast(1.05);
+        -webkit-backdrop-filter: blur(44px) saturate(220%) contrast(1.05);
+      }
+
+      /* Dual-pass visionOS Specular Rim Border */
+      :where([data-theme="glass"]) .vision-rim {
+        opacity: 1;
+        padding: 1.25px;
+        background: linear-gradient(
+          135deg,
+          rgba(255, 255, 255, 0.72) 0%,
+          rgba(255, 255, 255, 0.18) 35%,
+          rgba(255, 255, 255, 0.04) 65%,
+          rgba(255, 255, 255, 0.38) 100%
+        );
+        mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        mask-composite: exclude;
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+      }
+
+      :where([data-theme="glass"]) .vision-grabber {
+        opacity: 0.75;
       }
 
       :where([data-theme="glass"]) .ambient-bg {
-        opacity: 0.52;
+        opacity: 0.68;
+        filter: blur(36px) saturate(250%) brightness(0.84);
+      }
+
+      :where([data-theme="glass"]) .ambient-orb {
+        opacity: 0.58;
+      }
+
+      :where([data-theme="glass"]) .cover-glow {
+        opacity: calc(0.65 + var(--bass-energy, 0) * 0.35);
+        filter: blur(20px) saturate(260%) brightness(1.15);
       }
 
       :where([data-theme="glass"]) .cover-box {
-        width: 92px;
-        height: 92px;
-        border-radius: 20px;
+        width: 96px;
+        height: 96px;
+        border-radius: 22px;
         box-shadow:
-          0 12px 28px rgba(0, 0, 0, 0.45),
-          0 0 0 1px rgba(255, 255, 255, 0.22);
+          0 16px 34px -6px rgba(0, 0, 0, 0.52),
+          0 4px 12px rgba(0, 0, 0, 0.28),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.38);
       }
 
       :where([data-theme="glass"]) .status-pill {
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 4px 12px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(16px);
+        color: rgba(255, 255, 255, 0.96);
+      }
+
+      :where([data-theme="glass"]) .status-dot {
+        background: #ffffff;
+        box-shadow: 0 0 10px #ffffff, 0 0 16px rgba(255, 255, 255, 0.8);
+      }
+
+      :where([data-theme="glass"]) .eq-capsule {
+        background: rgba(255, 255, 255, 0.13);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+      }
+
+      :where([data-theme="glass"]) #eq-bars > .eq-bar {
+        background: linear-gradient(
+          to top,
+          rgba(255, 255, 255, 0.68) 0%,
+          #ffffff 100%
+        );
+        box-shadow: 0 0 8px rgba(255, 255, 255, calc(var(--eq-level, 0.16) * 0.7));
+      }
+
+      :where([data-theme="glass"]) .eq-bar::after {
+        display: none;
+      }
+
+      :where([data-theme="glass"]) .requester-pill {
         background: rgba(255, 255, 255, 0.14);
-        border: 1px solid rgba(255, 255, 255, 0.24);
-        box-shadow: none;
-        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.26);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
       }
 
       :where([data-theme="glass"]) .progress-track {
-        height: 4px;
-        background: rgba(255, 255, 255, 0.2);
+        height: 7px;
+        background: rgba(255, 255, 255, 0.18);
+        box-shadow:
+          inset 0 1px 2px rgba(0, 0, 0, 0.28),
+          inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+      }
+
+      :where([data-theme="glass"]) .progress-track::before {
+        opacity: 0.25;
       }
 
       :where([data-theme="glass"]) .progress-fill {
-        background: rgba(255, 255, 255, 0.92);
-        box-shadow: 0 0 12px rgba(255, 255, 255, 0.65);
+        background: linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0.72) 0%,
+          #ffffff 100%
+        );
+        box-shadow:
+          0 0 14px rgba(255, 255, 255, 0.7),
+          0 0 26px rgba(255, 255, 255, 0.35);
       }
 
-      @container style(--widget-theme: glass) {
-        .ambient-bg {
-          opacity: 0.52;
-        }
+      /* visionOS pill-shaped glowing playhead */
+      :where([data-theme="glass"]) .progress-thumb {
+        width: 14px;
+        height: 8px;
+        right: -6px;
+        border-radius: 999px;
+        background: #ffffff;
+        border: none;
+        box-shadow:
+          0 0 12px #ffffff,
+          0 0 24px rgba(255, 255, 255, 0.85),
+          0 2px 6px rgba(0, 0, 0, 0.35);
       }
 
-      /* ─── TEMA 3: CYBER (Zero FM Cyberpunk / Neon Broadcast HUD) ─── */
+      :where([data-theme="glass"]) .time-pill {
+        color: rgba(255, 255, 255, 0.84);
+        text-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+      }
+
+      /* ─── TEMA 3: CYBERPUNK ZERO FM (Neon Broadcast HUD) ─── */
       :where([data-theme="cyber"]) .cider-card {
-        border-radius: 12px;
+        border-radius: 10px;
         padding: 16px 20px;
         background:
-          linear-gradient(135deg, rgba(8, 7, 16, 0.95) 0%, rgba(18, 10, 32, 0.92) 100%);
-        border: 1px solid rgba(var(--accent-rgb), 0.55);
+          linear-gradient(135deg, rgba(7, 6, 15, 0.96) 0%, rgba(18, 9, 34, 0.93) 100%);
+        border: 1px solid rgba(var(--accent-rgb), 0.62);
         box-shadow:
-          0 0 24px rgba(var(--accent-rgb), 0.25),
-          0 12px 36px rgba(0, 0, 0, 0.75),
-          inset 0 0 18px rgba(var(--accent-sec-rgb), 0.08);
+          0 0 calc(22px + var(--bass-energy, 0) * 16px) rgba(var(--accent-rgb), 0.28),
+          0 16px 40px rgba(0, 0, 0, 0.8),
+          inset 0 0 22px rgba(var(--accent-sec-rgb), 0.1);
         clip-path: polygon(
           0 0,
-          calc(100% - 16px) 0,
-          100% 16px,
+          calc(100% - 18px) 0,
+          100% 18px,
           100% 100%,
-          16px 100%,
-          0 calc(100% - 16px)
+          18px 100%,
+          0 calc(100% - 18px)
         );
       }
 
-      /* Cyber scanlines & neon top bar */
+      /* Cyber Neon Top Laser Bar */
       :where([data-theme="cyber"]) .cider-card::before {
         content: "" / "";
         position: absolute;
         top: 0;
         left: 0;
         right: 0;
-        height: 2px;
+        height: 2.5px;
         background: linear-gradient(90deg, var(--accent-color), var(--accent-secondary), var(--accent-color));
-        box-shadow: 0 0 12px var(--accent-color);
+        box-shadow: 0 0 14px var(--accent-color);
         z-index: 4;
       }
 
+      /* Cyber HUD Grid + Scanline Overlay */
       :where([data-theme="cyber"]) .cider-card::after {
         content: "" / "";
         position: absolute;
         inset: 0;
-        background: repeating-linear-gradient(
-          0deg,
-          transparent 0px,
-          transparent 2px,
-          rgba(255, 255, 255, 0.018) 3px
-        );
+        background:
+          repeating-linear-gradient(
+            0deg,
+            transparent 0px,
+            transparent 2px,
+            rgba(0, 229, 255, 0.022) 3px
+          ),
+          radial-gradient(circle at 90% 15%, rgba(var(--accent-sec-rgb), 0.14), transparent 55%);
         pointer-events: none;
         z-index: 1;
       }
 
       :where([data-theme="cyber"]) .cover-box {
-        width: 92px;
-        height: 92px;
+        width: 94px;
+        height: 94px;
         border-radius: 8px;
         border: 1.5px solid var(--accent-secondary);
-        box-shadow: 0 0 16px rgba(var(--accent-sec-rgb), 0.35);
+        box-shadow:
+          0 0 calc(14px + var(--bass-energy, 0) * 14px) rgba(var(--accent-sec-rgb), 0.42),
+          0 8px 20px rgba(0, 0, 0, 0.7);
       }
 
       :where([data-theme="cyber"]) .song-title {
         font-family: var(--font-cyber);
-        letter-spacing: 0.02em;
-        text-shadow: 0 0 12px rgba(var(--accent-rgb), 0.45);
+        letter-spacing: 0.025em;
+        text-shadow: 0 0 12px rgba(var(--accent-rgb), 0.5);
       }
 
       :where([data-theme="cyber"]) .song-artist {
@@ -669,31 +1004,46 @@
       :where([data-theme="cyber"]) .status-pill {
         border-radius: 4px;
         font-family: var(--font-mono);
-        font-size: 10px;
-        background: rgba(var(--accent-rgb), 0.22);
+        font-size: 9.5px;
+        background: rgba(var(--accent-rgb), 0.24);
         border: 1px solid var(--accent-color);
       }
 
+      :where([data-theme="cyber"]) .eq-capsule {
+        border-radius: 4px;
+        background: rgba(0, 229, 255, 0.07);
+        border: 1px solid rgba(var(--accent-sec-rgb), 0.35);
+      }
+
       :where([data-theme="cyber"]) .progress-track {
-        height: 6px;
+        height: 8px;
         border-radius: 3px;
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid rgba(var(--accent-sec-rgb), 0.25);
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(var(--accent-sec-rgb), 0.35);
       }
 
-      :where([data-theme="cyber"]) .progress-Dot {
-        opacity: 1;
+      :where([data-theme="cyber"]) .progress-fill {
+        border-radius: 2px;
       }
 
-      :where([data-theme="cyber"]) .time-row {
+      /* Cyber Vertical Laser Reticle Scrubber */
+      :where([data-theme="cyber"]) .progress-thumb {
+        width: 4px;
+        height: 15px;
+        right: -2px;
+        border-radius: 2px;
+        background: #ffffff;
+        border: none;
+        box-shadow:
+          0 0 8px #ffffff,
+          0 0 14px var(--accent-secondary),
+          0 0 22px var(--accent-color);
+      }
+
+      :where([data-theme="cyber"]) .time-pill {
         font-family: var(--font-mono);
-        color: rgba(var(--accent-sec-rgb), 0.85);
-      }
-
-      @container style(--widget-theme: cyber) {
-        .progress-Dot {
-          opacity: 1;
-        }
+        font-size: 10px;
+        color: var(--accent-secondary);
       }
     }
 
@@ -702,6 +1052,9 @@
       .cider-card.track-changing .cover-box,
       .cider-card.track-changing .track-info {
         animation: trackPulse 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+        @media (prefers-reduced-motion: reduce) {
+          animation: none;
+        }
       }
 
       @keyframes trackPulse {
@@ -734,10 +1087,10 @@
         padding: 6px 10px;
         border-radius: 10px;
         font-family: var(--font-main);
-        font-size: 12px;
+        font-size: 11.5px;
         font-weight: 700;
         cursor: pointer;
-        backdrop-filter: blur(10px);
+        backdrop-filter: blur(12px);
         box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
         transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
       }
@@ -748,12 +1101,17 @@
         transform: translateY(-1px);
       }
 
+      .ctrl-btn.active-audio {
+        border-color: #10b981;
+        background: rgba(16, 185, 129, 0.22);
+      }
+
       /* ─── Settings Drawer ─── */
       #settings-drawer {
         position: fixed;
         top: 48px;
         right: 10px;
-        width: 310px;
+        width: 325px;
         max-height: calc(100vh - 60px);
         overflow-y: auto;
         background: rgba(12, 10, 22, 0.96);
@@ -762,7 +1120,7 @@
         padding: 14px;
         z-index: 10000;
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75);
-        backdrop-filter: blur(20px);
+        backdrop-filter: blur(24px);
         display: none;
         flex-direction: column;
         gap: 10px;
@@ -781,7 +1139,7 @@
 
       .cfg-row label {
         font-weight: 600;
-        color: rgba(255, 255, 255, 0.8);
+        color: rgba(255, 255, 255, 0.85);
         display: flex;
         justify-content: space-between;
       }
@@ -813,15 +1171,29 @@
         color: rgba(255, 255, 255, 0.85);
       }
 
+      .audio-status-badge {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 7px 10px;
+        border-radius: 10px;
+        background: rgba(16, 185, 129, 0.12);
+        border: 1px solid rgba(16, 185, 129, 0.35);
+        color: #a7f3d0;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
       /* Toast Indicator */
       #theme-toast {
         position: fixed;
         bottom: 12px;
-        left: 22px;
-        background: rgba(12, 10, 24, 0.9);
+        left: 24px;
+        background: rgba(12, 10, 24, 0.92);
         border: 1px solid var(--accent-color);
         color: #fff;
-        padding: 6px 12px;
+        padding: 6px 13px;
         border-radius: 999px;
         font-size: 11.5px;
         font-weight: 700;
@@ -836,12 +1208,6 @@
         opacity: 1;
         transform: translateY(0);
       }
-
-      @media (prefers-reduced-motion: reduce) {
-        * {
-          animation: var(--animation-reduced) !important;
-        }
-      }
     }
   </style>
 </head>
@@ -850,11 +1216,15 @@
   <!-- Escenario Principal del Widget -->
   <div id="widget-stage" data-theme="vinyl">
     <div id="cider-card" class="cider-card" data-playing="true">
-      <!-- Fondo atmosférico dinámico con la portada desenfocada -->
+      <!-- Capas Atmosféricas Dinámicas (Especialmente intensas en Apple Vision Glass) -->
       <div id="ambient-bg" class="ambient-bg"></div>
+      <div id="ambient-orb" class="ambient-orb"></div>
+      <div class="vision-rim" aria-hidden="true"></div>
+      <div class="vision-grabber" aria-hidden="true"></div>
 
-      <!-- Bloque Visual: Portada + Vinilo Giratorio -->
+      <!-- Bloque Visual: Portada + Sombra de Color Reactiva + Vinilo Giratorio -->
       <div class="media-visual">
+        <div id="cover-glow" class="cover-glow" aria-hidden="true"></div>
         <div class="cover-box">
           <div id="cover-fallback" class="cover-fallback">🎵</div>
           <img id="cover-img" class="cover-img" src="" alt="Portada del Álbum" style="opacity: 0;" />
@@ -871,11 +1241,23 @@
             <span class="status-dot"></span>
             <span id="status-text">SONANDO AHORA</span>
           </div>
-          <div class="eq-bars" id="eq-bars" aria-hidden="true">
-            <span class="eq-bar"></span>
-            <span class="eq-bar"></span>
-            <span class="eq-bar"></span>
-            <span class="eq-bar"></span>
+
+          <!-- Ecualizador de Espectro Musical Real (12 Bandas FFT) -->
+          <div class="eq-capsule" id="eq-capsule" title="Ecualizador Reactivo en Tiempo Real">
+            <div class="eq-bars" id="eq-bars" aria-hidden="true">
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+            </div>
           </div>
         </div>
 
@@ -894,16 +1276,16 @@
           <div class="album-label" id="album-label">Conectando con Cider...</div>
         </div>
 
+        <!-- Barra de Progreso Moderna con Shimmer + Scrubber Luminoso + Tiempos Inline -->
         <div class="progress-wrap" id="progress-wrap">
+          <span class="time-pill time-el" id="time-elapsed">0:00</span>
           <div class="progress-track">
             <div class="progress-fill" id="progress-fill" style="width: 0%;">
-              <span class="progress-Dot"></span>
+              <div class="progress-shimmer"></div>
+              <span class="progress-thumb"></span>
             </div>
           </div>
-          <div class="time-row" id="time-row">
-            <span id="time-elapsed">0:00</span>
-            <span id="time-remaining">-0:00</span>
-          </div>
+          <span class="time-pill time-rem" id="time-remaining">-0:00</span>
         </div>
       </div>
     </div>
@@ -912,6 +1294,7 @@
   <!-- Controles Flotantes (Solo visibles al pasar el mouse) -->
   <div id="floating-controls">
     <button type="button" class="ctrl-btn" id="btn-cycle-theme" title="Cambiar Estilo / Tema (3 Temas)">🎨 Tema</button>
+    <button type="button" class="ctrl-btn" id="btn-audio-input" title="Conectar Audio del Sistema / Loopback para FFT en directo">🎙️ Audio Real</button>
     <button type="button" class="ctrl-btn" id="btn-simulate" title="Probar con canción de ejemplo">🧪 Simular</button>
     <button type="button" class="ctrl-btn" id="btn-settings" title="Configurar Widget">⚙️</button>
   </div>
@@ -923,12 +1306,24 @@
       <button type="button" id="btn-close-settings" style="background:none; border:none; color:#aaa; font-size:18px; cursor:pointer;">&times;</button>
     </div>
 
+    <div class="audio-status-badge" id="audio-status-badge">
+      <span id="audio-status-label">🟢 Ecualizador FFT: Pista Musical Real</span>
+      <button type="button" class="ctrl-btn" id="btn-connect-mic-drawer" style="padding:3px 8px; font-size:10.5px;">Loopback/Mic</button>
+    </div>
+
     <div class="cfg-row">
       <label>Estilo Visual (3 Temas)</label>
       <select id="cfg-theme">
-        <option value="vinyl">💿 1. Vinilo Giratorio (Spinning Vinyl)</option>
-        <option value="glass">🪟 2. Apple Vision Glass (Atmosférico)</option>
+        <option value="vinyl">💿 1. Vinilo Giratorio (Studio Vinyl Luxe)</option>
+        <option value="glass">🪟 2. Apple Vision Pro (Spatial Glass)</option>
         <option value="cyber">⚡ 3. Cyberpunk Zero FM (Neon HUD)</option>
+      </select>
+    </div>
+
+    <div class="cfg-row">
+      <label>Dispositivo de Entrada de Audio (Opcional)</label>
+      <select id="cfg-audioDevice">
+        <option value="auto">🎵 Automático (Análisis de Pista + Audio)</option>
       </select>
     </div>
 
@@ -949,8 +1344,8 @@
     </div>
 
     <div class="cfg-row">
-      <label><span>Ancho de Tarjeta</span><span id="val-width">480px</span></label>
-      <input type="range" id="cfg-width" min="340" max="660" step="10" value="480" />
+      <label><span>Ancho de Tarjeta</span><span id="val-width">500px</span></label>
+      <input type="range" id="cfg-width" min="360" max="680" step="10" value="500" />
     </div>
 
     <div class="cfg-row">
@@ -982,6 +1377,14 @@
 
   <script>
     (function() {
+      // Fallback para sibling-index() en navegadores anteriores
+      if (!CSS.supports('animation-delay: calc(sibling-index() * 0.1s)')) {
+        const eqList = document.getElementById('eq-bars');
+        if (eqList) {
+          [...eqList.children].forEach((el, index) => el.style.setProperty('--sibling-index', index + 1));
+        }
+      }
+
       // ─── Safe LocalStorage Wrapper ───
       const safeStorage = (() => {
         const mem = {};
@@ -1002,16 +1405,16 @@
       const urlParams = new URLSearchParams(window.location.search);
 
       const THEME_LABELS = {
-        vinyl: '💿 Estilo 1: Vinilo Giratorio',
-        glass: '🪟 Estilo 2: Apple Vision Glass',
-        cyber: '⚡ Estilo 3: Cyberpunk Zero FM'
+        vinyl: '💿 Estilo 1: Vinilo Giratorio (Studio Luxe)',
+        glass: '🪟 Estilo 2: Apple Vision Pro (Spatial Glass)',
+        cyber: '⚡ Estilo 3: Cyberpunk Zero FM (Neon HUD)'
       };
       const THEME_ORDER = ['vinyl', 'glass', 'cyber'];
 
       const defaultConfig = {
         ciderWidgetTheme: 'vinyl',
         ciderUrl: '',
-        ciderWidgetWidth: 480,
+        ciderWidgetWidth: 500,
         ciderWidgetScale: 1,
         ciderWidgetOpacity: 0.88,
         ciderWidgetAccent: '#ff0055',
@@ -1023,7 +1426,8 @@
         ciderWidgetShowAlbum: true,
         ciderWidgetShowEq: true,
         ciderWidgetHideWhenPaused: false,
-        ciderWidgetShowCardBg: true
+        ciderWidgetShowCardBg: true,
+        ciderAudioDeviceId: 'auto'
       };
 
       let currentConfig = { ...defaultConfig };
@@ -1032,7 +1436,6 @@
         if (saved) currentConfig = { ...currentConfig, ...JSON.parse(saved) };
       } catch (_) {}
 
-      // URL overrides (highest priority for per-scene OBS links)
       const urlTheme = String(urlParams.get('theme') || urlParams.get('style') || '').trim().toLowerCase();
       if (THEME_ORDER.includes(urlTheme)) {
         currentConfig.ciderWidgetTheme = urlTheme;
@@ -1046,11 +1449,15 @@
       const stageEl = document.getElementById('widget-stage');
       const cardEl = document.getElementById('cider-card');
       const ambientBgEl = document.getElementById('ambient-bg');
+      const ambientOrbEl = document.getElementById('ambient-orb');
+      const coverGlowEl = document.getElementById('cover-glow');
       const coverImgEl = document.getElementById('cover-img');
       const coverFallbackEl = document.getElementById('cover-fallback');
       const vinylLabelEl = document.getElementById('vinyl-label');
       const statusTextEl = document.getElementById('status-text');
+      const eqCapsuleEl = document.getElementById('eq-capsule');
       const eqBarsEl = document.getElementById('eq-bars');
+      const eqBarNodes = eqBarsEl ? Array.from(eqBarsEl.querySelectorAll('.eq-bar')) : [];
       const titleViewportEl = document.getElementById('title-viewport');
       const songTitleEl = document.getElementById('song-title');
       const songArtistEl = document.getElementById('song-artist');
@@ -1060,10 +1467,12 @@
       const albumLabelEl = document.getElementById('album-label');
       const progressWrapEl = document.getElementById('progress-wrap');
       const progressFillEl = document.getElementById('progress-fill');
-      const timeRowEl = document.getElementById('time-row');
       const timeElapsedEl = document.getElementById('time-elapsed');
       const timeRemainingEl = document.getElementById('time-remaining');
       const toastEl = document.getElementById('theme-toast');
+      const audioStatusLabelEl = document.getElementById('audio-status-label');
+      const btnAudioInputEl = document.getElementById('btn-audio-input');
+      const audioDeviceSelectEl = document.getElementById('cfg-audioDevice');
 
       function hexToRgbTuple(hex, fallback = '255, 0, 85') {
         const clean = String(hex || '').replace('#', '').trim();
@@ -1081,13 +1490,12 @@
         toastEl.textContent = msg;
         toastEl.classList.add('show');
         if (toastTimer) clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
+        toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2300);
       }
 
       // ─── Apply Visual Config ───
       function applyConfig(cfg) {
         currentConfig = { ...currentConfig, ...cfg };
-        // Respect URL ?theme= override if explicitly set in URL
         if (THEME_ORDER.includes(urlTheme) && !cfg._forceThemeOverride) {
           currentConfig.ciderWidgetTheme = urlTheme;
         }
@@ -1098,13 +1506,13 @@
         const root = document.documentElement;
         stageEl.setAttribute('data-theme', theme);
         root.style.setProperty('--widget-theme', theme);
-        root.style.setProperty('--widget-width', `${Number(currentConfig.ciderWidgetWidth) || 480}px`);
+        root.style.setProperty('--widget-width', `${Number(currentConfig.ciderWidgetWidth) || 500}px`);
         root.style.setProperty('--widget-scale', String(Number(currentConfig.ciderWidgetScale) || 1));
 
         const op = currentConfig.ciderWidgetOpacity !== undefined
           ? (Number(currentConfig.ciderWidgetOpacity) > 1 ? Number(currentConfig.ciderWidgetOpacity) / 100 : Number(currentConfig.ciderWidgetOpacity))
           : 0.88;
-        root.style.setProperty('--card-opacity', String(Math.max(0.1, Math.min(1, op))));
+        root.style.setProperty('--card-opacity', String(Math.max(0.12, Math.min(1, op))));
 
         const accent = currentConfig.ciderWidgetAccent || '#ff0055';
         const accentSec = currentConfig.ciderWidgetAccentSec || '#00e5ff';
@@ -1119,8 +1527,12 @@
 
         cardEl.classList.toggle('no-card-bg', currentConfig.ciderWidgetShowCardBg === false);
         progressWrapEl.style.display = currentConfig.ciderWidgetShowProgress === false ? 'none' : 'flex';
-        timeRowEl.style.display = currentConfig.ciderWidgetShowTime === false ? 'none' : 'flex';
-        eqBarsEl.style.display = currentConfig.ciderWidgetShowEq === false ? 'none' : 'inline-flex';
+        const showTime = currentConfig.ciderWidgetShowTime !== false;
+        timeElapsedEl.style.display = showTime ? 'inline-block' : 'none';
+        timeRemainingEl.style.display = showTime ? 'inline-block' : 'none';
+        if (eqCapsuleEl) {
+          eqCapsuleEl.style.display = currentConfig.ciderWidgetShowEq === false ? 'none' : 'inline-flex';
+        }
 
         syncInputsFromConfig();
         renderTrackMetadata();
@@ -1135,7 +1547,10 @@
         setVal('cfg-ciderUrl', currentConfig.ciderUrl || '');
         setVal('cfg-accent', currentConfig.ciderWidgetAccent || '#ff0055');
         setVal('cfg-accentSec', currentConfig.ciderWidgetAccentSec || '#00e5ff');
-        const w = Number(currentConfig.ciderWidgetWidth) || 480;
+        if (audioDeviceSelectEl && currentConfig.ciderAudioDeviceId) {
+          audioDeviceSelectEl.value = currentConfig.ciderAudioDeviceId;
+        }
+        const w = Number(currentConfig.ciderWidgetWidth) || 500;
         setVal('cfg-width', w);
         const wLbl = document.getElementById('val-width');
         if (wLbl) wLbl.textContent = `${w}px`;
@@ -1158,12 +1573,13 @@
         setChk('cfg-hideWhenPaused', currentConfig.ciderWidgetHideWhenPaused === true);
       }
 
-      // ─── Playback State & Smooth Progress Interpolation ───
+      // ─── Playback State & Track Metadata Cache ───
       let playbackState = {
         song: '',
         artist: '',
         album: '',
         artworkUrl: '',
+        previewUrl: '',
         appleMusicId: '',
         requester: '',
         badge: '',
@@ -1175,7 +1591,7 @@
       };
 
       let lastTrackKey = '';
-      const artworkCache = {};
+      const trackMetaCache = {};
 
       function normalizeArtworkUrl(rawUrl) {
         if (!rawUrl) return '';
@@ -1190,10 +1606,11 @@
         return u;
       }
 
-      async function fetchItunesArtwork(artist, song) {
+      // Obtiene tanto la portada HQ como el stream de audio real (previewUrl CORS-enabled) de Apple Music / iTunes
+      async function fetchItunesTrackMedia(artist, song) {
         const key = `${artist}|${song}`.toLowerCase().trim();
-        if (!key || key === '|') return '';
-        if (artworkCache[key] !== undefined) return artworkCache[key];
+        if (!key || key === '|') return { artworkUrl: '', previewUrl: '' };
+        if (trackMetaCache[key] !== undefined) return trackMetaCache[key];
         try {
           const cleanQ = `${artist} ${song}`
             .replace(/\([\s\S]*?\)|\[[\s\S]*?\]/g, ' ')
@@ -1202,21 +1619,349 @@
           const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(cleanQ)}&entity=song&limit=5`);
           const data = await res.json();
           if (data && data.results && data.results.length > 0) {
-            const art = data.results[0].artworkUrl100
-              ? data.results[0].artworkUrl100.replace('100x100', '600x600')
+            const best = data.results[0];
+            const art = best.artworkUrl100
+              ? best.artworkUrl100.replace('100x100', '600x600')
               : '';
-            artworkCache[key] = art;
-            return art;
+            const previewUrl = best.previewUrl || '';
+            const result = { artworkUrl: art, previewUrl };
+            trackMetaCache[key] = result;
+            return result;
           }
         } catch (_) {}
-        artworkCache[key] = '';
-        return '';
+        const empty = { artworkUrl: '', previewUrl: '' };
+        trackMetaCache[key] = empty;
+        return empty;
       }
+
+      // =========================================================================
+      // MOTOR DE AUDIO REAL (WEB AUDIO API FFT ANALYSER + MULTI-SOURCE)
+      // =========================================================================
+      let audioCtx = null;
+      let trackAnalyser = null;
+      let micAnalyser = null;
+      let silentAudioEl = null;
+      let trackSourceNode = null;
+      let micSourceNode = null;
+      let micStream = null;
+      let freqBuffer = new Uint8Array(128);
+      const smoothedBands = new Float32Array(12);
+      let smoothedBass = 0;
+      let currentPreviewLoaded = '';
+      let activeAudioMode = 'track'; // 'mic' | 'track' | 'acoustic'
+
+      function ensureAudioEngine() {
+        if (!audioCtx) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          if (!Ctx) return null;
+          audioCtx = new Ctx();
+        }
+        if (!trackAnalyser && audioCtx) {
+          trackAnalyser = audioCtx.createAnalyser();
+          trackAnalyser.fftSize = 256;
+          trackAnalyser.smoothingTimeConstant = 0.74;
+          freqBuffer = new Uint8Array(trackAnalyser.frequencyBinCount);
+
+          // Silencioso: GainNode en 0 para analizar el espectro real sin duplicar audio en el stream
+          const zeroGain = audioCtx.createGain();
+          zeroGain.gain.value = 0.00001;
+          trackAnalyser.connect(zeroGain);
+          zeroGain.connect(audioCtx.destination);
+        }
+        if (!silentAudioEl && audioCtx && trackAnalyser) {
+          silentAudioEl = new Audio();
+          silentAudioEl.crossOrigin = 'anonymous';
+          silentAudioEl.loop = true;
+          silentAudioEl.preload = 'auto';
+          silentAudioEl.playsInline = true;
+          try {
+            trackSourceNode = audioCtx.createMediaElementSource(silentAudioEl);
+            trackSourceNode.connect(trackAnalyser);
+          } catch (e) {
+            console.warn('[CiderWidget] MediaElementSource init warning:', e);
+          }
+        }
+        return audioCtx;
+      }
+
+      function syncTrackAudioStream(previewUrl, isPlaying) {
+        ensureAudioEngine();
+        if (!silentAudioEl) return;
+
+        if (!previewUrl || !isPlaying) {
+          if (!silentAudioEl.paused) {
+            try { silentAudioEl.pause(); } catch (_) {}
+          }
+          return;
+        }
+
+        if (currentPreviewLoaded !== previewUrl) {
+          currentPreviewLoaded = previewUrl;
+          silentAudioEl.src = previewUrl;
+          try {
+            // Sincronizar fase con la posición actual de la canción
+            const offsetSec = ((Number(playbackState.positionMs) || 0) / 1000) % 28;
+            silentAudioEl.currentTime = Number.isFinite(offsetSec) ? offsetSec : 0;
+          } catch (_) {}
+        }
+
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+        if (silentAudioEl.paused && isPlaying) {
+          silentAudioEl.play().catch(() => {});
+        }
+      }
+
+      async function refreshAudioDeviceList() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices || !audioDeviceSelectEl) return;
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const audioInputs = devices.filter(d => d.kind === 'audioinput');
+          const currentVal = currentConfig.ciderAudioDeviceId || 'auto';
+          audioDeviceSelectEl.innerHTML = '<option value="auto">🎵 Automático (Stream de Pista Apple Music)</option>';
+          audioInputs.forEach((dev, idx) => {
+            const opt = document.createElement('option');
+            opt.value = dev.deviceId || `dev-${idx}`;
+            opt.textContent = `🎙️ ${dev.label || `Entrada de Audio #${idx + 1}`}`;
+            audioDeviceSelectEl.appendChild(opt);
+          });
+          if ([...audioDeviceSelectEl.options].some(o => o.value === currentVal)) {
+            audioDeviceSelectEl.value = currentVal;
+          }
+        } catch (_) {}
+      }
+
+      async function connectLiveAudioInput(deviceId = '') {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          showToast('⚠️ Captura de audio no disponible en este navegador');
+          return false;
+        }
+        try {
+          ensureAudioEngine();
+          if (audioCtx && audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+          }
+          if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            micStream = null;
+          }
+          const constraints = {
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+              ...(deviceId && deviceId !== 'auto' ? { deviceId: { exact: deviceId } } : {})
+            }
+          };
+          micStream = await navigator.mediaDevices.getUserMedia(constraints);
+          if (!micAnalyser) {
+            micAnalyser = audioCtx.createAnalyser();
+            micAnalyser.fftSize = 256;
+            micAnalyser.smoothingTimeConstant = 0.72;
+          }
+          if (micSourceNode) {
+            try { micSourceNode.disconnect(); } catch (_) {}
+          }
+          micSourceNode = audioCtx.createMediaStreamSource(micStream);
+          micSourceNode.connect(micAnalyser);
+
+          activeAudioMode = 'mic';
+          if (btnAudioInputEl) btnAudioInputEl.classList.add('active-audio');
+          if (audioStatusLabelEl) {
+            audioStatusLabelEl.textContent = '🟢 Ecualizador FFT: Audio del Sistema / Loopback';
+          }
+          await refreshAudioDeviceList();
+          showToast('🎙️ Ecualizador conectado al audio en directo');
+          return true;
+        } catch (err) {
+          console.warn('[CiderWidget] No se pudo abrir entrada de audio:', err);
+          activeAudioMode = 'track';
+          if (btnAudioInputEl) btnAudioInputEl.classList.remove('active-audio');
+          showToast('🎵 Usando analizador FFT de pista Apple Music');
+          return false;
+        }
+      }
+
+      function disconnectLiveAudioInput() {
+        if (micStream) {
+          micStream.getTracks().forEach(t => t.stop());
+          micStream = null;
+        }
+        if (micSourceNode) {
+          try { micSourceNode.disconnect(); } catch (_) {}
+          micSourceNode = null;
+        }
+        activeAudioMode = 'track';
+        if (btnAudioInputEl) btnAudioInputEl.classList.remove('active-audio');
+        if (audioStatusLabelEl) {
+          audioStatusLabelEl.textContent = '🟢 Ecualizador FFT: Pista Musical Real';
+        }
+      }
+
+      // Desbloquea el AudioContext ante cualquier interacción o mensaje
+      function unlockAudioOnGesture() {
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+        if (playbackState.isPlaying && playbackState.previewUrl && silentAudioEl && silentAudioEl.paused) {
+          silentAudioEl.play().catch(() => {});
+        }
+      }
+      window.addEventListener('pointerdown', unlockAudioOnGesture, { passive: true });
+      window.addEventListener('keydown', unlockAudioOnGesture, { passive: true });
+
+      // Calcula un BPM determinista por canción (102 - 134 BPM) para el sintetizador acústico de respaldo
+      function getTrackSeedBpm() {
+        const s = `${playbackState.song}|${playbackState.artist}`;
+        let h = 2166136261;
+        for (let i = 0; i < s.length; i++) {
+          h ^= s.charCodeAt(i);
+          h = Math.imul(h, 16777619);
+        }
+        return 104 + (Math.abs(h) % 30);
+      }
+
+      // Mapeo logarítmico de bins FFT (128 bins @ 44.1kHz/48kHz) para las 12 barras del ecualizador
+      const BAND_BIN_RANGES = [
+        [1, 2],   // Sub-bass (35-90 Hz)
+        [2, 3],   // Kick punch (90-150 Hz)
+        [3, 5],   // Bass groove (150-260 Hz)
+        [5, 8],   // Upper bass (260-420 Hz)
+        [8, 12],  // Low mids (420-650 Hz)
+        [12, 17], // Mids (650-950 Hz)
+        [17, 24], // Vocal fundamental (950-1.4 kHz)
+        [24, 33], // Upper vocals / snare body (1.4-2.1 kHz)
+        [33, 44], // Presence (2.1-3.2 kHz)
+        [44, 58], // Brilliance (3.2-4.8 kHz)
+        [58, 76], // Hi-hats / sibilance (4.8-7.5 kHz)
+        [76, 102] // Air / cymbals (7.5-12 kHz)
+      ];
+
+      // ─── 60fps Audio Spectrum & Smooth Progress Loop ───
+      function runRealtimeFrame(nowMs) {
+        const isPlaying = !!playbackState.isPlaying && playbackState.hasTrack;
+
+        // 1. Actualizar barra de progreso a 60fps con interpolación sub-milisegundo
+        const dur = Number(playbackState.durationMs) || 0;
+        let pos = Number(playbackState.positionMs) || 0;
+        if (isPlaying && playbackState.updatedAt > 0 && dur > 0) {
+          pos = Math.min(dur, pos + Math.max(0, Date.now() - playbackState.updatedAt));
+        }
+        const pct = dur > 0 ? Math.max(0, Math.min(100, (pos / dur) * 100)) : 0;
+        progressFillEl.style.width = `${pct.toFixed(3)}%`;
+        timeElapsedEl.textContent = formatTimeMs(pos);
+        const rem = Math.max(0, dur - pos);
+        timeRemainingEl.textContent = dur > 0 ? `-${formatTimeMs(rem)}` : '-0:00';
+
+        // 2. Actualizar Ecualizador de 12 Bandas y Pulso de Graves (--bass-energy)
+        if (!isPlaying) {
+          smoothedBass *= 0.84;
+          cardEl.style.setProperty('--bass-energy', smoothedBass.toFixed(3));
+          for (let i = 0; i < eqBarNodes.length; i++) {
+            smoothedBands[i] = smoothedBands[i] * 0.82 + 0.14 * 0.18;
+            eqBarNodes[i].style.setProperty('--eq-level', smoothedBands[i].toFixed(3));
+          }
+          requestAnimationFrame(runRealtimeFrame);
+          return;
+        }
+
+        let usedRealFft = false;
+        const activeAnalyser = (activeAudioMode === 'mic' && micAnalyser) ? micAnalyser : trackAnalyser;
+
+        if (activeAnalyser && audioCtx && audioCtx.state === 'running') {
+          activeAnalyser.getByteFrequencyData(freqBuffer);
+          let totalEnergy = 0;
+          for (let k = 1; k < 64; k++) totalEnergy += freqBuffer[k];
+
+          if (totalEnergy > 40) {
+            usedRealFft = true;
+            for (let i = 0; i < 12; i++) {
+              const [startBin, endBin] = BAND_BIN_RANGES[i];
+              let sum = 0;
+              let count = 0;
+              for (let b = startBin; b <= endBin && b < freqBuffer.length; b++) {
+                sum += freqBuffer[b];
+                count++;
+              }
+              const avg = count > 0 ? sum / (count * 255) : 0;
+              // Compensación psicoacústica (realza agudos naturales del espectro musical)
+              const tilt = 1 + (i / 11) * 0.55;
+              const target = Math.max(0.14, Math.min(1.0, Math.pow(avg * tilt, 0.85)));
+              const attack = target > smoothedBands[i] ? 0.45 : 0.22;
+              smoothedBands[i] += (target - smoothedBands[i]) * attack;
+              if (eqBarNodes[i]) {
+                eqBarNodes[i].style.setProperty('--eq-level', smoothedBands[i].toFixed(3));
+              }
+            }
+
+            const rawBass = (smoothedBands[0] * 0.45 + smoothedBands[1] * 0.4 + smoothedBands[2] * 0.15);
+            const bassPulse = Math.max(0, Math.min(1, (rawBass - 0.25) * 1.45));
+            smoothedBass += (bassPulse - smoothedBass) * 0.38;
+            cardEl.style.setProperty('--bass-energy', smoothedBass.toFixed(3));
+          }
+        }
+
+        // Si el navegador aún no ha desbloqueado Web Audio o la canción no tiene preview en iTunes,
+        // el motor acústico multicapa genera transitorios reales de bombo (kick), bajo, caja (snare) y hi-hat
+        if (!usedRealFft) {
+          const bpm = getTrackSeedBpm();
+          const songTimeSec = (pos > 0 ? pos : nowMs) / 1000;
+          const beatFloat = songTimeSec * (bpm / 60);
+          const beatPhase = beatFloat % 1;
+          const barBeat = Math.floor(beatFloat) % 4;
+
+          // Transitorio de Kick (golpe rápido con decaimiento exponencial)
+          const kickEnv = Math.pow(Math.max(0, 1 - beatPhase * 2.6), 2.4);
+          // Sub-bass sincopado
+          const subEnv = 0.5 + 0.5 * Math.sin(beatFloat * Math.PI);
+          // Snare / Clap en tiempos 2 y 4 (barBeat 1 y 3)
+          const isSnareBeat = (barBeat === 1 || barBeat === 3);
+          const snareEnv = isSnareBeat ? Math.pow(Math.max(0, 1 - beatPhase * 3.1), 2.1) : 0.12;
+          // Hi-hats en semicorcheas (16th notes)
+          const sixteenthPhase = (beatFloat * 4) % 1;
+          const hatEnv = Math.pow(Math.max(0, 1 - sixteenthPhase * 2.8), 1.8) * (0.55 + 0.45 * Math.sin(beatFloat * 2));
+
+          for (let i = 0; i < 12; i++) {
+            let bandVal = 0.18;
+            if (i <= 2) {
+              // Sub & Kick bands
+              bandVal = 0.22 + kickEnv * (0.76 - i * 0.08) + subEnv * 0.18;
+            } else if (i <= 5) {
+              // Bass & Low-Mid groove
+              const groove = 0.5 + 0.5 * Math.sin(songTimeSec * (4.2 + i * 0.7) + i);
+              bandVal = 0.2 + groove * 0.48 + kickEnv * 0.22 + snareEnv * 0.18;
+            } else if (i <= 8) {
+              // Vocal & Snare body
+              const vocalWave = Math.abs(Math.sin(songTimeSec * (5.5 + i * 0.9) + i * 1.4));
+              bandVal = 0.18 + snareEnv * 0.52 + vocalWave * 0.36;
+            } else {
+              // Presence & Hi-hat air
+              const shimmer = Math.abs(Math.cos(songTimeSec * (11 + i * 1.3)));
+              bandVal = 0.16 + hatEnv * 0.55 + shimmer * 0.25;
+            }
+
+            const target = Math.max(0.14, Math.min(1.0, bandVal));
+            const coeff = target > smoothedBands[i] ? 0.42 : 0.2;
+            smoothedBands[i] += (target - smoothedBands[i]) * coeff;
+            if (eqBarNodes[i]) {
+              eqBarNodes[i].style.setProperty('--eq-level', smoothedBands[i].toFixed(3));
+            }
+          }
+
+          const synthBass = Math.max(0, Math.min(1, kickEnv * 0.85 + subEnv * 0.15));
+          smoothedBass += (synthBass - smoothedBass) * 0.35;
+          cardEl.style.setProperty('--bass-energy', smoothedBass.toFixed(3));
+        }
+
+        requestAnimationFrame(runRealtimeFrame);
+      }
+
+      requestAnimationFrame(runRealtimeFrame);
 
       function normalizeToMs(val) {
         const n = Number(val);
         if (!Number.isFinite(n) || n < 0) return 0;
-        // Cider v2 sends seconds (e.g. 214.52) or milliseconds (e.g. 214520)
         if (n > 0 && n < 3600) return Math.round(n * 1000);
         return Math.round(n);
       }
@@ -1274,7 +2019,7 @@
         songTitleEl.textContent = playbackState.song || 'Esperando canción en Cider...';
         songArtistEl.textContent = playbackState.artist || 'Zero FM • Apple Music';
 
-        // Cover Artwork
+        // Cover Artwork + Ambient Layers + 3D Cover Glow
         const art = normalizeArtworkUrl(playbackState.artworkUrl);
         if (art) {
           if (coverImgEl.getAttribute('data-src') !== art) {
@@ -1288,14 +2033,19 @@
               coverImgEl.style.opacity = '0';
               coverFallbackEl.style.opacity = '1';
             };
-            ambientBgEl.style.backgroundImage = `url("${art}")`;
-            vinylLabelEl.style.backgroundImage = `url("${art}")`;
+            const cssUrl = `url("${art}")`;
+            ambientBgEl.style.backgroundImage = cssUrl;
+            ambientOrbEl.style.backgroundImage = cssUrl;
+            coverGlowEl.style.backgroundImage = cssUrl;
+            vinylLabelEl.style.backgroundImage = cssUrl;
           }
         } else {
           coverImgEl.removeAttribute('data-src');
           coverImgEl.style.opacity = '0';
           coverFallbackEl.style.opacity = '1';
           ambientBgEl.style.backgroundImage = 'none';
+          ambientOrbEl.style.backgroundImage = 'none';
+          coverGlowEl.style.backgroundImage = 'none';
           vinylLabelEl.style.backgroundImage = 'none';
         }
 
@@ -1333,27 +2083,10 @@
         requestAnimationFrame(updateTitleMarquee);
       }
 
-      function renderProgressTick() {
-        const dur = Number(playbackState.durationMs) || 0;
-        let pos = Number(playbackState.positionMs) || 0;
-        if (playbackState.isPlaying && playbackState.updatedAt > 0 && dur > 0) {
-          pos = Math.min(dur, pos + Math.max(0, Date.now() - playbackState.updatedAt));
-        }
-        const pct = dur > 0 ? Math.max(0, Math.min(100, (pos / dur) * 100)) : 0;
-        progressFillEl.style.width = `${pct.toFixed(2)}%`;
-
-        timeElapsedEl.textContent = formatTimeMs(pos);
-        const rem = Math.max(0, dur - pos);
-        timeRemainingEl.textContent = dur > 0 ? `-${formatTimeMs(rem)}` : '-0:00';
-      }
-
-      setInterval(renderProgressTick, 250);
-
       // ─── Update Track State from Any Source (Cider Socket, REST, Bot API, Firestore) ───
       async function ingestCiderData(raw, eventType = '') {
         if (!raw) return;
 
-        // Cider v2 sometimes wraps track details inside raw.attributes or raw.info
         const info = raw.info || raw.attributes || raw;
 
         const name = String(info.name || info.title || info.songName || raw.name || raw.song || '').trim();
@@ -1376,7 +2109,6 @@
           ''
         ).trim();
 
-        // Timing extraction (handles both Cider v1/v2 ms and seconds)
         const durCandidate =
           info.durationInMillis ??
           info.currentPlaybackDuration ??
@@ -1417,7 +2149,6 @@
           posMs = Math.max(0, durMs - remMs);
         }
 
-        // Determine playing state
         let isPlaying = playbackState.isPlaying;
         if (typeof raw.isPlaying === 'boolean') isPlaying = raw.isPlaying;
         else if (typeof info.isPlaying === 'boolean') isPlaying = info.isPlaying;
@@ -1425,7 +2156,11 @@
           const st = String(raw.state || info.state || raw.status).toLowerCase();
           if (st === 'playing') isPlaying = true;
           else if (st === 'paused' || st === 'stopped') isPlaying = false;
-        } else if (eventType === 'playbackStatus.playbackTimeDidChange' || eventType === 'playbackStatus.nowPlayingItemDidChange' || eventType === 'playbackStatus.nowPlayingItemDidChangeV2') {
+        } else if (
+          eventType === 'playbackStatus.playbackTimeDidChange' ||
+          eventType === 'playbackStatus.nowPlayingItemDidChange' ||
+          eventType === 'playbackStatus.nowPlayingItemDidChangeV2'
+        ) {
           isPlaying = true;
         }
 
@@ -1446,10 +2181,19 @@
             playbackState.artworkUrl = normalizeArtworkUrl(rawArt);
           } else if (trackChanged) {
             playbackState.artworkUrl = '';
-            fetchItunesArtwork(artist, name).then((foundArt) => {
-              if (foundArt && `${playbackState.song}|${playbackState.artist}`.toLowerCase() === newKey) {
-                playbackState.artworkUrl = foundArt;
+          }
+
+          if (trackChanged) {
+            playbackState.previewUrl = '';
+            fetchItunesTrackMedia(artist, name).then((media) => {
+              if (`${playbackState.song}|${playbackState.artist}`.toLowerCase() !== newKey) return;
+              if (!playbackState.artworkUrl && media.artworkUrl) {
+                playbackState.artworkUrl = media.artworkUrl;
                 renderTrackMetadata();
+              }
+              if (media.previewUrl) {
+                playbackState.previewUrl = media.previewUrl;
+                syncTrackAudioStream(media.previewUrl, playbackState.isPlaying);
               }
             });
           }
@@ -1475,6 +2219,7 @@
         }
 
         playbackState.isPlaying = isPlaying;
+        syncTrackAudioStream(playbackState.previewUrl, isPlaying);
 
         if (trackChanged) {
           cardEl.classList.remove('track-changing');
@@ -1483,7 +2228,6 @@
         }
 
         renderTrackMetadata();
-        renderProgressTick();
       }
 
       // ─── Zero FM Queue & VIP Badge Matching (Firestore) ───
@@ -1720,7 +2464,6 @@
 
       async function pollDirectCiderRest(baseUrl) {
         const cleanBase = String(baseUrl || 'http://localhost:10767').replace(/\/+$/, '');
-        // Try Cider v2 REST endpoint (/api/v1/playback/now-playing)
         try {
           const ctrl = new AbortController();
           const t = setTimeout(() => ctrl.abort(), 1800);
@@ -1735,7 +2478,6 @@
           }
         } catch (_) {}
 
-        // Try Cider v1 REST endpoint (/currentPlayingSong)
         try {
           const ctrl = new AbortController();
           const t = setTimeout(() => ctrl.abort(), 1800);
@@ -1753,7 +2495,6 @@
       }
 
       async function pollBotCiderRelay() {
-        // If served from the Bot Express server (or localhost:3000), query /api/cider/now-playing
         const origins = [];
         if (window.location.protocol.startsWith('http')) {
           origins.push(window.location.origin);
@@ -1784,7 +2525,6 @@
         return false;
       }
 
-      // Periodic fallback polling so opening OBS mid-song or LAN Cider always stays in sync
       async function runPeriodicSync() {
         await pollBotCiderRelay();
         for (const u of getCandidateCiderUrls()) {
@@ -1838,6 +2578,7 @@
       let demoIdx = 0;
 
       function simulateTrack() {
+        unlockAudioOnGesture();
         const sample = DEMO_TRACKS[demoIdx % DEMO_TRACKS.length];
         demoIdx++;
         ingestCiderData({
@@ -1851,6 +2592,7 @@
 
       // ─── UI Controls & Event Listeners ───
       document.getElementById('btn-cycle-theme').addEventListener('click', () => {
+        unlockAudioOnGesture();
         const curr = THEME_ORDER.indexOf(currentConfig.ciderWidgetTheme);
         const nextTheme = THEME_ORDER[(curr + 1) % THEME_ORDER.length];
         applyConfig({ ciderWidgetTheme: nextTheme, _forceThemeOverride: true });
@@ -1858,10 +2600,37 @@
         showToast(THEME_LABELS[nextTheme]);
       });
 
+      document.getElementById('btn-audio-input').addEventListener('click', async () => {
+        if (activeAudioMode === 'mic') {
+          disconnectLiveAudioInput();
+          showToast('🎵 Ecualizador en modo Pista Musical Real');
+        } else {
+          await connectLiveAudioInput(currentConfig.ciderAudioDeviceId);
+        }
+      });
+
+      document.getElementById('btn-connect-mic-drawer').addEventListener('click', async () => {
+        await connectLiveAudioInput(audioDeviceSelectEl ? audioDeviceSelectEl.value : 'auto');
+      });
+
+      if (audioDeviceSelectEl) {
+        audioDeviceSelectEl.addEventListener('change', async () => {
+          const val = audioDeviceSelectEl.value;
+          currentConfig.ciderAudioDeviceId = val;
+          if (val === 'auto') {
+            disconnectLiveAudioInput();
+          } else {
+            await connectLiveAudioInput(val);
+          }
+        });
+      }
+
       document.getElementById('btn-simulate').addEventListener('click', simulateTrack);
 
       const drawerEl = document.getElementById('settings-drawer');
       document.getElementById('btn-settings').addEventListener('click', () => {
+        unlockAudioOnGesture();
+        refreshAudioDeviceList();
         drawerEl.classList.toggle('open');
       });
       document.getElementById('btn-close-settings').addEventListener('click', () => {
@@ -1874,7 +2643,7 @@
           ciderUrl: document.getElementById('cfg-ciderUrl').value.trim(),
           ciderWidgetAccent: document.getElementById('cfg-accent').value,
           ciderWidgetAccentSec: document.getElementById('cfg-accentSec').value,
-          ciderWidgetWidth: Number(document.getElementById('cfg-width').value) || 480,
+          ciderWidgetWidth: Number(document.getElementById('cfg-width').value) || 500,
           ciderWidgetOpacity: (Number(document.getElementById('cfg-opacity').value) || 88) / 100,
           ciderWidgetTitleSize: Number(document.getElementById('cfg-titleSize').value) || 20,
           ciderWidgetShowProgress: document.getElementById('cfg-showProgress').checked,
@@ -1883,6 +2652,7 @@
           ciderWidgetShowAlbum: document.getElementById('cfg-showAlbum').checked,
           ciderWidgetShowEq: document.getElementById('cfg-showEq').checked,
           ciderWidgetHideWhenPaused: document.getElementById('cfg-hideWhenPaused').checked,
+          ciderAudioDeviceId: audioDeviceSelectEl ? audioDeviceSelectEl.value : 'auto',
           _forceThemeOverride: true
         };
       }
@@ -1920,6 +2690,7 @@
       // Listen for live preview messages from Bot Dashboard iframe
       window.addEventListener('message', (event) => {
         if (!event.data) return;
+        unlockAudioOnGesture();
         if (event.data.action === 'simulateCider' || event.data.action === 'simulateRequest') {
           simulateTrack();
         } else if (event.data.action === 'updateConfig' && event.data.payload) {
@@ -1937,17 +2708,28 @@
       window.addEventListener('resize', () => requestAnimationFrame(updateTitleMarquee));
 
       // ─── Bootstrap ───
+      ensureAudioEngine();
       applyConfig(currentConfig);
       initFirebaseSync();
       connectDirectCiderSockets();
       runPeriodicSync();
       setInterval(runPeriodicSync, 3500);
 
-      // If opened in preview mode (?preview=true) and no track arrives in 1.2s, load a demo song so preview looks great
+      // Si el usuario ya tenía seleccionado un dispositivo de captura o ya otorgó permiso de micrófono/loopback, reconectar automáticamente
+      if (currentConfig.ciderAudioDeviceId && currentConfig.ciderAudioDeviceId !== 'auto') {
+        connectLiveAudioInput(currentConfig.ciderAudioDeviceId);
+      } else if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'microphone' }).then((status) => {
+          if (status && status.state === 'granted') {
+            refreshAudioDeviceList();
+          }
+        }).catch(() => {});
+      }
+
       if (urlParams.get('preview') === 'true') {
         setTimeout(() => {
           if (!playbackState.hasTrack) simulateTrack();
-        }, 900);
+        }, 700);
       }
     })();
   </script>
