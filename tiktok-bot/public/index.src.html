@@ -3843,6 +3843,10 @@
                         sendConfigToIframe('iframe-cider-widget', overlays);
                         sendConfigToIframe('iframe-control-cider-widget', overlays);
                     }
+                    if (activeSub === 'artists' || activeControlSub === 'artists') {
+                        sendConfigToIframe('iframe-artists-widget', overlays);
+                        sendConfigToIframe('iframe-control-artists-widget', overlays);
+                    }
                 }, 40);
                 return () => clearTimeout(timerId);
             }, [overlays, goals, timer, lastevents, activeSub, activeControlSub]);
@@ -3852,6 +3856,13 @@
                 setOverlays(updated);
                 sendConfigToIframe('iframe-cider-widget', updated);
                 sendConfigToIframe('iframe-control-cider-widget', updated);
+            };
+
+            const updateArtistsWidgetConfig = (patch) => {
+                const updated = { ...overlays, ...patch };
+                setOverlays(updated);
+                sendConfigToIframe('iframe-artists-widget', updated);
+                sendConfigToIframe('iframe-control-artists-widget', updated);
             };
 
             // Helper centralizado para guardar configuración de overlays mezclando solo lo modificado ("dirty")
@@ -6315,6 +6326,10 @@
                                     <span>🎵 Canción Cider</span>
                                     <span className="menu-badge" style={{ color: '#ec4899' }}>3 Temas</span>
                                 </button>
+                                <button className={`overlays-menu-item ${activeSub === 'artists' ? 'active' : ''}`} onClick={() => setActiveSub('artists')}>
+                                    <span>🎤 Artistas Pedidos</span>
+                                    <span className="menu-badge" style={{ color: '#38bdf8' }}>6 Formas</span>
+                                </button>
                                 <button className={`overlays-menu-item ${activeSub === 'player' ? 'active' : ''}`} onClick={() => setActiveSub('player')}>
                                     <span>💿 Reproductor</span>
                                     <span className="menu-badge">Activo</span>
@@ -6722,6 +6737,187 @@
                                                         <div style={{ display: 'flex', gap: '6px' }}>
                                                             <input type="text" className="copy-url-input" style={{ fontSize: '0.74rem', padding: '5px 8px' }} readOnly value={`${currentOrigin}/cider_widget.html?theme=${u.id}`} onClick={(e) => e.target.select()} />
                                                             <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.74rem' }} onClick={() => handleCopyUrl(`${currentOrigin}/cider_widget.html?theme=${u.id}`)}>Copiar</button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* SUBPANEL 0.5: REQUESTED ARTISTS WIDGET (6 MODES, 100% TRANSPARENT) */}
+                                {activeSub === 'artists' && (
+                                    <div className="glass-card animate-fade-in">
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                            <div>
+                                                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    🎤 Widget de Artistas Pedidos — 6 Formas (Fondo 100% Transparente)
+                                                </h3>
+                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', marginTop: '6px', marginBottom: 0 }}>
+                                                    Muestra en tiempo real los nombres de los artistas solicitados hasta ahora en lista de izquierda a derecha, cápsulas ascendentes flotantes, muro, multibanda, cascada o spotlight 3D.
+                                                </p>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary"
+                                                    style={{ padding: '7px 14px', fontSize: '0.82rem', borderColor: '#38bdf8', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.08)' }}
+                                                    onClick={() => {
+                                                        const ifr = document.getElementById('iframe-artists-widget');
+                                                        if (ifr && ifr.contentWindow) {
+                                                            ifr.contentWindow.postMessage({ action: 'simulateArtist' }, '*');
+                                                        }
+                                                    }}
+                                                >
+                                                    🧪 Simular Artista
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-primary"
+                                                    style={{ padding: '7px 14px', fontSize: '0.82rem' }}
+                                                    onClick={() => handleSaveOverlaysConfigOnly('Artists Widget')}
+                                                >
+                                                    {renderIcon('save')} Guardar Diseño
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Selector Visual de las 6 Formas */}
+                                        <div style={{ marginBottom: '18px' }}>
+                                            <label style={{ fontWeight: '700', fontSize: '0.88rem', color: '#fff', display: 'block', marginBottom: '10px' }}>
+                                                🌀 Elige la Forma de Visualización (cambia en vivo):
+                                            </label>
+                                            <div className="grid-3" style={{ gap: '10px' }}>
+                                                {[
+                                                    { id: 'marquee', icon: '➡️', title: '1. Lista Izq a Der (Cinta)', desc: 'Lista continua deslizándose suavemente de izquierda a derecha.' },
+                                                    { id: 'bubbles', icon: '🫧', title: '2. Cápsulas Ascendentes', desc: 'Cápsulas flotantes que suben con movimiento orgánico.' },
+                                                    { id: 'flow', icon: '🧱', title: '3. Muro / Nube Izq a Der', desc: 'Filas ordenadas de cápsulas de izquierda a derecha.' },
+                                                    { id: 'wall', icon: '⚡', title: '4. Multibanda Cruzada', desc: '3 bandas horizontales moviéndose en direcciones alternadas.' },
+                                                    { id: 'cascade', icon: '🪜', title: '5. Cascada Vertical', desc: 'Columna vertical continua ideal para un lateral del stream.' },
+                                                    { id: 'spotlight', icon: '🌟', title: '6. Spotlight Rotativo 3D', desc: 'Tarjeta 3D rotativa con foto del artista y canción pedida.' }
+                                                ].map((m) => {
+                                                    const isSel = (overlays.artistsWidgetMode || 'marquee') === m.id;
+                                                    return (
+                                                        <div
+                                                            key={m.id}
+                                                            onClick={() => {
+                                                                const updated = { ...overlays, artistsWidgetMode: m.id };
+                                                                setOverlays(updated);
+                                                                sendConfigToIframe('iframe-artists-widget', updated);
+                                                            }}
+                                                            style={{
+                                                                padding: '12px',
+                                                                borderRadius: '12px',
+                                                                cursor: 'pointer',
+                                                                background: isSel ? 'rgba(56, 189, 248, 0.14)' : 'rgba(255, 255, 255, 0.03)',
+                                                                border: isSel ? '2px solid #38bdf8' : '1px solid var(--border-glass)',
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                                <strong style={{ fontSize: '0.86rem', color: '#fff' }}>{m.icon} {m.title}</strong>
+                                                                {isSel && <span style={{ fontSize: '0.65rem', background: '#38bdf8', color: '#000', padding: '2px 7px', borderRadius: '99px', fontWeight: '800' }}>ACTIVO</span>}
+                                                            </div>
+                                                            <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.3 }}>{m.desc}</p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Vista Previa en Vivo */}
+                                        <div className="preview-panel" style={{ marginBottom: '18px' }}>
+                                            <div className="preview-header">
+                                                <span>📺 Vista Previa Interactiva (Fondo Transparente)</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                    <div className="preview-live-dot"></div> Artists Live Widget
+                                                </div>
+                                            </div>
+                                            <iframe
+                                                id="iframe-artists-widget"
+                                                src="./artists_widget.html?preview=true"
+                                                className="preview-iframe"
+                                                style={{ height: (overlays.artistsWidgetMode === 'bubbles' || overlays.artistsWidgetMode === 'cascade' || overlays.artistsWidgetMode === 'wall') ? '290px' : '175px', width: '100%', border: 'none', transition: 'height 0.35s ease' }}
+                                                onLoad={() => sendConfigToIframe('iframe-artists-widget', overlays)}
+                                            ></iframe>
+                                        </div>
+
+                                        {/* Controles Rápidos de Tema, Origen, Dirección y Tamaño */}
+                                        <div className="grid-3" style={{ gap: '12px', marginBottom: '18px' }}>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>🎨 Tema de Cápsulas</label>
+                                                <select
+                                                    value={overlays.artistsWidgetTheme || 'glass'}
+                                                    onChange={(e) => {
+                                                        const updated = { ...overlays, artistsWidgetTheme: e.target.value };
+                                                        setOverlays(updated);
+                                                        sendConfigToIframe('iframe-artists-widget', updated);
+                                                    }}
+                                                >
+                                                    <option value="glass">🪟 Cristal (Vision Glass)</option>
+                                                    <option value="aurora">🌈 Aurora (Color por Artista)</option>
+                                                    <option value="neon">⚡ Cyberpunk Neon</option>
+                                                    <option value="minimal">✨ Puro Texto Transparente</option>
+                                                </select>
+                                            </div>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>↔️ Dirección</label>
+                                                <select
+                                                    value={overlays.artistsWidgetDirection || 'ltr'}
+                                                    onChange={(e) => {
+                                                        const updated = { ...overlays, artistsWidgetDirection: e.target.value };
+                                                        setOverlays(updated);
+                                                        sendConfigToIframe('iframe-artists-widget', updated);
+                                                    }}
+                                                >
+                                                    <option value="ltr">➡️ Izquierda a Derecha / Subir</option>
+                                                    <option value="rtl">⬅️ Derecha a Izquierda / Bajar</option>
+                                                </select>
+                                            </div>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>📊 Alcance de Pedidos</label>
+                                                <select
+                                                    value={overlays.artistsWidgetScope || 'today'}
+                                                    onChange={(e) => {
+                                                        const updated = { ...overlays, artistsWidgetScope: e.target.value };
+                                                        setOverlays(updated);
+                                                        sendConfigToIframe('iframe-artists-widget', updated);
+                                                    }}
+                                                >
+                                                    <option value="today">📅 Pedidos de Hoy</option>
+                                                    <option value="pending">⏳ Solo Pendientes en Cola</option>
+                                                    <option value="today_yesterday">🌙 Hoy + Ayer</option>
+                                                    <option value="global">🏆 Top Histórico + Hoy</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Enlaces Directos para OBS */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                            <div className="form-group" style={{ margin: 0, background: 'rgba(56, 189, 248, 0.06)', padding: '14px', borderRadius: '12px', border: '1px dashed rgba(56, 189, 248, 0.4)' }}>
+                                                <label style={{ fontWeight: '700', color: '#38bdf8', marginBottom: '6px', display: 'block' }}>
+                                                    🔗 Enlace Principal para OBS (Sincronizado en vivo con este panel)
+                                                </label>
+                                                <div className="copy-url-row">
+                                                    <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/artists_widget.html`} onClick={(e) => e.target.select()} />
+                                                    <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/artists_widget.html`)}>Copiar URL</button>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid-3" style={{ gap: '10px' }}>
+                                                {[
+                                                    { id: 'marquee', label: '➡️ URL Lista Izq→Der' },
+                                                    { id: 'bubbles', label: '🫧 URL Cápsulas Ascendentes' },
+                                                    { id: 'flow', label: '🧱 URL Nube Izq→Der' },
+                                                    { id: 'wall', label: '⚡ URL Multibanda Cruzada' },
+                                                    { id: 'cascade', label: '🪜 URL Cascada Vertical' },
+                                                    { id: 'spotlight', label: '🌟 URL Spotlight 3D' }
+                                                ].map((u) => (
+                                                    <div key={u.id} style={{ background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '10px', border: '1px solid var(--border-glass)' }}>
+                                                        <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#ccc', display: 'block', marginBottom: '6px' }}>{u.label}</label>
+                                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                                            <input type="text" className="copy-url-input" style={{ fontSize: '0.73rem', padding: '5px 8px' }} readOnly value={`${currentOrigin}/artists_widget.html?mode=${u.id}`} onClick={(e) => e.target.select()} />
+                                                            <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.73rem' }} onClick={() => handleCopyUrl(`${currentOrigin}/artists_widget.html?mode=${u.id}`)}>Copiar</button>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -12495,6 +12691,9 @@
                                 <button className={`config-menu-item ${activeControlSub === 'cider' ? 'active' : ''}`} onClick={() => setActiveControlSub('cider')}>
                                     <span>{renderIcon('disc')} {!sidebarCollapsed && " 💿 Canción Cider"}</span>
                                 </button>
+                                <button className={`config-menu-item ${activeControlSub === 'artists' ? 'active' : ''}`} onClick={() => setActiveControlSub('artists')}>
+                                    <span>{renderIcon('mic')} {!sidebarCollapsed && " 🎤 Artistas Pedidos"}</span>
+                                </button>
                                 <button className={`config-menu-item ${activeControlSub === 'lista' ? 'active' : ''}`} onClick={() => setActiveControlSub('lista')}>
                                     <span>{renderIcon('music')} {!sidebarCollapsed && " 🎵 Catálogo"}</span>
                                 </button>
@@ -13572,6 +13771,199 @@
                                                         <div style={{ display: 'flex', gap: '6px' }}>
                                                             <input type="text" className="copy-url-input" style={{ fontSize: '0.73rem', padding: '5px 8px' }} readOnly value={`${currentOrigin}/cider_widget.html?theme=${u.id}`} onClick={(e) => e.target.select()} />
                                                             <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.73rem' }} onClick={() => handleCopyUrl(`${currentOrigin}/cider_widget.html?theme=${u.id}`)}>Copiar</button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* SUBPANEL CONTROL DE STREAM: REQUESTED ARTISTS WIDGET (6 FORMAS) */}
+                                    <div className="glass-card animate-fade-in" style={{ display: activeControlSub === 'artists' ? 'flex' : 'none', flexDirection: 'column', gap: '18px', padding: '20px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px', flexWrap: 'wrap', gap: '12px' }}>
+                                            <div>
+                                                <h3 style={{ margin: 0, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    🎤 Control y Widget de Artistas Pedidos (6 Formas • Fondo Transparente)
+                                                </h3>
+                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '4px 0 0 0' }}>
+                                                    Cambia en tiempo real cómo se ven los artistas solicitados en OBS: lista de izquierda a derecha, cápsulas ascendentes, muro, multibanda, cascada o spotlight 3D.
+                                                </p>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary"
+                                                    style={{ padding: '8px 14px', fontSize: '0.82rem', borderColor: '#38bdf8', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.08)' }}
+                                                    onClick={() => {
+                                                        ['iframe-control-artists-widget', 'iframe-artists-widget'].forEach((id) => {
+                                                            const ifr = document.getElementById(id);
+                                                            if (ifr && ifr.contentWindow) {
+                                                                ifr.contentWindow.postMessage({ action: 'simulateArtist' }, '*');
+                                                            }
+                                                        });
+                                                    }}
+                                                >
+                                                    🧪 Simular Artista
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-primary"
+                                                    style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+                                                    onClick={() => handleSaveOverlaysConfigOnly('Artists Widget')}
+                                                >
+                                                    {renderIcon('save')} Guardar Diseño
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Selector Rápido de las 6 Formas */}
+                                        <div>
+                                            <label style={{ fontWeight: '700', fontSize: '0.86rem', color: '#fff', display: 'block', marginBottom: '10px' }}>
+                                                🌀 Selecciona la Forma en Vivo (cambia al instante en OBS):
+                                            </label>
+                                            <div className="grid-3" style={{ gap: '10px' }}>
+                                                {[
+                                                    { id: 'marquee', icon: '➡️', title: '1. Lista Izq → Der (Cinta)', desc: 'Lista continua deslizándose suavemente de izquierda a derecha.' },
+                                                    { id: 'bubbles', icon: '🫧', title: '2. Cápsulas Ascendentes', desc: 'Cápsulas flotantes que suben con movimiento orgánico.' },
+                                                    { id: 'flow', icon: '🧱', title: '3. Muro / Nube Izq a Der', desc: 'Filas envolventes de cápsulas de izquierda a derecha.' },
+                                                    { id: 'wall', icon: '⚡', title: '4. Multibanda Cruzada', desc: '3 bandas horizontales en direcciones alternadas.' },
+                                                    { id: 'cascade', icon: '🪜', title: '5. Cascada Vertical', desc: 'Columna vertical continua ideal para un lateral.' },
+                                                    { id: 'spotlight', icon: '🌟', title: '6. Spotlight Rotativo 3D', desc: 'Tarjeta 3D rotativa con foto y canción pedida.' }
+                                                ].map((m) => {
+                                                    const isSelected = (overlays.artistsWidgetMode || 'marquee') === m.id;
+                                                    return (
+                                                        <div
+                                                            key={m.id}
+                                                            onClick={() => updateArtistsWidgetConfig({ artistsWidgetMode: m.id })}
+                                                            style={{
+                                                                padding: '12px',
+                                                                borderRadius: '12px',
+                                                                cursor: 'pointer',
+                                                                background: isSelected ? 'rgba(56, 189, 248, 0.14)' : 'rgba(255, 255, 255, 0.03)',
+                                                                border: isSelected ? '2px solid #38bdf8' : '1px solid var(--border-glass)',
+                                                                boxShadow: isSelected ? '0 6px 20px rgba(56, 189, 248, 0.2)' : 'none',
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                                <strong style={{ fontSize: '0.86rem', color: '#fff' }}>{m.icon} {m.title}</strong>
+                                                                {isSelected && (
+                                                                    <span style={{ fontSize: '0.65rem', background: '#38bdf8', color: '#000', padding: '2px 7px', borderRadius: '99px', fontWeight: '800' }}>
+                                                                        ACTIVO
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.3 }}>{m.desc}</p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Vista Previa en Vivo en Control de Stream */}
+                                        <div className="preview-panel" style={{ margin: 0 }}>
+                                            <div className="preview-header">
+                                                <span>📺 Vista Previa en Tiempo Real (Fondo 100% Transparente)</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                    <div className="preview-live-dot"></div> Artists Live
+                                                </div>
+                                            </div>
+                                            <iframe
+                                                id="iframe-control-artists-widget"
+                                                src="./artists_widget.html?preview=true"
+                                                className="preview-iframe"
+                                                style={{ height: (overlays.artistsWidgetMode === 'bubbles' || overlays.artistsWidgetMode === 'cascade' || overlays.artistsWidgetMode === 'wall') ? '290px' : '175px', width: '100%', border: 'none', transition: 'height 0.35s ease' }}
+                                                onLoad={() => sendConfigToIframe('iframe-control-artists-widget', overlays)}
+                                            ></iframe>
+                                        </div>
+
+                                        {/* Controles Rápidos */}
+                                        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <div className="grid-3" style={{ gap: '12px', marginBottom: '12px' }}>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>🎨 Tema de Cápsulas</label>
+                                                    <select
+                                                        value={overlays.artistsWidgetTheme || 'glass'}
+                                                        onChange={(e) => updateArtistsWidgetConfig({ artistsWidgetTheme: e.target.value })}
+                                                    >
+                                                        <option value="glass">🪟 Cristal (Vision Glass)</option>
+                                                        <option value="aurora">🌈 Aurora (Color por Artista)</option>
+                                                        <option value="neon">⚡ Cyberpunk Neon</option>
+                                                        <option value="minimal">✨ Puro Texto Transparente</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>↔️ Dirección</label>
+                                                    <select
+                                                        value={overlays.artistsWidgetDirection || 'ltr'}
+                                                        onChange={(e) => updateArtistsWidgetConfig({ artistsWidgetDirection: e.target.value })}
+                                                    >
+                                                        <option value="ltr">➡️ Izquierda a Derecha / Subir</option>
+                                                        <option value="rtl">⬅️ Derecha a Izquierda / Bajar</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>📊 Origen de Pedidos</label>
+                                                    <select
+                                                        value={overlays.artistsWidgetScope || 'today'}
+                                                        onChange={(e) => updateArtistsWidgetConfig({ artistsWidgetScope: e.target.value })}
+                                                    >
+                                                        <option value="today">📅 Pedidos de Hoy (Sesión)</option>
+                                                        <option value="pending">⏳ Solo Pendientes en Cola</option>
+                                                        <option value="today_yesterday">🌙 Hoy + Ayer (Madrugada)</option>
+                                                        <option value="global">🏆 Top Histórico + Hoy</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.artistsWidgetShowCount !== false} onChange={(e) => updateArtistsWidgetConfig({ artistsWidgetShowCount: e.target.checked })} />
+                                                    Contador (×2)
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.artistsWidgetShowIcon !== false} onChange={(e) => updateArtistsWidgetConfig({ artistsWidgetShowIcon: e.target.checked })} />
+                                                    Ícono / Foto
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.artistsWidgetShowSong === true} onChange={(e) => updateArtistsWidgetConfig({ artistsWidgetShowSong: e.target.checked })} />
+                                                    Mostrar Canción
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.artistsWidgetShowHeader === true} onChange={(e) => updateArtistsWidgetConfig({ artistsWidgetShowHeader: e.target.checked })} />
+                                                    Encabezado Superior
+                                                </label>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem' }}>
+                                                    <input type="checkbox" style={{ width: 'auto' }} checked={overlays.artistsWidgetSplitCollabs === true} onChange={(e) => updateArtistsWidgetConfig({ artistsWidgetSplitCollabs: e.target.checked })} />
+                                                    Separar Colaboraciones
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {/* Enlaces para OBS */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            <div className="form-group" style={{ margin: 0, background: 'rgba(56, 189, 248, 0.06)', padding: '12px 14px', borderRadius: '12px', border: '1px dashed rgba(56, 189, 248, 0.4)' }}>
+                                                <label style={{ fontWeight: '700', color: '#38bdf8', marginBottom: '6px', display: 'block', fontSize: '0.82rem' }}>
+                                                    🔗 Enlace Principal OBS (Sincronizado en vivo con este panel)
+                                                </label>
+                                                <div className="copy-url-row">
+                                                    <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/artists_widget.html`} onClick={(e) => e.target.select()} />
+                                                    <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/artists_widget.html`)}>Copiar URL</button>
+                                                </div>
+                                            </div>
+                                            <div className="grid-3" style={{ gap: '10px' }}>
+                                                {[
+                                                    { id: 'marquee', label: '➡️ URL Lista Izq→Der' },
+                                                    { id: 'bubbles', label: '🫧 URL Cápsulas Ascendentes' },
+                                                    { id: 'flow', label: '🧱 URL Muro Izq→Der' },
+                                                    { id: 'wall', label: '⚡ URL Multibanda Cruzada' },
+                                                    { id: 'cascade', label: '🪜 URL Cascada Vertical' },
+                                                    { id: 'spotlight', label: '🌟 URL Spotlight 3D' }
+                                                ].map((u) => (
+                                                    <div key={u.id} style={{ background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '10px', border: '1px solid var(--border-glass)' }}>
+                                                        <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#ccc', display: 'block', marginBottom: '5px' }}>{u.label}</label>
+                                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                                            <input type="text" className="copy-url-input" style={{ fontSize: '0.73rem', padding: '5px 8px' }} readOnly value={`${currentOrigin}/artists_widget.html?mode=${u.id}`} onClick={(e) => e.target.select()} />
+                                                            <button className="btn btn-secondary" style={{ padding: '5px 10px', fontSize: '0.73rem' }} onClick={() => handleCopyUrl(`${currentOrigin}/artists_widget.html?mode=${u.id}`)}>Copiar</button>
                                                         </div>
                                                     </div>
                                                 ))}

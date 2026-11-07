@@ -77,6 +77,7 @@ function syncRootOverlays() {
   console.log('⏳ Syncing root overlays to public directory...');
   const filesToSync = [
     'cider_widget.html',
+    'artists_widget.html',
     'alerts_overlay.html',
     'goal_overlay.html',
     'welcome_overlay.html',
