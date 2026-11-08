@@ -78,6 +78,7 @@ function syncRootOverlays() {
   const filesToSync = [
     'cider_widget.html',
     'artists_widget.html',
+    'announcements_widget.html',
     'alerts_overlay.html',
     'goal_overlay.html',
     'welcome_overlay.html',

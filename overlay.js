@@ -1177,18 +1177,8 @@
         badge: forcedBadge
       };
 
-      console.log("Enviando simulación a Firebase:", req);
-      if (!db) {
-        addToQueue(req);
-        return;
-      }
-      db.collection('solicitudes').add(req)
-        .then(() => console.log("Simulación enviada con éxito"))
-        .catch(err => {
-          console.error("Error enviando simulación:", err);
-          showToast("Error: No se pudo conectar a Firebase. La solicitud solo se verá aquí.", "error");
-          try { addToQueue(req); } catch (_) {}
-        });
+      console.log("Ejecutando simulación local de solicitud:", req);
+      addToQueue(req);
     }
     
     function showToast(msg, type = 'info') {

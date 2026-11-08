@@ -1,0 +1,1599 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>📢 Anuncios Animados – Zero FM</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600;700;800&family=Orbitron:wght@600;700;800;900&family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Firebase Compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+
+  <style>
+    @layer reset, base, theme, components, animations, utilities;
+
+    @property --animation-reduced {
+      syntax: "*";
+      inherits: false;
+      initial-value: none;
+    }
+
+    @layer reset {
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :where([hidden]),
+      .is-hidden {
+        display: none !important;
+      }
+    }
+
+    @layer base {
+      :root {
+        --in-oklab: ;
+        --in-oklch: ;
+
+        /* Physics-based easings (with standard fallback in rules) */
+        --spring-easing: linear(
+          0, 0.016 0.5%, 0.06 1%, 0.226 2%, 1.116 5.4%, 1.375 6.6%, 1.527 7.7%,
+          1.565 8.2%, 1.585 8.8%, 1.581 9.3%, 1.559 9.8%, 1.458 10.9%, 0.937 14.3%,
+          0.784 15.5%, 0.693 16.6%, 0.67 17.1%, 0.657 17.7%, 0.671 18.7%, 0.729 19.8%,
+          1.042 23.3%, 1.13 24.5%, 1.182 25.6%, 1.201 26.7%, 1.192 27.7%, 1.156 28.8%,
+          0.977 32.2%, 0.925 33.4%, 0.894 34.5%, 0.882 35.6%, 0.887 36.6%, 0.907 37.7%,
+          1.045 42.4%, 1.069 44.5%, 1.059 46.3%, 0.979 50.9%, 0.96 53.4%, 0.966 55.3%,
+          1.013 59.9%, 1.024 62.3%, 0.986 71.2%, 1.008 79.9%, 0.995 88.9%, 1
+        );
+        --bounce-easing: linear(
+          0, 0.214 14.7%, 0.386 23.7%, 0.598 31.9%, 0.999 44.7%, 0.807 52.6%,
+          0.762 56%, 0.747 59.4%, 0.758 62.4%, 0.793 65.6%, 0.999 77.4%,
+          0.961 81.2%, 0.949 84.8%, 0.956 88%, 0.993 95.5%, 1
+        );
+
+        /* Dynamic Config Variables */
+        --font-active: 'Outfit', system-ui, -apple-system, sans-serif;
+        --ad-font-size: 1.65rem;
+        --ad-sub-size: 0.88rem;
+        --fade-in-dur: 0.85s;
+        --fade-out-dur: 0.75s;
+        --stagger-step: 0.038s;
+        --letter-speed: 1.8s;
+        --accent-primary: #ff0055;
+        --accent-secondary: #00e5ff;
+        --accent-rgb: 255, 0, 85;
+        --accent-sec-rgb: 0, 229, 255;
+        --text-color: #ffffff;
+        --card-opacity: 0.72;
+        --card-radius: 999px;
+      }
+
+      @supports (background: linear-gradient(in oklab, white, black)) {
+        :root {
+          --in-oklab: in oklab;
+          --in-oklch: in oklch;
+        }
+      }
+
+      html, body {
+        width: 100%;
+        height: 100%;
+        background: transparent !important;
+        background-color: transparent !important;
+        font-family: var(--font-active);
+        color: var(--text-color);
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: var(--animation-reduced) !important;
+          transition: none !important;
+        }
+      }
+    }
+
+    @layer components {
+      #widget-stage {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        background: transparent !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem 1.5rem;
+        perspective: 1000px;
+        contain: layout style;
+      }
+
+      #widget-stage[data-align="left"] {
+        justify-content: flex-start;
+      }
+
+      #widget-stage[data-align="center"] {
+        justify-content: center;
+      }
+
+      #widget-stage[data-align="right"] {
+        justify-content: flex-end;
+      }
+
+      #widget-stage[data-vpos="top"] {
+        align-items: flex-start;
+      }
+
+      #widget-stage[data-vpos="center"] {
+        align-items: center;
+      }
+
+      #widget-stage[data-vpos="bottom"] {
+        align-items: flex-end;
+      }
+
+      /* ─── Announcement Banner / Container ─── */
+      #ad-banner {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.85em;
+        max-width: min(96vw, 1180px);
+        padding: 0.68em 1.35em;
+        border-radius: var(--card-radius);
+        corner-shape: squircle;
+        font-size: var(--ad-font-size);
+        line-height: 1.2;
+        will-change: transform, opacity, filter;
+        transform-style: preserve-3d;
+        isolation: isolate;
+      }
+
+      /* Leading Animated Emoji / Icon */
+      .ad-icon-wrap {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25em;
+        flex-shrink: 0;
+        filter: drop-shadow(0 0 12px rgba(var(--accent-rgb), 0.65));
+        animation: iconPulse 2.2s ease-in-out infinite;
+        --animation-reduced: none;
+      }
+
+      @keyframes iconPulse {
+        0%, 100% { transform: scale(1) rotate(0deg); }
+        50% { transform: scale(1.14) rotate(-5deg); }
+      }
+
+      .ad-content-col {
+        display: flex;
+        flex-direction: column;
+        gap: 0.18em;
+        min-width: 0;
+      }
+
+      #widget-stage[data-align="center"] .ad-content-col {
+        align-items: center;
+        text-align: center;
+      }
+
+      .ad-headline {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.28em;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      #widget-stage[data-align="center"] .ad-headline {
+        justify-content: center;
+      }
+
+      .ad-word {
+        display: inline-flex;
+        white-space: nowrap;
+      }
+
+      /* Highlighted command badge (e.g. !zr) */
+      .ad-word.is-command {
+        padding: 0.06em 0.42em;
+        border-radius: 0.4em;
+        corner-shape: squircle;
+        background: linear-gradient(
+          135deg var(--in-oklab),
+          rgba(var(--accent-rgb), 0.38),
+          rgba(var(--accent-sec-rgb), 0.28)
+        );
+        border: 1px solid rgba(var(--accent-sec-rgb), 0.68);
+        box-shadow: 0 0 14px rgba(var(--accent-sec-rgb), 0.35);
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      /* Individual Character Span */
+      .ad-char {
+        display: inline-block;
+        will-change: transform, opacity;
+        /* Fallback before sibling-index() per dynamic-sibling-animations guide */
+        --char-delay: calc(var(--sibling-index, 1) * var(--stagger-step));
+      }
+
+      @supports (animation-delay: calc(sibling-index() * 0.1s)) {
+        .ad-char {
+          --char-delay: calc(sibling-index() * var(--stagger-step));
+        }
+      }
+
+      .ad-subtitle {
+        font-size: var(--ad-sub-size);
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.82);
+        letter-spacing: 0.04em;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.75);
+      }
+
+      /* Progress bar indicator inside banner */
+      .ad-timer-bar {
+        position: absolute;
+        left: 1.2em;
+        right: 1.2em;
+        bottom: 0.16em;
+        height: 2.5px;
+        border-radius: 99px;
+        background: rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+        pointer-events: none;
+      }
+
+      .ad-timer-fill {
+        width: 100%;
+        height: 100%;
+        transform-origin: left center;
+        background: linear-gradient(90deg var(--in-oklab), var(--accent-primary), var(--accent-secondary));
+        box-shadow: 0 0 8px var(--accent-secondary);
+      }
+    }
+
+    @layer theme {
+      /* ─── TEMA 1: PURO TRANSPARENTE (Sin caja de fondo) ─── */
+      #widget-stage[data-theme="transparent"] #ad-banner {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        padding-inline: 0.4em;
+      }
+
+      #widget-stage[data-theme="transparent"] .ad-timer-bar {
+        display: none;
+      }
+
+      /* ─── TEMA 2: CRISTAL ESPACIAL (Vision Glass) ─── */
+      #widget-stage[data-theme="glass"] #ad-banner {
+        background: linear-gradient(
+          135deg var(--in-oklab),
+          rgba(255, 255, 255, calc(var(--card-opacity) * 0.18)),
+          rgba(14, 14, 28, calc(var(--card-opacity) * 0.92))
+        );
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        backdrop-filter: blur(22px) saturate(180%);
+        -webkit-backdrop-filter: blur(22px) saturate(180%);
+        box-shadow:
+          0 16px 40px -10px rgba(0, 0, 0, 0.58),
+          inset 0 1px 1px rgba(255, 255, 255, 0.32);
+      }
+
+      /* ─── TEMA 3: CYBERPUNK NEON HUD ─── */
+      #widget-stage[data-theme="cyber"] #ad-banner {
+        background: rgba(8, 7, 18, var(--card-opacity));
+        border: 1.5px solid var(--accent-primary);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        box-shadow:
+          0 0 24px rgba(var(--accent-rgb), 0.45),
+          0 0 42px rgba(var(--accent-sec-rgb), 0.2),
+          inset 0 0 16px rgba(var(--accent-sec-rgb), 0.16);
+      }
+
+      /* ─── TEMA 4: CÁPSULA AURORA GRADIENTE ─── */
+      #widget-stage[data-theme="aurora"] #ad-banner {
+        background: linear-gradient(
+          135deg var(--in-oklab),
+          rgba(var(--accent-rgb), calc(var(--card-opacity) * 0.78)),
+          rgba(var(--accent-sec-rgb), calc(var(--card-opacity) * 0.68))
+        );
+        border: 1px solid rgba(255, 255, 255, 0.38);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        box-shadow:
+          0 14px 36px -8px rgba(var(--accent-rgb), 0.5),
+          inset 0 1px 1px rgba(255, 255, 255, 0.45);
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         EFECTOS DE TEXTO (data-text-effect)
+         ═══════════════════════════════════════════════════════════════ */
+      /* 1. Neon Glow */
+      #widget-stage[data-text-effect="neon"] .ad-char {
+        text-shadow:
+          0 0 8px rgba(var(--accent-rgb), 0.85),
+          0 0 20px rgba(var(--accent-sec-rgb), 0.55),
+          0 2px 10px rgba(0, 0, 0, 0.85);
+      }
+
+      /* 2. Shimmer Metálico / Gradiente Luminoso */
+      #widget-stage[data-text-effect="shimmer"] .ad-char.is-alpha {
+        background: linear-gradient(
+          90deg var(--in-oklab),
+          #ffffff 0%,
+          var(--accent-secondary) 35%,
+          var(--accent-primary) 65%,
+          #ffffff 100%
+        );
+        background-size: 220% auto;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation-name: shimmerText;
+        animation-duration: 3.2s;
+        animation-iteration-count: infinite;
+        animation-timing-function: linear;
+        filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.65));
+      }
+
+      @keyframes shimmerText {
+        0% { background-position: 0% center; }
+        100% { background-position: 220% center; }
+      }
+
+      /* 3. 3D Extrude Broadcast */
+      #widget-stage[data-text-effect="extrude3d"] .ad-char {
+        text-shadow:
+          1px 1px 0 var(--accent-primary),
+          2px 2px 0 var(--accent-primary),
+          3px 3px 0 rgba(var(--accent-sec-rgb), 0.85),
+          4px 4px 12px rgba(0, 0, 0, 0.9);
+      }
+
+      /* 4. RGB Chromatic Split */
+      #widget-stage[data-text-effect="rgb"] .ad-char {
+        text-shadow:
+          -2px 0 0 rgba(255, 0, 85, 0.88),
+          2px 0 0 rgba(0, 229, 255, 0.88),
+          0 2px 10px rgba(0, 0, 0, 0.85);
+      }
+
+      /* 5. Outline Hollow Glow */
+      #widget-stage[data-text-effect="outline"] .ad-char.is-alpha {
+        color: transparent;
+        -webkit-text-stroke: 1.6px #ffffff;
+        text-shadow:
+          0 0 14px rgba(var(--accent-sec-rgb), 0.75),
+          0 2px 10px rgba(0, 0, 0, 0.75);
+      }
+
+      /* 6. Clean High-Contrast Shadow */
+      #widget-stage[data-text-effect="clean"] .ad-char {
+        text-shadow:
+          0 2px 12px rgba(0, 0, 0, 0.92),
+          0 1px 3px rgba(0, 0, 0, 0.95);
+      }
+    }
+
+    @layer animations {
+      /* ═══════════════════════════════════════════════════════════════
+         ANIMACIONES INTERCAMBIABLES POR LETRA (data-letter-anim)
+         ═══════════════════════════════════════════════════════════════ */
+
+      /* 1. WAVE: Ola Sinusoidal Continua */
+      #widget-stage[data-letter-anim="wave"] .ad-char {
+        animation: charWave var(--letter-speed) ease-in-out infinite;
+        animation-delay: var(--char-delay);
+        --animation-reduced: none;
+      }
+
+      @keyframes charWave {
+        0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+        25% { transform: translate3d(0, -0.24em, 0) rotate(-3deg); }
+        75% { transform: translate3d(0, 0.1em, 0) rotate(2deg); }
+      }
+
+      /* 2. SPRING-POP: Entrada Elástica con Física de Resorte linear() */
+      #widget-stage[data-letter-anim="spring"] .ad-char {
+        animation:
+          charSpringScale 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) backwards,
+          charFadeOnly 0.28s ease-out backwards;
+        animation-timing-function: var(--spring-easing), ease-out;
+        animation-delay: var(--char-delay);
+        --animation-reduced: none;
+      }
+
+      @keyframes charSpringScale {
+        from { transform: translate3d(0, 0.45em, 0) scale(0.25); }
+        to { transform: translate3d(0, 0, 0) scale(1); }
+      }
+
+      @keyframes charFadeOnly {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      /* 3. BOUNCE-DROP: Caída con Rebote Físico linear() */
+      #widget-stage[data-letter-anim="bounce"] .ad-char {
+        animation:
+          charBounceDrop 0.78s cubic-bezier(0.34, 1.56, 0.64, 1) backwards,
+          charFadeOnly 0.22s ease-out backwards;
+        animation-timing-function: var(--bounce-easing), ease-out;
+        animation-delay: var(--char-delay);
+        --animation-reduced: none;
+      }
+
+      @keyframes charBounceDrop {
+        from { transform: translate3d(0, -1.1em, 0) scaleY(1.25); }
+        to { transform: translate3d(0, 0, 0) scaleY(1); }
+      }
+
+      /* 4. TYPEWRITER: Máquina de Escribir Secuencial */
+      #widget-stage[data-letter-anim="typewriter"] .ad-char {
+        animation: charTypewriter 0.08s steps(1, end) backwards;
+        animation-delay: var(--char-delay);
+        --animation-reduced: none;
+      }
+
+      @keyframes charTypewriter {
+        from { opacity: 0; transform: scale(0.7); }
+        to { opacity: 1; transform: scale(1); }
+      }
+
+      /* 5. FLIP-3D: Giro 3D Secuencial por Letra */
+      #widget-stage[data-letter-anim="flip3d"] .ad-char {
+        animation: charFlip3D 0.56s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+        animation-delay: var(--char-delay);
+        --animation-reduced: none;
+      }
+
+      @keyframes charFlip3D {
+        from {
+          opacity: 0;
+          transform: perspective(400px) rotateY(90deg) translate3d(0, 0.2em, 0);
+        }
+        to {
+          opacity: 1;
+          transform: perspective(400px) rotateY(0deg) translate3d(0, 0, 0);
+        }
+      }
+
+      /* 6. GLITCH: Vibración Cyber / Holograma */
+      #widget-stage[data-letter-anim="glitch"] .ad-char {
+        animation: charGlitch var(--letter-speed) steps(2, end) infinite;
+        animation-delay: var(--char-delay);
+        --animation-reduced: none;
+      }
+
+      @keyframes charGlitch {
+        0%, 84%, 100% { transform: translate3d(0, 0, 0) skewX(0deg); }
+        86% { transform: translate3d(-2px, 1px, 0) skewX(-8deg); }
+        90% { transform: translate3d(2px, -1px, 0) skewX(8deg); }
+        94% { transform: translate3d(-1px, -1px, 0) scale(1.04); }
+      }
+
+      /* 7. PULSE-SWEEP: Barrido de Pulso Luminoso */
+      #widget-stage[data-letter-anim="pulse"] .ad-char {
+        animation: charPulseSweep var(--letter-speed) ease-in-out infinite;
+        animation-delay: var(--char-delay);
+        --animation-reduced: none;
+      }
+
+      @keyframes charPulseSweep {
+        0%, 70%, 100% {
+          transform: scale(1);
+          filter: brightness(1);
+        }
+        35% {
+          transform: scale(1.18) translate3d(0, -0.08em, 0);
+          filter: brightness(1.45) drop-shadow(0 0 10px var(--accent-secondary));
+        }
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         TRANSICIONES DE ENTRADA Y SALIDA (FADE IN / FADE OUT + DURACIÓN)
+         ═══════════════════════════════════════════════════════════════ */
+      #ad-banner.is-Paused-Hidden {
+        opacity: 0 !important;
+        pointer-events: none;
+      }
+
+      /* 1. FADE PURO */
+      #widget-stage[data-trans="fade"] #ad-banner.phase-in {
+        animation: transFadeIn var(--fade-in-dur) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+      #widget-stage[data-trans="fade"] #ad-banner.phase-out {
+        animation: transFadeOut var(--fade-out-dur) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+
+      @keyframes transFadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes transFadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+      }
+
+      /* 2. FADE + BLUR CINEMÁTICO */
+      #widget-stage[data-trans="fade-blur"] #ad-banner.phase-in {
+        animation: transBlurIn var(--fade-in-dur) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+      #widget-stage[data-trans="fade-blur"] #ad-banner.phase-out {
+        animation: transBlurOut var(--fade-out-dur) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+
+      @keyframes transBlurIn {
+        from { opacity: 0; filter: blur(16px); transform: scale(0.94); }
+        to { opacity: 1; filter: blur(0px); transform: scale(1); }
+      }
+      @keyframes transBlurOut {
+        from { opacity: 1; filter: blur(0px); transform: scale(1); }
+        to { opacity: 0; filter: blur(16px); transform: scale(1.05); }
+      }
+
+      /* 3. FADE + ELEVACIÓN VERTICAL (SLIDE UP) */
+      #widget-stage[data-trans="slide-up"] #ad-banner.phase-in {
+        animation: transSlideUpIn var(--fade-in-dur) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+      #widget-stage[data-trans="slide-up"] #ad-banner.phase-out {
+        animation: transSlideUpOut var(--fade-out-dur) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+
+      @keyframes transSlideUpIn {
+        from { opacity: 0; transform: translate3d(0, 32px, 0) scale(0.96); }
+        to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+      }
+      @keyframes transSlideUpOut {
+        from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+        to { opacity: 0; transform: translate3d(0, -28px, 0) scale(0.96); }
+      }
+
+      /* 4. FADE + BARRIDO LATERAL (IZQUIERDA → DERECHA) */
+      #widget-stage[data-trans="slide-lr"] #ad-banner.phase-in {
+        animation: transSlideLRIn var(--fade-in-dur) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+      #widget-stage[data-trans="slide-lr"] #ad-banner.phase-out {
+        animation: transSlideLROut var(--fade-out-dur) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+
+      @keyframes transSlideLRIn {
+        from { opacity: 0; transform: translate3d(-54px, 0, 0); }
+        to { opacity: 1; transform: translate3d(0, 0, 0); }
+      }
+      @keyframes transSlideLROut {
+        from { opacity: 1; transform: translate3d(0, 0, 0); }
+        to { opacity: 0; transform: translate3d(54px, 0, 0); }
+      }
+
+      /* 5. ZOOM ELÁSTICO (SCALE POP) */
+      #widget-stage[data-trans="zoom-spring"] #ad-banner.phase-in {
+        animation:
+          transZoomScaleIn var(--fade-in-dur) cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+          transFadeIn calc(var(--fade-in-dur) * 0.45) ease-out forwards;
+        animation-timing-function: var(--spring-easing), ease-out;
+      }
+      #widget-stage[data-trans="zoom-spring"] #ad-banner.phase-out {
+        animation: transZoomOut var(--fade-out-dur) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+
+      @keyframes transZoomScaleIn {
+        from { transform: scale(0.55); }
+        to { transform: scale(1); }
+      }
+      @keyframes transZoomOut {
+        from { opacity: 1; transform: scale(1); }
+        to { opacity: 0; transform: scale(0.75); }
+      }
+
+      /* 6. GIRO 3D DE CARTEL (FLIP BANNER) */
+      #widget-stage[data-trans="flip-3d"] #ad-banner.phase-in {
+        animation: transFlipIn var(--fade-in-dur) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+      #widget-stage[data-trans="flip-3d"] #ad-banner.phase-out {
+        animation: transFlipOut var(--fade-out-dur) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+
+      @keyframes transFlipIn {
+        from { opacity: 0; transform: rotateX(-75deg) translate3d(0, 18px, 0); }
+        to { opacity: 1; transform: rotateX(0deg) translate3d(0, 0, 0); }
+      }
+      @keyframes transFlipOut {
+        from { opacity: 1; transform: rotateX(0deg) translate3d(0, 0, 0); }
+        to { opacity: 0; transform: rotateX(75deg) translate3d(0, -18px, 0); }
+      }
+    }
+
+    @layer utilities {
+      /* ─── Hover Controls & Drawer (Invisible in OBS unless hovered) ─── */
+      #floating-controls {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        z-index: 9999;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-4px);
+        transition: opacity 0.22s ease, transform 0.22s ease;
+        user-select: none;
+      }
+
+      body:hover #floating-controls,
+      body.config-open #floating-controls {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+      }
+
+      .ctrl-btn {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(12, 10, 24, 0.86);
+        color: #fff;
+        font-family: 'Outfit', sans-serif;
+        font-size: 0.74rem;
+        font-weight: 700;
+        padding: 0.36rem 0.68rem;
+        border-radius: 999px;
+        cursor: pointer;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+        transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+      }
+
+      .ctrl-btn:hover {
+        background: rgba(var(--accent-rgb), 0.35);
+        border-color: var(--accent-primary);
+        transform: translateY(-1px);
+      }
+
+      #settings-drawer {
+        position: fixed;
+        top: 48px;
+        right: 10px;
+        width: 370px;
+        max-width: calc(100vw - 20px);
+        max-height: calc(100dvh - 58px);
+        overflow-y: auto;
+        background: rgba(12, 10, 22, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 16px;
+        padding: 14px;
+        z-index: 10000;
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(24px);
+        display: none;
+        flex-direction: column;
+        gap: 10px;
+        font-family: 'Outfit', sans-serif;
+        font-size: 0.75rem;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+      }
+
+      #settings-drawer.open {
+        display: flex;
+      }
+
+      .cfg-grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .cfg-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .cfg-row label {
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.88);
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .cfg-row select,
+      .cfg-row input[type="text"],
+      .cfg-row input[type="number"] {
+        width: 100%;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.07);
+        color: #fff;
+        font-family: inherit;
+        font-size: 0.75rem;
+      }
+
+      .cfg-row select option {
+        background: #121024;
+        color: #fff;
+      }
+
+      .ad-list-editor {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 170px;
+        overflow-y: auto;
+        padding: 6px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .ad-item-row {
+        display: grid;
+        grid-template-columns: 38px 1fr auto;
+        gap: 5px;
+        align-items: center;
+      }
+
+      .ad-item-row input {
+        padding: 5px 7px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.06);
+        color: #fff;
+        font-size: 0.73rem;
+      }
+
+      .btn-del-ad {
+        background: rgba(239, 68, 68, 0.18);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #fca5a5;
+        border-radius: 6px;
+        padding: 4px 7px;
+        cursor: pointer;
+        font-size: 0.72rem;
+      }
+
+      #toast-pill {
+        position: fixed;
+        bottom: 12px;
+        left: 16px;
+        background: rgba(12, 10, 24, 0.92);
+        border: 1px solid var(--accent-primary);
+        color: #fff;
+        padding: 6px 13px;
+        border-radius: 999px;
+        font-family: 'Outfit', sans-serif;
+        font-size: 0.74rem;
+        font-weight: 700;
+        z-index: 10001;
+        opacity: 0;
+        transform: translateY(8px);
+        pointer-events: none;
+        transition: opacity 0.25s ease, transform 0.25s ease;
+      }
+
+      #toast-pill.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Escenario Principal 100% Transparente -->
+  <div
+    id="widget-stage"
+    data-letter-anim="wave"
+    data-trans="fade-blur"
+    data-text-effect="neon"
+    data-theme="glass"
+    data-align="center"
+    data-vpos="center"
+  >
+    <div id="ad-banner" class="phase-in" role="status" aria-live="polite">
+      <span id="ad-icon" class="ad-icon-wrap">🎧</span>
+      <div class="ad-content-col">
+        <div id="ad-headline" class="ad-headline"></div>
+        <div id="ad-subtitle" class="ad-subtitle is-hidden" hidden></div>
+      </div>
+      <div id="ad-timer-bar" class="ad-timer-bar">
+        <div id="ad-timer-fill" class="ad-timer-fill"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controles Flotantes (Solo visibles al pasar el mouse) -->
+  <div id="floating-controls">
+    <button type="button" class="ctrl-btn" id="btn-cycle-letter" title="Cambiar Animación de Letras">🔤 Letras</button>
+    <button type="button" class="ctrl-btn" id="btn-cycle-trans" title="Cambiar Efecto Fade In / Out">✨ Fade</button>
+    <button type="button" class="ctrl-btn" id="btn-cycle-effect" title="Cambiar Efecto de Texto">🌈 Efecto</button>
+    <button type="button" class="ctrl-btn" id="btn-cycle-theme" title="Cambiar Tema de Fondo / Puro Transparente">🎨 Tema</button>
+    <button type="button" class="ctrl-btn" id="btn-next-ad" title="Siguiente Anuncio">⏭️ Siguiente</button>
+    <button type="button" class="ctrl-btn" id="btn-settings" title="Configurar Anuncios y Duraciones">⚙️</button>
+  </div>
+
+  <!-- Panel de Configuración Flotante -->
+  <div id="settings-drawer" role="dialog" aria-label="Configurar Widget de Anuncios">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:8px;">
+      <strong style="font-size:0.84rem; color:#fff;">📢 Configurar Anuncios y Letras</strong>
+      <button type="button" id="btn-close-settings" style="background:none; border:none; color:#aaa; font-size:18px; cursor:pointer;">&times;</button>
+    </div>
+
+    <div class="cfg-grid-2">
+      <div class="cfg-row">
+        <label>🔤 Animación de Letras</label>
+        <select id="cfg-letterAnim">
+          <option value="wave">🌊 1. Ola Sinusoidal (Wave)</option>
+          <option value="spring">🏀 2. Resorte Elástico (Spring)</option>
+          <option value="typewriter">⌨️ 3. Máquina de Escribir</option>
+          <option value="bounce">⚡ 4. Caída con Rebote</option>
+          <option value="flip3d">🔄 5. Giro 3D por Letra</option>
+          <option value="pulse">💫 6. Pulso Láser Secuencial</option>
+          <option value="glitch">👾 7. Cyber Glitch</option>
+          <option value="none">⏹️ 8. Estático Limpio</option>
+        </select>
+      </div>
+      <div class="cfg-row">
+        <label>✨ Entrada / Salida (Fade)</label>
+        <select id="cfg-trans">
+          <option value="fade-blur">🌫️ 1. Fade + Blur Cinemático</option>
+          <option value="fade">🌅 2. Fade In / Out Puro</option>
+          <option value="slide-up">⬆️ 3. Fade + Elevación</option>
+          <option value="slide-lr">➡️ 4. Barrido Lateral</option>
+          <option value="zoom-spring">💥 5. Zoom Elástico</option>
+          <option value="flip-3d">🎴 6. Giro 3D de Cartel</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="cfg-grid-2">
+      <div class="cfg-row">
+        <label>🌈 Efecto de Texto</label>
+        <select id="cfg-textEffect">
+          <option value="neon">💡 1. Resplandor Neón</option>
+          <option value="shimmer">✨ 2. Shimmer Metálico</option>
+          <option value="extrude3d">🕹️ 3. Texto 3D Extruido</option>
+          <option value="rgb">📺 4. Cromático RGB Split</option>
+          <option value="outline">⭕ 5. Contorno Luminoso</option>
+          <option value="clean">🎯 6. Sombra Nítida Limpia</option>
+        </select>
+      </div>
+      <div class="cfg-row">
+        <label>🎨 Marco / Fondo</label>
+        <select id="cfg-theme">
+          <option value="glass">🪟 Cristal (Vision Glass)</option>
+          <option value="transparent">✨ Puro Texto Transparente</option>
+          <option value="cyber">⚡ Cyberpunk Neon HUD</option>
+          <option value="aurora">🌈 Cápsula Aurora</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Duraciones Intercambiables de Fade In, Pantalla, Fade Out y Pausa -->
+    <div style="background:rgba(255,255,255,0.04); padding:9px; border-radius:10px; border:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; gap:8px;">
+      <strong style="font-size:0.74rem; color:#38bdf8;">⏱️ Duraciones de Fade In / Pantalla / Fade Out</strong>
+      <div class="cfg-grid-2">
+        <div class="cfg-row">
+          <label><span>🌅 Fade In</span><span id="val-fadeIn">0.8s</span></label>
+          <input type="range" id="cfg-fadeIn" min="0.2" max="3.5" step="0.1" value="0.8" />
+        </div>
+        <div class="cfg-row">
+          <label><span>🌇 Fade Out</span><span id="val-fadeOut">0.8s</span></label>
+          <input type="range" id="cfg-fadeOut" min="0.2" max="3.5" step="0.1" value="0.8" />
+        </div>
+      </div>
+      <div class="cfg-grid-2">
+        <div class="cfg-row">
+          <label><span>📺 En Pantalla</span><span id="val-hold">6.0s</span></label>
+          <input type="range" id="cfg-hold" min="2" max="45" step="0.5" value="6" />
+        </div>
+        <div class="cfg-row">
+          <label><span>⏸️ Pausa Entre Anuncios</span><span id="val-pause">1.0s</span></label>
+          <input type="range" id="cfg-pause" min="0" max="20" step="0.5" value="1" />
+        </div>
+      </div>
+    </div>
+
+    <div class="cfg-grid-2">
+      <div class="cfg-row">
+        <label><span>🔠 Tamaño Letra</span><span id="val-fontSize">26px</span></label>
+        <input type="range" id="cfg-fontSize" min="14" max="54" step="1" value="26" />
+      </div>
+      <div class="cfg-row">
+        <label><span>⚡ Desfase Letras</span><span id="val-stagger">38ms</span></label>
+        <input type="range" id="cfg-stagger" min="10" max="110" step="4" value="38" />
+      </div>
+    </div>
+
+    <div class="cfg-grid-2">
+      <div class="cfg-row">
+        <label>🔤 Tipografía</label>
+        <select id="cfg-font">
+          <option value="outfit">Outfit (Moderna)</option>
+          <option value="orbitron">Orbitron (Cyberpunk)</option>
+          <option value="jakarta">Plus Jakarta (Broadcast)</option>
+          <option value="mono">JetBrains Mono (Comando)</option>
+        </select>
+      </div>
+      <div class="cfg-row">
+        <label><span>💧 Opacidad Marco</span><span id="val-opacity">72%</span></label>
+        <input type="range" id="cfg-opacity" min="0" max="95" step="5" value="72" />
+      </div>
+    </div>
+
+    <div class="cfg-grid-2">
+      <div class="cfg-row">
+        <label>Color Primario</label>
+        <input type="color" id="cfg-accent" value="#ff0055" style="width:100%; height:26px; border:none; border-radius:6px; cursor:pointer;" />
+      </div>
+      <div class="cfg-row">
+        <label>Color Secundario</label>
+        <input type="color" id="cfg-accentSec" value="#00e5ff" style="width:100%; height:26px; border:none; border-radius:6px; cursor:pointer;" />
+      </div>
+    </div>
+
+    <!-- Lista Editable de Anuncios -->
+    <div style="display:flex; flex-direction:column; gap:6px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <strong style="font-size:0.75rem; color:#f472b6;">📋 Lista de Anuncios Rotativos</strong>
+        <button type="button" class="ctrl-btn" id="btn-add-ad" style="padding:2px 8px; font-size:0.7rem;">➕ Agregar</button>
+      </div>
+      <div id="ad-list-editor" class="ad-list-editor"></div>
+    </div>
+
+    <div style="display:flex; gap:8px; margin-top:2px;">
+      <button type="button" class="ctrl-btn" id="btn-save-cfg" style="flex:1; background:rgba(255,0,85,0.85); border-color:#ff0055;">💾 Guardar y Sincronizar</button>
+      <button type="button" class="ctrl-btn" id="btn-reset-cfg">↺ Reset</button>
+    </div>
+  </div>
+
+  <div id="toast-pill"></div>
+
+  <script>
+    (function () {
+      const safeStorage = (() => {
+        const mem = {};
+        try {
+          const k = '__zero_ads_w__';
+          window.localStorage.setItem(k, k);
+          window.localStorage.removeItem(k);
+          return window.localStorage;
+        } catch (_) {
+          return {
+            getItem: (k) => mem[k] || null,
+            setItem: (k, v) => { mem[k] = String(v); },
+            removeItem: (k) => { delete mem[k]; }
+          };
+        }
+      })();
+
+      const STORAGE_KEY = 'zero_announcements_widget_config';
+      const urlParams = new URLSearchParams(window.location.search);
+      const supportsSiblingIndex = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('animation-delay: calc(sibling-index() * 0.1s)');
+
+      const LETTER_ANIMS = ['wave', 'spring', 'typewriter', 'bounce', 'flip3d', 'pulse', 'glitch', 'none'];
+      const LETTER_LABELS = {
+        wave: '🌊 Letras: Ola Sinusoidal',
+        spring: '🏀 Letras: Resorte Elástico',
+        typewriter: '⌨️ Letras: Máquina de Escribir',
+        bounce: '⚡ Letras: Caída con Rebote',
+        flip3d: '🔄 Letras: Giro 3D por Letra',
+        pulse: '💫 Letras: Pulso Láser',
+        glitch: '👾 Letras: Cyber Glitch',
+        none: '⏹️ Letras: Estático Limpio'
+      };
+
+      const TRANS_ANIMS = ['fade-blur', 'fade', 'slide-up', 'slide-lr', 'zoom-spring', 'flip-3d'];
+      const TRANS_LABELS = {
+        'fade-blur': '🌫️ Transición: Fade + Blur Cinemático',
+        fade: '🌅 Transición: Fade In / Out Puro',
+        'slide-up': '⬆️ Transición: Fade + Elevación',
+        'slide-lr': '➡️ Transición: Barrido Lateral',
+        'zoom-spring': '💥 Transición: Zoom Elástico',
+        'flip-3d': '🎴 Transición: Giro 3D de Cartel'
+      };
+
+      const TEXT_EFFECTS = ['neon', 'shimmer', 'extrude3d', 'rgb', 'outline', 'clean'];
+      const EFFECT_LABELS = {
+        neon: '💡 Efecto: Resplandor Neón',
+        shimmer: '✨ Efecto: Shimmer Metálico',
+        extrude3d: '🕹️ Efecto: Texto 3D Extruido',
+        rgb: '📺 Efecto: Cromático RGB Split',
+        outline: '⭕ Efecto: Contorno Luminoso',
+        clean: '🎯 Efecto: Sombra Nítida Limpia'
+      };
+
+      const THEMES = ['glass', 'transparent', 'cyber', 'aurora'];
+      const THEME_LABELS = {
+        glass: '🪟 Marco: Cristal Espacial (Vision Glass)',
+        transparent: '✨ Marco: 100% Puro Texto Transparente',
+        cyber: '⚡ Marco: Cyberpunk Neon HUD',
+        aurora: '🌈 Marco: Cápsula Aurora'
+      };
+
+      const FONT_MAP = {
+        outfit: "'Outfit', system-ui, sans-serif",
+        orbitron: "'Orbitron', 'Outfit', sans-serif",
+        jakarta: "'Plus Jakarta Sans', 'Outfit', sans-serif",
+        mono: "'JetBrains Mono', monospace"
+      };
+
+      const DEFAULT_ADS = [
+        { icon: '🎧', text: 'ESCUCHA CON AUDÍFONOS 🎧 PARA MEJOR CALIDAD', sub: 'Sonido Hi-Fi en directo • Zero FM' },
+        { icon: '🎵', text: 'PIDE TU CANCIÓN CON !zr artista + canción', sub: 'Ejemplo en el chat: !zr Bad Bunny - DtMF' },
+        { icon: '❤️', text: 'DALE TAP TAP A LA PANTALLA ❤️ PARA APOYAR EL STREAM', sub: '¡Cada like nos ayuda a llegar a más personas!' },
+        { icon: '⭐', text: 'SÍGUENOS EN TIKTOK ⭐ PARA NO PERDERTE LOS DIRECTOS', sub: 'Música en vivo y peticiones todos los días' }
+      ];
+
+      const defaultConfig = {
+        adsWidgetLetterAnim: 'wave',
+        adsWidgetTrans: 'fade-blur',
+        adsWidgetTextEffect: 'neon',
+        adsWidgetTheme: 'glass',
+        adsWidgetFont: 'outfit',
+        adsWidgetAlign: 'center',
+        adsWidgetVPos: 'center',
+        adsWidgetFontSize: 26,
+        adsWidgetFadeIn: 0.8,
+        adsWidgetFadeOut: 0.8,
+        adsWidgetHold: 6.0,
+        adsWidgetPause: 1.0,
+        adsWidgetStaggerMs: 38,
+        adsWidgetOpacity: 72,
+        adsWidgetAccent: '#ff0055',
+        adsWidgetAccentSec: '#00e5ff',
+        adsWidgetShowIcon: true,
+        adsWidgetShowSub: true,
+        adsWidgetShowTimerBar: true,
+        adsWidgetItems: DEFAULT_ADS
+      };
+
+      let currentConfig = { ...defaultConfig, adsWidgetItems: DEFAULT_ADS.map(x => ({ ...x })) };
+      try {
+        const saved = safeStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          currentConfig = { ...currentConfig, ...parsed };
+          if (!Array.isArray(currentConfig.adsWidgetItems) || currentConfig.adsWidgetItems.length === 0) {
+            currentConfig.adsWidgetItems = DEFAULT_ADS.map(x => ({ ...x }));
+          }
+        }
+      } catch (_) {}
+
+      // URL Overrides
+      const uLetter = String(urlParams.get('letter') || urlParams.get('letterAnim') || '').trim().toLowerCase();
+      if (LETTER_ANIMS.includes(uLetter)) currentConfig.adsWidgetLetterAnim = uLetter;
+
+      const uTrans = String(urlParams.get('trans') || urlParams.get('fade') || '').trim().toLowerCase();
+      if (TRANS_ANIMS.includes(uTrans)) currentConfig.adsWidgetTrans = uTrans;
+
+      const uEffect = String(urlParams.get('effect') || '').trim().toLowerCase();
+      if (TEXT_EFFECTS.includes(uEffect)) currentConfig.adsWidgetTextEffect = uEffect;
+
+      const uTheme = String(urlParams.get('theme') || '').trim().toLowerCase();
+      if (THEMES.includes(uTheme)) currentConfig.adsWidgetTheme = uTheme;
+
+      const uFadeIn = Number(urlParams.get('fadeIn'));
+      if (Number.isFinite(uFadeIn) && uFadeIn >= 0.1 && uFadeIn <= 10) currentConfig.adsWidgetFadeIn = uFadeIn;
+
+      const uFadeOut = Number(urlParams.get('fadeOut'));
+      if (Number.isFinite(uFadeOut) && uFadeOut >= 0.1 && uFadeOut <= 10) currentConfig.adsWidgetFadeOut = uFadeOut;
+
+      const uHold = Number(urlParams.get('hold'));
+      if (Number.isFinite(uHold) && uHold >= 1 && uHold <= 120) currentConfig.adsWidgetHold = uHold;
+
+      if (urlParams.get('config') === '1') {
+        document.body.classList.add('config-open');
+        document.getElementById('settings-drawer')?.classList.add('open');
+      }
+
+      // ─── DOM References ───
+      const stageEl = document.getElementById('widget-stage');
+      const bannerEl = document.getElementById('ad-banner');
+      const iconEl = document.getElementById('ad-icon');
+      const headlineEl = document.getElementById('ad-headline');
+      const subtitleEl = document.getElementById('ad-subtitle');
+      const timerBarEl = document.getElementById('ad-timer-bar');
+      const timerFillEl = document.getElementById('ad-timer-fill');
+      const editorEl = document.getElementById('ad-list-editor');
+      const toastEl = document.getElementById('toast-pill');
+
+      let toastTimer = null;
+      function showToast(msg) {
+        if (!toastEl) return;
+        toastEl.textContent = msg;
+        toastEl.classList.add('show');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2300);
+      }
+
+      function hexToRgbTuple(hex, fallback = '255, 0, 85') {
+        const clean = String(hex || '').replace('#', '').trim();
+        if (clean.length !== 6) return fallback;
+        const r = parseInt(clean.slice(0, 2), 16);
+        const g = parseInt(clean.slice(2, 4), 16);
+        const b = parseInt(clean.slice(4, 6), 16);
+        if (isNaN(r) || isNaN(g) || isNaN(b)) return fallback;
+        return `${r}, ${g}, ${b}`;
+      }
+
+      // ─── Grapheme-Safe Text Splitter (Preserves Emojis like 🎧, ❤️, ⭐) ───
+      const segmenter = (typeof Intl !== 'undefined' && Intl.Segmenter)
+        ? new Intl.Segmenter('es', { granularity: 'grapheme' })
+        : null;
+
+      function splitGraphemes(str) {
+        const s = String(str || '');
+        if (segmenter) {
+          return Array.from(segmenter.segment(s), seg => seg.segment);
+        }
+        return Array.from(s);
+      }
+
+      function isEmojiGrapheme(g) {
+        return /\p{Extended_Pictographic}/u.test(g);
+      }
+
+      // ─── Render Headline Letters into DOM with Stagger Index ───
+      function populateHeadlineLetters(text) {
+        headlineEl.innerHTML = '';
+        const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+        let globalCharIndex = 0;
+
+        words.forEach((word) => {
+          const wordSpan = document.createElement('span');
+          const isCmd = word.startsWith('!') || (word.startsWith('[') && word.endsWith(']'));
+          const cleanWord = (word.startsWith('[') && word.endsWith(']')) ? word.slice(1, -1) : word;
+          wordSpan.className = `ad-word${isCmd ? ' is-command' : ''}`;
+
+          const graphemes = splitGraphemes(cleanWord);
+          graphemes.forEach((ch) => {
+            globalCharIndex++;
+            const charSpan = document.createElement('span');
+            const isEmoji = isEmojiGrapheme(ch);
+            charSpan.className = `ad-char ${isEmoji ? 'is-emoji' : 'is-alpha'}`;
+            charSpan.textContent = ch;
+            // Fallback for browsers without native CSS sibling-index()
+            if (!supportsSiblingIndex) {
+              charSpan.style.setProperty('--sibling-index', String(globalCharIndex));
+            }
+            wordSpan.appendChild(charSpan);
+          });
+
+          headlineEl.appendChild(wordSpan);
+        });
+      }
+
+      // ─── Cycle Engine: Fade In -> Hold -> Fade Out -> Pause ───
+      let currentAdIndex = 0;
+      let cycleTimer = null;
+
+      function renderCurrentAnnouncement(restartPhase = true) {
+        const items = Array.isArray(currentConfig.adsWidgetItems) && currentConfig.adsWidgetItems.length > 0
+          ? currentConfig.adsWidgetItems
+          : DEFAULT_ADS;
+
+        if (currentAdIndex >= items.length) currentAdIndex = 0;
+        const item = items[currentAdIndex] || DEFAULT_ADS[0];
+
+        // Icon
+        const showIcon = currentConfig.adsWidgetShowIcon !== false && Boolean(item.icon);
+        iconEl.textContent = item.icon || '🎧';
+        iconEl.hidden = !showIcon;
+        iconEl.classList.toggle('is-hidden', !showIcon);
+
+        // Headline with animated letters
+        populateHeadlineLetters(item.text || 'ESCUCHA CON AUDÍFONOS 🎧');
+
+        // Subtitle
+        const showSub = currentConfig.adsWidgetShowSub !== false && Boolean(item.sub);
+        subtitleEl.textContent = item.sub || '';
+        subtitleEl.hidden = !showSub;
+        subtitleEl.classList.toggle('is-hidden', !showSub);
+
+        if (restartPhase) {
+          startCycleForCurrentAd();
+        }
+      }
+
+      function startCycleForCurrentAd() {
+        if (cycleTimer) clearTimeout(cycleTimer);
+
+        const fadeInMs = Math.max(150, (Number(currentConfig.adsWidgetFadeIn) || 0.8) * 1000);
+        const holdMs = Math.max(1000, (Number(currentConfig.adsWidgetHold) || 6.0) * 1000);
+        const fadeOutMs = Math.max(150, (Number(currentConfig.adsWidgetFadeOut) || 0.8) * 1000);
+        const pauseMs = Math.max(0, (Number(currentConfig.adsWidgetPause) ?? 1.0) * 1000);
+
+        bannerEl.classList.remove('phase-out', 'is-Paused-Hidden');
+        bannerEl.classList.remove('phase-in');
+        void bannerEl.offsetWidth;
+        bannerEl.classList.add('phase-in');
+
+        // Animate timer bar over (fadeIn + hold)
+        if (timerFillEl) {
+          timerFillEl.style.transition = 'none';
+          timerFillEl.style.transform = 'scaleX(1)';
+          void timerFillEl.offsetWidth;
+          timerFillEl.style.transition = `transform ${fadeInMs + holdMs}ms linear`;
+          timerFillEl.style.transform = 'scaleX(0)';
+        }
+
+        // Schedule Fade Out
+        cycleTimer = setTimeout(() => {
+          bannerEl.classList.remove('phase-in');
+          bannerEl.classList.add('phase-out');
+
+          // Schedule Pause & Next Ad
+          cycleTimer = setTimeout(() => {
+            if (pauseMs > 0) {
+              bannerEl.classList.add('is-Paused-Hidden');
+            }
+            cycleTimer = setTimeout(() => {
+              const items = Array.isArray(currentConfig.adsWidgetItems) && currentConfig.adsWidgetItems.length > 0
+                ? currentConfig.adsWidgetItems
+                : DEFAULT_ADS;
+              currentAdIndex = (currentAdIndex + 1) % items.length;
+              renderCurrentAnnouncement(true);
+            }, pauseMs);
+          }, fadeOutMs);
+        }, fadeInMs + holdMs);
+      }
+
+      function nextAnnouncementNow() {
+        const items = Array.isArray(currentConfig.adsWidgetItems) && currentConfig.adsWidgetItems.length > 0
+          ? currentConfig.adsWidgetItems
+          : DEFAULT_ADS;
+        currentAdIndex = (currentAdIndex + 1) % items.length;
+        renderCurrentAnnouncement(true);
+      }
+
+      // ─── Apply Visual Config ───
+      function applyConfig(nextCfg = {}, restartAnim = false) {
+        currentConfig = { ...currentConfig, ...nextCfg };
+        if (!Array.isArray(currentConfig.adsWidgetItems) || currentConfig.adsWidgetItems.length === 0) {
+          currentConfig.adsWidgetItems = DEFAULT_ADS.map(x => ({ ...x }));
+        }
+
+        const letterAnim = LETTER_ANIMS.includes(currentConfig.adsWidgetLetterAnim)
+          ? currentConfig.adsWidgetLetterAnim
+          : 'wave';
+        const trans = TRANS_ANIMS.includes(currentConfig.adsWidgetTrans)
+          ? currentConfig.adsWidgetTrans
+          : 'fade-blur';
+        const effect = TEXT_EFFECTS.includes(currentConfig.adsWidgetTextEffect)
+          ? currentConfig.adsWidgetTextEffect
+          : 'neon';
+        const theme = THEMES.includes(currentConfig.adsWidgetTheme)
+          ? currentConfig.adsWidgetTheme
+          : 'glass';
+
+        stageEl.setAttribute('data-letter-anim', letterAnim);
+        stageEl.setAttribute('data-trans', trans);
+        stageEl.setAttribute('data-text-effect', effect);
+        stageEl.setAttribute('data-theme', theme);
+        stageEl.setAttribute('data-align', currentConfig.adsWidgetAlign || 'center');
+        stageEl.setAttribute('data-vpos', currentConfig.adsWidgetVPos || 'center');
+
+        const root = document.documentElement;
+        const fontKey = currentConfig.adsWidgetFont || 'outfit';
+        root.style.setProperty('--font-active', FONT_MAP[fontKey] || FONT_MAP.outfit);
+
+        const fontPx = Math.max(14, Math.min(64, Number(currentConfig.adsWidgetFontSize) || 26));
+        root.style.setProperty('--ad-font-size', `${(fontPx / 16).toFixed(3)}rem`);
+        root.style.setProperty('--ad-sub-size', `${(Math.max(11, Math.round(fontPx * 0.54)) / 16).toFixed(3)}rem`);
+
+        const fadeIn = Math.max(0.15, Math.min(5, Number(currentConfig.adsWidgetFadeIn) || 0.8));
+        const fadeOut = Math.max(0.15, Math.min(5, Number(currentConfig.adsWidgetFadeOut) || 0.8));
+        root.style.setProperty('--fade-in-dur', `${fadeIn}s`);
+        root.style.setProperty('--fade-out-dur', `${fadeOut}s`);
+
+        const staggerMs = Math.max(8, Math.min(150, Number(currentConfig.adsWidgetStaggerMs) || 38));
+        root.style.setProperty('--stagger-step', `${(staggerMs / 1000).toFixed(3)}s`);
+
+        const opRaw = Number(currentConfig.adsWidgetOpacity);
+        const opNorm = Number.isFinite(opRaw) ? (opRaw > 1 ? opRaw / 100 : opRaw) : 0.72;
+        root.style.setProperty('--card-opacity', String(Math.max(0, Math.min(0.98, opNorm))));
+
+        const accent = currentConfig.adsWidgetAccent || '#ff0055';
+        const accentSec = currentConfig.adsWidgetAccentSec || '#00e5ff';
+        root.style.setProperty('--accent-primary', accent);
+        root.style.setProperty('--accent-secondary', accentSec);
+        root.style.setProperty('--accent-rgb', hexToRgbTuple(accent, '255, 0, 85'));
+        root.style.setProperty('--accent-sec-rgb', hexToRgbTuple(accentSec, '0, 229, 255'));
+
+        const showTimer = currentConfig.adsWidgetShowTimerBar !== false && theme !== 'transparent';
+        if (timerBarEl) {
+          timerBarEl.hidden = !showTimer;
+          timerBarEl.classList.toggle('is-hidden', !showTimer);
+        }
+
+        syncDrawerControls();
+        renderCurrentAnnouncement(restartAnim);
+      }
+
+      // ─── Drawer Controls & Announcements List Editor ───
+      function renderAdsEditorList() {
+        if (!editorEl) return;
+        editorEl.innerHTML = '';
+        const items = currentConfig.adsWidgetItems || [];
+        items.forEach((item, idx) => {
+          const row = document.createElement('div');
+          row.className = 'ad-item-row';
+
+          const iconInp = document.createElement('input');
+          iconInp.type = 'text';
+          iconInp.value = item.icon || '🎧';
+          iconInp.title = 'Emoticón / Ícono';
+          iconInp.style.textAlign = 'center';
+          iconInp.addEventListener('input', () => {
+            currentConfig.adsWidgetItems[idx].icon = iconInp.value;
+            renderCurrentAnnouncement(false);
+          });
+
+          const textInp = document.createElement('input');
+          textInp.type = 'text';
+          textInp.value = item.text || '';
+          textInp.placeholder = 'Texto del anuncio...';
+          textInp.addEventListener('input', () => {
+            currentConfig.adsWidgetItems[idx].text = textInp.value;
+            if (currentAdIndex === idx) renderCurrentAnnouncement(false);
+          });
+
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'btn-del-ad';
+          delBtn.textContent = '✕';
+          delBtn.title = 'Eliminar anuncio';
+          delBtn.addEventListener('click', () => {
+            if (currentConfig.adsWidgetItems.length <= 1) {
+              showToast('⚠️ Debe haber al menos 1 anuncio');
+              return;
+            }
+            currentConfig.adsWidgetItems.splice(idx, 1);
+            if (currentAdIndex >= currentConfig.adsWidgetItems.length) currentAdIndex = 0;
+            renderAdsEditorList();
+            renderCurrentAnnouncement(true);
+          });
+
+          row.appendChild(iconInp);
+          row.appendChild(textInp);
+          row.appendChild(delBtn);
+          editorEl.appendChild(row);
+        });
+      }
+
+      function syncDrawerControls() {
+        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
+        const setLbl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+        setVal('cfg-letterAnim', currentConfig.adsWidgetLetterAnim || 'wave');
+        setVal('cfg-trans', currentConfig.adsWidgetTrans || 'fade-blur');
+        setVal('cfg-textEffect', currentConfig.adsWidgetTextEffect || 'neon');
+        setVal('cfg-theme', currentConfig.adsWidgetTheme || 'glass');
+        setVal('cfg-font', currentConfig.adsWidgetFont || 'outfit');
+
+        const fi = Number(currentConfig.adsWidgetFadeIn) || 0.8;
+        setVal('cfg-fadeIn', fi);
+        setLbl('val-fadeIn', `${fi.toFixed(1)}s`);
+
+        const fo = Number(currentConfig.adsWidgetFadeOut) || 0.8;
+        setVal('cfg-fadeOut', fo);
+        setLbl('val-fadeOut', `${fo.toFixed(1)}s`);
+
+        const hd = Number(currentConfig.adsWidgetHold) || 6.0;
+        setVal('cfg-hold', hd);
+        setLbl('val-hold', `${hd.toFixed(1)}s`);
+
+        const ps = Number(currentConfig.adsWidgetPause ?? 1.0);
+        setVal('cfg-pause', ps);
+        setLbl('val-pause', `${ps.toFixed(1)}s`);
+
+        const fs = Number(currentConfig.adsWidgetFontSize) || 26;
+        setVal('cfg-fontSize', fs);
+        setLbl('val-fontSize', `${fs}px`);
+
+        const st = Number(currentConfig.adsWidgetStaggerMs) || 38;
+        setVal('cfg-stagger', st);
+        setLbl('val-stagger', `${st}ms`);
+
+        const op = Number(currentConfig.adsWidgetOpacity);
+        const opPct = Math.round(Number.isFinite(op) ? (op <= 1 && op > 0 ? op * 100 : op) : 72);
+        setVal('cfg-opacity', opPct);
+        setLbl('val-opacity', `${opPct}%`);
+
+        setVal('cfg-accent', currentConfig.adsWidgetAccent || '#ff0055');
+        setVal('cfg-accentSec', currentConfig.adsWidgetAccentSec || '#00e5ff');
+      }
+
+      function readConfigFromDrawer() {
+        return {
+          adsWidgetLetterAnim: document.getElementById('cfg-letterAnim').value,
+          adsWidgetTrans: document.getElementById('cfg-trans').value,
+          adsWidgetTextEffect: document.getElementById('cfg-textEffect').value,
+          adsWidgetTheme: document.getElementById('cfg-theme').value,
+          adsWidgetFont: document.getElementById('cfg-font').value,
+          adsWidgetFadeIn: Number(document.getElementById('cfg-fadeIn').value) || 0.8,
+          adsWidgetFadeOut: Number(document.getElementById('cfg-fadeOut').value) || 0.8,
+          adsWidgetHold: Number(document.getElementById('cfg-hold').value) || 6.0,
+          adsWidgetPause: Number(document.getElementById('cfg-pause').value) || 0,
+          adsWidgetFontSize: Number(document.getElementById('cfg-fontSize').value) || 26,
+          adsWidgetStaggerMs: Number(document.getElementById('cfg-stagger').value) || 38,
+          adsWidgetOpacity: Number(document.getElementById('cfg-opacity').value),
+          adsWidgetAccent: document.getElementById('cfg-accent').value,
+          adsWidgetAccentSec: document.getElementById('cfg-accentSec').value,
+          adsWidgetItems: currentConfig.adsWidgetItems
+        };
+      }
+
+      // ─── UI Event Listeners ───
+      document.getElementById('btn-cycle-letter').addEventListener('click', () => {
+        const idx = LETTER_ANIMS.indexOf(currentConfig.adsWidgetLetterAnim || 'wave');
+        const next = LETTER_ANIMS[(idx + 1) % LETTER_ANIMS.length];
+        applyConfig({ adsWidgetLetterAnim: next }, true);
+        safeStorage.setItem(STORAGE_KEY, JSON.stringify(currentConfig));
+        showToast(LETTER_LABELS[next]);
+      });
+
+      document.getElementById('btn-cycle-trans').addEventListener('click', () => {
+        const idx = TRANS_ANIMS.indexOf(currentConfig.adsWidgetTrans || 'fade-blur');
+        const next = TRANS_ANIMS[(idx + 1) % TRANS_ANIMS.length];
+        applyConfig({ adsWidgetTrans: next }, true);
+        safeStorage.setItem(STORAGE_KEY, JSON.stringify(currentConfig));
+        showToast(TRANS_LABELS[next]);
+      });
+
+      document.getElementById('btn-cycle-effect').addEventListener('click', () => {
+        const idx = TEXT_EFFECTS.indexOf(currentConfig.adsWidgetTextEffect || 'neon');
+        const next = TEXT_EFFECTS[(idx + 1) % TEXT_EFFECTS.length];
+        applyConfig({ adsWidgetTextEffect: next }, false);
+        safeStorage.setItem(STORAGE_KEY, JSON.stringify(currentConfig));
+        showToast(EFFECT_LABELS[next]);
+      });
+
+      document.getElementById('btn-cycle-theme').addEventListener('click', () => {
+        const idx = THEMES.indexOf(currentConfig.adsWidgetTheme || 'glass');
+        const next = THEMES[(idx + 1) % THEMES.length];
+        applyConfig({ adsWidgetTheme: next }, false);
+        safeStorage.setItem(STORAGE_KEY, JSON.stringify(currentConfig));
+        showToast(THEME_LABELS[next]);
+      });
+
+      document.getElementById('btn-next-ad').addEventListener('click', () => {
+        nextAnnouncementNow();
+      });
+
+      const drawerEl = document.getElementById('settings-drawer');
+      document.getElementById('btn-settings').addEventListener('click', () => {
+        renderAdsEditorList();
+        drawerEl.classList.toggle('open');
+        document.body.classList.toggle('config-open', drawerEl.classList.contains('open'));
+      });
+
+      document.getElementById('btn-close-settings').addEventListener('click', () => {
+        drawerEl.classList.remove('open');
+        document.body.classList.remove('config-open');
+      });
+
+      document.getElementById('btn-add-ad').addEventListener('click', () => {
+        currentConfig.adsWidgetItems.push({
+          icon: '🔥',
+          text: 'NUEVO ANUNCIO !zr artista + canción',
+          sub: 'Zero FM en directo'
+        });
+        renderAdsEditorList();
+        currentAdIndex = currentConfig.adsWidgetItems.length - 1;
+        renderCurrentAnnouncement(true);
+      });
+
+      [
+        'cfg-letterAnim', 'cfg-trans', 'cfg-textEffect', 'cfg-theme', 'cfg-font',
+        'cfg-fadeIn', 'cfg-fadeOut', 'cfg-hold', 'cfg-pause',
+        'cfg-fontSize', 'cfg-stagger', 'cfg-opacity', 'cfg-accent', 'cfg-accentSec'
+      ].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const isTimingOrAnim = ['cfg-letterAnim', 'cfg-trans', 'cfg-fadeIn', 'cfg-fadeOut', 'cfg-hold', 'cfg-pause'].includes(id);
+        el.addEventListener('input', () => applyConfig(readConfigFromDrawer(), isTimingOrAnim));
+        el.addEventListener('change', () => applyConfig(readConfigFromDrawer(), isTimingOrAnim));
+      });
+
+      // ─── Firebase Real-Time Sync ───
+      let db = null;
+      function initFirebase() {
+        try {
+          if (typeof firebase === 'undefined') return;
+          if (!firebase.apps.length) {
+            const cfg = window.ZERO_FM_FIREBASE || window.firebaseConfig;
+            if (cfg) firebase.initializeApp(cfg);
+          }
+          db = firebase.firestore();
+          try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (_) {}
+        } catch (_) {}
+        if (!db) return;
+
+        db.collection('systemConfig').doc('overlayAlertsConfig').onSnapshot((doc) => {
+          if (!doc.exists) return;
+          const data = doc.data() || {};
+          const relevant = {};
+          Object.keys(defaultConfig).forEach((k) => {
+            if (data[k] !== undefined) relevant[k] = data[k];
+          });
+          if (LETTER_ANIMS.includes(uLetter)) relevant.adsWidgetLetterAnim = uLetter;
+          if (TRANS_ANIMS.includes(uTrans)) relevant.adsWidgetTrans = uTrans;
+          if (TEXT_EFFECTS.includes(uEffect)) relevant.adsWidgetTextEffect = uEffect;
+          if (THEMES.includes(uTheme)) relevant.adsWidgetTheme = uTheme;
+          if (Object.keys(relevant).length > 0) {
+            applyConfig(relevant, false);
+            renderAdsEditorList();
+          }
+        }, () => {});
+      }
+
+      document.getElementById('btn-save-cfg').addEventListener('click', async () => {
+        const nextCfg = readConfigFromDrawer();
+        applyConfig(nextCfg, true);
+        safeStorage.setItem(STORAGE_KEY, JSON.stringify(currentConfig));
+        if (db) {
+          try {
+            await db.collection('systemConfig').doc('overlayAlertsConfig').set(nextCfg, { merge: true });
+          } catch (_) {}
+        }
+        drawerEl.classList.remove('open');
+        document.body.classList.remove('config-open');
+        showToast('✅ Anuncios y animaciones guardados para OBS');
+      });
+
+      document.getElementById('btn-reset-cfg').addEventListener('click', () => {
+        safeStorage.removeItem(STORAGE_KEY);
+        currentConfig = { ...defaultConfig, adsWidgetItems: DEFAULT_ADS.map(x => ({ ...x })) };
+        applyConfig(currentConfig, true);
+        renderAdsEditorList();
+        showToast('↺ Anuncios restablecidos');
+      });
+
+      // Live Dashboard postMessage Receiver
+      window.addEventListener('message', (event) => {
+        if (!event.data) return;
+        if (event.data.action === 'nextAnnouncement' || event.data.action === 'simulateAnnouncement') {
+          nextAnnouncementNow();
+        } else if (event.data.action === 'updateConfig' && event.data.payload) {
+          const payload = event.data.payload;
+          const mapped = {};
+          Object.keys(defaultConfig).forEach((k) => {
+            if (payload[k] !== undefined) mapped[k] = payload[k];
+          });
+          if (Object.keys(mapped).length > 0) {
+            applyConfig(mapped, true);
+            renderAdsEditorList();
+          }
+        }
+      });
+
+      // ─── Bootstrap ───
+      renderAdsEditorList();
+      applyConfig(currentConfig, true);
+      initFirebase();
+    })();
+  </script>
+</body>
+</html>

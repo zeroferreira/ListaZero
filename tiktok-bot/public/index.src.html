@@ -3847,6 +3847,10 @@
                         sendConfigToIframe('iframe-artists-widget', overlays);
                         sendConfigToIframe('iframe-control-artists-widget', overlays);
                     }
+                    if (activeSub === 'ads' || activeControlSub === 'ads') {
+                        sendConfigToIframe('iframe-ads-widget', overlays);
+                        sendConfigToIframe('iframe-control-ads-widget', overlays);
+                    }
                 }, 40);
                 return () => clearTimeout(timerId);
             }, [overlays, goals, timer, lastevents, activeSub, activeControlSub]);
@@ -3863,6 +3867,13 @@
                 setOverlays(updated);
                 sendConfigToIframe('iframe-artists-widget', updated);
                 sendConfigToIframe('iframe-control-artists-widget', updated);
+            };
+
+            const updateAdsWidgetConfig = (patch) => {
+                const updated = { ...overlays, ...patch };
+                setOverlays(updated);
+                sendConfigToIframe('iframe-ads-widget', updated);
+                sendConfigToIframe('iframe-control-ads-widget', updated);
             };
 
             // Helper centralizado para guardar configuración de overlays mezclando solo lo modificado ("dirty")
@@ -6330,6 +6341,10 @@
                                     <span>🎤 Artistas Pedidos</span>
                                     <span className="menu-badge" style={{ color: '#38bdf8' }}>6 Formas</span>
                                 </button>
+                                <button className={`overlays-menu-item ${activeSub === 'ads' ? 'active' : ''}`} onClick={() => setActiveSub('ads')}>
+                                    <span>📢 Anuncios Letras</span>
+                                    <span className="menu-badge" style={{ color: '#a855f7' }}>8 Efectos</span>
+                                </button>
                                 <button className={`overlays-menu-item ${activeSub === 'player' ? 'active' : ''}`} onClick={() => setActiveSub('player')}>
                                     <span>💿 Reproductor</span>
                                     <span className="menu-badge">Activo</span>
@@ -6921,6 +6936,153 @@
                                                         </div>
                                                     </div>
                                                 ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* SUBPANEL 0.8: ANIMATED ANNOUNCEMENTS WIDGET */}
+                                {activeSub === 'ads' && (
+                                    <div className="glass-card animate-fade-in">
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                            <div>
+                                                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    📢 Widget de Anuncios con Letras Animadas y Fade Configurable
+                                                </h3>
+                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', marginTop: '6px', marginBottom: 0 }}>
+                                                    Muestra anuncios rotativos como "🎧 ESCUCHA CON AUDÍFONOS 🎧" o "!zr artista + canción" con animación por letra, efectos de texto y tiempos de Fade In / Out ajustables.
+                                                </p>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary"
+                                                    style={{ padding: '7px 14px', fontSize: '0.82rem', borderColor: '#a855f7', color: '#c084fc', background: 'rgba(168, 85, 247, 0.08)' }}
+                                                    onClick={() => {
+                                                        const ifr = document.getElementById('iframe-ads-widget');
+                                                        if (ifr && ifr.contentWindow) {
+                                                            ifr.contentWindow.postMessage({ action: 'nextAnnouncement' }, '*');
+                                                        }
+                                                    }}
+                                                >
+                                                    ⏭️ Siguiente Anuncio
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-primary"
+                                                    style={{ padding: '7px 14px', fontSize: '0.82rem' }}
+                                                    onClick={() => handleSaveOverlaysConfigOnly('Announcements Widget')}
+                                                >
+                                                    {renderIcon('save')} Guardar Diseño
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Vista Previa en Vivo */}
+                                        <div className="preview-panel" style={{ marginBottom: '18px' }}>
+                                            <div className="preview-header">
+                                                <span>📺 Vista Previa Interactiva (Pasa el mouse sobre el widget para abrir el editor de frases ⚙️)</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                    <div className="preview-live-dot"></div> Live Announcements
+                                                </div>
+                                            </div>
+                                            <iframe
+                                                id="iframe-ads-widget"
+                                                src="./announcements_widget.html"
+                                                className="preview-iframe"
+                                                style={{ height: '190px', width: '100%', border: 'none' }}
+                                                onLoad={() => sendConfigToIframe('iframe-ads-widget', overlays)}
+                                            ></iframe>
+                                        </div>
+
+                                        {/* Controles de Animación por Letra, Transición Fade, Efecto de Texto y Tema */}
+                                        <div className="grid-2" style={{ gap: '12px', marginBottom: '14px' }}>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>🔤 Animación por Letra</label>
+                                                <select
+                                                    value={overlays.adsWidgetLetterAnim || 'wave'}
+                                                    onChange={(e) => updateAdsWidgetConfig({ adsWidgetLetterAnim: e.target.value })}
+                                                >
+                                                    <option value="wave">🌊 1. Ola Sinusoidal Continua (Wave)</option>
+                                                    <option value="spring">🏀 2. Resorte Elástico (Spring Pop)</option>
+                                                    <option value="typewriter">⌨️ 3. Máquina de Escribir</option>
+                                                    <option value="bounce">⚡ 4. Caída con Rebote</option>
+                                                    <option value="flip3d">🔄 5. Giro 3D por Letra</option>
+                                                    <option value="pulse">💫 6. Pulso Láser Secuencial</option>
+                                                    <option value="glitch">👾 7. Cyber Glitch</option>
+                                                    <option value="none">⏹️ 8. Estático Limpio</option>
+                                                </select>
+                                            </div>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>✨ Transición de Entrada y Salida (Fade)</label>
+                                                <select
+                                                    value={overlays.adsWidgetTrans || 'fade-blur'}
+                                                    onChange={(e) => updateAdsWidgetConfig({ adsWidgetTrans: e.target.value })}
+                                                >
+                                                    <option value="fade-blur">🌫️ 1. Fade + Blur Cinemático</option>
+                                                    <option value="fade">🌅 2. Fade In / Out Puro</option>
+                                                    <option value="slide-up">⬆️ 3. Fade + Elevación Vertical</option>
+                                                    <option value="slide-lr">➡️ 4. Barrido Lateral</option>
+                                                    <option value="zoom-spring">💥 5. Zoom Elástico</option>
+                                                    <option value="flip-3d">🎴 6. Giro 3D de Cartel</option>
+                                                </select>
+                                            </div>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>🌈 Efecto Visual de Texto</label>
+                                                <select
+                                                    value={overlays.adsWidgetTextEffect || 'neon'}
+                                                    onChange={(e) => updateAdsWidgetConfig({ adsWidgetTextEffect: e.target.value })}
+                                                >
+                                                    <option value="neon">💡 1. Resplandor Neón Dual</option>
+                                                    <option value="shimmer">✨ 2. Shimmer Metálico Animado</option>
+                                                    <option value="extrude3d">🕹️ 3. Texto 3D Extruido</option>
+                                                    <option value="rgb">📺 4. Cromático RGB Split</option>
+                                                    <option value="outline">⭕ 5. Contorno Luminoso</option>
+                                                    <option value="clean">🎯 6. Sombra Nítida Limpia</option>
+                                                </select>
+                                            </div>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>🎨 Marco / Fondo</label>
+                                                <select
+                                                    value={overlays.adsWidgetTheme || 'glass'}
+                                                    onChange={(e) => updateAdsWidgetConfig({ adsWidgetTheme: e.target.value })}
+                                                >
+                                                    <option value="glass">🪟 Cristal Espacial (Vision Glass)</option>
+                                                    <option value="transparent">✨ 100% Puro Texto Transparente</option>
+                                                    <option value="cyber">⚡ Cyberpunk Neon HUD</option>
+                                                    <option value="aurora">🌈 Cápsula Aurora</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Duraciones de Fade In, Pantalla, Fade Out y Pausa */}
+                                        <div className="grid-2" style={{ gap: '12px', marginBottom: '18px', background: 'rgba(255,255,255,0.02)', padding: '14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>🌅 Duración Fade In: {Number(overlays.adsWidgetFadeIn || 0.8).toFixed(1)}s</label>
+                                                <input type="range" min="0.2" max="3.5" step="0.1" value={overlays.adsWidgetFadeIn || 0.8} onChange={(e) => updateAdsWidgetConfig({ adsWidgetFadeIn: parseFloat(e.target.value) })} />
+                                            </div>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>🌇 Duración Fade Out: {Number(overlays.adsWidgetFadeOut || 0.8).toFixed(1)}s</label>
+                                                <input type="range" min="0.2" max="3.5" step="0.1" value={overlays.adsWidgetFadeOut || 0.8} onChange={(e) => updateAdsWidgetConfig({ adsWidgetFadeOut: parseFloat(e.target.value) })} />
+                                            </div>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>📺 Tiempo en Pantalla: {Number(overlays.adsWidgetHold || 6.0).toFixed(1)}s</label>
+                                                <input type="range" min="2" max="45" step="0.5" value={overlays.adsWidgetHold || 6.0} onChange={(e) => updateAdsWidgetConfig({ adsWidgetHold: parseFloat(e.target.value) })} />
+                                            </div>
+                                            <div className="form-group" style={{ margin: 0 }}>
+                                                <label>⏸️ Pausa Entre Anuncios: {Number(overlays.adsWidgetPause ?? 1.0).toFixed(1)}s</label>
+                                                <input type="range" min="0" max="20" step="0.5" value={overlays.adsWidgetPause ?? 1.0} onChange={(e) => updateAdsWidgetConfig({ adsWidgetPause: parseFloat(e.target.value) })} />
+                                            </div>
+                                        </div>
+
+                                        {/* Enlace para OBS */}
+                                        <div className="form-group" style={{ margin: 0, background: 'rgba(168, 85, 247, 0.06)', padding: '14px', borderRadius: '12px', border: '1px dashed rgba(168, 85, 247, 0.4)' }}>
+                                            <label style={{ fontWeight: '700', color: '#c084fc', marginBottom: '6px', display: 'block' }}>
+                                                🔗 Enlace Principal para OBS (Sincronizado en vivo con este panel — 900 × 180 px)
+                                            </label>
+                                            <div className="copy-url-row">
+                                                <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/announcements_widget.html`} onClick={(e) => e.target.select()} />
+                                                <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/announcements_widget.html`)}>Copiar URL</button>
                                             </div>
                                         </div>
                                     </div>
@@ -12694,6 +12856,9 @@
                                 <button className={`config-menu-item ${activeControlSub === 'artists' ? 'active' : ''}`} onClick={() => setActiveControlSub('artists')}>
                                     <span>{renderIcon('mic')} {!sidebarCollapsed && " 🎤 Artistas Pedidos"}</span>
                                 </button>
+                                <button className={`config-menu-item ${activeControlSub === 'ads' ? 'active' : ''}`} onClick={() => setActiveControlSub('ads')}>
+                                    <span>{renderIcon('megaphone') || renderIcon('bell')} {!sidebarCollapsed && " 📢 Anuncios Letras"}</span>
+                                </button>
                                 <button className={`config-menu-item ${activeControlSub === 'lista' ? 'active' : ''}`} onClick={() => setActiveControlSub('lista')}>
                                     <span>{renderIcon('music')} {!sidebarCollapsed && " 🎵 Catálogo"}</span>
                                 </button>
@@ -13967,6 +14132,154 @@
                                                         </div>
                                                     </div>
                                                 ))}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* SUBPANEL CONTROL DE STREAM: ANIMATED ANNOUNCEMENTS WIDGET */}
+                                    <div className="glass-card animate-fade-in" style={{ display: activeControlSub === 'ads' ? 'flex' : 'none', flexDirection: 'column', gap: '18px', padding: '20px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '15px', flexWrap: 'wrap', gap: '12px' }}>
+                                            <div>
+                                                <h3 style={{ margin: 0, color: '#c084fc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    📢 Control y Widget de Anuncios Animados (Letras + Fade In/Out)
+                                                </h3>
+                                                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '4px 0 0 0' }}>
+                                                    Cambia en vivo la animación de las letras, el efecto de texto y las duraciones de entrada/salida para anuncios como "🎧 ESCUCHA CON AUDÍFONOS" y "!zr artista + canción".
+                                                </p>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary"
+                                                    style={{ padding: '8px 14px', fontSize: '0.82rem', borderColor: '#a855f7', color: '#c084fc', background: 'rgba(168, 85, 247, 0.08)' }}
+                                                    onClick={() => {
+                                                        ['iframe-control-ads-widget', 'iframe-ads-widget'].forEach((id) => {
+                                                            const ifr = document.getElementById(id);
+                                                            if (ifr && ifr.contentWindow) {
+                                                                ifr.contentWindow.postMessage({ action: 'nextAnnouncement' }, '*');
+                                                            }
+                                                        });
+                                                    }}
+                                                >
+                                                    ⏭️ Siguiente Anuncio
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-primary"
+                                                    style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+                                                    onClick={() => handleSaveOverlaysConfigOnly('Announcements Widget')}
+                                                >
+                                                    {renderIcon('save')} Guardar Diseño
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Vista Previa en Vivo en Control de Stream */}
+                                        <div className="preview-panel" style={{ margin: 0 }}>
+                                            <div className="preview-header">
+                                                <span>📺 Vista Previa en Tiempo Real (Pasa el mouse y pulsa ⚙️ para editar los textos de los anuncios)</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                    <div className="preview-live-dot"></div> Announcements Live
+                                                </div>
+                                            </div>
+                                            <iframe
+                                                id="iframe-control-ads-widget"
+                                                src="./announcements_widget.html"
+                                                className="preview-iframe"
+                                                style={{ height: '190px', width: '100%', border: 'none' }}
+                                                onLoad={() => sendConfigToIframe('iframe-control-ads-widget', overlays)}
+                                            ></iframe>
+                                        </div>
+
+                                        {/* Selectores Rápidos */}
+                                        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <div className="grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>🔤 Animación de Letras</label>
+                                                    <select
+                                                        value={overlays.adsWidgetLetterAnim || 'wave'}
+                                                        onChange={(e) => updateAdsWidgetConfig({ adsWidgetLetterAnim: e.target.value })}
+                                                    >
+                                                        <option value="wave">🌊 1. Ola Sinusoidal (Wave)</option>
+                                                        <option value="spring">🏀 2. Resorte Elástico (Spring)</option>
+                                                        <option value="typewriter">⌨️ 3. Máquina de Escribir</option>
+                                                        <option value="bounce">⚡ 4. Caída con Rebote</option>
+                                                        <option value="flip3d">🔄 5. Giro 3D por Letra</option>
+                                                        <option value="pulse">💫 6. Pulso Láser Secuencial</option>
+                                                        <option value="glitch">👾 7. Cyber Glitch</option>
+                                                        <option value="none">⏹️ 8. Estático Limpio</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>✨ Entrada / Salida (Fade)</label>
+                                                    <select
+                                                        value={overlays.adsWidgetTrans || 'fade-blur'}
+                                                        onChange={(e) => updateAdsWidgetConfig({ adsWidgetTrans: e.target.value })}
+                                                    >
+                                                        <option value="fade-blur">🌫️ 1. Fade + Blur Cinemático</option>
+                                                        <option value="fade">🌅 2. Fade In / Out Puro</option>
+                                                        <option value="slide-up">⬆️ 3. Fade + Elevación</option>
+                                                        <option value="slide-lr">➡️ 4. Barrido Lateral</option>
+                                                        <option value="zoom-spring">💥 5. Zoom Elástico</option>
+                                                        <option value="flip-3d">🎴 6. Giro 3D de Cartel</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>🌈 Efecto de Texto</label>
+                                                    <select
+                                                        value={overlays.adsWidgetTextEffect || 'neon'}
+                                                        onChange={(e) => updateAdsWidgetConfig({ adsWidgetTextEffect: e.target.value })}
+                                                    >
+                                                        <option value="neon">💡 1. Resplandor Neón</option>
+                                                        <option value="shimmer">✨ 2. Shimmer Metálico</option>
+                                                        <option value="extrude3d">🕹️ 3. Texto 3D Extruido</option>
+                                                        <option value="rgb">📺 4. Cromático RGB Split</option>
+                                                        <option value="outline">⭕ 5. Contorno Luminoso</option>
+                                                        <option value="clean">🎯 6. Sombra Nítida Limpia</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>🎨 Marco / Fondo</label>
+                                                    <select
+                                                        value={overlays.adsWidgetTheme || 'glass'}
+                                                        onChange={(e) => updateAdsWidgetConfig({ adsWidgetTheme: e.target.value })}
+                                                    >
+                                                        <option value="glass">🪟 Cristal (Vision Glass)</option>
+                                                        <option value="transparent">✨ 100% Puro Texto Transparente</option>
+                                                        <option value="cyber">⚡ Cyberpunk Neon HUD</option>
+                                                        <option value="aurora">🌈 Cápsula Aurora</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid-2" style={{ gap: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>🌅 Fade In: {Number(overlays.adsWidgetFadeIn || 0.8).toFixed(1)}s</label>
+                                                    <input type="range" min="0.2" max="3.5" step="0.1" value={overlays.adsWidgetFadeIn || 0.8} onChange={(e) => updateAdsWidgetConfig({ adsWidgetFadeIn: parseFloat(e.target.value) })} />
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>🌇 Fade Out: {Number(overlays.adsWidgetFadeOut || 0.8).toFixed(1)}s</label>
+                                                    <input type="range" min="0.2" max="3.5" step="0.1" value={overlays.adsWidgetFadeOut || 0.8} onChange={(e) => updateAdsWidgetConfig({ adsWidgetFadeOut: parseFloat(e.target.value) })} />
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>📺 En Pantalla: {Number(overlays.adsWidgetHold || 6.0).toFixed(1)}s</label>
+                                                    <input type="range" min="2" max="45" step="0.5" value={overlays.adsWidgetHold || 6.0} onChange={(e) => updateAdsWidgetConfig({ adsWidgetHold: parseFloat(e.target.value) })} />
+                                                </div>
+                                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                                    <label>⏸️ Pausa Entre Anuncios: {Number(overlays.adsWidgetPause ?? 1.0).toFixed(1)}s</label>
+                                                    <input type="range" min="0" max="20" step="0.5" value={overlays.adsWidgetPause ?? 1.0} onChange={(e) => updateAdsWidgetConfig({ adsWidgetPause: parseFloat(e.target.value) })} />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Enlace para OBS */}
+                                        <div className="form-group" style={{ margin: 0, background: 'rgba(168, 85, 247, 0.06)', padding: '12px 14px', borderRadius: '12px', border: '1px dashed rgba(168, 85, 247, 0.4)' }}>
+                                            <label style={{ fontWeight: '700', color: '#c084fc', marginBottom: '6px', display: 'block', fontSize: '0.82rem' }}>
+                                                🔗 Enlace Principal OBS (Sincronizado en vivo con este panel — 900 × 180 px)
+                                            </label>
+                                            <div className="copy-url-row">
+                                                <input type="text" className="copy-url-input" readOnly value={`${currentOrigin}/announcements_widget.html`} onClick={(e) => e.target.select()} />
+                                                <button className="btn btn-secondary" onClick={() => handleCopyUrl(`${currentOrigin}/announcements_widget.html`)}>Copiar URL</button>
                                             </div>
                                         </div>
                                     </div>

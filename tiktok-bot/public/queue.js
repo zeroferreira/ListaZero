@@ -2898,17 +2898,37 @@
     try { window.__QUEUE_MODE__ = window.__QUEUE_MODE__ || safeLocalStorage.getItem('queueMode') || 'default'; } catch (_) { window.__QUEUE_MODE__ = window.__QUEUE_MODE__ || 'default'; }
     console.log("Queue Overlay v2.2 - Fix Empty Match. Listening for day:", currentDay);
 
+    const localSimulatedRequests = [];
+    const allowFirestoreSimulations = (() => {
+      try {
+        const qp = new URLSearchParams(window.location.search);
+        return qp.get('test') === 'true';
+      } catch (_) {
+        return false;
+      }
+    })();
+
+    function isSimulatedRequest(data) {
+      if (!data) return false;
+      if (data.isSimulation === true || data.isTest === true || data.source === 'test' || data.source === 'offlineTest') return true;
+      const u = String(data.usuario || data.user || data.username || '').trim().replace(/^@/, '').toLowerCase();
+      if (u === 'prueba') return true;
+      return false;
+    }
+
     if (db) {
       let unsubscribeRequests = null;
       function applyRequestsSnapshot(snapshot) {
         const temp = [];
         snapshot.forEach(doc => {
           const data = doc.data();
+          if (!allowFirestoreSimulations && isSimulatedRequest(data)) return;
           if (!firstSeenOrder.has(doc.id)) firstSeenOrder.set(doc.id, ++firstSeenCounter);
           const item = { ...data, docId: doc.id, _seen: firstSeenOrder.get(doc.id) };
           if (!item.id) item.id = doc.id;
           temp.push(item);
         });
+        localSimulatedRequests.forEach(sim => temp.push(sim));
         temp.sort((a, b) => {
            const tA = a.ts && a.ts.toMillis ? a.ts.toMillis() : (new Date(a.ts).getTime() || 0);
            const tB = b.ts && b.ts.toMillis ? b.ts.toMillis() : (new Date(b.ts).getTime() || 0);
@@ -2955,11 +2975,13 @@
 
             const temp = [];
             byId.forEach((data, docId) => {
+              if (!allowFirestoreSimulations && isSimulatedRequest(data)) return;
               if (!firstSeenOrder.has(docId)) firstSeenOrder.set(docId, ++firstSeenCounter);
               const item = { ...(data || {}), docId, _seen: firstSeenOrder.get(docId) };
               if (!item.id) item.id = docId;
               temp.push(item);
             });
+            localSimulatedRequests.forEach(sim => temp.push(sim));
 
             temp.sort((a, b) => {
               const tA = a.ts && a.ts.toMillis ? a.ts.toMillis() : (new Date(a.ts).getTime() || 0);
@@ -3197,36 +3219,28 @@
       const mm = String(now.getMinutes()).padStart(2, '0');
       const hora = `${hh}:${mm}`;
       const uniqueId = Date.now().toString(36); // Timestamp base36 para unicidad
-      const tsValue = (typeof firebase !== 'undefined' && firebase?.firestore?.FieldValue?.serverTimestamp)
-        ? firebase.firestore.FieldValue.serverTimestamp()
-        : now;
+      const simId = `${randomUser}-${randomSong}-${randomArtist}-${hora}-${uniqueId}`.replace(/[^a-zA-Z0-9-]/g, '');
       const req = {
-        id: `${randomUser}-${randomSong}-${randomArtist}-${hora}-${uniqueId}`.replace(/[^a-zA-Z0-9-]/g, ''),
+        id: simId,
+        docId: simId,
         usuario: randomUser,
         displayName: randomUser,
         cancion: randomSong,
         artista: randomArtist,
-        ts: tsValue,
+        ts: now,
         day: getLocalDateKey(now),
         hora,
         status: 'pending',
         isSimulation: true,
-        badge: forcedBadge
+        badge: forcedBadge,
+        _seen: ++firstSeenCounter
       };
 
-      // Enviar a Firebase para que se refleje en OBS
-      console.log("Enviando simulación a Firebase:", req);
-      if (!db) {
-        allRequests.push(req);
-        renderQueue();
-        return;
-      }
-      db.collection('solicitudes').add(req)
-        .then(() => console.log("Simulación enviada con éxito"))
-        .catch(err => {
-          console.error("Error enviando simulación:", err);
-          try { allRequests.push(req); renderQueue(); } catch (_) {}
-        });
+      // Mantener simulaciones solo en memoria local para no contaminar OBS ni Firestore
+      console.log("Agregando simulación local de cola:", req);
+      localSimulatedRequests.push(req);
+      allRequests.push(req);
+      renderQueue();
     }
 
     function markFirstPending(skip) {
@@ -3287,9 +3301,10 @@
     }
     const urlParams = new URLSearchParams(window.location.search);
     const isPreview = urlParams.get('preview') === 'true' || urlParams.get('dashboard') === 'true';
-    const isObs = typeof window.obsstudio !== 'undefined' || urlParams.get('obs') === 'true' || urlParams.get('hide_controls') === 'true';
+    const isConfigMode = urlParams.get('config') === 'true' || urlParams.get('settings') === 'true' || urlParams.get('debug') === 'true';
+    const isObs = typeof window.obsstudio !== 'undefined' || urlParams.get('obs') === 'true' || urlParams.get('hide_controls') === 'true' || (!isIframe && !isConfigMode);
 
-    if (isIframe || isPreview) {
+    if (isIframe || isPreview || isObs) {
         if (settingsBtn) {
             settingsBtn.style.display = 'none';
         }
