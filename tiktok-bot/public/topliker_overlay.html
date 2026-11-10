@@ -8,7 +8,7 @@
     <title>Top Likers — Zero FM</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.min.js" crossorigin="anonymous"></script>
@@ -19,620 +19,1476 @@
     <script src="firebase-config.js"></script>
 
     <style>
-        /* =============================================
-           RESET & BASE
-        ============================================= */
-        *, *::before, *::after {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        :root {
-            --topliker-opacity: 0.85;
-            --topliker-radius: 22px;
-            --topliker-font-size: 14px;
-            --topliker-width: 340px;
-            --topliker-gap: 6px;
-            --topliker-card-padding: 7px 12px 7px 10px;
-            --topliker-border-width: 1px;
-            --topliker-border-style: solid;
-            --topliker-border-color: rgba(255, 255, 255, 0.07);
-            --topliker-box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.06);
-            --topliker-animation-duration: 0.35s;
-        }
-
-        body {
-            font-family: 'Outfit', 'Segoe UI', -apple-system, sans-serif;
-            background: transparent;
-            overflow: hidden;
-            margin: 0 !important;
-            padding: 0;
-            width: 100%;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-            text-rendering: optimizeLegibility;
-        }
+        @layer reset, tokens, base, layouts, styles, frames, effects, utilities;
 
         /* =============================================
-           CONTAINER
+           RESET & MODERN CSS TOKENS
         ============================================= */
-        #rankingContainer {
-            display: flex;
-            flex-direction: column;
-            gap: var(--topliker-gap);
-            padding: 22px 2px 4px; /* top clearance for crown on 1st card */
-            width: var(--topliker-width);
-            max-width: 100%;
-            max-height: 100vh;
-            overflow: visible;
+        @property --animation-reduced {
+            syntax: "<number>";
+            inherits: true;
+            initial-value: 0;
         }
 
-        /* =============================================
-           RANK USER CARD
-        ============================================= */
-        .rankUser {
-            display: none;
-            align-items: center;
-            gap: 10px;
-            padding: var(--topliker-card-padding);
-            border-radius: var(--topliker-radius);
-            background: rgba(20, 10, 15, var(--topliker-opacity));
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: var(--topliker-border-width) var(--topliker-border-style) var(--topliker-border-color);
-            box-shadow: var(--topliker-box-shadow);
-            position: relative;
-            overflow: visible;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            font-size: var(--topliker-font-size);
+        @layer reset {
+            *, *::before, *::after {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
         }
 
-        .rankUser.animate-in {
-            animation: slideIn var(--topliker-animation-duration) cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        @layer tokens {
+            :root {
+                --in-oklab: ;
+                --ease-spring: linear(
+                    0, 0.009, 0.035 2.1%, 0.141, 0.281 6.7%, 0.723 12.9%, 0.938 16.7%, 1.017,
+                    1.077, 1.121, 1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%,
+                    1.051 39.6%, 1.017 43.1%, 0.991, 0.977 51%, 0.974 53.8%, 0.975 57.1%,
+                    0.997 69.8%, 1.003 76.9%, 1.004 83.8%, 1
+                );
+
+                --topliker-opacity: 0.85;
+                --topliker-radius: 22px;
+                --topliker-font-size: 14px;
+                --topliker-width: 340px;
+                --topliker-gap: 7px;
+                --topliker-card-padding: 7px 12px 7px 10px;
+                --topliker-border-width: 1px;
+                --topliker-border-style: solid;
+                --topliker-border-color: rgba(255, 255, 255, 0.08);
+                --topliker-box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+                --topliker-animation-duration: 0.38s;
+            }
+
+            @supports (background: linear-gradient(in oklab, white, black)) {
+                :root {
+                    --in-oklab: in oklab;
+                }
+            }
+
+            @supports not (animation-timing-function: linear(0, 1)) {
+                :root {
+                    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+                }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                :root {
+                    --animation-reduced: 1;
+                }
+            }
         }
 
-        @keyframes heartbeat {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.12); }
-            100% { transform: scale(1); }
+        @layer base {
+            body {
+                font-family: 'Outfit', 'Segoe UI', -apple-system, sans-serif;
+                background: transparent;
+                overflow: hidden;
+                margin: 0 !important;
+                padding: 0;
+                width: 100%;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+                text-rendering: optimizeLegibility;
+            }
+
+            /* =============================================
+               CONTAINER
+            ============================================= */
+            #rankingContainer {
+                display: flex;
+                flex-direction: column;
+                gap: var(--topliker-gap);
+                padding: 24px 4px 6px;
+                width: var(--topliker-width);
+                max-width: 100%;
+                max-height: 100vh;
+                overflow: visible;
+                position: relative;
+            }
+
+            /* =============================================
+               RANK USER CARD (Base / TikFinity)
+            ============================================= */
+            .rankUser {
+                display: none;
+                align-items: center;
+                gap: 10px;
+                padding: var(--topliker-card-padding);
+                border-radius: var(--topliker-radius);
+                background: rgba(20, 10, 16, var(--topliker-opacity));
+                backdrop-filter: blur(16px) saturate(140%) brightness(1.04);
+                -webkit-backdrop-filter: blur(16px) saturate(140%) brightness(1.04);
+                border: var(--topliker-border-width) var(--topliker-border-style) var(--topliker-border-color);
+                box-shadow: var(--topliker-box-shadow);
+                position: relative;
+                overflow: visible;
+                transition: transform 0.25s var(--ease-spring), box-shadow 0.25s ease, border-color 0.25s ease;
+                font-size: var(--topliker-font-size);
+                z-index: 0;
+                contain: style;
+            }
+
+            .rankUser.animate-in {
+                animation: slideIn var(--topliker-animation-duration) var(--ease-spring) both;
+            }
+
+            .rankUser.no-card-bg {
+                background: transparent !important;
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+                box-shadow: none !important;
+                border-color: transparent !important;
+            }
+
+            .rankUser.no-card-bg .card-fx-layer {
+                display: none !important;
+            }
+
+            .rankUser:hover {
+                transform: translateX(3px);
+            }
+
+            /* Inner FX clipping layer so crown1 above card is never clipped */
+            .card-fx-layer {
+                position: absolute;
+                inset: 0;
+                border-radius: inherit;
+                overflow: hidden;
+                pointer-events: none;
+                z-index: -1;
+            }
+
+            .card-fx-layer::before {
+                content: '';
+                position: absolute;
+                inset: 0;
+                background:
+                    linear-gradient(var(--in-oklab) 135deg, rgba(255,255,255,0.08) 0%, transparent 55%),
+                    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E") center / 150px 150px;
+                opacity: 0.05;
+                mix-blend-mode: overlay;
+            }
+
+            .card-fx-layer::after {
+                content: '';
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(
+                    to bottom,
+                    rgba(255, 255, 255, 0.09) 0%,
+                    transparent 42%
+                );
+            }
+
+            /* First, Second, Third place base styling */
+            .rankUser.first-place {
+                background: rgba(36, 11, 20, var(--topliker-opacity));
+                border-color: var(--topliker-first-border-color, rgba(255, 94, 126, 0.42));
+                box-shadow: var(--topliker-first-box-shadow, 0 4px 24px rgba(255, 94, 126, 0.22), 0 0 0 1px rgba(255, 94, 126, 0.16), inset 0 1px 0 rgba(255, 182, 193, 0.14));
+                padding-top: 16px;
+                animation: roseGlow 3s ease-in-out 0.5s infinite;
+            }
+
+            .rankUser.first-place.animate-in {
+                animation:
+                    slideIn var(--topliker-animation-duration) var(--ease-spring) both,
+                    roseGlow 3s ease-in-out 0.5s infinite;
+            }
+
+            .rankUser.second-place {
+                border-color: var(--topliker-second-border-color, rgba(255, 133, 167, 0.28));
+                box-shadow:
+                    0 4px 20px rgba(0,0,0,0.32),
+                    0 0 0 1px rgba(203, 213, 225, 0.20),
+                    inset 0 1px 0 rgba(255,255,255,0.08);
+            }
+
+            .rankUser.third-place {
+                border-color: var(--topliker-third-border-color, rgba(251, 146, 60, 0.28));
+                box-shadow:
+                    0 4px 20px rgba(0,0,0,0.32),
+                    0 0 0 1px rgba(251, 146, 60, 0.22),
+                    inset 0 1px 0 rgba(255,255,255,0.08);
+            }
+
+            @keyframes slideIn {
+                from {
+                    opacity: 0;
+                    transform: translateX(-18px) scale(0.96);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(0) scale(1);
+                }
+            }
+
+            @keyframes roseGlow {
+                0%, 100% {
+                    box-shadow:
+                        0 4px 24px rgba(255, 77, 109, 0.20),
+                        0 0 0 1px rgba(255, 94, 126, 0.32),
+                        inset 0 1px 0 rgba(255, 182, 193, 0.12);
+                }
+                50% {
+                    box-shadow:
+                        0 6px 32px rgba(255, 51, 102, 0.42),
+                        0 0 28px rgba(255, 94, 126, 0.24),
+                        0 0 0 1.5px rgba(255, 117, 143, 0.65),
+                        inset 0 1px 0 rgba(255, 204, 213, 0.20);
+                }
+            }
+
+            /* =============================================
+               RANK NUMBER — Premium Badges
+            ============================================= */
+            .rankId {
+                font-size: 0.82em;
+                font-weight: 900;
+                width: 28px;
+                min-width: 28px;
+                height: 28px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 50%;
+                flex-shrink: 0;
+                letter-spacing: -0.5px;
+                text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+                background: rgba(255,255,255,0.07);
+                color: rgba(255,255,255,0.45);
+                border: 1px solid rgba(255,255,255,0.1);
+                box-shadow: none;
+                transition: transform 0.25s ease, box-shadow 0.25s ease;
+            }
+
+            .first-place .rankId {
+                background: linear-gradient(var(--in-oklab) 145deg, #ff4d6d, #c9184a);
+                color: #fff;
+                border: 1.5px solid rgba(255, 140, 165, 0.65);
+                box-shadow:
+                    0 0 10px rgba(255, 51, 102, 0.55),
+                    0 0 22px rgba(255, 51, 102, 0.25),
+                    inset 0 1px 0 rgba(255,255,255,0.28);
+                animation: rankGlow1 2.4s ease-in-out infinite;
+            }
+
+            .second-place .rankId {
+                background: linear-gradient(var(--in-oklab) 145deg, #e2e8f0, #94a3b8);
+                color: #1e293b;
+                border: 1.5px solid rgba(220, 230, 240, 0.5);
+                box-shadow:
+                    0 0 8px rgba(148, 163, 184, 0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.4);
+            }
+
+            .third-place .rankId {
+                background: linear-gradient(var(--in-oklab) 145deg, #fb923c, #92400e);
+                color: #fff;
+                border: 1.5px solid rgba(251, 146, 60, 0.45);
+                box-shadow:
+                    0 0 8px rgba(180, 83, 9, 0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.2);
+            }
+
+            @keyframes rankGlow1 {
+                0%, 100% { box-shadow: 0 0 10px rgba(255,51,102,0.55), 0 0 22px rgba(255,51,102,0.25), inset 0 1px 0 rgba(255,255,255,0.25); }
+                50%       { box-shadow: 0 0 18px rgba(255,51,102,0.85), 0 0 38px rgba(255,51,102,0.45), inset 0 1px 0 rgba(255,255,255,0.35); }
+            }
+
+            .rankId img {
+                height: 1.3em;
+                width: auto;
+                border-radius: 0;
+                margin: 0;
+            }
+
+            /* =============================================
+               AVATAR & CROWN
+            ============================================= */
+            .avatar-wrap {
+                position: relative;
+                flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .profilePicture {
+                height: 48px;
+                width: 48px;
+                border-radius: 50%;
+                object-fit: cover;
+                display: block;
+                border: 3px solid rgba(255, 255, 255, 0.18);
+                transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+                position: relative;
+                z-index: 2;
+                background: #241018;
+            }
+
+            .first-place .profilePicture {
+                border: 3.5px solid rgb(255, 94, 126);
+                box-shadow: 0 0 14px rgba(255, 94, 126, 0.65), 0 0 0 1px rgba(255, 94, 126, 0.25);
+            }
+
+            .second-place .profilePicture {
+                border: 3.5px solid rgb(185, 200, 218);
+                box-shadow: 0 0 10px rgba(185, 200, 218, 0.4);
+            }
+
+            .third-place .profilePicture {
+                border: 3.5px solid rgb(251, 146, 60);
+                box-shadow: 0 0 10px rgba(251, 146, 60, 0.4);
+            }
+
+            .avatar-aura,
+            .avatar-laurel {
+                display: none;
+                pointer-events: none;
+            }
+
+            .crown1 {
+                display: none;
+                position: absolute;
+                top: -21px;
+                left: 50%;
+                transform: translateX(-50%) rotate(-5deg);
+                height: 27px;
+                width: auto;
+                z-index: 5;
+                filter:
+                    drop-shadow(0 0 6px rgba(255, 80, 110, 0.9))
+                    drop-shadow(0 0 14px rgba(255, 51, 102, 0.55));
+                animation: crownFloat 2.8s ease-in-out infinite, crownShine 1.8s ease-in-out infinite;
+            }
+
+            @keyframes crownFloat {
+                0%, 100% { transform: translateX(-50%) rotate(-5deg) translateY(0px); }
+                50%       { transform: translateX(-50%) rotate(-2deg) translateY(-3.5px) scale(1.04); }
+            }
+
+            @keyframes crownShine {
+                0%, 100% {
+                    filter:
+                        drop-shadow(0 0 5px rgba(255, 80, 110, 0.8))
+                        drop-shadow(0 0 12px rgba(255, 51, 102, 0.45));
+                }
+                50% {
+                    filter:
+                        drop-shadow(0 0 10px rgba(255, 120, 150, 1))
+                        drop-shadow(0 0 24px rgba(255, 51, 102, 0.75))
+                        drop-shadow(0 0 40px rgba(255, 0, 80, 0.35));
+                }
+            }
+
+            /* =============================================
+               USER INFO & POINTS (LIKES)
+            ============================================= */
+            .user-info {
+                flex: 1;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                z-index: 2;
+            }
+
+            .hero-tag {
+                display: none;
+                font-size: 0.65em;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: #ffccd5;
+                background: rgba(255, 77, 109, 0.22);
+                border: 1px solid rgba(255, 117, 143, 0.42);
+                padding: 1px 7px;
+                border-radius: 999px;
+                width: fit-content;
+                margin-bottom: 2px;
+            }
+
+            .username {
+                font-weight: 700;
+                font-size: 0.94em;
+                color: #ffffff;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                line-height: 1.22;
+                letter-spacing: 0.01em;
+                padding-top: 8px;
+                margin-top: -8px;
+            }
+
+            .first-place .username {
+                color: #ffccd5;
+                font-weight: 800;
+            }
+
+            .points {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                font-size: 0.79em;
+                font-weight: 700;
+                color: rgba(255,255,255,0.62);
+                line-height: 1.1;
+            }
+
+            .first-place .points {
+                color: rgba(255, 148, 178, 0.94);
+            }
+
+            .coin-icon {
+                flex-shrink: 0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .coin-icon svg {
+                width: 14px;
+                height: 14px;
+                display: block;
+            }
+
+            .coin-amount {
+                letter-spacing: 0.02em;
+                font-variant-numeric: tabular-nums;
+            }
+
+            .inactive-warning {
+                display: none;
+                color: #ff9f43;
+                font-size: 1.05em;
+                margin-left: auto;
+                margin-right: 4px;
+                cursor: help;
+                animation: warningPulse 1.5s infinite alternate;
+                z-index: 3;
+            }
+
+            @keyframes warningPulse {
+                0%   { opacity: 0.35; transform: scale(0.9); }
+                100% { opacity: 1;    transform: scale(1.1); }
+            }
+
+            /* Progress Bar */
+            .rank-progress-track {
+                display: none;
+                width: 100%;
+                height: 4px;
+                background: rgba(255, 255, 255, 0.09);
+                border-radius: 999px;
+                overflow: hidden;
+                margin-top: 4px;
+            }
+
+            .rank-progress-bar {
+                height: 100%;
+                width: 0%;
+                border-radius: inherit;
+                background: linear-gradient(var(--in-oklab) 90deg, #ff3366, #ff85a7);
+                box-shadow: 0 0 8px rgba(255, 77, 109, 0.55);
+                transition: width 0.55s var(--ease-spring);
+            }
+
+            .second-place .rank-progress-bar {
+                background: linear-gradient(var(--in-oklab) 90deg, #94a3b8, #f1f5f9);
+            }
+
+            .third-place .rank-progress-bar {
+                background: linear-gradient(var(--in-oklab) 90deg, #b45309, #fb923c);
+            }
+
+            :where(#rankingContainer[data-progress="true"]) .rank-progress-track {
+                display: block;
+            }
+
+            /* Pedestal for Podium Layout */
+            .podium-pedestal {
+                display: none;
+            }
+
+            /* Left Glow Accent */
+            .rank-accent {
+                position: absolute;
+                left: 0;
+                top: 20%;
+                height: 60%;
+                width: 3.5px;
+                border-radius: 0 4px 4px 0;
+                background: rgba(255,255,255,0.08);
+                transition: background 0.3s, box-shadow 0.3s;
+                z-index: 2;
+            }
+
+            .first-place .rank-accent  { background: linear-gradient(180deg, #ff5e7e, #ff3366); box-shadow: 0 0 10px rgba(255, 51, 102, 0.75); }
+            .second-place .rank-accent { background: linear-gradient(180deg, #ff85a7, #ff5e7e); box-shadow: 0 0 6px rgba(255, 133, 167, 0.45); }
+            .third-place .rank-accent  { background: linear-gradient(180deg, #ffccd5, #ff85a7); }
+
+            /* Sparkle for 1st place */
+            .sparkle {
+                position: absolute;
+                right: 11px;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 0.92em;
+                animation: sparkleAnim 1.8s ease-in-out infinite;
+                opacity: 0.7;
+                z-index: 2;
+                pointer-events: none;
+            }
+
+            @keyframes sparkleAnim {
+                0%, 100% { opacity: 0.45; transform: translateY(-50%) scale(0.95); }
+                50%       { opacity: 1;    transform: translateY(-56%) scale(1.18); }
+            }
         }
 
-        .heartbeat-active {
-            animation: heartbeat 0.3s ease-in-out;
-            color: #ff5e7e !important;
+        /* =================================================================
+           LAYER: LAYOUTS (Formas de mostrar el Top)
+           - list: Lista Vertical Clásica (TikFinity)
+           - podium: Podio Olímpico 3D (2° - 1° - 3°) + Lista debajo
+           - hero: Rey de la Colina (#1 Gigante Destacado + Lista)
+           - grid: Muro Doble (Cuadrícula 2 Columnas con #1 completo)
+           - compact: Cápsulas Flotantes VIP (Pills)
+           - spotlight: Spotlight / Carrusel Dinámico 3D
+        ================================================================= */
+        @layer layouts {
+            /* ── LAYOUT 2: PODIO OLÍMPICO 3D (podium) ── */
+            :where(#rankingContainer[data-layout="podium"]) {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: var(--topliker-gap);
+                align-items: end;
+                padding-top: 28px;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser {
+                grid-column: 1 / -1;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.first-place,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.second-place,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.third-place {
+                flex-direction: column;
+                justify-content: flex-end;
+                text-align: center;
+                padding: 16px 6px 0 6px !important;
+                gap: 6px;
+                overflow: visible;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.first-place {
+                grid-column: 2;
+                grid-row: 1;
+                z-index: 3;
+                transform: translateY(-4px);
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.second-place {
+                grid-column: 1;
+                grid-row: 1;
+                z-index: 2;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.third-place {
+                grid-column: 3;
+                grid-row: 1;
+                z-index: 1;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.first-place .profilePicture {
+                width: 54px;
+                height: 54px;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.second-place .profilePicture,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.third-place .profilePicture {
+                width: 44px;
+                height: 44px;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.first-place .rankId,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.second-place .rankId,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.third-place .rankId {
+                position: absolute;
+                top: 6px;
+                right: 6px;
+                width: 20px;
+                min-width: 20px;
+                height: 20px;
+                font-size: 0.68em;
+                z-index: 6;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.first-place .user-info,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.second-place .user-info,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.third-place .user-info {
+                width: 100%;
+                align-items: center;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.first-place .username,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.second-place .username,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.third-place .username {
+                font-size: 0.78em;
+                max-width: 100%;
+                text-align: center;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.first-place .points,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.second-place .points,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.third-place .points {
+                justify-content: center;
+                font-size: 0.72em;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.first-place .rank-accent,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.second-place .rank-accent,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.third-place .rank-accent,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.first-place .sparkle {
+                display: none !important;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.first-place .podium-pedestal,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.second-place .podium-pedestal,
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.third-place .podium-pedestal {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: calc(100% + 12px);
+                margin: 4px -6px 0 -6px;
+                border-radius: 8px 8px calc(var(--topliker-radius) - 2px) calc(var(--topliker-radius) - 2px);
+                font-weight: 900;
+                letter-spacing: 0.04em;
+                position: relative;
+                overflow: hidden;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.first-place .podium-pedestal {
+                height: 38px;
+                background: linear-gradient(180deg, rgba(255, 77, 109, 0.42), rgba(159, 18, 57, 0.62));
+                border-top: 1.5px solid rgba(255, 165, 185, 0.68);
+                color: #ffe4e6;
+                font-size: 0.95em;
+                text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.second-place .podium-pedestal {
+                height: 26px;
+                background: linear-gradient(180deg, rgba(203, 213, 225, 0.28), rgba(100, 116, 139, 0.45));
+                border-top: 1.5px solid rgba(226, 232, 240, 0.5);
+                color: #f1f5f9;
+                font-size: 0.82em;
+            }
+
+            :where(#rankingContainer[data-layout="podium"]) .rankUser.third-place .podium-pedestal {
+                height: 19px;
+                background: linear-gradient(180deg, rgba(251, 146, 60, 0.28), rgba(154, 52, 18, 0.48));
+                border-top: 1.5px solid rgba(251, 146, 60, 0.5);
+                color: #ffedd5;
+                font-size: 0.76em;
+            }
+
+            /* ── LAYOUT 3: HERO #1 DESTACADO + LISTA (hero) ── */
+            :where(#rankingContainer[data-layout="hero"]) .rankUser.first-place {
+                padding: 18px 16px 14px 16px !important;
+                gap: 14px;
+                margin-bottom: 4px;
+                background: linear-gradient(var(--in-oklab) 135deg, rgba(56, 12, 28, calc(var(--topliker-opacity) + 0.12)), rgba(22, 10, 24, var(--topliker-opacity)));
+            }
+
+            :where(#rankingContainer[data-layout="hero"]) .rankUser.first-place .profilePicture {
+                width: 64px;
+                height: 64px;
+                border-width: 4px;
+            }
+
+            :where(#rankingContainer[data-layout="hero"]) .rankUser.first-place .crown1 {
+                height: 32px;
+                top: -24px;
+            }
+
+            :where(#rankingContainer[data-layout="hero"]) .rankUser.first-place .hero-tag {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+            }
+
+            :where(#rankingContainer[data-layout="hero"]) .rankUser.first-place .username {
+                font-size: 1.14em;
+            }
+
+            :where(#rankingContainer[data-layout="hero"]) .rankUser.first-place .points {
+                font-size: 0.94em;
+            }
+
+            :where(#rankingContainer[data-layout="hero"]) .rankUser.first-place .rank-progress-track {
+                display: block;
+                height: 5px;
+                margin-top: 6px;
+            }
+
+            /* ── LAYOUT 4: MURO CUADRÍCULA 2 COLUMNAS (grid) ── */
+            :where(#rankingContainer[data-layout="grid"]) {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: var(--topliker-gap);
+            }
+
+            :where(#rankingContainer[data-layout="grid"]) .rankUser.first-place {
+                grid-column: 1 / -1;
+                padding: 16px 14px 12px 14px;
+            }
+
+            :where(#rankingContainer[data-layout="grid"]) .rankUser:not(.first-place) {
+                padding: 7px 8px;
+                gap: 7px;
+            }
+
+            :where(#rankingContainer[data-layout="grid"]) .rankUser:not(.first-place) .profilePicture {
+                width: 36px;
+                height: 36px;
+            }
+
+            :where(#rankingContainer[data-layout="grid"]) .rankUser:not(.first-place) .rankId {
+                width: 22px;
+                min-width: 22px;
+                height: 22px;
+                font-size: 0.74em;
+            }
+
+            :where(#rankingContainer[data-layout="grid"]) .rankUser:not(.first-place) .username {
+                font-size: 0.82em;
+            }
+
+            :where(#rankingContainer[data-layout="grid"]) .rankUser:not(.first-place) .points {
+                font-size: 0.72em;
+            }
+
+            /* ── LAYOUT 5: CÁPSULAS FLOTANTES VIP (compact) ── */
+            :where(#rankingContainer[data-layout="compact"]) .rankUser {
+                border-radius: 999px !important;
+                padding: 5px 14px 5px 8px !important;
+                gap: 8px;
+            }
+
+            :where(#rankingContainer[data-layout="compact"]) .rankUser.first-place {
+                margin-top: 6px;
+            }
+
+            :where(#rankingContainer[data-layout="compact"]) .profilePicture {
+                width: 36px;
+                height: 36px;
+                border-width: 2.5px;
+            }
+
+            :where(#rankingContainer[data-layout="compact"]) .crown1 {
+                height: 20px;
+                top: -15px;
+            }
+
+            :where(#rankingContainer[data-layout="compact"]) .user-info {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                gap: 6px;
+            }
+
+            :where(#rankingContainer[data-layout="compact"]) .username {
+                font-size: 0.86em;
+                flex: 1;
+                min-width: 0;
+            }
+
+            :where(#rankingContainer[data-layout="compact"]) .points {
+                background: rgba(0, 0, 0, 0.35);
+                padding: 3px 9px;
+                border-radius: 999px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                flex-shrink: 0;
+                font-size: 0.75em;
+            }
+
+            :where(#rankingContainer[data-layout="compact"]) .rank-accent,
+            :where(#rankingContainer[data-layout="compact"]) .sparkle,
+            :where(#rankingContainer[data-layout="compact"]) .rank-progress-track {
+                display: none !important;
+            }
+
+            /* ── LAYOUT 6: SPOTLIGHT / CARRUSEL DINÁMICO 3D (spotlight) ── */
+            :where(#rankingContainer[data-layout="spotlight"]) {
+                perspective: 900px;
+            }
+
+            :where(#rankingContainer[data-layout="spotlight"]) .rankUser {
+                transition: transform 0.45s var(--ease-spring), box-shadow 0.45s ease, opacity 0.45s ease, filter 0.45s ease;
+            }
+
+            :where(#rankingContainer[data-layout="spotlight"]) .rankUser.spotlight-focus {
+                transform: translateX(6px) scale(1.035) rotateY(-2deg);
+                border-color: rgba(255, 94, 126, 0.85) !important;
+                box-shadow: 0 10px 30px rgba(255, 51, 102, 0.35), 0 0 18px rgba(255, 94, 126, 0.32) !important;
+                z-index: 5;
+            }
+
+            :where(#rankingContainer[data-layout="spotlight"]) .rankUser.spotlight-dim {
+                opacity: 0.76;
+                filter: saturate(0.85);
+            }
         }
 
-        .rankUser.no-card-bg {
-            background: transparent !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            box-shadow: none !important;
+        /* =================================================================
+           LAYER: STYLES (Estilos Visuales con Efectos)
+        ================================================================= */
+        @layer styles {
+            /* ── ESTILO 2: CYBERPUNK NEON HUD (cyber) ── */
+            :where(#rankingContainer[data-style="cyber"]) .rankUser {
+                background: transparent !important;
+                border-color: transparent !important;
+                box-shadow: none !important;
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+                border-radius: 4px;
+            }
+
+            :where(#rankingContainer[data-style="cyber"]) .card-fx-layer {
+                clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+                background: linear-gradient(135deg, rgba(16, 6, 28, calc(var(--topliker-opacity) + 0.12)), rgba(6, 14, 34, var(--topliker-opacity)));
+                border: 1.5px solid rgba(255, 0, 127, 0.48);
+                box-shadow: inset 0 0 18px rgba(255, 0, 127, 0.18), 0 0 15px rgba(0, 240, 255, 0.18);
+                border-radius: 3px;
+            }
+
+            :where(#rankingContainer[data-style="cyber"]) .card-fx-layer::before {
+                background: repeating-linear-gradient(
+                    0deg,
+                    rgba(255, 0, 127, 0.06) 0px,
+                    rgba(255, 0, 127, 0.06) 1px,
+                    transparent 1px,
+                    transparent 4px
+                );
+                opacity: 0.7;
+                mix-blend-mode: screen;
+            }
+
+            :where(#rankingContainer[data-style="cyber"]) .rankUser.first-place .card-fx-layer {
+                background: linear-gradient(135deg, rgba(44, 6, 26, 0.92), rgba(14, 8, 38, 0.92));
+                border-color: #ff007f;
+                box-shadow: inset 0 0 24px rgba(255, 0, 127, 0.3), inset -3px 0 0 #00f0ff;
+            }
+
+            :where(#rankingContainer[data-style="cyber"]) .rankUser.second-place .card-fx-layer {
+                border-color: rgba(0, 240, 255, 0.75);
+                box-shadow: inset 0 0 18px rgba(0, 240, 255, 0.22), inset -3px 0 0 #ff007f;
+            }
+
+            :where(#rankingContainer[data-style="cyber"]) .rank-accent {
+                width: 4px;
+                top: 12%;
+                height: 76%;
+                background: #ff007f;
+                box-shadow: 0 0 10px #ff007f;
+            }
+
+            :where(#rankingContainer[data-style="cyber"]) .first-place .rank-accent {
+                background: linear-gradient(180deg, #ff007f, #00f0ff);
+                box-shadow: 0 0 12px #ff007f;
+            }
+
+            :where(#rankingContainer[data-style="cyber"]) .rankId {
+                border-radius: 4px;
+                clip-path: polygon(20% 0%, 100% 0, 100% 80%, 80% 100%, 0 100%, 0% 20%);
+                background: rgba(255, 0, 127, 0.16);
+                border: 1px solid rgba(255, 0, 127, 0.6);
+                color: #ff85a7;
+                font-family: 'Outfit', monospace;
+            }
+
+            :where(#rankingContainer[data-style="cyber"]) .first-place .rankId {
+                background: linear-gradient(135deg, #ff007f, #00f0ff);
+                color: #fff;
+                border-color: #fff;
+            }
+
+            :where(#rankingContainer[data-style="cyber"]) .username {
+                text-shadow: 0 0 10px rgba(255, 0, 127, 0.35);
+                letter-spacing: 0.03em;
+            }
+
+            /* ── ESTILO 3: REALEZA IMPERIAL 3D RUBÍ & ORO (royal) ── */
+            :where(#rankingContainer[data-style="royal"]) .rankUser {
+                background: linear-gradient(145deg, rgba(28, 10, 18, calc(var(--topliker-opacity) + 0.1)), rgba(12, 8, 16, var(--topliker-opacity)));
+                border: 1.5px solid rgba(244, 63, 94, 0.45);
+                box-shadow:
+                    0 8px 24px rgba(0, 0, 0, 0.55),
+                    inset 0 1px 1px rgba(255, 205, 215, 0.35),
+                    inset 0 -2px 6px rgba(190, 18, 60, 0.25);
+            }
+
+            :where(#rankingContainer[data-style="royal"]) .rankUser.first-place {
+                background: linear-gradient(135deg, rgba(68, 12, 30, 0.92), rgba(28, 6, 16, 0.92));
+                border: 2px solid #fb7185;
+                box-shadow:
+                    0 8px 32px rgba(244, 63, 94, 0.38),
+                    0 0 18px rgba(255, 215, 0, 0.22),
+                    inset 0 2px 3px rgba(255, 228, 230, 0.5),
+                    inset 0 -3px 8px rgba(225, 29, 72, 0.42);
+            }
+
+            :where(#rankingContainer[data-style="royal"]) .fx-shimmer {
+                display: block !important;
+            }
+
+            /* ── ESTILO 4: HOLOGRÁFICO CRISTAL AURORA (hologram) ── */
+            :where(#rankingContainer[data-style="hologram"]) .rankUser {
+                background: linear-gradient(
+                    var(--in-oklab) 135deg,
+                    rgba(255, 0, 128, 0.18) 0%,
+                    rgba(168, 85, 247, 0.18) 48%,
+                    rgba(0, 240, 255, 0.16) 100%
+                );
+                backdrop-filter: blur(20px) saturate(190%) brightness(1.1);
+                -webkit-backdrop-filter: blur(20px) saturate(190%) brightness(1.1);
+                border: 1.5px solid rgba(255, 255, 255, 0.32);
+                box-shadow:
+                    0 8px 28px rgba(236, 72, 153, 0.25),
+                    inset 0 1px 2px rgba(255, 255, 255, 0.45),
+                    inset 0 -1px 2px rgba(0, 240, 255, 0.3);
+            }
+
+            :where(#rankingContainer[data-style="hologram"]) .rankUser.first-place {
+                background: linear-gradient(
+                    var(--in-oklab) 135deg,
+                    rgba(244, 63, 94, 0.28) 0%,
+                    rgba(192, 132, 252, 0.26) 50%,
+                    rgba(56, 189, 248, 0.25) 100%
+                );
+                border-color: rgba(255, 255, 255, 0.65);
+                box-shadow:
+                    0 8px 32px rgba(244, 63, 94, 0.38),
+                    0 0 24px rgba(56, 189, 248, 0.3),
+                    inset 0 2px 4px rgba(255, 255, 255, 0.65);
+            }
+
+            /* ── ESTILO 5: INFERNO / FUEGO COMPETITIVO (inferno) ── */
+            :where(#rankingContainer[data-style="inferno"]) .rankUser {
+                background: linear-gradient(180deg, rgba(32, 8, 14, calc(var(--topliker-opacity) + 0.08)), rgba(52, 10, 18, var(--topliker-opacity)));
+                border: 1.5px solid rgba(251, 113, 133, 0.4);
+                box-shadow:
+                    0 6px 24px rgba(225, 29, 72, 0.28),
+                    inset 0 -3px 12px rgba(244, 63, 94, 0.28);
+            }
+
+            :where(#rankingContainer[data-style="inferno"]) .rankUser.first-place {
+                background: linear-gradient(135deg, rgba(78, 12, 26, 0.94), rgba(42, 8, 12, 0.94));
+                border-color: #fb7185;
+                box-shadow:
+                    0 8px 32px rgba(225, 29, 72, 0.5),
+                    0 0 22px rgba(251, 146, 60, 0.35),
+                    inset 0 -4px 16px rgba(244, 63, 94, 0.45);
+                animation: infernoRosePulse 2.2s ease-in-out infinite;
+            }
+
+            @keyframes infernoRosePulse {
+                0%, 100% { box-shadow: 0 6px 26px rgba(225, 29, 72, 0.42), inset 0 -4px 14px rgba(244, 63, 94, 0.38); }
+                50%      { box-shadow: 0 8px 36px rgba(244, 63, 94, 0.68), 0 0 26px rgba(251, 146, 60, 0.45), inset 0 -6px 20px rgba(251, 113, 133, 0.55); }
+            }
+
+            /* ── ESTILO 6: ARCADE / GAMER VIP 3D (arcade) ── */
+            :where(#rankingContainer[data-style="arcade"]) .rankUser {
+                background: rgba(24, 10, 36, 0.94);
+                border: 2px solid #ec4899;
+                border-radius: 14px;
+                box-shadow: 0 4px 0 #831843, 0 8px 18px rgba(0, 0, 0, 0.45);
+            }
+
+            :where(#rankingContainer[data-style="arcade"]) .rankUser.first-place {
+                background: linear-gradient(135deg, #500724, #2e1065);
+                border: 2.5px solid #ff4d6d;
+                box-shadow: 0 5px 0 #9f1239, 0 10px 26px rgba(255, 77, 109, 0.38);
+            }
+
+            :where(#rankingContainer[data-style="arcade"]) .rankUser.second-place {
+                border: 2px solid #38bdf8;
+                box-shadow: 0 4px 0 #0369a1, 0 8px 18px rgba(56, 189, 248, 0.25);
+            }
+
+            :where(#rankingContainer[data-style="arcade"]) .rankUser.third-place {
+                border: 2px solid #fb923c;
+                box-shadow: 0 4px 0 #9a3412, 0 8px 18px rgba(251, 146, 60, 0.25);
+            }
+
+            :where(#rankingContainer[data-style="arcade"]) .rankId {
+                border-radius: 6px;
+                font-weight: 900;
+                transform: rotate(-3deg);
+            }
         }
 
-        .rankUser:hover {
-            transform: translateX(3px);
+        /* =================================================================
+           LAYER: AVATAR FRAMES (Marcos y Auras de Avatar)
+        ================================================================= */
+        @layer frames {
+            :where(#rankingContainer[data-frame="neon-spin"]) .avatar-aura {
+                display: block;
+                position: absolute;
+                inset: -4px;
+                border-radius: 50%;
+                background: conic-gradient(from 0deg, #ff4d6d, #ffd700, #00f0ff, #bd00ff, #ff4d6d);
+                animation: spinAura 2.6s linear infinite;
+                z-index: 1;
+                filter: blur(1px);
+            }
+
+            :where(#rankingContainer[data-frame="neon-spin"]) .rankUser:not(.first-place):not(.second-place):not(.third-place) .avatar-aura {
+                opacity: 0.45;
+            }
+
+            @keyframes spinAura {
+                to { transform: rotate(360deg); }
+            }
+
+            :where(#rankingContainer[data-frame="laurel"]) .avatar-laurel {
+                display: block;
+                position: absolute;
+                inset: -7px;
+                z-index: 4;
+                pointer-events: none;
+                filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+            }
+
+            :where(#rankingContainer[data-frame="laurel"]) .avatar-laurel svg {
+                width: 100%;
+                height: 100%;
+                display: block;
+            }
+
+            :where(#rankingContainer[data-frame="laurel"]) .first-place .avatar-laurel { color: #ff5e7e; }
+            :where(#rankingContainer[data-frame="laurel"]) .second-place .avatar-laurel { color: #e2e8f0; }
+            :where(#rankingContainer[data-frame="laurel"]) .third-place .avatar-laurel { color: #fb923c; }
+            :where(#rankingContainer[data-frame="laurel"]) .rankUser:not(.first-place):not(.second-place):not(.third-place) .avatar-laurel {
+                color: rgba(255, 255, 255, 0.35);
+            }
+
+            :where(#rankingContainer[data-frame="hexagon"]) .profilePicture {
+                border-radius: 0 !important;
+                border: none !important;
+                clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
+            }
+
+            :where(#rankingContainer[data-frame="hexagon"]) .avatar-aura {
+                display: block;
+                position: absolute;
+                inset: -3.5px;
+                background: rgba(255, 255, 255, 0.35);
+                clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
+                z-index: 1;
+            }
+
+            :where(#rankingContainer[data-frame="hexagon"]) .first-place .avatar-aura {
+                background: linear-gradient(135deg, #ff4d6d, #ffd700, #00f0ff);
+            }
+
+            :where(#rankingContainer[data-frame="hexagon"]) .second-place .avatar-aura {
+                background: linear-gradient(135deg, #e2e8f0, #38bdf8);
+            }
+
+            :where(#rankingContainer[data-frame="hexagon"]) .third-place .avatar-aura {
+                background: linear-gradient(135deg, #fb923c, #facc15);
+            }
+
+            :where(#rankingContainer[data-frame="fire-ring"]) .first-place .avatar-aura,
+            :where(#rankingContainer[data-frame="fire-ring"]) .second-place .avatar-aura,
+            :where(#rankingContainer[data-frame="fire-ring"]) .third-place .avatar-aura {
+                display: block;
+                position: absolute;
+                inset: -4px;
+                border-radius: 50%;
+                border: 2px solid #ff4d6d;
+                box-shadow: 0 0 14px #ff3366, inset 0 0 10px #ff85a7;
+                animation: pulseRing 1.8s ease-out infinite;
+                z-index: 1;
+            }
+
+            @keyframes pulseRing {
+                0%   { transform: scale(0.95); opacity: 0.95; }
+                70%  { transform: scale(1.22); opacity: 0; }
+                100% { transform: scale(1.22); opacity: 0; }
+            }
         }
 
-        /* First place special card */
-        .rankUser.first-place {
-            background: rgba(35, 12, 20, var(--topliker-opacity));
-            border-color: var(--topliker-first-border-color, rgba(255, 94, 126, 0.35));
-            box-shadow: var(--topliker-first-box-shadow, 0 4px 24px rgba(255, 94, 126, 0.18), 0 0 0 1px rgba(255, 94, 126, 0.12), inset 0 1px 0 rgba(255, 182, 193, 0.10));
-            padding-top: 18px; /* extra room so crown doesn't clip */
-        }
+        /* =================================================================
+           LAYER: EFFECTS (Shimmer, Partículas, Textos Animados, Bounce)
+        ================================================================= */
+        @layer effects {
+            .fx-shimmer {
+                display: none;
+                position: absolute;
+                top: 0;
+                left: -120%;
+                width: 65%;
+                height: 100%;
+                background: linear-gradient(
+                    105deg,
+                    transparent 20%,
+                    rgba(255, 255, 255, 0.14) 50%,
+                    transparent 80%
+                );
+                transform: skewX(-20deg);
+                animation: cardShimmer 4.5s ease-in-out infinite;
+            }
 
-        .rankUser.second-place {
-            border-color: var(--topliker-second-border-color, rgba(255, 133, 167, 0.25));
-        }
+            .first-place .fx-shimmer {
+                background: linear-gradient(
+                    105deg,
+                    transparent 20%,
+                    rgba(255, 182, 193, 0.26) 50%,
+                    transparent 80%
+                );
+            }
 
-        .rankUser.third-place {
-            border-color: var(--topliker-third-border-color, rgba(255, 182, 193, 0.25));
-        }
+            :where(#rankingContainer[data-shimmer="true"]) .fx-shimmer {
+                display: block;
+            }
 
-        @keyframes slideIn {
-            from {
+            @keyframes cardShimmer {
+                0%, 55% { left: -120%; }
+                100%    { left: 160%; }
+            }
+
+            .fx-particles {
+                display: none;
+                position: absolute;
+                inset: 0;
+                pointer-events: none;
+            }
+
+            :where(#rankingContainer[data-particles="true"]) .first-place .fx-particles,
+            :where(#rankingContainer[data-particles="true"]) .second-place .fx-particles,
+            :where(#rankingContainer[data-particles="true"]) .third-place .fx-particles {
+                display: block;
+            }
+
+            .fx-particles .pt {
+                position: absolute;
+                width: 4px;
+                height: 4px;
+                border-radius: 50%;
+                background: #ff5e7e;
+                box-shadow: 0 0 6px #ff3366;
                 opacity: 0;
-                transform: translateX(-18px);
+                animation: floatParticle 3.2s ease-in-out infinite;
             }
-            to {
-                opacity: 1;
-                transform: translateX(0);
+
+            .second-place .fx-particles .pt { background: #e2e8f0; box-shadow: 0 0 6px #38bdf8; }
+            .third-place .fx-particles .pt  { background: #fb923c; box-shadow: 0 0 6px #fb923c; }
+
+            .fx-particles .p1 { left: 18%; bottom: 12%; animation-delay: 0s; }
+            .fx-particles .p2 { left: 46%; bottom: 8%;  animation-delay: 0.9s; width: 5px; height: 5px; }
+            .fx-particles .p3 { left: 74%; bottom: 16%; animation-delay: 1.7s; }
+            .fx-particles .p4 { left: 88%; bottom: 10%; animation-delay: 2.4s; width: 3px; height: 3px; }
+
+            @keyframes floatParticle {
+                0%   { transform: translateY(6px) scale(0.4); opacity: 0; }
+                40%  { opacity: 0.85; }
+                100% { transform: translateY(-28px) scale(1.1); opacity: 0; }
             }
-        }
 
-        /* =============================================
-           RANK NUMBER — Premium Badges
-        ============================================= */
-        .rankId {
-            font-size: 0.82em;
-            font-weight: 900;
-            width: 28px;
-            min-width: 28px;
-            height: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            flex-shrink: 0;
-            letter-spacing: -0.5px;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
-            /* Default: ranks 4+ */
-            background: rgba(255,255,255,0.07);
-            color: rgba(255,255,255,0.4);
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: none;
-        }
-
-        /* 1st place — deep rose gradient */
-        .first-place .rankId {
-            background: linear-gradient(145deg, #ff4d6d, #c9184a);
-            color: #fff;
-            border: 1.5px solid rgba(255, 120, 150, 0.6);
-            box-shadow:
-                0 0 10px rgba(255, 51, 102, 0.55),
-                0 0 22px rgba(255, 51, 102, 0.25),
-                inset 0 1px 0 rgba(255,255,255,0.25);
-            animation: rankGlow1 2.4s ease-in-out infinite;
-        }
-
-        /* 2nd place — silver gradient */
-        .second-place .rankId {
-            background: linear-gradient(145deg, #e2e8f0, #94a3b8);
-            color: #1e293b;
-            border: 1.5px solid rgba(220, 230, 240, 0.5);
-            box-shadow:
-                0 0 8px rgba(148, 163, 184, 0.4),
-                inset 0 1px 0 rgba(255,255,255,0.4);
-        }
-
-        /* 3rd place — bronze gradient */
-        .third-place .rankId {
-            background: linear-gradient(145deg, #fb923c, #92400e);
-            color: #fff;
-            border: 1.5px solid rgba(251, 146, 60, 0.45);
-            box-shadow:
-                0 0 8px rgba(180, 83, 9, 0.4),
-                inset 0 1px 0 rgba(255,255,255,0.2);
-        }
-
-        @keyframes rankGlow1 {
-            0%, 100% { box-shadow: 0 0 10px rgba(255,51,102,0.55), 0 0 22px rgba(255,51,102,0.25), inset 0 1px 0 rgba(255,255,255,0.25); }
-            50%       { box-shadow: 0 0 18px rgba(255,51,102,0.85), 0 0 38px rgba(255,51,102,0.45), inset 0 1px 0 rgba(255,255,255,0.35); }
-        }
-
-        .rankId img {
-            height: 1.3em;
-            width: auto;
-            border-radius: 0;
-            margin: 0;
-        }
-
-        /* =============================================
-           AVATAR
-        ============================================= */
-        .avatar-wrap {
-            position: relative;
-            flex-shrink: 0;
-        }
-
-        .profilePicture {
-            height: 48px;
-            width: 48px;
-            border-radius: 50%;
-            object-fit: cover;
-            display: block;
-            border: 3px solid rgba(255, 255, 255, 0.18);
-            transition: border-color 0.3s, box-shadow 0.3s;
-        }
-
-        /* Thick colored ring per place */
-        .first-place .profilePicture {
-            border: 3.5px solid rgb(255, 94, 126);
-            box-shadow: 0 0 14px rgba(255, 94, 126, 0.6), 0 0 0 1px rgba(255, 94, 126, 0.25);
-        }
-
-        .second-place .profilePicture {
-            border: 3.5px solid rgb(185, 200, 218);
-            box-shadow: 0 0 10px rgba(185, 200, 218, 0.4);
-        }
-
-        .third-place .profilePicture {
-            border: 3.5px solid rgb(251, 146, 60);
-            box-shadow: 0 0 10px rgba(251, 146, 60, 0.4);
-        }
-
-        /* =============================================
-           CROWN — Hat style above avatar circle
-           NOTE: avatar-wrap is position:relative + 44px wide,
-           so left:50% = 22px from left edge of avatar. Crown
-           centers itself above the circle with translateX(-50%).
-        ============================================= */
-        .crown1 {
-            display: none;
-            position: absolute;
-            top: -20px;
-            left: 50%;
-            transform: translateX(-50%) rotate(-6deg);
-            height: 26px;
-            width: auto;
-            filter:
-                drop-shadow(0 0 6px rgba(255, 80, 110, 0.9))
-                drop-shadow(0 0 14px rgba(255, 51, 102, 0.55));
-            animation: crownFloat 2.8s ease-in-out infinite, crownShine 1.8s ease-in-out infinite;
-        }
-
-        @keyframes crownFloat {
-            0%, 100% { transform: translateX(-50%) rotate(-6deg) translateY(0px); }
-            50%       { transform: translateX(-50%) rotate(-4deg) translateY(-3px); }
-        }
-
-        @keyframes crownShine {
-            0%, 100% {
-                filter:
-                    drop-shadow(0 0 5px rgba(255, 80, 110, 0.8))
-                    drop-shadow(0 0 12px rgba(255, 51, 102, 0.45));
+            @keyframes rainbow-flow {
+                0%   { background-position: 0% 50%; }
+                50%  { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
             }
-            50% {
-                filter:
-                    drop-shadow(0 0 10px rgba(255, 120, 150, 1))
-                    drop-shadow(0 0 24px rgba(255, 51, 102, 0.75))
-                    drop-shadow(0 0 40px rgba(255, 0, 80, 0.35));
+
+            .rainbow-text, .silver-text, .rose-text, .pearl-text, .sky-text, .gold-text, .cyber-text, .fire-text {
+                background-size: 300% 100% !important;
+                -webkit-background-clip: text !important;
+                -webkit-text-fill-color: transparent !important;
+                color: transparent !important;
+                display: inline-block;
+            }
+
+            .rainbow-text { background: linear-gradient(90deg, #ff007f, #bd00ff, #00f0ff, #00ff66, #ff007f) !important; }
+            .silver-text  { background: linear-gradient(90deg, #c0c0c0, #f0f0f0, #a0a0a0, #e8e8e8, #c0c0c0) !important; }
+            .rose-text    { background: linear-gradient(90deg, #ffb6c1, #ff91a4, #ffd6e0, #ff91a4, #ffb6c1) !important; }
+            .pearl-text   { background: linear-gradient(90deg, #ffffff, #e8e0f0, #ffffff, #f5f0ff, #ffffff) !important; }
+            .sky-text     { background: linear-gradient(90deg, #a8d8f0, #c3e8ff, #7fc8f8, #b3d9f2, #a8d8f0) !important; }
+            .gold-text    { background: linear-gradient(90deg, #f5c518, #ffd700, #e6a800, #ffe066, #f5c518) !important; }
+            .cyber-text   { background: linear-gradient(90deg, #00f0ff, #ff007f, #facc15, #00f0ff) !important; }
+            .fire-text    { background: linear-gradient(90deg, #fde047, #f97316, #ef4444, #fde047) !important; }
+
+            .rainbow-text:not(.has-bounce-letters),
+            .silver-text:not(.has-bounce-letters),
+            .rose-text:not(.has-bounce-letters),
+            .pearl-text:not(.has-bounce-letters),
+            .sky-text:not(.has-bounce-letters),
+            .gold-text:not(.has-bounce-letters),
+            .cyber-text:not(.has-bounce-letters),
+            .fire-text:not(.has-bounce-letters) {
+                animation: rainbow-flow 4.2s linear infinite !important;
+            }
+
+            .rainbow-text span, .silver-text span, .rose-text span, .pearl-text span,
+            .sky-text span, .gold-text span, .cyber-text span, .fire-text span {
+                background: inherit !important;
+                background-size: inherit !important;
+                -webkit-background-clip: text !important;
+                -webkit-text-fill-color: transparent !important;
+                color: transparent !important;
+                display: inline-block;
+            }
+
+            .rainbow-text span:not(.bounce-letter), .silver-text span:not(.bounce-letter),
+            .rose-text span:not(.bounce-letter), .pearl-text span:not(.bounce-letter),
+            .sky-text span:not(.bounce-letter), .gold-text span:not(.bounce-letter),
+            .cyber-text span:not(.bounce-letter), .fire-text span:not(.bounce-letter) {
+                animation: rainbow-flow 4.2s linear infinite !important;
+            }
+
+            .rainbow-text span.bounce-letter, .silver-text span.bounce-letter,
+            .rose-text span.bounce-letter, .pearl-text span.bounce-letter,
+            .sky-text span.bounce-letter, .gold-text span.bounce-letter,
+            .cyber-text span.bounce-letter, .fire-text span.bounce-letter {
+                animation: rainbow-flow 4.2s linear infinite, letterBounce3D 1.8s infinite ease-in-out !important;
+                animation-delay: 0s, var(--bounce-delay, 0s) !important;
+            }
+
+            .bounce-letter {
+                display: inline-block;
+                animation: letterBounce3D 1.8s infinite ease-in-out;
+                animation-delay: var(--bounce-delay, 0s);
+            }
+
+            @keyframes letterBounce3D {
+                0%, 100% { transform: translateY(0) scale(1); }
+                50% {
+                    transform: translateY(-5px) scale(1.14) rotate(3deg);
+                    text-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+                }
+            }
+
+            @keyframes heartbeat {
+                0%   { transform: scale(1); }
+                50%  { transform: scale(1.14); }
+                100% { transform: scale(1); }
+            }
+
+            .heartbeat-active {
+                animation: heartbeat 0.32s ease-in-out;
+                color: #ff5e7e !important;
+            }
+
+            .rainbow-bg {
+                background: linear-gradient(135deg, #ff007f, #bd00ff, #00f0ff, #00ff66, #ff007f) !important;
+                background-size: 300% 300% !important;
+                animation: rainbow-flow 4s linear infinite !important;
+                color: #fff !important;
+                border: 1.5px solid rgba(255, 255, 255, 0.4) !important;
+                box-shadow: 0 0 12px rgba(0, 240, 255, 0.45) !important;
+            }
+
+            .bounce-rank {
+                animation: rankBounce3D 1.8s infinite ease-in-out !important;
+            }
+
+            @keyframes rankBounce3D {
+                0%, 100% { transform: scale(1); }
+                50%      { transform: scale(1.22); box-shadow: 0 0 15px rgba(255, 255, 255, 0.3); }
+            }
+
+            #emptyState {
+                text-align: center;
+                color: rgba(255, 255, 255, 0.88);
+                font-size: 0.9em;
+                padding: 12px 18px;
+                font-weight: 600;
+                background: rgba(18, 10, 16, 0.72);
+                border: 1px solid rgba(255, 94, 126, 0.25);
+                border-radius: var(--topliker-radius, 22px);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35);
+                display: none;
+                margin: 10px auto;
+                max-width: 90%;
+                animation: pulse-glow-empty 2.2s infinite ease-in-out;
+            }
+
+            @keyframes pulse-glow-empty {
+                0%, 100% { opacity: 0.85; transform: scale(1); }
+                50%      { opacity: 1;    transform: scale(1.02); }
             }
         }
-
-        /* =============================================
-           USER INFO
-        ============================================= */
-        .user-info {
-            flex: 1;
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .username {
-            font-weight: 700;
-            font-size: 0.92em;
-            color: #ffffff;
-            white-space: nowrap;
-            overflow: visible;
-            text-overflow: clip;
-            line-height: 1.2;
-            letter-spacing: 0.01em;
-            padding-top: 8px;
-            margin-top: -8px;
-        }
-
-        .first-place .username {
-            color: #ffccd5;
-        }
-
-        /* =============================================
-           POINTS / COINS (LIKES)
-        ============================================= */
-        .points {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            font-size: 0.78em;
-            font-weight: 600;
-            color: rgba(255,255,255,0.55);
-            line-height: 1;
-        }
-
-        .first-place .points {
-            color: rgba(255, 133, 167, 0.85);
-        }
-
-        .coin-icon {
-            flex-shrink: 0;
-            display: inline-flex;
-            align-items: center;
-        }
-
-        .inactive-warning {
-            display: none;
-            color: #ff9f43;
-            font-size: 1.1em;
-            margin-left: auto;
-            margin-right: 5px;
-            cursor: help;
-            animation: warningPulse 1.5s infinite alternate;
-        }
-
-        @keyframes warningPulse {
-            0% { opacity: 0.35; transform: scale(0.9); }
-            100% { opacity: 1; transform: scale(1.1); }
-        }
-
-        .coin-amount {
-            letter-spacing: 0.02em;
-        }
-
-        /* =============================================
-           RANK GLOW ACCENT (left bar)
-        ============================================= */
-        .rank-accent {
-            position: absolute;
-            left: 0;
-            top: 20%;
-            height: 60%;
-            width: 3px;
-            border-radius: 0 3px 3px 0;
-            background: rgba(255,255,255,0.08);
-            transition: background 0.3s;
-        }
-
-        .first-place .rank-accent  { background: linear-gradient(180deg, #ff5e7e, #ff3366); box-shadow: 0 0 8px rgba(255, 51, 102, 0.6); }
-        .second-place .rank-accent { background: linear-gradient(180deg, #ff85a7, #ff5e7e); }
-        .third-place .rank-accent  { background: linear-gradient(180deg, #ffccd5, #ff85a7); }
-
-        /* =============================================
-           SPARKLE PARTICLE for 1st place
-        ============================================= */
-        .sparkle {
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 0.9em;
-            animation: sparkleAnim 1.8s ease-in-out infinite;
-            opacity: 0.6;
-        }
-
-        @keyframes sparkleAnim {
-            0%, 100% { opacity: 0.5; transform: translateY(-50%) scale(1); }
-            50%       { opacity: 1;   transform: translateY(-54%) scale(1.15); }
-        }
-
-        /* =============================================
-           ANIMATIONS (Rainbow & 3D Bounce)
-        ============================================= */
-        @keyframes rainbow-flow {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-
-        /* ── Arcoíris (neon) ── */
-        .rainbow-text {
-            background: linear-gradient(90deg, #ff007f, #bd00ff, #00f0ff, #00ff66, #ff007f) !important;
-            background-size: 300% 100% !important;
-            -webkit-background-clip: text !important;
-            -webkit-text-fill-color: transparent !important;
-            color: transparent !important;
-            display: inline-block;
-        }
-        .rainbow-text:not(.has-bounce-letters) { animation: rainbow-flow 4s linear infinite !important; }
-        .rainbow-text span {
-            background: inherit !important; background-size: inherit !important;
-            -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-            color: transparent !important; display: inline-block;
-        }
-        .rainbow-text span:not(.bounce-letter)  { animation: rainbow-flow 4s linear infinite !important; }
-        .rainbow-text span.bounce-letter {
-            animation: rainbow-flow 4s linear infinite, letterBounce3D 1.8s infinite ease-in-out !important;
-            animation-delay: 0s, var(--bounce-delay, 0s) !important;
-        }
-
-        /* ── Plateado ── */
-        .silver-text {
-            background: linear-gradient(90deg, #c0c0c0, #f0f0f0, #a0a0a0, #e8e8e8, #c0c0c0) !important;
-            background-size: 300% 100% !important;
-            -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-            color: transparent !important; display: inline-block;
-        }
-        .silver-text:not(.has-bounce-letters) { animation: rainbow-flow 5s linear infinite !important; }
-        .silver-text span {
-            background: inherit !important; background-size: inherit !important;
-            -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-            color: transparent !important; display: inline-block;
-        }
-        .silver-text span:not(.bounce-letter)  { animation: rainbow-flow 5s linear infinite !important; }
-        .silver-text span.bounce-letter {
-            animation: rainbow-flow 5s linear infinite, letterBounce3D 1.8s infinite ease-in-out !important;
-            animation-delay: 0s, var(--bounce-delay, 0s) !important;
-        }
-
-        /* ── Rosa Claro ── */
-        .rose-text {
-            background: linear-gradient(90deg, #ffb6c1, #ff91a4, #ffd6e0, #ff91a4, #ffb6c1) !important;
-            background-size: 300% 100% !important;
-            -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-            color: transparent !important; display: inline-block;
-        }
-        .rose-text:not(.has-bounce-letters) { animation: rainbow-flow 4s linear infinite !important; }
-        .rose-text span {
-            background: inherit !important; background-size: inherit !important;
-            -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-            color: transparent !important; display: inline-block;
-        }
-        .rose-text span:not(.bounce-letter)  { animation: rainbow-flow 4s linear infinite !important; }
-        .rose-text span.bounce-letter {
-            animation: rainbow-flow 4s linear infinite, letterBounce3D 1.8s infinite ease-in-out !important;
-            animation-delay: 0s, var(--bounce-delay, 0s) !important;
-        }
-
-        /* ── Blanco Perlado ── */
-        .pearl-text {
-            background: linear-gradient(90deg, #ffffff, #e8e0f0, #ffffff, #f5f0ff, #ffffff) !important;
-            background-size: 300% 100% !important;
-            -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-            color: transparent !important; display: inline-block;
-        }
-        .pearl-text:not(.has-bounce-letters) { animation: rainbow-flow 6s linear infinite !important; }
-        .pearl-text span {
-            background: inherit !important; background-size: inherit !important;
-            -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-            color: transparent !important; display: inline-block;
-        }
-        .pearl-text span:not(.bounce-letter)  { animation: rainbow-flow 6s linear infinite !important; }
-        .pearl-text span.bounce-letter {
-            animation: rainbow-flow 6s linear infinite, letterBounce3D 1.8s infinite ease-in-out !important;
-            animation-delay: 0s, var(--bounce-delay, 0s) !important;
-        }
-
-        /* ── Cielo Pastel ── */
-        .sky-text {
-            background: linear-gradient(90deg, #a8d8f0, #c3e8ff, #7fc8f8, #b3d9f2, #a8d8f0) !important;
-            background-size: 300% 100% !important;
-            -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-            color: transparent !important; display: inline-block;
-        }
-        .sky-text:not(.has-bounce-letters) { animation: rainbow-flow 5s linear infinite !important; }
-        .sky-text span {
-            background: inherit !important; background-size: inherit !important;
-            -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-            color: transparent !important; display: inline-block;
-        }
-        .sky-text span:not(.bounce-letter)  { animation: rainbow-flow 5s linear infinite !important; }
-        .sky-text span.bounce-letter {
-            animation: rainbow-flow 5s linear infinite, letterBounce3D 1.8s infinite ease-in-out !important;
-            animation-delay: 0s, var(--bounce-delay, 0s) !important;
-        }
-
-        /* ── Dorado ── */
-        .gold-text {
-            background: linear-gradient(90deg, #f5c518, #ffd700, #e6a800, #ffe066, #f5c518) !important;
-            background-size: 300% 100% !important;
-            -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-            color: transparent !important; display: inline-block;
-        }
-        .gold-text:not(.has-bounce-letters) { animation: rainbow-flow 4s linear infinite !important; }
-        .gold-text span {
-            background: inherit !important; background-size: inherit !important;
-            -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-            color: transparent !important; display: inline-block;
-        }
-        .gold-text span:not(.bounce-letter)  { animation: rainbow-flow 4s linear infinite !important; }
-        .gold-text span.bounce-letter {
-            animation: rainbow-flow 4s linear infinite, letterBounce3D 1.8s infinite ease-in-out !important;
-            animation-delay: 0s, var(--bounce-delay, 0s) !important;
-        }
-
-        .bounce-letter {
-            display: inline-block;
-            animation: letterBounce3D 1.8s infinite ease-in-out;
-            animation-delay: var(--bounce-delay, 0s);
-        }
-
-        @keyframes letterBounce3D {
-            0%, 100% {
-                transform: translateY(0) scale(1);
-            }
-            50% {
-                transform: translateY(-6px) scale(1.15) rotate(4deg);
-                text-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
-            }
-        }
-
-        .rainbow-bg {
-            background: linear-gradient(135deg, #ff007f, #bd00ff, #00f0ff, #00ff66, #ff007f) !important;
-            background-size: 300% 300% !important;
-            animation: rainbow-flow 4s linear infinite !important;
-            color: #fff !important;
-            border: 1.5px solid rgba(255, 255, 255, 0.4) !important;
-            box-shadow: 0 0 12px rgba(0, 240, 255, 0.45) !important;
-        }
-
-        .bounce-rank {
-            animation: rankBounce3D 1.8s infinite ease-in-out !important;
-        }
-
-        @keyframes rankBounce3D {
-            0%, 100% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.22);
-                box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
-            }
-        }
-
-        /* =============================================
-           EMPTY STATE
-        ============================================= */
-        #emptyState {
-            text-align: center;
-            color: rgba(255, 255, 255, 0.85);
-            font-size: 0.9em;
-            padding: 12px 18px;
-            font-weight: 600;
-            background: rgba(10, 10, 20, 0.65);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: var(--topliker-radius, 22px);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35);
-            display: none;
-            margin: 10px auto;
-            max-width: 90%;
-            animation: pulse-glow-empty 2.2s infinite ease-in-out;
-        }
-
-        @keyframes pulse-glow-empty {
-            0%, 100% { opacity: 0.85; transform: scale(1); }
-            50%      { opacity: 1;    transform: scale(1.02); }
-        }
-
     </style>
 </head>
 
 <body>
 
-    <div id="rankingContainer">
+    <div id="rankingContainer" data-style="tikfinity" data-layout="list" data-frame="classic" data-progress="false" data-particles="true" data-shimmer="false">
         <!-- Template card (hidden, cloned via JS) -->
         <div class="rankUser" id="rankTemplate" style="display:none !important;">
+            <div class="card-fx-layer">
+                <div class="fx-shimmer"></div>
+                <div class="fx-particles">
+                    <span class="pt p1"></span>
+                    <span class="pt p2"></span>
+                    <span class="pt p3"></span>
+                    <span class="pt p4"></span>
+                </div>
+            </div>
             <div class="rank-accent"></div>
-            <div class="rankId">1.</div>
+            <div class="rankId">1</div>
             <div class="avatar-wrap">
-                <img class="crown1" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 16'%3E%3Cpolygon points='12,0 20,10 24,4 24,16 0,16 0,4 4,10' fill='%23FF5E7E' stroke='%23FF3366' stroke-width='0.8'/%3E%3Ccircle cx='12' cy='1.5' r='2' fill='%23FF1744'/%3E%3Ccircle cx='0' cy='5' r='1.8' fill='%23FF1744'/%3E%3Ccircle cx='24' cy='5' r='1.8' fill='%23FF1744'/%3E%3C/svg%3E" alt="👑" />
+                <div class="avatar-aura"></div>
+                <div class="avatar-laurel"></div>
+                <img class="crown1" src="" alt="👑" />
                 <img class="profilePicture" src="" onerror="this.src=NOTHUMB" />
             </div>
             <div class="user-info">
+                <div class="hero-tag">❤️ TOP #1 LIKER</div>
                 <div class="username">Usuario</div>
                 <div class="points">
-                    <span class="coin-icon">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <defs>
-                                <linearGradient id="heartGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" stop-color="#ff758c" />
-                                    <stop offset="100%" stop-color="#ff7eb3" />
-                                </linearGradient>
-                            </defs>
-                            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="url(#heartGrad)" filter="drop-shadow(0 0 1px rgba(255,117,140,0.6))"/>
-                        </svg>
-                    </span>
+                    <span class="coin-icon"></span>
                     <span class="coin-amount">0</span>
                     <span class="currency-label">Likes</span>
                 </div>
+                <div class="rank-progress-track">
+                    <div class="rank-progress-bar" style="width: 100%;"></div>
+                </div>
             </div>
             <div class="inactive-warning" title="Conteo detenido / Inactivo">⚠️</div>
+            <div class="podium-pedestal">
+                <span class="pedestal-rank">1°</span>
+            </div>
         </div>
     </div>
     <div id="emptyState">❤️ Top Likers • Esperando likes en el Live...</div>
 
     <script>
         // =============================================
-        //  CONFIG — edita aquí si no usas TikFinity
+        //  GALERÍA DE NUEVAS IMÁGENES / GRÁFICOS SVG
         // =============================================
-        var NOTHUMB = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='42' height='42'%3E%3Crect width='42' height='42' rx='21' fill='%232a1015'/%3E%3Ctext x='50%25' y='55%25' text-anchor='middle' dominant-baseline='middle' fill='%23ffffff' font-size='16' font-family='sans-serif'%3E%3F%3C/text%3E%3C/svg%3E";
+        var NOTHUMB = "data:image/svg+xml;utf8," + encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+            '<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b0724"/><stop offset="100%" stop-color="#14091a"/></linearGradient>' +
+            '<linearGradient id="u" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ff85a7"/><stop offset="100%" stop-color="#ff3366"/></linearGradient></defs>' +
+            '<rect width="64" height="64" rx="32" fill="url(#bg)"/>' +
+            '<circle cx="32" cy="24" r="10" fill="url(#u)" opacity="0.92"/>' +
+            '<path d="M14 54c2-11 10-17 18-17s16 6 18 17" fill="url(#u)" opacity="0.88"/>' +
+            '</svg>'
+        );
 
-        // Parámetros de URL
+        var CROWN_SVGS = {
+            "tikfinity": "data:image/svg+xml;utf8," + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 18">' +
+                '<defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFB3C6"/><stop offset="50%" stop-color="#FF5E7E"/><stop offset="100%" stop-color="#C9184A"/></linearGradient></defs>' +
+                '<polygon points="14,1 21,11 26,4 25,17 3,17 2,4 7,11" fill="url(#cg)" stroke="#FF3366" stroke-width="0.9" stroke-linejoin="round"/>' +
+                '<circle cx="14" cy="2" r="2" fill="#FF1744"/><circle cx="2" cy="4.5" r="1.8" fill="#FF1744"/><circle cx="26" cy="4.5" r="1.8" fill="#FF1744"/>' +
+                '<circle cx="14" cy="12.5" r="1.6" fill="#FFF0F3"/><circle cx="8.5" cy="13.5" r="1.2" fill="#FFD700"/><circle cx="19.5" cy="13.5" r="1.2" fill="#FFD700"/>' +
+                '</svg>'
+            ),
+            "imperial": "data:image/svg+xml;utf8," + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 24">' +
+                '<defs><linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FFE4E6"/><stop offset="45%" stop-color="#FB7185"/><stop offset="100%" stop-color="#BE123C"/></linearGradient>' +
+                '<linearGradient id="vel" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFD700"/><stop offset="100%" stop-color="#B45309"/></linearGradient></defs>' +
+                '<path d="M5 18 C5 9, 13 6, 18 6 C23 6, 31 9, 31 18 Z" fill="url(#vel)"/>' +
+                '<path d="M3 19 L5 7 L11 13 L18 3 L25 13 L31 7 L33 19 Z" fill="url(#ig)" stroke="#FFF0F3" stroke-width="0.8" stroke-linejoin="round"/>' +
+                '<rect x="4" y="18.5" width="28" height="3.8" rx="1.8" fill="url(#ig)" stroke="#9F1239" stroke-width="0.7"/>' +
+                '<polygon points="18,7 20,11 18,15 16,11" fill="#FFF" stroke="#FFE4E6" stroke-width="0.5"/>' +
+                '<circle cx="10" cy="14" r="1.8" fill="#FFD700"/><circle cx="26" cy="14" r="1.8" fill="#FFD700"/>' +
+                '<circle cx="18" cy="2.2" r="1.8" fill="#FFF0F3"/>' +
+                '</svg>'
+            ),
+            "wings": "data:image/svg+xml;utf8," + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 24">' +
+                '<defs><linearGradient id="wg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="55%" stop-color="#FFC2D1"/><stop offset="100%" stop-color="#FB6F92"/></linearGradient></defs>' +
+                '<ellipse cx="22" cy="5.5" rx="9" ry="2.6" fill="none" stroke="#FF85A7" stroke-width="2"/>' +
+                '<path d="M15 16 C8 16, 3 12, 1 6 C5 7, 9 8, 13 11 C7 9, 4 5, 3 2 C8 4, 13 7, 16 12 Z" fill="url(#wg)"/>' +
+                '<path d="M29 16 C36 16, 41 12, 43 6 C39 7, 35 8, 31 11 C37 9, 40 5, 41 2 C36 4, 31 7, 28 12 Z" fill="url(#wg)"/>' +
+                '<path d="M22 19l-1-0.9C17.4 14.9 15 12.7 15 10c0-2.1 1.6-3.8 3.8-3.8 1.2 0 2.4.6 3.2 1.5.8-.9 2-1.5 3.2-1.5 2.2 0 3.8 1.7 3.8 3.8 0 2.7-2.4 4.9-6 8.1L22 19z" fill="#FF3366" stroke="#FFF" stroke-width="0.6"/>' +
+                '</svg>'
+            ),
+            "cyber": "data:image/svg+xml;utf8," + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 22">' +
+                '<defs><linearGradient id="cy1" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#FF007F"/><stop offset="50%" stop-color="#00F0FF"/><stop offset="100%" stop-color="#FF007F"/></linearGradient></defs>' +
+                '<polygon points="2,18 6,6 12,13 18,1 24,13 30,6 34,18" fill="none" stroke="url(#cy1)" stroke-width="2.2"/>' +
+                '<polygon points="5,18 8,9 13,14 18,4 23,14 28,9 31,18" fill="#180828" opacity="0.85"/>' +
+                '<polygon points="18,4 21,12 18,16 15,12" fill="#FF007F"/>' +
+                '<circle cx="10" cy="14" r="1.8" fill="#00F0FF"/><circle cx="26" cy="14" r="1.8" fill="#00F0FF"/>' +
+                '<rect x="4" y="18" width="28" height="2.5" fill="#FF007F"/>' +
+                '</svg>'
+            ),
+            "fire": "data:image/svg+xml;utf8," + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 24">' +
+                '<defs><linearGradient id="fg" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#9F1239"/><stop offset="50%" stop-color="#FF1744"/><stop offset="100%" stop-color="#FFD166"/></linearGradient></defs>' +
+                '<path d="M4 20 C2 13, 6 8, 8 4 C9 9, 12 10, 12 13 C13 7, 16 4, 18 1 C20 4, 23 7, 24 13 C24 10, 27 9, 28 4 C30 8, 34 13, 32 20 Z" fill="url(#fg)"/>' +
+                '<path d="M9 20 C8 15, 11 12, 13 9 C14 12, 16 13, 18 7 C20 13, 22 12, 23 9 C25 12, 28 15, 27 20 Z" fill="#FFE4E6" opacity="0.9"/>' +
+                '</svg>'
+            ),
+            "diamond": "data:image/svg+xml;utf8," + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 22">' +
+                '<defs><linearGradient id="dg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FFF0F3"/><stop offset="50%" stop-color="#F472B6"/><stop offset="100%" stop-color="#A855F7"/></linearGradient></defs>' +
+                '<polygon points="18,1 23,10 32,5 29,19 7,19 4,5 13,10" fill="url(#dg)" stroke="#FFFFFF" stroke-width="1" stroke-linejoin="round"/>' +
+                '<polygon points="18,1 21,10 18,18 15,10" fill="#FCE7F3" opacity="0.85"/>' +
+                '<circle cx="18" cy="11" r="2" fill="#FFFFFF"/>' +
+                '</svg>'
+            ),
+            "trophy": "data:image/svg+xml;utf8," + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 26">' +
+                '<defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FFE4E6"/><stop offset="50%" stop-color="#FF4D6D"/><stop offset="100%" stop-color="#9F1239"/></linearGradient></defs>' +
+                '<path d="M8 3 H24 V11 C24 16, 20 19, 16 19 C12 19, 8 16, 8 11 Z" fill="url(#tg)" stroke="#FFF" stroke-width="0.8"/>' +
+                '<path d="M8 5 H4 C4 10, 6 13, 9 13 M24 5 H28 C28 10, 26 13, 23 13" fill="none" stroke="#FF85A7" stroke-width="2" stroke-linecap="round"/>' +
+                '<rect x="14" y="19" width="4" height="4" fill="#9F1239"/>' +
+                '<rect x="10" y="22.5" width="12" height="2.8" rx="1.2" fill="url(#tg)"/>' +
+                '<path d="M16 13.8l-.8-.7C13 11.1 11.5 9.8 11.5 8.1c0-1.3 1-2.3 2.3-2.3.8 0 1.6.4 2.2 1 .6-.6 1.4-1 2.2-1 1.3 0 2.3 1 2.3 2.3 0 1.7-1.5 3-3.7 5l-.8.7z" fill="#FFF"/>' +
+                '</svg>'
+            )
+        };
+
+        var ICON_SVGS = {
+            "heart-classic": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="heartGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ff758c"/><stop offset="100%" stop-color="#ff7eb3"/></linearGradient></defs><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="url(#heartGrad)"/></svg>',
+            "heart-3d": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="h3d" cx="35%" cy="30%" r="70%"><stop offset="0%" stop-color="#ffd6e0"/><stop offset="38%" stop-color="#ff4d6d"/><stop offset="100%" stop-color="#880e4f"/></radialGradient></defs><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="url(#h3d)" stroke="#ffb3c6" stroke-width="0.6"/><ellipse cx="7.5" cy="7" rx="2.2" ry="1.2" transform="rotate(-25 7.5 7)" fill="#ffffff" opacity="0.65"/></svg>',
+            "heart-fire": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 1C15 4 21 7 21 13.5C21 18.5 16.8 22.5 12 22.5C7.2 22.5 3 18.5 3 13.5C3 7 9 4 12 1Z" fill="#FB923C"/><path d="M12 21l-1.2-1.1C6.5 16 4 13.6 4 10.5 4 8.1 5.9 6.2 8.3 6.2c1.4 0 2.7.6 3.7 1.7 1-1.1 2.3-1.7 3.7-1.7 2.4 0 4.3 1.9 4.3 4.3 0 3.1-2.5 5.5-6.8 9.4L12 21z" fill="#E11D48" stroke="#FDE047" stroke-width="0.8"/></svg>',
+            "heart-wings": '<svg width="15" height="14" viewBox="0 0 28 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 14C3 14 0 11 1 6C3 8 6 9 9 11Z" fill="#FFF0F3"/><path d="M20 14C25 14 28 11 27 6C25 8 22 9 19 11Z" fill="#FFF0F3"/><path d="M14 20.5l-1.2-1.1C8.2 15.2 5.5 12.8 5.5 9.6c0-2.5 2-4.5 4.5-4.5 1.4 0 2.8.7 4 1.8 1.2-1.1 2.6-1.8 4-1.8 2.5 0 4.5 2 4.5 4.5 0 3.2-2.7 5.6-7.3 9.8L14 20.5z" fill="#FF4D6D" stroke="#FFE4E6" stroke-width="0.8"/></svg>',
+            "heart-cyber": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="12,21 3,12 3,6 7.5,3 12,6.5 16.5,3 21,6 21,12" fill="#FF007F" stroke="#00F0FF" stroke-width="1.5" stroke-linejoin="round"/><polyline points="5,11 9,11 11,8 13,14 15,11 19,11" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+            "sparkle-love": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 19l-1-0.9C4.2 14.3 2 12.2 2 9.4 2 7.2 3.7 5.5 5.9 5.5c1.2 0 2.4.6 3.6 1.6 1.2-1 2.4-1.6 3.6-1.6 2.2 0 3.9 1.7 3.9 3.9 0 2.8-2.2 4.9-6.5 8.7L9.5 19z" fill="#FF4D6D"/><path d="M16.5 15.5l-.7-.6C13 12.4 11.5 11 11.5 9.1c0-1.5 1.2-2.6 2.6-2.6.8 0 1.6.4 2.4 1.1.8-.7 1.6-1.1 2.4-1.1 1.4 0 2.6 1.1 2.6 2.6 0 1.9-1.5 3.3-4.3 5.8l-.7.6z" fill="#FDE047" stroke="#FFF" stroke-width="0.6"/></svg>'
+        };
+
+        var LAUREL_SVG = '<svg viewBox="0 0 64 64" fill="currentColor" xmlns="http://www.w3.org/2000/svg">' +
+            '<path d="M30 58 C14 55, 4 42, 6 24 C8 32, 12 36, 10 42 C12 34, 15 28, 12 18 C16 24, 19 28, 17 35 C19 26, 22 20, 20 12 C23 17, 25 22, 23 28 Z" opacity="0.92"/>' +
+            '<path d="M34 58 C50 55, 60 42, 58 24 C56 32, 52 36, 54 42 C52 34, 49 28, 52 18 C48 24, 45 28, 47 35 C45 26, 42 20, 44 12 C41 17, 39 22, 41 28 Z" opacity="0.92"/>' +
+            '<circle cx="32" cy="58" r="2.2"/>' +
+            '</svg>';
+
+        // =============================================
+        //  PARÁMETROS DE URL & ESTADO
+        // =============================================
         var params    = new URLSearchParams(document.location.search);
         var CID       = params.get("cid") || "";
         var maxItems  = parseInt(params.get("max") || "10");
 
-        // =============================================
-        //  STATE
-        // =============================================
         var rankingContainer = $("#rankingContainer");
         var template         = null;
         var lastRankingJson  = null;
         var lastUserList     = [];
-        var settings         = {
+        var spotlightTimer   = null;
+        var spotlightIdx     = 0;
+
+        var settings = {
+            topliker_style:           params.get("style") || "tikfinity",
+            topliker_layout:          params.get("layout") || "list",
+            topliker_crown_style:     params.get("crown") || "tikfinity",
+            topliker_icon_style:      params.get("icon") || "heart-classic",
+            topliker_avatar_frame:    params.get("frame") || "classic",
+            topliker_show_progress:   params.get("progress") === "1" || params.get("progress") === "true" || false,
+            topliker_show_particles:  params.get("particles") !== "0",
+            topliker_show_shimmer:    params.get("shimmer") === "1" || params.get("shimmer") === "true" || false,
             topliker_showCrown:       true,
             topliker_showRank:        true,
             topliker_showHearts:      true,
@@ -640,13 +1496,17 @@
             topliker_rankColor:       null,
             topliker_pointsColor:     null,
             topliker_usernameColor:   "#ffffff",
-            showUserNicknames:         true,
+            showUserNicknames:        true,
             toplikerShowCardBg:       true,
             topliker_rainbow_username: false,
-            topliker_bounce_username:  false,
-            topliker_bounce_likes:     true,
-            topliker_rainbow_rank:     false,
-            topliker_bounce_rank:      false,
+            topliker_gradient_theme:  "none",
+            topliker_gradient_scope:  "all",
+            topliker_bounce_username: false,
+            topliker_bounce_scope:    "all",
+            topliker_bounce_likes:    true,
+            topliker_rainbow_rank:    false,
+            topliker_bounce_rank:     false,
+            topliker_count_label:     "Likes",
             topliker_first_place_color:  "#ff4d6d",
             topliker_second_place_color: "#cbd5e1",
             topliker_third_place_color:  "#fb923c",
@@ -660,32 +1520,60 @@
             let r = parseInt(color.substring(0, 2), 16);
             let g = parseInt(color.substring(2, 4), 16);
             let b = parseInt(color.substring(4, 6), 16);
-            
+
             let r2 = Math.max(0, Math.floor(r * 0.65));
             let g2 = Math.max(0, Math.floor(g * 0.65));
             let b2 = Math.max(0, Math.floor(b * 0.65));
-            
+
             let hex2 = "#" + ((1 << 24) + (r2 << 16) + (g2 << 8) + b2).toString(16).slice(1);
             return `linear-gradient(145deg, ${hexColor}, ${hex2})`;
         }
 
-        // Helper para convertir hex a rgba con opacidad
         function hexToRgba(hex, opacityPercent) {
             let c;
-            if(/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)){
+            if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
                 c = hex.substring(1).split('');
-                if(c.length == 3){
+                if (c.length == 3) {
                     c = [c[0], c[0], c[1], c[1], c[2], c[2]];
                 }
                 c = '0x' + c.join('');
-                return 'rgba(' + [(c>>16)&255, (c>>8)&255, c&255].join(',') + ',' + (opacityPercent/100) + ')';
+                return 'rgba(' + [(c >> 16) & 255, (c >> 8) & 255, c & 255].join(',') + ',' + (opacityPercent / 100) + ')';
             }
             return hex;
         }
 
+        function setupSpotlightRotation() {
+            if (spotlightTimer) {
+                clearInterval(spotlightTimer);
+                spotlightTimer = null;
+            }
+            const $cards = $(".rankUser:not(#rankTemplate)");
+            $cards.removeClass("spotlight-focus spotlight-dim");
+
+            if (settings.topliker_layout !== "spotlight" || $cards.length <= 1) {
+                return;
+            }
+
+            spotlightIdx = 0;
+            const stepSpotlight = () => {
+                const $currentCards = $(".rankUser:not(#rankTemplate)");
+                if ($currentCards.length <= 1 || settings.topliker_layout !== "spotlight") return;
+                spotlightIdx = (spotlightIdx + 1) % $currentCards.length;
+                $currentCards.each(function(i) {
+                    if (i === spotlightIdx) {
+                        $(this).addClass("spotlight-focus").removeClass("spotlight-dim");
+                    } else {
+                        $(this).removeClass("spotlight-focus").addClass("spotlight-dim");
+                    }
+                });
+            };
+            stepSpotlight();
+            spotlightTimer = setInterval(stepSpotlight, 2800);
+        }
+
         function applyLikerStyles(data) {
             const root = document.documentElement;
-            
+
             if (data.toplikerOpacity !== undefined) {
                 root.style.setProperty('--topliker-opacity', data.toplikerOpacity);
             }
@@ -710,19 +1598,35 @@
             if (data.toplikerAnimationDuration !== undefined) {
                 root.style.setProperty('--topliker-animation-duration', data.toplikerAnimationDuration + 's');
             }
-            
+
+            // Nuevos selectores de Estilo, Layout, Corona, Icono, Marco y Efectos
+            if (data.topliker_style !== undefined) settings.topliker_style = data.topliker_style;
+            if (data.topliker_layout !== undefined) settings.topliker_layout = data.topliker_layout;
+            if (data.topliker_crown_style !== undefined) settings.topliker_crown_style = data.topliker_crown_style;
+            if (data.topliker_icon_style !== undefined) settings.topliker_icon_style = data.topliker_icon_style;
+            if (data.topliker_avatar_frame !== undefined) settings.topliker_avatar_frame = data.topliker_avatar_frame;
+            if (data.topliker_show_progress !== undefined) settings.topliker_show_progress = data.topliker_show_progress;
+            if (data.topliker_show_particles !== undefined) settings.topliker_show_particles = data.topliker_show_particles;
+            if (data.topliker_show_shimmer !== undefined) settings.topliker_show_shimmer = data.topliker_show_shimmer;
+
+            rankingContainer.attr("data-style", settings.topliker_style || "tikfinity");
+            rankingContainer.attr("data-layout", settings.topliker_layout || "list");
+            rankingContainer.attr("data-frame", settings.topliker_avatar_frame || "classic");
+            rankingContainer.attr("data-progress", settings.topliker_show_progress ? "true" : "false");
+            rankingContainer.attr("data-particles", settings.topliker_show_particles !== false ? "true" : "false");
+            rankingContainer.attr("data-shimmer", settings.topliker_show_shimmer ? "true" : "false");
+
             // Bordes
             const borderWidth = data.toplikerBorderWidth !== undefined ? data.toplikerBorderWidth : 1;
             const borderStyle = data.toplikerBorderStyle || 'solid';
             const borderColor = data.toplikerBorderColor || '#ffffff';
-            const borderOpacity = data.toplikerBorderOpacity !== undefined ? data.toplikerBorderOpacity : 7;
-            
+            const borderOpacity = data.toplikerBorderOpacity !== undefined ? data.toplikerBorderOpacity : 8;
+
             const rgbaBorderColor = hexToRgba(borderColor, borderOpacity);
             root.style.setProperty('--topliker-border-width', borderWidth + 'px');
             root.style.setProperty('--topliker-border-style', borderStyle);
             root.style.setProperty('--topliker-border-color', rgbaBorderColor);
-            
-            // Bordes especiales para 1st, 2nd, 3rd place (solo si el borde general es el default, de lo contrario aplicar el personalizado a todos)
+
             if (data.toplikerBorderWidth !== undefined || data.toplikerBorderColor !== undefined) {
                 root.style.setProperty('--topliker-first-border-color', rgbaBorderColor);
                 root.style.setProperty('--topliker-second-border-color', rgbaBorderColor);
@@ -732,7 +1636,7 @@
                 root.style.removeProperty('--topliker-second-border-color');
                 root.style.removeProperty('--topliker-third-border-color');
             }
-            
+
             // Sombras
             const showShadow = data.toplikerShowShadow !== undefined ? data.toplikerShowShadow : true;
             if (showShadow) {
@@ -746,12 +1650,11 @@
                 root.style.setProperty('--topliker-box-shadow', 'none');
                 root.style.setProperty('--topliker-first-box-shadow', 'none');
             }
-            
+
             // Mostrar Fondo
             const showBg = data.toplikerShowCardBg !== undefined ? data.toplikerShowCardBg : true;
             settings.toplikerShowCardBg = showBg;
-            
-            // Aplicar la clase .no-card-bg a todos los elementos rankUser
+
             if (!showBg) {
                 $('.rankUser').addClass('no-card-bg');
             } else {
@@ -759,10 +1662,30 @@
             }
         }
 
+        function mapIncomingConfig(data) {
+            if (!data) return;
+            applyLikerStyles(data);
+            if (data.topliker_show_crown !== undefined) settings.topliker_showCrown = data.topliker_show_crown;
+            if (data.topliker_show_heart_symbol !== undefined) settings.topliker_showHeartSymbol = data.topliker_show_heart_symbol;
+            if (data.topliker_max !== undefined) maxItems = Number(data.topliker_max);
+            if (data.topliker_rainbow_username !== undefined) settings.topliker_rainbow_username = data.topliker_rainbow_username;
+            if (data.topliker_gradient_theme !== undefined) settings.topliker_gradient_theme = data.topliker_gradient_theme;
+            if (data.topliker_gradient_scope !== undefined) settings.topliker_gradient_scope = data.topliker_gradient_scope;
+            if (data.topliker_bounce_username !== undefined) settings.topliker_bounce_username = data.topliker_bounce_username;
+            if (data.topliker_bounce_scope !== undefined) settings.topliker_bounce_scope = data.topliker_bounce_scope;
+            if (data.topliker_bounce_likes !== undefined) settings.topliker_bounce_likes = data.topliker_bounce_likes;
+            if (data.topliker_rainbow_rank !== undefined) settings.topliker_rainbow_rank = data.topliker_rainbow_rank;
+            if (data.topliker_bounce_rank !== undefined) settings.topliker_bounce_rank = data.topliker_bounce_rank;
+            if (data.topliker_count_label !== undefined) settings.topliker_count_label = data.topliker_count_label;
+            if (data.topliker_first_place_color !== undefined) settings.topliker_first_place_color = data.topliker_first_place_color;
+            if (data.topliker_second_place_color !== undefined) settings.topliker_second_place_color = data.topliker_second_place_color;
+            if (data.topliker_third_place_color !== undefined) settings.topliker_third_place_color = data.topliker_third_place_color;
+            if (data.topliker_inactivity_threshold !== undefined) settings.topliker_inactivity_threshold = data.topliker_inactivity_threshold;
+        }
+
         // =============================================
         //  FIREBASE FIRESTORE (Conexión al Bot)
         // =============================================
-        // Configuración de Firebase (centralizada en firebase-config.js, con fallback local robusto)
         const localFirebaseConfig = window.ZERO_FM_FIREBASE || {
             apiKey:            "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
             authDomain:        "zero-strom-web.firebaseapp.com",
@@ -774,12 +1697,8 @@
 
         let db = null;
         let hasFirebaseData = false;
-        
-        // Firestore Unsubscribe references
         let unsubLikers = null;
         let unsubConfig = null;
-        
-        // Scanner Interval reference
         let inactivityScannerInterval = null;
 
         try {
@@ -790,17 +1709,13 @@
                 db = firebase.firestore();
                 try { db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (_) {}
                 console.log("[Firebase] Conectado exitosamente en TopLiker ✓");
-                
-                // Desuscribir listener anterior si existe
-                if (unsubLikers) unsubLikers();
 
-                // Escuchar cambios en tiempo real del ranking del bot
+                if (unsubLikers) unsubLikers();
                 unsubLikers = db.collection('globalStats').doc('topLikers').onSnapshot(doc => {
                     if (doc.exists) {
                         const data = doc.data();
                         if (data && Array.isArray(data.list)) {
                             const hasRealItems = data.list.length > 0;
-                            console.log("[Firebase] Ranking Top Likers actualizado ✓ (" + data.list.length + " usuarios)");
                             hasFirebaseData = hasRealItems;
                             window.lastRealRanking = data.list;
                             if (hasRealItems && previewInterval) {
@@ -816,66 +1731,12 @@
                     console.warn("[Firebase] Error en onSnapshot de topLikers:", err);
                 });
 
-                // Desuscribir listener anterior si existe
                 if (unsubConfig) unsubConfig();
-
-                // Escuchar configuraciones de estilo de overlays desde el panel de control
                 unsubConfig = db.collection('systemConfig').doc('overlayAlertsConfig').onSnapshot(doc => {
                     if (doc.exists) {
                         const data = doc.data();
-                        console.log("[Firebase] Configuración de estilo de Top Liker actualizada ✓");
-                        
-                        // Mapear desde Firestore
-                        applyLikerStyles(data);
-                        if (data.topliker_show_crown !== undefined) {
-                            settings.topliker_showCrown = data.topliker_show_crown;
-                        }
-                        if (data.topliker_show_heart_symbol !== undefined) {
-                            settings.topliker_showHeartSymbol = data.topliker_show_heart_symbol;
-                        }
-                        if (data.topliker_max !== undefined) {
-                            maxItems = Number(data.topliker_max);
-                        }
-                        if (data.topliker_rainbow_username !== undefined) {
-                            settings.topliker_rainbow_username = data.topliker_rainbow_username;
-                        }
-                        if (data.topliker_bounce_username !== undefined) {
-                            settings.topliker_bounce_username = data.topliker_bounce_username;
-                        }
-                        if (data.topliker_bounce_likes !== undefined) {
-                            settings.topliker_bounce_likes = data.topliker_bounce_likes;
-                        }
-                        if (data.topliker_rainbow_rank !== undefined) {
-                            settings.topliker_rainbow_rank = data.topliker_rainbow_rank;
-                        }
-                        if (data.topliker_bounce_rank !== undefined) {
-                            settings.topliker_bounce_rank = data.topliker_bounce_rank;
-                        }
-                        if (data.topliker_first_place_color !== undefined) {
-                            settings.topliker_first_place_color = data.topliker_first_place_color;
-                        }
-                        if (data.topliker_second_place_color !== undefined) {
-                            settings.topliker_second_place_color = data.topliker_second_place_color;
-                        }
-                        if (data.topliker_third_place_color !== undefined) {
-                            settings.topliker_third_place_color = data.topliker_third_place_color;
-                        }
-                        if (data.topliker_inactivity_threshold !== undefined) {
-                            settings.topliker_inactivity_threshold = data.topliker_inactivity_threshold;
-                        }
-                        if (data.topliker_gradient_theme !== undefined) {
-                            settings.topliker_gradient_theme = data.topliker_gradient_theme;
-                        }
-                        if (data.topliker_count_label !== undefined) {
-                            settings.topliker_count_label = data.topliker_count_label;
-                        }
-                        if (data.topliker_gradient_scope !== undefined) {
-                            settings.topliker_gradient_scope = data.topliker_gradient_scope;
-                        }
-                        if (data.topliker_bounce_scope !== undefined) {
-                            settings.topliker_bounce_scope = data.topliker_bounce_scope;
-                        }
-                        
+                        settings = Object.assign(settings, data);
+                        mapIncomingConfig(data);
                         updateSettings(true);
                     }
                 }, err => {
@@ -898,10 +1759,16 @@
             if (!userList) userList = lastUserList;
             lastUserList = userList;
 
-            // Limita items
             var list = userList.slice(0, maxItems);
 
-            // 1. Identificar usuarios que ya no están en el top y eliminarlos
+            // Actualizar atributos del contenedor
+            rankingContainer.attr("data-style", settings.topliker_style || "tikfinity");
+            rankingContainer.attr("data-layout", settings.topliker_layout || "list");
+            rankingContainer.attr("data-frame", settings.topliker_avatar_frame || "classic");
+            rankingContainer.attr("data-progress", settings.topliker_show_progress ? "true" : "false");
+            rankingContainer.attr("data-particles", settings.topliker_show_particles !== false ? "true" : "false");
+            rankingContainer.attr("data-shimmer", settings.topliker_show_shimmer ? "true" : "false");
+
             const newUsernames = new Set(list.map(u => u.username));
             $(".rankUser:not(#rankTemplate)").each(function() {
                 const username = $(this).attr("data-username");
@@ -910,7 +1777,6 @@
                 }
             });
 
-            // Si la lista está vacía
             if (list.length === 0) {
                 const urlParams = new URLSearchParams(window.location.search);
                 const isPreviewRequested = urlParams.get('preview') === '1' || urlParams.get('preview') === 'true' || urlParams.get('test') === '1';
@@ -926,49 +1792,51 @@
                 $('#emptyState').hide();
             }
 
-            // 2. Procesar cada usuario de la lista en orden
+            const maxAmount = Math.max(1, parseFloat(list[0]?.totalAmount) || 1);
+            const crownSvgUrl = CROWN_SVGS[settings.topliker_crown_style] || CROWN_SVGS["tikfinity"];
+            const heartSvgHtml = ICON_SVGS[settings.topliker_icon_style] || ICON_SVGS["heart-classic"];
+
             list.forEach(function(user, idx) {
                 const rank = idx + 1;
                 let card = $(`.rankUser[data-username="${user.username}"]`);
                 let isNew = false;
 
                 if (card.length === 0) {
-                    // No existe, creamos una nueva tarjeta
                     card = template.clone();
                     card.removeAttr("id");
                     card.attr("data-username", user.username);
+                    card.find(".avatar-laurel").html(LAUREL_SVG);
                     isNew = true;
                 } else {
-                    // Detener cualquier animación en progreso para evitar que se oculte
                     card.stop(true, true);
                 }
 
-                // Clases de posición
+                card.attr("data-rank", rank);
+
                 card.removeClass("first-place second-place third-place");
                 if (rank === 1) card.addClass("first-place");
                 if (rank === 2) card.addClass("second-place");
                 if (rank === 3) card.addClass("third-place");
+
+                // Pedestal text (para modo Podio)
+                const pedestalLabel = rank === 1 ? "🥇 1°" : rank === 2 ? "🥈 2°" : rank === 3 ? "🥉 3°" : (rank + "°");
+                card.find(".pedestal-rank").text(pedestalLabel);
 
                 // Rank number
                 const $rankId = card.find(".rankId");
                 $rankId.text(rank);
                 $rankId.toggle(settings.topliker_showRank !== false);
 
-                // Reset custom styling classes
                 $rankId.removeClass("rainbow-bg bounce-rank");
                 $rankId.css("background", "");
 
-                // Rainbow rank background animation
                 if (settings.topliker_rainbow_rank) {
                     $rankId.addClass("rainbow-bg");
                 }
-
-                // Bounce rank animation
                 if (settings.topliker_bounce_rank) {
                     $rankId.addClass("bounce-rank");
                 }
 
-                // Custom place colors
                 if (!settings.topliker_rainbow_rank) {
                     if (rank === 1 && settings.topliker_first_place_color) {
                         $rankId.css("background", makeGradient(settings.topliker_first_place_color));
@@ -979,7 +1847,7 @@
                     }
                 }
 
-                // Avatar (solo si es nueva o cambió la URL)
+                // Avatar
                 const picUrl = user.profilePictureUrl || NOTHUMB;
                 const $pic = card.find(".profilePicture");
                 if (isNew || $pic.attr("src") !== picUrl) {
@@ -990,6 +1858,9 @@
 
                 // Crown (only rank 1)
                 const $crown = card.find(".crown1");
+                if ($crown.attr("src") !== crownSvgUrl) {
+                    $crown.attr("src", crownSvgUrl);
+                }
                 if (rank === 1 && settings.topliker_showCrown !== false) {
                     $crown.css("display", "block");
                 } else {
@@ -1012,17 +1883,17 @@
                     : (user.nickname || ("@" + user.username));
                 const $usernameEl = card.find(".username");
 
-                // Gradient Text Theme
-                const GRADIENT_CLASSES = ['rainbow-text','silver-text','rose-text','pearl-text','sky-text','gold-text'];
+                const GRADIENT_CLASSES = ['rainbow-text','silver-text','rose-text','pearl-text','sky-text','gold-text','cyber-text','fire-text'];
                 $usernameEl.removeClass(GRADIENT_CLASSES.join(' '));
-                const gradTheme = settings.topliker_gradient_theme || (settings.topliker_rainbow_username ? 'rainbow' : 'none');
+                const gradTheme = (settings.topliker_gradient_theme && settings.topliker_gradient_theme !== 'none')
+                    ? settings.topliker_gradient_theme
+                    : (settings.topliker_rainbow_username ? 'rainbow' : 'none');
                 const gradScope = settings.topliker_gradient_scope || 'all';
                 const applyGrad = gradTheme !== 'none' && (gradScope === 'all' || rank <= 3);
                 if (applyGrad) {
                     $usernameEl.addClass(gradTheme + '-text');
                 }
 
-                // Bounce Text Animation
                 const bounceScope = settings.topliker_bounce_scope || 'all';
                 const applyBounce = settings.topliker_bounce_username && (bounceScope === 'all' || rank <= 3);
                 if (applyBounce) {
@@ -1048,7 +1919,10 @@
                 $amountSpan.text(amount.toLocaleString("es-MX"));
                 $amountSpan.attr("data-prev-amount", amount);
 
-                // Currency label override
+                // Progress bar width
+                const pct = Math.max(8, Math.min(100, Math.round((amount / maxAmount) * 100)));
+                card.find(".rank-progress-bar").css("width", pct + "%");
+
                 const labelOverride = settings.topliker_count_label;
                 if (labelOverride !== undefined && labelOverride !== null) {
                     card.find(".currency-label").text(labelOverride);
@@ -1070,6 +1944,10 @@
                 card.find(".inactive-warning").toggle(isInactive);
 
                 const $coinIcon = card.find(".coin-icon");
+                if ($coinIcon.attr("data-icon") !== (settings.topliker_icon_style || "heart-classic")) {
+                    $coinIcon.html(heartSvgHtml);
+                    $coinIcon.attr("data-icon", settings.topliker_icon_style || "heart-classic");
+                }
                 if (settings.topliker_showHeartSymbol === false) {
                     $coinIcon.hide();
                 } else {
@@ -1084,34 +1962,25 @@
                     card.removeClass("no-card-bg");
                 }
 
-                // Mapear estilos dinámicos del panel si existen
                 if (settings.topliker_rankColor)   card.find(".rankId").css("color", settings.topliker_rankColor);
                 if (settings.topliker_pointsColor) card.find(".points").css("color", settings.topliker_pointsColor);
                 if (settings.topliker_usernameColor) card.find(".username").css("color", settings.topliker_usernameColor);
 
-                // Mover/añadir la tarjeta a la posición correspondiente en el contenedor
                 rankingContainer.append(card);
 
                 if (isNew) {
                     card.addClass("animate-in");
                     card.removeAttr('style');
-                    card.css({
-                        display: "flex",
-                        opacity: 0
-                    }).animate({ opacity: 1 }, 180);
+                    card.css({ display: "flex", opacity: 0 }).animate({ opacity: 1 }, 180);
                 } else {
                     card.removeClass("animate-in");
-                    card.css({
-                        display: "flex",
-                        opacity: 1
-                    });
+                    card.css({ display: "flex", opacity: 1 });
                 }
             });
+
+            setupSpotlightRotation();
         }
 
-        // =============================================
-        //  SETTINGS APPLY
-        // =============================================
         function updateSettings(hasChanges) {
             if (settings.topliker_rankColor)   $(".rankId").css("color", settings.topliker_rankColor);
             if (settings.topliker_pointsColor) $(".points").css("color", settings.topliker_pointsColor);
@@ -1124,16 +1993,16 @@
         }
 
         // =============================================
-        //  INIT
+        //  INIT & PREVIEW
         // =============================================
         $(function() {
-            // Clone template BEFORE removing it
             if (!template) {
                 template = $("#rankTemplate").clone();
                 template.removeAttr("id");
                 $("#rankTemplate").remove();
             }
 
+            applyLikerStyles(settings);
             updateSettings(false);
 
             const urlParams = new URLSearchParams(window.location.search);
@@ -1142,7 +2011,6 @@
             if (isPreviewParam) {
                 window.preview && window.preview();
             } else {
-                // Si no hay datos del bot en Firebase, iniciar preview
                 setTimeout(function() {
                     if (!hasFirebaseData && (!window.lastRealRanking || window.lastRealRanking.length === 0)) {
                         window.preview && window.preview();
@@ -1150,7 +2018,6 @@
                 }, 1500);
             }
 
-            // Inactivity scanner interval
             if (inactivityScannerInterval) clearInterval(inactivityScannerInterval);
             inactivityScannerInterval = setInterval(() => {
                 $(".rankUser:not(#rankTemplate)").each(function() {
@@ -1168,18 +2035,13 @@
         function runTemporaryTest() {
             window.isTestActive = true;
             if (testTimeout) clearTimeout(testTimeout);
-            
-            // Generar y mostrar datos de prueba inmediatamente
-            window.preview(); 
-            
-            // Regresar al estado real después de 10 segundos
+            window.preview();
             testTimeout = setTimeout(() => {
                 window.isTestActive = false;
                 if (previewInterval) {
                     clearInterval(previewInterval);
                     previewInterval = null;
                 }
-                console.log("[topliker_overlay] Prueba finalizada. Restableciendo ranking real...");
                 if (window.lastRealRanking) {
                     updateRanking(window.lastRealRanking);
                 } else {
@@ -1191,10 +2053,10 @@
         let previewInterval = null;
         window.preview = function() {
             if (previewInterval) clearInterval(previewInterval);
-            
+
             const firstNames = ["Zero", "Lover", "Música", "TikTok", "Heart", "Super", "Pink", "Fan", "Lovely", "VIP"];
             const lastNames = ["FM", "Liker", "Pro", "Star", "Heart", "Cupid", "Vida", "Activo", "Zero", "Supporter"];
-            
+
             const count = 7;
             const list = [];
             for (let i = 0; i < count; i++) {
@@ -1203,16 +2065,16 @@
                 const username = (fn + "_" + ln + (i + 10)).toLowerCase();
                 const nickname = fn + " " + ln;
                 const randomPicId = 10 + i;
-                
+
                 list.push({
                     username: username,
                     nickname: nickname,
                     profilePictureUrl: `https://i.pravatar.cc/100?img=${randomPicId}`,
-                    totalAmount: 1000 - i * 100,
+                    totalAmount: 1000 - i * 110,
                     lastActive: (i === 2 || i === 4) ? (Date.now() - 120000) : Date.now()
                 });
             }
-            
+
             list.sort((a, b) => b.totalAmount - a.totalAmount);
             updateRanking(list);
 
@@ -1225,14 +2087,14 @@
                 const extraAmount = Math.floor(Math.random() * 400) + 100;
                 list[randomUserIndex].totalAmount += extraAmount;
                 list[randomUserIndex].lastActive = Date.now();
-                
+
                 if (Math.random() > 0.8) {
                     const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
                     const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
                     const username = (fn + "_" + ln + Math.floor(Math.random() * 90 + 10)).toLowerCase();
                     const nickname = fn + " " + ln;
                     const randomPicId = Math.floor(Math.random() * 70) + 1;
-                    
+
                     list[list.length - 1] = {
                         username: username,
                         nickname: nickname,
@@ -1247,68 +2109,15 @@
             }, 3000);
         };
 
-        // Receptor de eventos de mensajería (postMessage) para simulación local offline y actualización en tiempo real
+        // Receptor de eventos postMessage para vista previa en tiempo real
         window.addEventListener('message', function(event) {
             if (!event.data) return;
-            
+
             if (event.data.action === 'triggerTestTopGifters' || event.data.action === 'triggerTestAlert' || event.data.action === 'triggerTestTopLikers') {
-                console.log("[topliker_overlay] Alerta de prueba local recibida. Generando datos de prueba aleatorios...");
                 runTemporaryTest();
             } else if (event.data.action === 'updateLiveConfig' || event.data.action === 'updateConfig') {
-                console.log("[topliker_overlay] Configuración en tiempo real recibida:", event.data.config || event.data.payload);
                 const data = event.data.config || event.data.payload || {};
-                
-                // Mapear configuraciones de estilos
-                applyLikerStyles(data);
-                if (data.topliker_show_crown !== undefined) {
-                    settings.topliker_showCrown = data.topliker_show_crown;
-                }
-                if (data.topliker_show_heart_symbol !== undefined) {
-                    settings.topliker_showHeartSymbol = data.topliker_show_heart_symbol;
-                }
-                if (data.topliker_max !== undefined) {
-                    maxItems = Number(data.topliker_max);
-                }
-                if (data.topliker_rainbow_username !== undefined) {
-                    settings.topliker_rainbow_username = data.topliker_rainbow_username;
-                }
-                if (data.topliker_bounce_username !== undefined) {
-                    settings.topliker_bounce_username = data.topliker_bounce_username;
-                }
-                if (data.topliker_bounce_likes !== undefined) {
-                    settings.topliker_bounce_likes = data.topliker_bounce_likes;
-                }
-                if (data.topliker_rainbow_rank !== undefined) {
-                    settings.topliker_rainbow_rank = data.topliker_rainbow_rank;
-                }
-                if (data.topliker_bounce_rank !== undefined) {
-                    settings.topliker_bounce_rank = data.topliker_bounce_rank;
-                }
-                if (data.topliker_first_place_color !== undefined) {
-                    settings.topliker_first_place_color = data.topliker_first_place_color;
-                }
-                if (data.topliker_second_place_color !== undefined) {
-                    settings.topliker_second_place_color = data.topliker_second_place_color;
-                }
-                if (data.topliker_third_place_color !== undefined) {
-                    settings.topliker_third_place_color = data.topliker_third_place_color;
-                }
-                if (data.topliker_inactivity_threshold !== undefined) {
-                    settings.topliker_inactivity_threshold = data.topliker_inactivity_threshold;
-                }
-                if (data.topliker_gradient_theme !== undefined) {
-                    settings.topliker_gradient_theme = data.topliker_gradient_theme;
-                }
-                if (data.topliker_gradient_scope !== undefined) {
-                    settings.topliker_gradient_scope = data.topliker_gradient_scope;
-                }
-                if (data.topliker_bounce_scope !== undefined) {
-                    settings.topliker_bounce_scope = data.topliker_bounce_scope;
-                }
-                if (data.topliker_count_label !== undefined) {
-                    settings.topliker_count_label = data.topliker_count_label;
-                }
-                
+                mapIncomingConfig(data);
                 updateSettings(true);
             }
         });
