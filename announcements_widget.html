@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>📢 Anuncios Animados – Zero FM</title>
 
@@ -19,12 +18,18 @@
   <script src="firebase-config.js"></script>
 
   <style>
-    @layer reset, base, theme, components, animations, utilities;
+    @layer reset, base, components, styles, animations, utilities;
 
     @property --animation-reduced {
       syntax: "*";
       inherits: false;
       initial-value: none;
+    }
+
+    @property --border-angle {
+      syntax: "<angle>";
+      inherits: false;
+      initial-value: 0deg;
     }
 
     @layer reset {
@@ -45,7 +50,7 @@
         --in-oklab: ;
         --in-oklch: ;
 
-        /* Physics-based easings (with standard fallback in rules) */
+        /* Physics-based easings */
         --spring-easing: linear(
           0, 0.016 0.5%, 0.06 1%, 0.226 2%, 1.116 5.4%, 1.375 6.6%, 1.527 7.7%,
           1.565 8.2%, 1.585 8.8%, 1.581 9.3%, 1.559 9.8%, 1.458 10.9%, 0.937 14.3%,
@@ -63,19 +68,20 @@
 
         /* Dynamic Config Variables */
         --font-active: 'Outfit', system-ui, -apple-system, sans-serif;
-        --ad-font-size: 1.65rem;
-        --ad-sub-size: 0.88rem;
+        --ad-font-size: 1.5rem;
+        --ad-sub-size: 0.9rem;
         --fade-in-dur: 0.85s;
         --fade-out-dur: 0.75s;
-        --stagger-step: 0.038s;
+        --stagger-step: 0.036s;
         --letter-speed: 1.8s;
         --accent-primary: #ff0055;
         --accent-secondary: #00e5ff;
         --accent-rgb: 255, 0, 85;
         --accent-sec-rgb: 0, 229, 255;
         --text-color: #ffffff;
-        --card-opacity: 0.72;
-        --card-radius: 999px;
+        --card-opacity: 0.78;
+        --card-radius: 26px;
+        --fit-scale: 1;
       }
 
       @supports (background: linear-gradient(in oklab, white, black)) {
@@ -114,74 +120,255 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 1rem 1.5rem;
-        perspective: 1000px;
+        padding: 0.75rem 1.25rem;
+        perspective: 1100px;
         contain: layout style;
       }
 
-      #widget-stage[data-align="left"] {
-        justify-content: flex-start;
-      }
+      #widget-stage[data-align="left"]   { justify-content: flex-start; }
+      #widget-stage[data-align="center"] { justify-content: center; }
+      #widget-stage[data-align="right"]  { justify-content: flex-end; }
 
-      #widget-stage[data-align="center"] {
-        justify-content: center;
-      }
+      #widget-stage[data-vpos="top"]    { align-items: flex-start; }
+      #widget-stage[data-vpos="center"] { align-items: center; }
+      #widget-stage[data-vpos="bottom"] { align-items: flex-end; }
 
-      #widget-stage[data-align="right"] {
-        justify-content: flex-end;
-      }
-
-      #widget-stage[data-vpos="top"] {
-        align-items: flex-start;
-      }
-
-      #widget-stage[data-vpos="center"] {
-        align-items: center;
-      }
-
-      #widget-stage[data-vpos="bottom"] {
-        align-items: flex-end;
-      }
-
-      /* ─── Announcement Banner / Container ─── */
+      /* Outer wrapper handles Fade In / Fade Out transitions */
       #ad-banner {
         position: relative;
         display: inline-flex;
-        align-items: center;
-        gap: 0.85em;
-        max-width: min(96vw, 1180px);
-        padding: 0.68em 1.35em;
-        border-radius: var(--card-radius);
-        corner-shape: squircle;
-        font-size: var(--ad-font-size);
-        line-height: 1.2;
-        will-change: transform, opacity, filter;
         transform-style: preserve-3d;
-        isolation: isolate;
+        will-change: transform, opacity, filter;
       }
 
-      /* Leading Animated Emoji / Icon */
+      /* Scale wrapper guarantees the 2-line cartel always fits horizontally */
+      #ad-scale-wrap {
+        display: inline-flex;
+        transform: scale(var(--fit-scale, 1));
+        transform-origin: center center;
+        transition: transform 0.25s ease;
+      }
+
+      #widget-stage[data-align="left"] #ad-scale-wrap { transform-origin: left center; }
+      #widget-stage[data-align="right"] #ad-scale-wrap { transform-origin: right center; }
+
+      /* Inner cartel box handles continuous 3D floating + cartel style visuals */
+      #ad-banner-inner {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.9em;
+        padding: 0.68em 1.45em 0.78em 1.1em;
+        border-radius: var(--card-radius);
+        font-size: var(--ad-font-size);
+        line-height: 1.18;
+        isolation: isolate;
+        transform-style: preserve-3d;
+        animation: cartelAliveFloat 4.2s ease-in-out infinite;
+        --animation-reduced: none;
+      }
+
+      @keyframes cartelAliveFloat {
+        0%, 100% {
+          transform: translate3d(0, 0px, 0) rotateX(0deg) rotateY(0deg);
+        }
+        25% {
+          transform: translate3d(0, -4px, 6px) rotateX(2.2deg) rotateY(-1.6deg);
+        }
+        50% {
+          transform: translate3d(0, 1px, 10px) rotateX(-1.2deg) rotateY(1.8deg);
+        }
+        75% {
+          transform: translate3d(0, -3px, 4px) rotateX(1.5deg) rotateY(1.2deg);
+        }
+      }
+
+      /* Internal FX clipping container */
+      .cartel-fx-layer {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        overflow: hidden;
+        pointer-events: none;
+        z-index: -1;
+      }
+
+      /* Ambient moving color orbs inside the cartel */
+      .cartel-orbs {
+        position: absolute;
+        inset: -30%;
+        opacity: 0.45;
+        filter: blur(22px);
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 20% 40%, rgba(var(--accent-rgb), 0.65) 0%, transparent 45%),
+          radial-gradient(circle at 80% 60%, rgba(var(--accent-sec-rgb), 0.65) 0%, transparent 45%);
+        animation: orbsDrift 6s ease-in-out infinite alternate;
+      }
+
+      @keyframes orbsDrift {
+        0%   { transform: translate(-6%, -4%) scale(0.95) rotate(0deg); }
+        100% { transform: translate(6%, 4%) scale(1.08) rotate(12deg); }
+      }
+
+      /* Diagonal periodic light sweep */
+      .cartel-shimmer {
+        position: absolute;
+        top: 0;
+        left: -130%;
+        width: 60%;
+        height: 100%;
+        background: linear-gradient(
+          105deg,
+          transparent 15%,
+          rgba(255, 255, 255, 0.22) 50%,
+          transparent 85%
+        );
+        transform: skewX(-22deg);
+        animation: cartelShimmerSweep 3.8s ease-in-out infinite;
+      }
+
+      @keyframes cartelShimmerSweep {
+        0%, 45% { left: -130%; }
+        100%    { left: 170%; }
+      }
+
+      /* Floating ambient particles */
+      .cartel-particles {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .cartel-particles .cp {
+        position: absolute;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--accent-secondary);
+        box-shadow: 0 0 8px var(--accent-secondary), 0 0 14px var(--accent-primary);
+        opacity: 0;
+        animation: cartelParticleRise 3s ease-in-out infinite;
+      }
+
+      .cartel-particles .cp:nth-child(1) { left: 12%; bottom: 10%; animation-delay: 0s; }
+      .cartel-particles .cp:nth-child(2) { left: 34%; bottom: 6%;  animation-delay: 0.7s; width: 4px; height: 4px; background: #fff; }
+      .cartel-particles .cp:nth-child(3) { left: 62%; bottom: 12%; animation-delay: 1.4s; background: var(--accent-primary); }
+      .cartel-particles .cp:nth-child(4) { left: 84%; bottom: 8%;  animation-delay: 2.1s; width: 6px; height: 6px; }
+      .cartel-particles .cp:nth-child(5) { left: 48%; bottom: 14%; animation-delay: 2.6s; width: 3.5px; height: 3.5px; background: #fde047; }
+
+      @keyframes cartelParticleRise {
+        0%   { transform: translateY(8px) scale(0.4); opacity: 0; }
+        40%  { opacity: 0.9; }
+        100% { transform: translateY(-34px) scale(1.15); opacity: 0; }
+      }
+
+      /* Corner Cyber Brackets (used in cyber-hud) */
+      .cyber-bracket {
+        display: none;
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-color: var(--accent-secondary);
+        border-style: solid;
+        pointer-events: none;
+        z-index: 4;
+        filter: drop-shadow(0 0 6px var(--accent-secondary));
+      }
+      .cyber-bracket.tl { top: -3px; left: -3px; border-width: 2.5px 0 0 2.5px; }
+      .cyber-bracket.tr { top: -3px; right: -3px; border-width: 2.5px 2.5px 0 0; }
+      .cyber-bracket.bl { bottom: -3px; left: -3px; border-width: 0 0 2.5px 2.5px; }
+      .cyber-bracket.br { bottom: -3px; right: -3px; border-width: 0 2.5px 2.5px 0; }
+
+      /* ─── Leading Animated Icon Pod + Pulse Rings + Equalizer ─── */
+      .ad-icon-pod {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35em;
+        flex-shrink: 0;
+        padding: 0.32em 0.52em;
+        border-radius: 16px;
+        background: linear-gradient(
+          135deg var(--in-oklab),
+          rgba(var(--accent-rgb), 0.32),
+          rgba(var(--accent-sec-rgb), 0.22)
+        );
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        box-shadow:
+          0 0 18px rgba(var(--accent-rgb), 0.38),
+          inset 0 1px 1px rgba(255, 255, 255, 0.35);
+      }
+
+      .ad-icon-pod::before {
+        content: '';
+        position: absolute;
+        inset: -3px;
+        border-radius: inherit;
+        border: 1.5px solid rgba(var(--accent-sec-rgb), 0.55);
+        animation: podPulseRing 2s ease-out infinite;
+        pointer-events: none;
+      }
+
+      @keyframes podPulseRing {
+        0%   { transform: scale(0.94); opacity: 0.85; }
+        75%  { transform: scale(1.18); opacity: 0; }
+        100% { transform: scale(1.18); opacity: 0; }
+      }
+
       .ad-icon-wrap {
         position: relative;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.25em;
-        flex-shrink: 0;
-        filter: drop-shadow(0 0 12px rgba(var(--accent-rgb), 0.65));
-        animation: iconPulse 2.2s ease-in-out infinite;
+        font-size: 1.32em;
+        line-height: 1;
+        filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.75));
+        animation: iconDance 2.1s ease-in-out infinite;
         --animation-reduced: none;
       }
 
-      @keyframes iconPulse {
-        0%, 100% { transform: scale(1) rotate(0deg); }
-        50% { transform: scale(1.14) rotate(-5deg); }
+      @keyframes iconDance {
+        0%, 100% { transform: scale(1) rotate(0deg) translateY(0); }
+        25%      { transform: scale(1.16) rotate(-8deg) translateY(-2px); }
+        50%      { transform: scale(1.06) rotate(5deg) translateY(1px); }
+        75%      { transform: scale(1.14) rotate(-4deg) translateY(-1px); }
       }
 
+      /* Live 4-bar Equalizer inside Icon Pod */
+      .ad-eq-bars {
+        display: inline-flex;
+        align-items: flex-end;
+        gap: 2.5px;
+        height: 1.05em;
+        padding-bottom: 1px;
+      }
+
+      .ad-eq-bars span {
+        width: 3px;
+        border-radius: 99px;
+        background: linear-gradient(180deg, var(--accent-secondary), var(--accent-primary));
+        box-shadow: 0 0 6px var(--accent-secondary);
+        animation: eqBounce 0.75s ease-in-out infinite alternate;
+      }
+
+      .ad-eq-bars span:nth-child(1) { height: 45%; animation-duration: 0.55s; }
+      .ad-eq-bars span:nth-child(2) { height: 95%; animation-duration: 0.72s; animation-delay: 0.15s; }
+      .ad-eq-bars span:nth-child(3) { height: 65%; animation-duration: 0.48s; animation-delay: 0.3s; }
+      .ad-eq-bars span:nth-child(4) { height: 85%; animation-duration: 0.64s; animation-delay: 0.08s; }
+
+      @keyframes eqBounce {
+        0%   { transform: scaleY(0.28); opacity: 0.7; }
+        100% { transform: scaleY(1);    opacity: 1; }
+      }
+
+      /* ─── STRICT 2-LINE CONTENT ARCHITECTURE ─── */
       .ad-content-col {
         display: flex;
         flex-direction: column;
-        gap: 0.18em;
+        justify-content: center;
+        gap: 0.22em;
         min-width: 0;
       }
 
@@ -190,44 +377,110 @@
         text-align: center;
       }
 
+      /* LINE 1: Primary Headline — strictly 1 line (nowrap) */
       .ad-headline {
         display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
+        flex-wrap: nowrap;
+        white-space: nowrap;
+        align-items: center;
         gap: 0.28em;
-        font-weight: 800;
+        font-weight: 900;
         letter-spacing: 0.02em;
+        line-height: 1.15;
       }
 
       #widget-stage[data-align="center"] .ad-headline {
         justify-content: center;
       }
 
+      /* LINE 2: Dynamic Subtitle / Action Row — strictly 1 line (nowrap) */
+      .ad-subtitle {
+        display: flex;
+        flex-wrap: nowrap;
+        white-space: nowrap;
+        align-items: center;
+        gap: 0.32em;
+        font-size: var(--ad-sub-size);
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.92);
+        letter-spacing: 0.035em;
+        line-height: 1.2;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
+      }
+
+      #widget-stage[data-align="center"] .ad-subtitle {
+        justify-content: center;
+      }
+
       .ad-word {
         display: inline-flex;
+        align-items: center;
         white-space: nowrap;
       }
 
       /* Highlighted command badge (e.g. !zr) */
       .ad-word.is-command {
-        padding: 0.06em 0.42em;
-        border-radius: 0.4em;
-        corner-shape: squircle;
+        padding: 0.05em 0.45em;
+        border-radius: 0.42em;
         background: linear-gradient(
           135deg var(--in-oklab),
-          rgba(var(--accent-rgb), 0.38),
-          rgba(var(--accent-sec-rgb), 0.28)
+          rgba(var(--accent-rgb), 0.48),
+          rgba(var(--accent-sec-rgb), 0.38)
         );
-        border: 1px solid rgba(var(--accent-sec-rgb), 0.68);
-        box-shadow: 0 0 14px rgba(var(--accent-sec-rgb), 0.35);
+        border: 1px solid rgba(var(--accent-sec-rgb), 0.85);
+        box-shadow:
+          0 0 14px rgba(var(--accent-sec-rgb), 0.45),
+          inset 0 1px 0 rgba(255, 255, 255, 0.35);
         font-family: 'JetBrains Mono', monospace;
+        animation: cmdBadgePulse 1.8s ease-in-out infinite;
       }
 
-      /* Individual Character Span */
+      @keyframes cmdBadgePulse {
+        0%, 100% {
+          box-shadow: 0 0 12px rgba(var(--accent-sec-rgb), 0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+          transform: scale(1);
+        }
+        50% {
+          box-shadow: 0 0 22px rgba(var(--accent-sec-rgb), 0.8), 0 0 12px rgba(var(--accent-rgb), 0.5);
+          transform: scale(1.04);
+        }
+      }
+
+      /* Live pill tag on Line 2 */
+      .ad-live-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3em;
+        padding: 0.08em 0.48em;
+        border-radius: 999px;
+        font-size: 0.78em;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        background: rgba(var(--accent-rgb), 0.28);
+        border: 1px solid rgba(var(--accent-rgb), 0.65);
+        color: #fff;
+        box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.4);
+      }
+
+      .ad-live-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent-secondary);
+        box-shadow: 0 0 8px var(--accent-secondary);
+        animation: liveDotBlink 1.1s ease-in-out infinite alternate;
+      }
+
+      @keyframes liveDotBlink {
+        0%   { opacity: 0.35; transform: scale(0.85); }
+        100% { opacity: 1;    transform: scale(1.2); }
+      }
+
+      /* Individual Character Span (Line 1) */
       .ad-char {
         display: inline-block;
         will-change: transform, opacity;
-        /* Fallback before sibling-index() per dynamic-sibling-animations guide */
         --char-delay: calc(var(--sibling-index, 1) * var(--stagger-step));
       }
 
@@ -237,39 +490,223 @@
         }
       }
 
-      .ad-subtitle {
-        font-size: var(--ad-sub-size);
-        font-weight: 600;
-        color: rgba(255, 255, 255, 0.82);
-        letter-spacing: 0.04em;
-        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.75);
+      /* Subtitle words (Line 2) animated entrance + subtle flow */
+      .ad-sub-word {
+        display: inline-flex;
+        white-space: nowrap;
+        animation:
+          subWordPop 0.55s var(--spring-easing) backwards,
+          subWordFloat 2.8s ease-in-out infinite;
+        animation-delay:
+          calc(0.18s + var(--sub-idx, 0) * 0.055s),
+          calc(0.75s + var(--sub-idx, 0) * 0.12s);
+      }
+
+      @keyframes subWordPop {
+        from { opacity: 0; transform: translateY(10px) scale(0.86); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+      }
+
+      @keyframes subWordFloat {
+        0%, 100% { transform: translateY(0px); }
+        50%      { transform: translateY(-2px); color: #ffffff; }
       }
 
       /* Progress bar indicator inside banner */
       .ad-timer-bar {
         position: absolute;
-        left: 1.2em;
-        right: 1.2em;
-        bottom: 0.16em;
-        height: 2.5px;
+        left: 1.25em;
+        right: 1.25em;
+        bottom: 0.18em;
+        height: 3px;
         border-radius: 99px;
         background: rgba(255, 255, 255, 0.12);
         overflow: hidden;
         pointer-events: none;
+        z-index: 3;
       }
 
       .ad-timer-fill {
         width: 100%;
         height: 100%;
         transform-origin: left center;
-        background: linear-gradient(90deg var(--in-oklab), var(--accent-primary), var(--accent-secondary));
-        box-shadow: 0 0 8px var(--accent-secondary);
+        background: linear-gradient(90deg var(--in-oklab), var(--accent-primary), var(--accent-secondary), #ffffff);
+        box-shadow: 0 0 10px var(--accent-secondary);
       }
     }
 
-    @layer theme {
-      /* ─── TEMA 1: PURO TRANSPARENTE (Sin caja de fondo) ─── */
-      #widget-stage[data-theme="transparent"] #ad-banner {
+    /* ═══════════════════════════════════════════════════════════════════
+       LAYER: ESTILOS DEL CARTEL (data-banner-style)
+       8 estilos dinámicos para que el cartel de 2 líneas nunca sea estático
+       ═══════════════════════════════════════════════════════════════════ */
+    @layer styles {
+      @keyframes rotateBorderAngle {
+        to { --border-angle: 360deg; }
+      }
+
+      /* ─── 1. KINETIC GLASS (Cristal Dinámico 2 Líneas) ─── */
+      :where(#widget-stage[data-banner-style="kinetic-glass"]) #ad-banner-inner {
+        background:
+          linear-gradient(135deg var(--in-oklab), rgba(16, 14, 32, calc(var(--card-opacity) * 0.94)), rgba(28, 12, 38, calc(var(--card-opacity) * 0.88))) padding-box,
+          conic-gradient(from var(--border-angle), var(--accent-primary), var(--accent-secondary), rgba(255,255,255,0.25), var(--accent-primary)) border-box;
+        border: 2px solid transparent;
+        backdrop-filter: blur(22px) saturate(180%);
+        -webkit-backdrop-filter: blur(22px) saturate(180%);
+        box-shadow:
+          0 16px 40px -10px rgba(0, 0, 0, 0.65),
+          0 0 26px rgba(var(--accent-rgb), 0.28),
+          inset 0 1px 1px rgba(255, 255, 255, 0.32);
+        animation:
+          cartelAliveFloat 4.2s ease-in-out infinite,
+          rotateBorderAngle 4.5s linear infinite;
+      }
+
+      /* ─── 2. CYBERPUNK BROADCAST HUD (cyber-hud) ─── */
+      :where(#widget-stage[data-banner-style="cyber-hud"]) #ad-banner-inner {
+        border-radius: 6px;
+        background: linear-gradient(135deg, rgba(6, 10, 26, 0.92), rgba(20, 6, 34, 0.92));
+        border: 1.5px solid rgba(var(--accent-sec-rgb), 0.65);
+        box-shadow:
+          0 0 28px rgba(var(--accent-rgb), 0.42),
+          inset 0 0 22px rgba(var(--accent-sec-rgb), 0.18),
+          inset 4px 0 0 var(--accent-primary),
+          inset -4px 0 0 var(--accent-secondary);
+      }
+
+      :where(#widget-stage[data-banner-style="cyber-hud"]) .cyber-bracket {
+        display: block;
+        animation: bracketPulse 1.6s ease-in-out infinite alternate;
+      }
+
+      @keyframes bracketPulse {
+        0%   { transform: scale(1); opacity: 0.75; }
+        100% { transform: scale(1.15); opacity: 1; }
+      }
+
+      :where(#widget-stage[data-banner-style="cyber-hud"]) .cartel-fx-layer::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(0, 229, 255, 0.06) 0px,
+          rgba(0, 229, 255, 0.06) 1px,
+          transparent 1px,
+          transparent 4px
+        );
+        pointer-events: none;
+      }
+
+      /* ─── 3. CÁPSULA PLASMA NEÓN (neon-capsule) ─── */
+      :where(#widget-stage[data-banner-style="neon-capsule"]) #ad-banner-inner {
+        border-radius: 999px;
+        padding-inline: 1.35em 1.65em;
+        background:
+          linear-gradient(135deg, rgba(12, 8, 26, 0.9), rgba(24, 8, 36, 0.88)) padding-box,
+          conic-gradient(from var(--border-angle), #ff0055, #00e5ff, #a855f7, #fde047, #ff0055) border-box;
+        border: 2.5px solid transparent;
+        box-shadow:
+          0 0 26px rgba(var(--accent-rgb), 0.52),
+          0 0 48px rgba(var(--accent-sec-rgb), 0.28),
+          inset 0 0 18px rgba(var(--accent-rgb), 0.22);
+        animation:
+          cartelAliveFloat 3.8s ease-in-out infinite,
+          rotateBorderAngle 3.2s linear infinite;
+      }
+
+      :where(#widget-stage[data-banner-style="neon-capsule"]) .ad-icon-pod {
+        border-radius: 999px;
+      }
+
+      /* ─── 4. CARTEL VIP IMPERIAL 3D (royal-gold) ─── */
+      :where(#widget-stage[data-banner-style="royal-gold"]) #ad-banner-inner {
+        background:
+          linear-gradient(145deg, rgba(36, 24, 6, 0.94), rgba(14, 10, 4, 0.94)) padding-box,
+          conic-gradient(from var(--border-angle), #ffd700, #fffbeb, #b45309, #ffd700) border-box;
+        border: 2px solid transparent;
+        box-shadow:
+          0 12px 34px rgba(0, 0, 0, 0.7),
+          0 0 28px rgba(255, 215, 0, 0.38),
+          inset 0 2px 3px rgba(255, 250, 205, 0.45),
+          inset 0 -3px 8px rgba(180, 120, 10, 0.35);
+        animation:
+          cartelAliveFloat 4.4s ease-in-out infinite,
+          rotateBorderAngle 5s linear infinite;
+      }
+
+      :where(#widget-stage[data-banner-style="royal-gold"]) .ad-icon-pod {
+        background: linear-gradient(135deg, rgba(255, 215, 0, 0.32), rgba(180, 83, 9, 0.32));
+        border-color: rgba(255, 235, 130, 0.65);
+        box-shadow: 0 0 18px rgba(255, 215, 0, 0.45);
+      }
+
+      :where(#widget-stage[data-banner-style="royal-gold"]) .ad-live-tag {
+        background: linear-gradient(135deg, #ffd700, #d97706);
+        color: #1c1000;
+        border-color: #fef08a;
+      }
+
+      /* ─── 5. ESTUDIO RADIO FM + ECUALIZADOR (radio-eq) ─── */
+      :where(#widget-stage[data-banner-style="radio-eq"]) #ad-banner-inner {
+        border-radius: 20px;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 14, 48, 0.92));
+        border: 1.5px solid rgba(255, 255, 255, 0.22);
+        box-shadow:
+          0 14px 36px rgba(0, 0, 0, 0.6),
+          0 0 24px rgba(var(--accent-sec-rgb), 0.32),
+          inset 0 1px 1px rgba(255, 255, 255, 0.28);
+      }
+
+      :where(#widget-stage[data-banner-style="radio-eq"]) .ad-eq-bars {
+        height: 1.35em;
+        gap: 3px;
+      }
+
+      :where(#widget-stage[data-banner-style="radio-eq"]) .ad-eq-bars span {
+        width: 3.5px;
+      }
+
+      /* ─── 6. HOLOGRAMA PRISMA 3D (hologram-prism) ─── */
+      :where(#widget-stage[data-banner-style="hologram-prism"]) #ad-banner-inner {
+        background: linear-gradient(
+          135deg var(--in-oklab),
+          rgba(0, 240, 255, 0.24) 0%,
+          rgba(168, 85, 247, 0.28) 50%,
+          rgba(255, 0, 128, 0.24) 100%
+        );
+        backdrop-filter: blur(24px) saturate(200%) brightness(1.1);
+        -webkit-backdrop-filter: blur(24px) saturate(200%) brightness(1.1);
+        border: 1.5px solid rgba(255, 255, 255, 0.55);
+        box-shadow:
+          0 14px 38px rgba(168, 85, 247, 0.35),
+          0 0 26px rgba(0, 240, 255, 0.32),
+          inset 0 2px 4px rgba(255, 255, 255, 0.65),
+          inset 0 -2px 4px rgba(255, 0, 128, 0.35);
+      }
+
+      /* ─── 7. FUEGO / ALTA ENERGÍA (fire-energy) ─── */
+      :where(#widget-stage[data-banner-style="fire-energy"]) #ad-banner-inner {
+        background:
+          linear-gradient(180deg, rgba(45, 10, 6, 0.94), rgba(24, 6, 4, 0.94)) padding-box,
+          conic-gradient(from var(--border-angle), #fde047, #f97316, #dc2626, #f97316, #fde047) border-box;
+        border: 2px solid transparent;
+        box-shadow:
+          0 10px 34px rgba(220, 38, 38, 0.5),
+          0 0 24px rgba(249, 115, 22, 0.42),
+          inset 0 -5px 18px rgba(249, 115, 22, 0.4);
+        animation:
+          cartelAliveFloat 3.6s ease-in-out infinite,
+          rotateBorderAngle 3s linear infinite;
+      }
+
+      :where(#widget-stage[data-banner-style="fire-energy"]) .cartel-particles .cp {
+        background: #fde047;
+        box-shadow: 0 0 8px #f97316, 0 0 14px #dc2626;
+      }
+
+      /* ─── 8. PURO TEXTO FLOTANTE VIVO (minimal-floating) ─── */
+      :where(#widget-stage[data-banner-style="minimal-floating"]) #ad-banner-inner,
+      :where(#widget-stage[data-theme="transparent"]) #ad-banner-inner {
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
@@ -278,64 +715,23 @@
         padding-inline: 0.4em;
       }
 
-      #widget-stage[data-theme="transparent"] .ad-timer-bar {
+      :where(#widget-stage[data-banner-style="minimal-floating"]) .cartel-orbs,
+      :where(#widget-stage[data-banner-style="minimal-floating"]) .cartel-shimmer,
+      :where(#widget-stage[data-theme="transparent"]) .cartel-orbs,
+      :where(#widget-stage[data-theme="transparent"]) .cartel-shimmer {
         display: none;
-      }
-
-      /* ─── TEMA 2: CRISTAL ESPACIAL (Vision Glass) ─── */
-      #widget-stage[data-theme="glass"] #ad-banner {
-        background: linear-gradient(
-          135deg var(--in-oklab),
-          rgba(255, 255, 255, calc(var(--card-opacity) * 0.18)),
-          rgba(14, 14, 28, calc(var(--card-opacity) * 0.92))
-        );
-        border: 1px solid rgba(255, 255, 255, 0.24);
-        backdrop-filter: blur(22px) saturate(180%);
-        -webkit-backdrop-filter: blur(22px) saturate(180%);
-        box-shadow:
-          0 16px 40px -10px rgba(0, 0, 0, 0.58),
-          inset 0 1px 1px rgba(255, 255, 255, 0.32);
-      }
-
-      /* ─── TEMA 3: CYBERPUNK NEON HUD ─── */
-      #widget-stage[data-theme="cyber"] #ad-banner {
-        background: rgba(8, 7, 18, var(--card-opacity));
-        border: 1.5px solid var(--accent-primary);
-        backdrop-filter: blur(18px);
-        -webkit-backdrop-filter: blur(18px);
-        box-shadow:
-          0 0 24px rgba(var(--accent-rgb), 0.45),
-          0 0 42px rgba(var(--accent-sec-rgb), 0.2),
-          inset 0 0 16px rgba(var(--accent-sec-rgb), 0.16);
-      }
-
-      /* ─── TEMA 4: CÁPSULA AURORA GRADIENTE ─── */
-      #widget-stage[data-theme="aurora"] #ad-banner {
-        background: linear-gradient(
-          135deg var(--in-oklab),
-          rgba(var(--accent-rgb), calc(var(--card-opacity) * 0.78)),
-          rgba(var(--accent-sec-rgb), calc(var(--card-opacity) * 0.68))
-        );
-        border: 1px solid rgba(255, 255, 255, 0.38);
-        backdrop-filter: blur(18px);
-        -webkit-backdrop-filter: blur(18px);
-        box-shadow:
-          0 14px 36px -8px rgba(var(--accent-rgb), 0.5),
-          inset 0 1px 1px rgba(255, 255, 255, 0.45);
       }
 
       /* ═══════════════════════════════════════════════════════════════
          EFECTOS DE TEXTO (data-text-effect)
          ═══════════════════════════════════════════════════════════════ */
-      /* 1. Neon Glow */
       #widget-stage[data-text-effect="neon"] .ad-char {
         text-shadow:
-          0 0 8px rgba(var(--accent-rgb), 0.85),
+          0 0 8px rgba(var(--accent-rgb), 0.88),
           0 0 20px rgba(var(--accent-sec-rgb), 0.55),
           0 2px 10px rgba(0, 0, 0, 0.85);
       }
 
-      /* 2. Shimmer Metálico / Gradiente Luminoso */
       #widget-stage[data-text-effect="shimmer"] .ad-char.is-alpha {
         background: linear-gradient(
           90deg var(--in-oklab),
@@ -356,11 +752,10 @@
       }
 
       @keyframes shimmerText {
-        0% { background-position: 0% center; }
+        0%   { background-position: 0% center; }
         100% { background-position: 220% center; }
       }
 
-      /* 3. 3D Extrude Broadcast */
       #widget-stage[data-text-effect="extrude3d"] .ad-char {
         text-shadow:
           1px 1px 0 var(--accent-primary),
@@ -369,7 +764,6 @@
           4px 4px 12px rgba(0, 0, 0, 0.9);
       }
 
-      /* 4. RGB Chromatic Split */
       #widget-stage[data-text-effect="rgb"] .ad-char {
         text-shadow:
           -2px 0 0 rgba(255, 0, 85, 0.88),
@@ -377,7 +771,6 @@
           0 2px 10px rgba(0, 0, 0, 0.85);
       }
 
-      /* 5. Outline Hollow Glow */
       #widget-stage[data-text-effect="outline"] .ad-char.is-alpha {
         color: transparent;
         -webkit-text-stroke: 1.6px #ffffff;
@@ -386,7 +779,6 @@
           0 2px 10px rgba(0, 0, 0, 0.75);
       }
 
-      /* 6. Clean High-Contrast Shadow */
       #widget-stage[data-text-effect="clean"] .ad-char {
         text-shadow:
           0 2px 12px rgba(0, 0, 0, 0.92),
@@ -397,6 +789,7 @@
     @layer animations {
       /* ═══════════════════════════════════════════════════════════════
          ANIMACIONES INTERCAMBIABLES POR LETRA (data-letter-anim)
+         Todas mantienen movimiento vivo durante la fase en pantalla
          ═══════════════════════════════════════════════════════════════ */
 
       /* 1. WAVE: Ola Sinusoidal Continua */
@@ -408,61 +801,75 @@
 
       @keyframes charWave {
         0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
-        25% { transform: translate3d(0, -0.24em, 0) rotate(-3deg); }
-        75% { transform: translate3d(0, 0.1em, 0) rotate(2deg); }
+        25%      { transform: translate3d(0, -0.22em, 0) rotate(-3deg); }
+        75%      { transform: translate3d(0, 0.09em, 0) rotate(2deg); }
       }
 
-      /* 2. SPRING-POP: Entrada Elástica con Física de Resorte linear() */
+      /* 2. SPRING-POP: Entrada Elástica + Flotación Continua (No estático) */
       #widget-stage[data-letter-anim="spring"] .ad-char {
         animation:
-          charSpringScale 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) backwards,
-          charFadeOnly 0.28s ease-out backwards;
-        animation-timing-function: var(--spring-easing), ease-out;
-        animation-delay: var(--char-delay);
+          charSpringScale 0.82s var(--spring-easing) backwards,
+          charFadeOnly 0.25s ease-out backwards,
+          charWave 2.4s ease-in-out infinite;
+        animation-delay:
+          var(--char-delay),
+          var(--char-delay),
+          calc(0.82s + var(--char-delay));
         --animation-reduced: none;
       }
 
       @keyframes charSpringScale {
         from { transform: translate3d(0, 0.45em, 0) scale(0.25); }
-        to { transform: translate3d(0, 0, 0) scale(1); }
+        to   { transform: translate3d(0, 0, 0) scale(1); }
       }
 
       @keyframes charFadeOnly {
         from { opacity: 0; }
-        to { opacity: 1; }
+        to   { opacity: 1; }
       }
 
-      /* 3. BOUNCE-DROP: Caída con Rebote Físico linear() */
+      /* 3. BOUNCE-DROP: Caída con Rebote + Pulso Rítmico Continuo */
       #widget-stage[data-letter-anim="bounce"] .ad-char {
         animation:
-          charBounceDrop 0.78s cubic-bezier(0.34, 1.56, 0.64, 1) backwards,
-          charFadeOnly 0.22s ease-out backwards;
-        animation-timing-function: var(--bounce-easing), ease-out;
-        animation-delay: var(--char-delay);
+          charBounceDrop 0.76s var(--bounce-easing) backwards,
+          charFadeOnly 0.22s ease-out backwards,
+          charPulseSweep 2.2s ease-in-out infinite;
+        animation-delay:
+          var(--char-delay),
+          var(--char-delay),
+          calc(0.76s + var(--char-delay));
         --animation-reduced: none;
       }
 
       @keyframes charBounceDrop {
         from { transform: translate3d(0, -1.1em, 0) scaleY(1.25); }
-        to { transform: translate3d(0, 0, 0) scaleY(1); }
+        to   { transform: translate3d(0, 0, 0) scaleY(1); }
       }
 
-      /* 4. TYPEWRITER: Máquina de Escribir Secuencial */
+      /* 4. TYPEWRITER: Máquina de Escribir + Brillo Vivo */
       #widget-stage[data-letter-anim="typewriter"] .ad-char {
-        animation: charTypewriter 0.08s steps(1, end) backwards;
-        animation-delay: var(--char-delay);
+        animation:
+          charTypewriter 0.08s steps(1, end) backwards,
+          charWave 2.6s ease-in-out infinite;
+        animation-delay:
+          var(--char-delay),
+          calc(0.6s + var(--char-delay));
         --animation-reduced: none;
       }
 
       @keyframes charTypewriter {
         from { opacity: 0; transform: scale(0.7); }
-        to { opacity: 1; transform: scale(1); }
+        to   { opacity: 1; transform: scale(1); }
       }
 
-      /* 5. FLIP-3D: Giro 3D Secuencial por Letra */
+      /* 5. FLIP-3D: Giro 3D Secuencial + Onda 3D Continua */
       #widget-stage[data-letter-anim="flip3d"] .ad-char {
-        animation: charFlip3D 0.56s cubic-bezier(0.22, 1, 0.36, 1) backwards;
-        animation-delay: var(--char-delay);
+        animation:
+          charFlip3D 0.56s cubic-bezier(0.22, 1, 0.36, 1) backwards,
+          charFlipWave 2.8s ease-in-out infinite;
+        animation-delay:
+          var(--char-delay),
+          calc(0.6s + var(--char-delay));
         --animation-reduced: none;
       }
 
@@ -477,6 +884,11 @@
         }
       }
 
+      @keyframes charFlipWave {
+        0%, 100% { transform: perspective(400px) rotateY(0deg) translateY(0); }
+        50%      { transform: perspective(400px) rotateY(18deg) translateY(-0.14em); }
+      }
+
       /* 6. GLITCH: Vibración Cyber / Holograma */
       #widget-stage[data-letter-anim="glitch"] .ad-char {
         animation: charGlitch var(--letter-speed) steps(2, end) infinite;
@@ -485,10 +897,10 @@
       }
 
       @keyframes charGlitch {
-        0%, 84%, 100% { transform: translate3d(0, 0, 0) skewX(0deg); }
-        86% { transform: translate3d(-2px, 1px, 0) skewX(-8deg); }
-        90% { transform: translate3d(2px, -1px, 0) skewX(8deg); }
-        94% { transform: translate3d(-1px, -1px, 0) scale(1.04); }
+        0%, 82%, 100% { transform: translate3d(0, 0, 0) skewX(0deg); }
+        85%           { transform: translate3d(-2px, 1px, 0) skewX(-8deg); }
+        90%           { transform: translate3d(2px, -1px, 0) skewX(8deg); }
+        95%           { transform: translate3d(-1px, -1px, 0) scale(1.05); }
       }
 
       /* 7. PULSE-SWEEP: Barrido de Pulso Luminoso */
@@ -504,20 +916,19 @@
           filter: brightness(1);
         }
         35% {
-          transform: scale(1.18) translate3d(0, -0.08em, 0);
+          transform: scale(1.16) translate3d(0, -0.08em, 0);
           filter: brightness(1.45) drop-shadow(0 0 10px var(--accent-secondary));
         }
       }
 
       /* ═══════════════════════════════════════════════════════════════
-         TRANSICIONES DE ENTRADA Y SALIDA (FADE IN / FADE OUT + DURACIÓN)
+         TRANSICIONES DE ENTRADA Y SALIDA (FADE IN / FADE OUT)
          ═══════════════════════════════════════════════════════════════ */
       #ad-banner.is-Paused-Hidden {
         opacity: 0 !important;
         pointer-events: none;
       }
 
-      /* 1. FADE PURO */
       #widget-stage[data-trans="fade"] #ad-banner.phase-in {
         animation: transFadeIn var(--fade-in-dur) cubic-bezier(0.22, 1, 0.36, 1) forwards;
       }
@@ -527,14 +938,13 @@
 
       @keyframes transFadeIn {
         from { opacity: 0; }
-        to { opacity: 1; }
+        to   { opacity: 1; }
       }
       @keyframes transFadeOut {
         from { opacity: 1; }
-        to { opacity: 0; }
+        to   { opacity: 0; }
       }
 
-      /* 2. FADE + BLUR CINEMÁTICO */
       #widget-stage[data-trans="fade-blur"] #ad-banner.phase-in {
         animation: transBlurIn var(--fade-in-dur) cubic-bezier(0.22, 1, 0.36, 1) forwards;
       }
@@ -543,15 +953,14 @@
       }
 
       @keyframes transBlurIn {
-        from { opacity: 0; filter: blur(16px); transform: scale(0.94); }
-        to { opacity: 1; filter: blur(0px); transform: scale(1); }
+        from { opacity: 0; filter: blur(16px); transform: scale(0.92); }
+        to   { opacity: 1; filter: blur(0px);  transform: scale(1); }
       }
       @keyframes transBlurOut {
-        from { opacity: 1; filter: blur(0px); transform: scale(1); }
-        to { opacity: 0; filter: blur(16px); transform: scale(1.05); }
+        from { opacity: 1; filter: blur(0px);  transform: scale(1); }
+        to   { opacity: 0; filter: blur(16px); transform: scale(1.06); }
       }
 
-      /* 3. FADE + ELEVACIÓN VERTICAL (SLIDE UP) */
       #widget-stage[data-trans="slide-up"] #ad-banner.phase-in {
         animation: transSlideUpIn var(--fade-in-dur) cubic-bezier(0.22, 1, 0.36, 1) forwards;
       }
@@ -560,15 +969,14 @@
       }
 
       @keyframes transSlideUpIn {
-        from { opacity: 0; transform: translate3d(0, 32px, 0) scale(0.96); }
-        to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+        from { opacity: 0; transform: translate3d(0, 32px, 0) scale(0.95); }
+        to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
       }
       @keyframes transSlideUpOut {
         from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-        to { opacity: 0; transform: translate3d(0, -28px, 0) scale(0.96); }
+        to   { opacity: 0; transform: translate3d(0, -28px, 0) scale(0.95); }
       }
 
-      /* 4. FADE + BARRIDO LATERAL (IZQUIERDA → DERECHA) */
       #widget-stage[data-trans="slide-lr"] #ad-banner.phase-in {
         animation: transSlideLRIn var(--fade-in-dur) cubic-bezier(0.22, 1, 0.36, 1) forwards;
       }
@@ -578,19 +986,17 @@
 
       @keyframes transSlideLRIn {
         from { opacity: 0; transform: translate3d(-54px, 0, 0); }
-        to { opacity: 1; transform: translate3d(0, 0, 0); }
+        to   { opacity: 1; transform: translate3d(0, 0, 0); }
       }
       @keyframes transSlideLROut {
         from { opacity: 1; transform: translate3d(0, 0, 0); }
-        to { opacity: 0; transform: translate3d(54px, 0, 0); }
+        to   { opacity: 0; transform: translate3d(54px, 0, 0); }
       }
 
-      /* 5. ZOOM ELÁSTICO (SCALE POP) */
       #widget-stage[data-trans="zoom-spring"] #ad-banner.phase-in {
         animation:
-          transZoomScaleIn var(--fade-in-dur) cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+          transZoomScaleIn var(--fade-in-dur) var(--spring-easing) forwards,
           transFadeIn calc(var(--fade-in-dur) * 0.45) ease-out forwards;
-        animation-timing-function: var(--spring-easing), ease-out;
       }
       #widget-stage[data-trans="zoom-spring"] #ad-banner.phase-out {
         animation: transZoomOut var(--fade-out-dur) cubic-bezier(0.4, 0, 0.2, 1) forwards;
@@ -598,14 +1004,13 @@
 
       @keyframes transZoomScaleIn {
         from { transform: scale(0.55); }
-        to { transform: scale(1); }
+        to   { transform: scale(1); }
       }
       @keyframes transZoomOut {
         from { opacity: 1; transform: scale(1); }
-        to { opacity: 0; transform: scale(0.75); }
+        to   { opacity: 0; transform: scale(0.75); }
       }
 
-      /* 6. GIRO 3D DE CARTEL (FLIP BANNER) */
       #widget-stage[data-trans="flip-3d"] #ad-banner.phase-in {
         animation: transFlipIn var(--fade-in-dur) cubic-bezier(0.22, 1, 0.36, 1) forwards;
       }
@@ -615,23 +1020,23 @@
 
       @keyframes transFlipIn {
         from { opacity: 0; transform: rotateX(-75deg) translate3d(0, 18px, 0); }
-        to { opacity: 1; transform: rotateX(0deg) translate3d(0, 0, 0); }
+        to   { opacity: 1; transform: rotateX(0deg) translate3d(0, 0, 0); }
       }
       @keyframes transFlipOut {
         from { opacity: 1; transform: rotateX(0deg) translate3d(0, 0, 0); }
-        to { opacity: 0; transform: rotateX(75deg) translate3d(0, -18px, 0); }
+        to   { opacity: 0; transform: rotateX(75deg) translate3d(0, -18px, 0); }
       }
     }
 
     @layer utilities {
-      /* ─── Hover Controls & Drawer (Invisible in OBS unless hovered) ─── */
+      /* ─── Hover Controls & Drawer ─── */
       #floating-controls {
         position: fixed;
-        top: 10px;
+        top: 8px;
         right: 10px;
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: 5px;
         z-index: 9999;
         opacity: 0;
         pointer-events: none;
@@ -650,12 +1055,12 @@
       .ctrl-btn {
         appearance: none;
         border: 1px solid rgba(255, 255, 255, 0.18);
-        background: rgba(12, 10, 24, 0.86);
+        background: rgba(12, 10, 24, 0.88);
         color: #fff;
         font-family: 'Outfit', sans-serif;
-        font-size: 0.74rem;
+        font-size: 0.72rem;
         font-weight: 700;
-        padding: 0.36rem 0.68rem;
+        padding: 0.32rem 0.62rem;
         border-radius: 999px;
         cursor: pointer;
         backdrop-filter: blur(12px);
@@ -671,18 +1076,18 @@
 
       #settings-drawer {
         position: fixed;
-        top: 48px;
+        top: 44px;
         right: 10px;
-        width: 370px;
+        width: 390px;
         max-width: calc(100vw - 20px);
-        max-height: calc(100dvh - 58px);
+        max-height: calc(100dvh - 54px);
         overflow-y: auto;
         background: rgba(12, 10, 22, 0.96);
         border: 1px solid rgba(255, 255, 255, 0.16);
         border-radius: 16px;
         padding: 14px;
         z-index: 10000;
-        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.8);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.85);
         backdrop-filter: blur(24px);
         display: none;
         flex-direction: column;
@@ -737,8 +1142,8 @@
       .ad-list-editor {
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        max-height: 170px;
+        gap: 8px;
+        max-height: 190px;
         overflow-y: auto;
         padding: 6px;
         border-radius: 10px;
@@ -748,18 +1153,28 @@
 
       .ad-item-row {
         display: grid;
-        grid-template-columns: 38px 1fr auto;
+        grid-template-columns: 36px 1fr auto;
         gap: 5px;
         align-items: center;
+        background: rgba(255, 255, 255, 0.03);
+        padding: 5px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .ad-item-lines {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
       }
 
       .ad-item-row input {
-        padding: 5px 7px;
+        padding: 4px 7px;
         border-radius: 6px;
         border: 1px solid rgba(255, 255, 255, 0.14);
         background: rgba(255, 255, 255, 0.06);
         color: #fff;
-        font-size: 0.73rem;
+        font-size: 0.72rem;
       }
 
       .btn-del-ad {
@@ -767,22 +1182,22 @@
         border: 1px solid rgba(239, 68, 68, 0.4);
         color: #fca5a5;
         border-radius: 6px;
-        padding: 4px 7px;
+        padding: 6px 8px;
         cursor: pointer;
         font-size: 0.72rem;
       }
 
       #toast-pill {
         position: fixed;
-        bottom: 12px;
-        left: 16px;
-        background: rgba(12, 10, 24, 0.92);
+        bottom: 10px;
+        left: 14px;
+        background: rgba(12, 10, 24, 0.94);
         border: 1px solid var(--accent-primary);
         color: #fff;
-        padding: 6px 13px;
+        padding: 5px 12px;
         border-radius: 999px;
         font-family: 'Outfit', sans-serif;
-        font-size: 0.74rem;
+        font-size: 0.73rem;
         font-weight: 700;
         z-index: 10001;
         opacity: 0;
@@ -800,9 +1215,10 @@
 </head>
 <body>
 
-  <!-- Escenario Principal 100% Transparente -->
+  <!-- Escenario Principal -->
   <div
     id="widget-stage"
+    data-banner-style="kinetic-glass"
     data-letter-anim="wave"
     data-trans="fade-blur"
     data-text-effect="neon"
@@ -811,23 +1227,56 @@
     data-vpos="center"
   >
     <div id="ad-banner" class="phase-in" role="status" aria-live="polite">
-      <span id="ad-icon" class="ad-icon-wrap">🎧</span>
-      <div class="ad-content-col">
-        <div id="ad-headline" class="ad-headline"></div>
-        <div id="ad-subtitle" class="ad-subtitle is-hidden" hidden></div>
-      </div>
-      <div id="ad-timer-bar" class="ad-timer-bar">
-        <div id="ad-timer-fill" class="ad-timer-fill"></div>
+      <div id="ad-scale-wrap">
+        <div id="ad-banner-inner">
+          <!-- Brackets para estilo Cyber HUD -->
+          <span class="cyber-bracket tl"></span>
+          <span class="cyber-bracket tr"></span>
+          <span class="cyber-bracket bl"></span>
+          <span class="cyber-bracket br"></span>
+
+          <!-- Efectos Internos del Cartel (Orbes, Shimmer, Partículas) -->
+          <div class="cartel-fx-layer">
+            <div class="cartel-orbs"></div>
+            <div class="cartel-shimmer"></div>
+            <div class="cartel-particles">
+              <span class="cp"></span>
+              <span class="cp"></span>
+              <span class="cp"></span>
+              <span class="cp"></span>
+              <span class="cp"></span>
+            </div>
+          </div>
+
+          <!-- Cápsula Dinámica de Ícono + Ecualizador en Vivo -->
+          <div id="ad-icon-pod" class="ad-icon-pod">
+            <span id="ad-icon" class="ad-icon-wrap">🎧</span>
+            <div class="ad-eq-bars" aria-hidden="true">
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+
+          <!-- Contenido en 2 Líneas Perfectas -->
+          <div class="ad-content-col">
+            <div id="ad-headline" class="ad-headline"></div>
+            <div id="ad-subtitle" class="ad-subtitle"></div>
+          </div>
+
+          <!-- Barra de Tiempo Animada -->
+          <div id="ad-timer-bar" class="ad-timer-bar">
+            <div id="ad-timer-fill" class="ad-timer-fill"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Controles Flotantes (Solo visibles al pasar el mouse) -->
+  <!-- Controles Flotantes (Visibles al pasar el mouse) -->
   <div id="floating-controls">
+    <button type="button" class="ctrl-btn" id="btn-cycle-style" title="Cambiar Estilo del Cartel">🎴 Cartel</button>
     <button type="button" class="ctrl-btn" id="btn-cycle-letter" title="Cambiar Animación de Letras">🔤 Letras</button>
     <button type="button" class="ctrl-btn" id="btn-cycle-trans" title="Cambiar Efecto Fade In / Out">✨ Fade</button>
     <button type="button" class="ctrl-btn" id="btn-cycle-effect" title="Cambiar Efecto de Texto">🌈 Efecto</button>
-    <button type="button" class="ctrl-btn" id="btn-cycle-theme" title="Cambiar Tema de Fondo / Puro Transparente">🎨 Tema</button>
     <button type="button" class="ctrl-btn" id="btn-next-ad" title="Siguiente Anuncio">⏭️ Siguiente</button>
     <button type="button" class="ctrl-btn" id="btn-settings" title="Configurar Anuncios y Duraciones">⚙️</button>
   </div>
@@ -835,8 +1284,22 @@
   <!-- Panel de Configuración Flotante -->
   <div id="settings-drawer" role="dialog" aria-label="Configurar Widget de Anuncios">
     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:8px;">
-      <strong style="font-size:0.84rem; color:#fff;">📢 Configurar Anuncios y Letras</strong>
+      <strong style="font-size:0.84rem; color:#fff;">📢 Configurar Cartel (2 Líneas Dinámicas)</strong>
       <button type="button" id="btn-close-settings" style="background:none; border:none; color:#aaa; font-size:18px; cursor:pointer;">&times;</button>
+    </div>
+
+    <div class="cfg-row">
+      <label>🎴 Estilo del Cartel (Animado 2 Líneas)</label>
+      <select id="cfg-bannerStyle">
+        <option value="kinetic-glass">✨ 1. Cristal Dinámico 3D (Vision Pulse)</option>
+        <option value="cyber-hud">⚡ 2. Cyberpunk Broadcast HUD</option>
+        <option value="neon-capsule">🌈 3. Cápsula Plasma Neón</option>
+        <option value="royal-gold">👑 4. Cartel VIP Imperial 3D</option>
+        <option value="radio-eq">🎚️ 5. Estudio Radio FM + Ecualizador</option>
+        <option value="hologram-prism">🔮 6. Holograma Prisma 3D</option>
+        <option value="fire-energy">🔥 7. Fuego / Alta Energía</option>
+        <option value="minimal-floating">🕊️ 8. Puro Texto Flotante Vivo</option>
+      </select>
     </div>
 
     <div class="cfg-grid-2">
@@ -879,17 +1342,17 @@
         </select>
       </div>
       <div class="cfg-row">
-        <label>🎨 Marco / Fondo</label>
-        <select id="cfg-theme">
-          <option value="glass">🪟 Cristal (Vision Glass)</option>
-          <option value="transparent">✨ Puro Texto Transparente</option>
-          <option value="cyber">⚡ Cyberpunk Neon HUD</option>
-          <option value="aurora">🌈 Cápsula Aurora</option>
+        <label>🔤 Tipografía</label>
+        <select id="cfg-font">
+          <option value="outfit">Outfit (Moderna)</option>
+          <option value="orbitron">Orbitron (Cyberpunk)</option>
+          <option value="jakarta">Plus Jakarta (Broadcast)</option>
+          <option value="mono">JetBrains Mono (Comando)</option>
         </select>
       </div>
     </div>
 
-    <!-- Duraciones Intercambiables de Fade In, Pantalla, Fade Out y Pausa -->
+    <!-- Duraciones Intercambiables -->
     <div style="background:rgba(255,255,255,0.04); padding:9px; border-radius:10px; border:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; gap:8px;">
       <strong style="font-size:0.74rem; color:#38bdf8;">⏱️ Duraciones de Fade In / Pantalla / Fade Out</strong>
       <div class="cfg-grid-2">
@@ -916,28 +1379,12 @@
 
     <div class="cfg-grid-2">
       <div class="cfg-row">
-        <label><span>🔠 Tamaño Letra</span><span id="val-fontSize">26px</span></label>
-        <input type="range" id="cfg-fontSize" min="14" max="54" step="1" value="26" />
+        <label><span>🔠 Tamaño Letra</span><span id="val-fontSize">24px</span></label>
+        <input type="range" id="cfg-fontSize" min="14" max="54" step="1" value="24" />
       </div>
       <div class="cfg-row">
-        <label><span>⚡ Desfase Letras</span><span id="val-stagger">38ms</span></label>
-        <input type="range" id="cfg-stagger" min="10" max="110" step="4" value="38" />
-      </div>
-    </div>
-
-    <div class="cfg-grid-2">
-      <div class="cfg-row">
-        <label>🔤 Tipografía</label>
-        <select id="cfg-font">
-          <option value="outfit">Outfit (Moderna)</option>
-          <option value="orbitron">Orbitron (Cyberpunk)</option>
-          <option value="jakarta">Plus Jakarta (Broadcast)</option>
-          <option value="mono">JetBrains Mono (Comando)</option>
-        </select>
-      </div>
-      <div class="cfg-row">
-        <label><span>💧 Opacidad Marco</span><span id="val-opacity">72%</span></label>
-        <input type="range" id="cfg-opacity" min="0" max="95" step="5" value="72" />
+        <label><span>💧 Opacidad Marco</span><span id="val-opacity">78%</span></label>
+        <input type="range" id="cfg-opacity" min="0" max="95" step="5" value="78" />
       </div>
     </div>
 
@@ -952,10 +1399,10 @@
       </div>
     </div>
 
-    <!-- Lista Editable de Anuncios -->
+    <!-- Lista Editable de Anuncios (Línea 1 + Línea 2) -->
     <div style="display:flex; flex-direction:column; gap:6px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <strong style="font-size:0.75rem; color:#f472b6;">📋 Lista de Anuncios Rotativos</strong>
+        <strong style="font-size:0.75rem; color:#f472b6;">📋 Anuncios en 2 Líneas (Línea 1 + Línea 2)</strong>
         <button type="button" class="ctrl-btn" id="btn-add-ad" style="padding:2px 8px; font-size:0.7rem;">➕ Agregar</button>
       </div>
       <div id="ad-list-editor" class="ad-list-editor"></div>
@@ -991,6 +1438,28 @@
       const urlParams = new URLSearchParams(window.location.search);
       const supportsSiblingIndex = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('animation-delay: calc(sibling-index() * 0.1s)');
 
+      const BANNER_STYLES = [
+        'kinetic-glass',
+        'cyber-hud',
+        'neon-capsule',
+        'royal-gold',
+        'radio-eq',
+        'hologram-prism',
+        'fire-energy',
+        'minimal-floating'
+      ];
+
+      const BANNER_STYLE_LABELS = {
+        'kinetic-glass': '✨ Cartel: Cristal Dinámico 3D',
+        'cyber-hud': '⚡ Cartel: Cyberpunk Broadcast HUD',
+        'neon-capsule': '🌈 Cartel: Cápsula Plasma Neón',
+        'royal-gold': '👑 Cartel: VIP Imperial 3D',
+        'radio-eq': '🎚️ Cartel: Estudio Radio FM + EQ',
+        'hologram-prism': '🔮 Cartel: Holograma Prisma 3D',
+        'fire-energy': '🔥 Cartel: Fuego / Alta Energía',
+        'minimal-floating': '🕊️ Cartel: Puro Texto Flotante Vivo'
+      };
+
       const LETTER_ANIMS = ['wave', 'spring', 'typewriter', 'bounce', 'flip3d', 'pulse', 'glitch', 'none'];
       const LETTER_LABELS = {
         wave: '🌊 Letras: Ola Sinusoidal',
@@ -1024,12 +1493,6 @@
       };
 
       const THEMES = ['glass', 'transparent', 'cyber', 'aurora'];
-      const THEME_LABELS = {
-        glass: '🪟 Marco: Cristal Espacial (Vision Glass)',
-        transparent: '✨ Marco: 100% Puro Texto Transparente',
-        cyber: '⚡ Marco: Cyberpunk Neon HUD',
-        aurora: '🌈 Marco: Cápsula Aurora'
-      };
 
       const FONT_MAP = {
         outfit: "'Outfit', system-ui, sans-serif",
@@ -1039,13 +1502,14 @@
       };
 
       const DEFAULT_ADS = [
-        { icon: '🎧', text: 'ESCUCHA CON AUDÍFONOS 🎧 PARA MEJOR CALIDAD', sub: 'Sonido Hi-Fi en directo • Zero FM' },
-        { icon: '🎵', text: 'PIDE TU CANCIÓN CON !zr artista + canción', sub: 'Ejemplo en el chat: !zr Bad Bunny - DtMF' },
-        { icon: '❤️', text: 'DALE TAP TAP A LA PANTALLA ❤️ PARA APOYAR EL STREAM', sub: '¡Cada like nos ayuda a llegar a más personas!' },
-        { icon: '⭐', text: 'SÍGUENOS EN TIKTOK ⭐ PARA NO PERDERTE LOS DIRECTOS', sub: 'Música en vivo y peticiones todos los días' }
+        { icon: '🎧', text: 'ESCUCHA CON AUDÍFONOS 🎧', sub: 'PARA MEJOR CALIDAD • SONIDO HI-FI EN VIVO' },
+        { icon: '🎵', text: 'PIDE TU CANCIÓN CON !zr', sub: 'ESCRIBE EN EL CHAT: !zr artista + canción' },
+        { icon: '❤️', text: 'DALE TAP TAP A LA PANTALLA ❤️', sub: '¡APOYA EL STREAM CON TUS LIKES EN DIRECTO!' },
+        { icon: '⭐', text: 'SÍGUENOS EN TIKTOK ⭐ ZERO FM', sub: 'MÚSICA EN VIVO Y PETICIONES TODOS LOS DÍAS' }
       ];
 
       const defaultConfig = {
+        adsWidgetBannerStyle: 'kinetic-glass',
         adsWidgetLetterAnim: 'wave',
         adsWidgetTrans: 'fade-blur',
         adsWidgetTextEffect: 'neon',
@@ -1053,13 +1517,13 @@
         adsWidgetFont: 'outfit',
         adsWidgetAlign: 'center',
         adsWidgetVPos: 'center',
-        adsWidgetFontSize: 26,
+        adsWidgetFontSize: 24,
         adsWidgetFadeIn: 0.8,
         adsWidgetFadeOut: 0.8,
         adsWidgetHold: 6.0,
         adsWidgetPause: 1.0,
-        adsWidgetStaggerMs: 38,
-        adsWidgetOpacity: 72,
+        adsWidgetStaggerMs: 36,
+        adsWidgetOpacity: 78,
         adsWidgetAccent: '#ff0055',
         adsWidgetAccentSec: '#00e5ff',
         adsWidgetShowIcon: true,
@@ -1081,6 +1545,9 @@
       } catch (_) {}
 
       // URL Overrides
+      const uStyle = String(urlParams.get('style') || urlParams.get('bannerStyle') || '').trim().toLowerCase();
+      if (BANNER_STYLES.includes(uStyle)) currentConfig.adsWidgetBannerStyle = uStyle;
+
       const uLetter = String(urlParams.get('letter') || urlParams.get('letterAnim') || '').trim().toLowerCase();
       if (LETTER_ANIMS.includes(uLetter)) currentConfig.adsWidgetLetterAnim = uLetter;
 
@@ -1093,15 +1560,6 @@
       const uTheme = String(urlParams.get('theme') || '').trim().toLowerCase();
       if (THEMES.includes(uTheme)) currentConfig.adsWidgetTheme = uTheme;
 
-      const uFadeIn = Number(urlParams.get('fadeIn'));
-      if (Number.isFinite(uFadeIn) && uFadeIn >= 0.1 && uFadeIn <= 10) currentConfig.adsWidgetFadeIn = uFadeIn;
-
-      const uFadeOut = Number(urlParams.get('fadeOut'));
-      if (Number.isFinite(uFadeOut) && uFadeOut >= 0.1 && uFadeOut <= 10) currentConfig.adsWidgetFadeOut = uFadeOut;
-
-      const uHold = Number(urlParams.get('hold'));
-      if (Number.isFinite(uHold) && uHold >= 1 && uHold <= 120) currentConfig.adsWidgetHold = uHold;
-
       if (urlParams.get('config') === '1') {
         document.body.classList.add('config-open');
         document.getElementById('settings-drawer')?.classList.add('open');
@@ -1110,6 +1568,9 @@
       // ─── DOM References ───
       const stageEl = document.getElementById('widget-stage');
       const bannerEl = document.getElementById('ad-banner');
+      const scaleWrapEl = document.getElementById('ad-scale-wrap');
+      const bannerInnerEl = document.getElementById('ad-banner-inner');
+      const iconPodEl = document.getElementById('ad-icon-pod');
       const iconEl = document.getElementById('ad-icon');
       const headlineEl = document.getElementById('ad-headline');
       const subtitleEl = document.getElementById('ad-subtitle');
@@ -1137,7 +1598,6 @@
         return `${r}, ${g}, ${b}`;
       }
 
-      // ─── Grapheme-Safe Text Splitter (Preserves Emojis like 🎧, ❤️, ⭐) ───
       const segmenter = (typeof Intl !== 'undefined' && Intl.Segmenter)
         ? new Intl.Segmenter('es', { granularity: 'grapheme' })
         : null;
@@ -1154,7 +1614,58 @@
         return /\p{Extended_Pictographic}/u.test(g);
       }
 
-      // ─── Render Headline Letters into DOM with Stagger Index ───
+      // ─── Smart 2-Line Resolver (Garantiza siempre 2 líneas balanceadas) ───
+      function resolveTwoLines(item) {
+        let rawLine1 = String(item?.text || '').trim();
+        let rawLine2 = String(item?.sub || '').trim();
+
+        // Si un anuncio antiguo tiene una frase muy larga en text y además sub,
+        // compactamos frases conocidas o si no hay sub dividimos a la mitad en 2 líneas:
+        if (!rawLine2 && rawLine1.length > 24) {
+          const words = rawLine1.split(/\s+/);
+          if (words.length >= 4) {
+            const half = Math.ceil(words.length / 2);
+            rawLine1 = words.slice(0, half).join(' ');
+            rawLine2 = words.slice(half).join(' ');
+          }
+        } else if (rawLine1.length > 34 && rawLine2) {
+          // Si text es muy largo (ej. los defaults anteriores de 45-52 chars), balancear
+          const upper = rawLine1.toUpperCase();
+          if (upper.includes('AUDÍFONOS') && upper.includes('PARA MEJOR CALIDAD')) {
+            rawLine1 = 'ESCUCHA CON AUDÍFONOS 🎧';
+            rawLine2 = 'PARA MEJOR CALIDAD • ' + rawLine2;
+          } else if (upper.includes('TAP TAP A LA PANTALLA') && upper.includes('PARA APOYAR')) {
+            rawLine1 = 'DALE TAP TAP A LA PANTALLA ❤️';
+            rawLine2 = 'PARA APOYAR EL STREAM • ' + rawLine2;
+          } else if (upper.includes('SÍGUENOS EN TIKTOK') && upper.includes('PARA NO PERDERTE')) {
+            rawLine1 = 'SÍGUENOS EN TIKTOK ⭐ ZERO FM';
+            rawLine2 = 'NO TE PIERDAS LOS DIRECTOS EN VIVO';
+          }
+        }
+
+        if (!rawLine2) {
+          rawLine2 = 'ZERO FM • EN DIRECTO';
+        }
+
+        return { line1: rawLine1, line2: rawLine2 };
+      }
+
+      // ─── Auto-Fit Scale so the 2-line cartel never overflows or wraps ───
+      function fitBannerToStage() {
+        if (!stageEl || !bannerInnerEl || !scaleWrapEl) return;
+        const root = document.documentElement;
+        root.style.setProperty('--fit-scale', '1');
+        const availW = Math.max(240, stageEl.clientWidth - 28);
+        const naturalW = bannerInnerEl.scrollWidth || bannerInnerEl.offsetWidth || 1;
+        if (naturalW > availW) {
+          const ratio = Math.max(0.52, Math.min(1, availW / naturalW));
+          root.style.setProperty('--fit-scale', ratio.toFixed(3));
+        }
+      }
+
+      window.addEventListener('resize', fitBannerToStage);
+
+      // ─── Render Line 1 (Animated Letters) ───
       function populateHeadlineLetters(text) {
         headlineEl.innerHTML = '';
         const words = String(text || '').trim().split(/\s+/).filter(Boolean);
@@ -1173,7 +1684,6 @@
             const isEmoji = isEmojiGrapheme(ch);
             charSpan.className = `ad-char ${isEmoji ? 'is-emoji' : 'is-alpha'}`;
             charSpan.textContent = ch;
-            // Fallback for browsers without native CSS sibling-index()
             if (!supportsSiblingIndex) {
               charSpan.style.setProperty('--sibling-index', String(globalCharIndex));
             }
@@ -1181,6 +1691,26 @@
           });
 
           headlineEl.appendChild(wordSpan);
+        });
+      }
+
+      // ─── Render Line 2 (Animated Subtitle Words + Live Badge + Command Highlights) ───
+      function populateSubtitleWords(subText) {
+        subtitleEl.innerHTML = '';
+        const liveTag = document.createElement('span');
+        liveTag.className = 'ad-live-tag';
+        liveTag.innerHTML = '<span class="ad-live-dot"></span>LIVE';
+        subtitleEl.appendChild(liveTag);
+
+        const words = String(subText || '').trim().split(/\s+/).filter(Boolean);
+        words.forEach((word, idx) => {
+          const wSpan = document.createElement('span');
+          const isCmd = word.startsWith('!') || (word.startsWith('[') && word.endsWith(']'));
+          const cleanWord = (word.startsWith('[') && word.endsWith(']')) ? word.slice(1, -1) : word;
+          wSpan.className = `ad-sub-word ad-word${isCmd ? ' is-command' : ''}`;
+          wSpan.style.setProperty('--sub-idx', String(idx));
+          wSpan.textContent = cleanWord;
+          subtitleEl.appendChild(wSpan);
         });
       }
 
@@ -1196,20 +1726,24 @@
         if (currentAdIndex >= items.length) currentAdIndex = 0;
         const item = items[currentAdIndex] || DEFAULT_ADS[0];
 
-        // Icon
+        // Icon Pod
         const showIcon = currentConfig.adsWidgetShowIcon !== false && Boolean(item.icon);
         iconEl.textContent = item.icon || '🎧';
-        iconEl.hidden = !showIcon;
-        iconEl.classList.toggle('is-hidden', !showIcon);
+        if (iconPodEl) {
+          iconPodEl.hidden = !showIcon;
+          iconPodEl.classList.toggle('is-hidden', !showIcon);
+        }
 
-        // Headline with animated letters
-        populateHeadlineLetters(item.text || 'ESCUCHA CON AUDÍFONOS 🎧');
+        // Resolve strict 2 lines
+        const { line1, line2 } = resolveTwoLines(item);
+        populateHeadlineLetters(line1);
 
-        // Subtitle
-        const showSub = currentConfig.adsWidgetShowSub !== false && Boolean(item.sub);
-        subtitleEl.textContent = item.sub || '';
+        const showSub = currentConfig.adsWidgetShowSub !== false;
+        populateSubtitleWords(line2);
         subtitleEl.hidden = !showSub;
         subtitleEl.classList.toggle('is-hidden', !showSub);
+
+        requestAnimationFrame(fitBannerToStage);
 
         if (restartPhase) {
           startCycleForCurrentAd();
@@ -1229,7 +1763,6 @@
         void bannerEl.offsetWidth;
         bannerEl.classList.add('phase-in');
 
-        // Animate timer bar over (fadeIn + hold)
         if (timerFillEl) {
           timerFillEl.style.transition = 'none';
           timerFillEl.style.transform = 'scaleX(1)';
@@ -1238,12 +1771,10 @@
           timerFillEl.style.transform = 'scaleX(0)';
         }
 
-        // Schedule Fade Out
         cycleTimer = setTimeout(() => {
           bannerEl.classList.remove('phase-in');
           bannerEl.classList.add('phase-out');
 
-          // Schedule Pause & Next Ad
           cycleTimer = setTimeout(() => {
             if (pauseMs > 0) {
               bannerEl.classList.add('is-Paused-Hidden');
@@ -1269,11 +1800,27 @@
 
       // ─── Apply Visual Config ───
       function applyConfig(nextCfg = {}, restartAnim = false) {
+        // Si cambia adsWidgetTheme legado y no viene adsWidgetBannerStyle, sincronizar
+        if (nextCfg.adsWidgetTheme && !nextCfg.adsWidgetBannerStyle) {
+          const themeToStyle = {
+            glass: 'kinetic-glass',
+            cyber: 'cyber-hud',
+            aurora: 'neon-capsule',
+            transparent: 'minimal-floating'
+          };
+          if (themeToStyle[nextCfg.adsWidgetTheme]) {
+            nextCfg.adsWidgetBannerStyle = themeToStyle[nextCfg.adsWidgetTheme];
+          }
+        }
+
         currentConfig = { ...currentConfig, ...nextCfg };
         if (!Array.isArray(currentConfig.adsWidgetItems) || currentConfig.adsWidgetItems.length === 0) {
           currentConfig.adsWidgetItems = DEFAULT_ADS.map(x => ({ ...x }));
         }
 
+        const bannerStyle = BANNER_STYLES.includes(currentConfig.adsWidgetBannerStyle)
+          ? currentConfig.adsWidgetBannerStyle
+          : 'kinetic-glass';
         const letterAnim = LETTER_ANIMS.includes(currentConfig.adsWidgetLetterAnim)
           ? currentConfig.adsWidgetLetterAnim
           : 'wave';
@@ -1283,10 +1830,11 @@
         const effect = TEXT_EFFECTS.includes(currentConfig.adsWidgetTextEffect)
           ? currentConfig.adsWidgetTextEffect
           : 'neon';
-        const theme = THEMES.includes(currentConfig.adsWidgetTheme)
-          ? currentConfig.adsWidgetTheme
-          : 'glass';
+        const theme = bannerStyle === 'minimal-floating'
+          ? 'transparent'
+          : (THEMES.includes(currentConfig.adsWidgetTheme) ? currentConfig.adsWidgetTheme : 'glass');
 
+        stageEl.setAttribute('data-banner-style', bannerStyle);
         stageEl.setAttribute('data-letter-anim', letterAnim);
         stageEl.setAttribute('data-trans', trans);
         stageEl.setAttribute('data-text-effect', effect);
@@ -1298,20 +1846,20 @@
         const fontKey = currentConfig.adsWidgetFont || 'outfit';
         root.style.setProperty('--font-active', FONT_MAP[fontKey] || FONT_MAP.outfit);
 
-        const fontPx = Math.max(14, Math.min(64, Number(currentConfig.adsWidgetFontSize) || 26));
+        const fontPx = Math.max(14, Math.min(64, Number(currentConfig.adsWidgetFontSize) || 24));
         root.style.setProperty('--ad-font-size', `${(fontPx / 16).toFixed(3)}rem`);
-        root.style.setProperty('--ad-sub-size', `${(Math.max(11, Math.round(fontPx * 0.54)) / 16).toFixed(3)}rem`);
+        root.style.setProperty('--ad-sub-size', `${(Math.max(12, Math.round(fontPx * 0.56)) / 16).toFixed(3)}rem`);
 
         const fadeIn = Math.max(0.15, Math.min(5, Number(currentConfig.adsWidgetFadeIn) || 0.8));
         const fadeOut = Math.max(0.15, Math.min(5, Number(currentConfig.adsWidgetFadeOut) || 0.8));
         root.style.setProperty('--fade-in-dur', `${fadeIn}s`);
         root.style.setProperty('--fade-out-dur', `${fadeOut}s`);
 
-        const staggerMs = Math.max(8, Math.min(150, Number(currentConfig.adsWidgetStaggerMs) || 38));
+        const staggerMs = Math.max(8, Math.min(150, Number(currentConfig.adsWidgetStaggerMs) || 36));
         root.style.setProperty('--stagger-step', `${(staggerMs / 1000).toFixed(3)}s`);
 
         const opRaw = Number(currentConfig.adsWidgetOpacity);
-        const opNorm = Number.isFinite(opRaw) ? (opRaw > 1 ? opRaw / 100 : opRaw) : 0.72;
+        const opNorm = Number.isFinite(opRaw) ? (opRaw > 1 ? opRaw / 100 : opRaw) : 0.78;
         root.style.setProperty('--card-opacity', String(Math.max(0, Math.min(0.98, opNorm))));
 
         const accent = currentConfig.adsWidgetAccent || '#ff0055';
@@ -1321,7 +1869,7 @@
         root.style.setProperty('--accent-rgb', hexToRgbTuple(accent, '255, 0, 85'));
         root.style.setProperty('--accent-sec-rgb', hexToRgbTuple(accentSec, '0, 229, 255'));
 
-        const showTimer = currentConfig.adsWidgetShowTimerBar !== false && theme !== 'transparent';
+        const showTimer = currentConfig.adsWidgetShowTimerBar !== false && bannerStyle !== 'minimal-floating';
         if (timerBarEl) {
           timerBarEl.hidden = !showTimer;
           timerBarEl.classList.toggle('is-hidden', !showTimer);
@@ -1331,7 +1879,7 @@
         renderCurrentAnnouncement(restartAnim);
       }
 
-      // ─── Drawer Controls & Announcements List Editor ───
+      // ─── Drawer Controls & 2-Line Announcements List Editor ───
       function renderAdsEditorList() {
         if (!editorEl) return;
         editorEl.innerHTML = '';
@@ -1350,14 +1898,29 @@
             renderCurrentAnnouncement(false);
           });
 
+          const linesWrap = document.createElement('div');
+          linesWrap.className = 'ad-item-lines';
+
           const textInp = document.createElement('input');
           textInp.type = 'text';
           textInp.value = item.text || '';
-          textInp.placeholder = 'Texto del anuncio...';
+          textInp.placeholder = 'Línea 1 (Título principal)...';
           textInp.addEventListener('input', () => {
             currentConfig.adsWidgetItems[idx].text = textInp.value;
             if (currentAdIndex === idx) renderCurrentAnnouncement(false);
           });
+
+          const subInp = document.createElement('input');
+          subInp.type = 'text';
+          subInp.value = item.sub || '';
+          subInp.placeholder = 'Línea 2 (Subtítulo / comando !zr)...';
+          subInp.addEventListener('input', () => {
+            currentConfig.adsWidgetItems[idx].sub = subInp.value;
+            if (currentAdIndex === idx) renderCurrentAnnouncement(false);
+          });
+
+          linesWrap.appendChild(textInp);
+          linesWrap.appendChild(subInp);
 
           const delBtn = document.createElement('button');
           delBtn.type = 'button';
@@ -1376,7 +1939,7 @@
           });
 
           row.appendChild(iconInp);
-          row.appendChild(textInp);
+          row.appendChild(linesWrap);
           row.appendChild(delBtn);
           editorEl.appendChild(row);
         });
@@ -1386,10 +1949,10 @@
         const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
         const setLbl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
+        setVal('cfg-bannerStyle', currentConfig.adsWidgetBannerStyle || 'kinetic-glass');
         setVal('cfg-letterAnim', currentConfig.adsWidgetLetterAnim || 'wave');
         setVal('cfg-trans', currentConfig.adsWidgetTrans || 'fade-blur');
         setVal('cfg-textEffect', currentConfig.adsWidgetTextEffect || 'neon');
-        setVal('cfg-theme', currentConfig.adsWidgetTheme || 'glass');
         setVal('cfg-font', currentConfig.adsWidgetFont || 'outfit');
 
         const fi = Number(currentConfig.adsWidgetFadeIn) || 0.8;
@@ -1408,16 +1971,12 @@
         setVal('cfg-pause', ps);
         setLbl('val-pause', `${ps.toFixed(1)}s`);
 
-        const fs = Number(currentConfig.adsWidgetFontSize) || 26;
+        const fs = Number(currentConfig.adsWidgetFontSize) || 24;
         setVal('cfg-fontSize', fs);
         setLbl('val-fontSize', `${fs}px`);
 
-        const st = Number(currentConfig.adsWidgetStaggerMs) || 38;
-        setVal('cfg-stagger', st);
-        setLbl('val-stagger', `${st}ms`);
-
         const op = Number(currentConfig.adsWidgetOpacity);
-        const opPct = Math.round(Number.isFinite(op) ? (op <= 1 && op > 0 ? op * 100 : op) : 72);
+        const opPct = Math.round(Number.isFinite(op) ? (op <= 1 && op > 0 ? op * 100 : op) : 78);
         setVal('cfg-opacity', opPct);
         setLbl('val-opacity', `${opPct}%`);
 
@@ -1427,17 +1986,16 @@
 
       function readConfigFromDrawer() {
         return {
+          adsWidgetBannerStyle: document.getElementById('cfg-bannerStyle').value,
           adsWidgetLetterAnim: document.getElementById('cfg-letterAnim').value,
           adsWidgetTrans: document.getElementById('cfg-trans').value,
           adsWidgetTextEffect: document.getElementById('cfg-textEffect').value,
-          adsWidgetTheme: document.getElementById('cfg-theme').value,
           adsWidgetFont: document.getElementById('cfg-font').value,
           adsWidgetFadeIn: Number(document.getElementById('cfg-fadeIn').value) || 0.8,
           adsWidgetFadeOut: Number(document.getElementById('cfg-fadeOut').value) || 0.8,
           adsWidgetHold: Number(document.getElementById('cfg-hold').value) || 6.0,
           adsWidgetPause: Number(document.getElementById('cfg-pause').value) || 0,
-          adsWidgetFontSize: Number(document.getElementById('cfg-fontSize').value) || 26,
-          adsWidgetStaggerMs: Number(document.getElementById('cfg-stagger').value) || 38,
+          adsWidgetFontSize: Number(document.getElementById('cfg-fontSize').value) || 24,
           adsWidgetOpacity: Number(document.getElementById('cfg-opacity').value),
           adsWidgetAccent: document.getElementById('cfg-accent').value,
           adsWidgetAccentSec: document.getElementById('cfg-accentSec').value,
@@ -1446,6 +2004,14 @@
       }
 
       // ─── UI Event Listeners ───
+      document.getElementById('btn-cycle-style').addEventListener('click', () => {
+        const idx = BANNER_STYLES.indexOf(currentConfig.adsWidgetBannerStyle || 'kinetic-glass');
+        const next = BANNER_STYLES[(idx + 1) % BANNER_STYLES.length];
+        applyConfig({ adsWidgetBannerStyle: next }, false);
+        safeStorage.setItem(STORAGE_KEY, JSON.stringify(currentConfig));
+        showToast(BANNER_STYLE_LABELS[next]);
+      });
+
       document.getElementById('btn-cycle-letter').addEventListener('click', () => {
         const idx = LETTER_ANIMS.indexOf(currentConfig.adsWidgetLetterAnim || 'wave');
         const next = LETTER_ANIMS[(idx + 1) % LETTER_ANIMS.length];
@@ -1470,14 +2036,6 @@
         showToast(EFFECT_LABELS[next]);
       });
 
-      document.getElementById('btn-cycle-theme').addEventListener('click', () => {
-        const idx = THEMES.indexOf(currentConfig.adsWidgetTheme || 'glass');
-        const next = THEMES[(idx + 1) % THEMES.length];
-        applyConfig({ adsWidgetTheme: next }, false);
-        safeStorage.setItem(STORAGE_KEY, JSON.stringify(currentConfig));
-        showToast(THEME_LABELS[next]);
-      });
-
       document.getElementById('btn-next-ad').addEventListener('click', () => {
         nextAnnouncementNow();
       });
@@ -1497,8 +2055,8 @@
       document.getElementById('btn-add-ad').addEventListener('click', () => {
         currentConfig.adsWidgetItems.push({
           icon: '🔥',
-          text: 'NUEVO ANUNCIO !zr artista + canción',
-          sub: 'Zero FM en directo'
+          text: 'NUEVO ANUNCIO EN DIRECTO 🔥',
+          sub: 'PIDE TU CANCIÓN CON !zr artista + canción'
         });
         renderAdsEditorList();
         currentAdIndex = currentConfig.adsWidgetItems.length - 1;
@@ -1506,9 +2064,9 @@
       });
 
       [
-        'cfg-letterAnim', 'cfg-trans', 'cfg-textEffect', 'cfg-theme', 'cfg-font',
+        'cfg-bannerStyle', 'cfg-letterAnim', 'cfg-trans', 'cfg-textEffect', 'cfg-font',
         'cfg-fadeIn', 'cfg-fadeOut', 'cfg-hold', 'cfg-pause',
-        'cfg-fontSize', 'cfg-stagger', 'cfg-opacity', 'cfg-accent', 'cfg-accentSec'
+        'cfg-fontSize', 'cfg-opacity', 'cfg-accent', 'cfg-accentSec'
       ].forEach((id) => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -1538,6 +2096,7 @@
           Object.keys(defaultConfig).forEach((k) => {
             if (data[k] !== undefined) relevant[k] = data[k];
           });
+          if (BANNER_STYLES.includes(uStyle)) relevant.adsWidgetBannerStyle = uStyle;
           if (LETTER_ANIMS.includes(uLetter)) relevant.adsWidgetLetterAnim = uLetter;
           if (TRANS_ANIMS.includes(uTrans)) relevant.adsWidgetTrans = uTrans;
           if (TEXT_EFFECTS.includes(uEffect)) relevant.adsWidgetTextEffect = uEffect;
@@ -1560,7 +2119,7 @@
         }
         drawerEl.classList.remove('open');
         document.body.classList.remove('config-open');
-        showToast('✅ Anuncios y animaciones guardados para OBS');
+        showToast('✅ Estilo de cartel y anuncios guardados');
       });
 
       document.getElementById('btn-reset-cfg').addEventListener('click', () => {
@@ -1576,8 +2135,8 @@
         if (!event.data) return;
         if (event.data.action === 'nextAnnouncement' || event.data.action === 'simulateAnnouncement') {
           nextAnnouncementNow();
-        } else if (event.data.action === 'updateConfig' && event.data.payload) {
-          const payload = event.data.payload;
+        } else if ((event.data.action === 'updateConfig' || event.data.action === 'updateLiveConfig') && (event.data.payload || event.data.config)) {
+          const payload = event.data.payload || event.data.config;
           const mapped = {};
           Object.keys(defaultConfig).forEach((k) => {
             if (payload[k] !== undefined) mapped[k] = payload[k];
