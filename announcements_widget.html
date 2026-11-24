@@ -1548,6 +1548,10 @@
         </label>
         <button type="button" class="ctrl-btn" id="btn-drawer-preview-trans" style="padding:2px 8px; font-size:0.68rem; border-color:#06b6d4; color:#67e8f9;">🎬 Probar</button>
       </div>
+      <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:600; color:#67e8f9; font-size:0.72rem; background:rgba(6,182,212,0.1); padding:6px 8px; border-radius:8px; border:1px solid rgba(6,182,212,0.28);">
+        <input type="checkbox" id="cfg-fadeScopeAll" style="accent-color:#06b6d4; width:14px; height:14px; cursor:pointer;" />
+        <span>📦 1 sola cápsula para todos (1 Fade In ➔ todos ➔ 1 Fade Out)</span>
+      </label>
       <div class="cfg-grid-2">
         <div class="cfg-row">
           <label>🌅 Entrada (In)</label>
@@ -1790,6 +1794,7 @@
         adsWidgetActiveIndex: 0,
         adsWidgetLetterAnim: 'wave',
         adsWidgetFadeEnabled: true,
+        adsWidgetFadeScope: 'per-message',
         adsWidgetTrans: 'fade-blur',
         adsWidgetTransIn: '',
         adsWidgetTransOut: '',
@@ -1894,6 +1899,13 @@
 
       const uTransOut = String(urlParams.get('transOut') || '').trim().toLowerCase();
       if (TRANS_ANIMS.includes(uTransOut)) currentConfig.adsWidgetTransOut = uTransOut;
+
+      const uFadeScope = String(urlParams.get('fadeScope') || urlParams.get('capsuleMode') || '').trim().toLowerCase();
+      if (uFadeScope === 'all-messages' || uFadeScope === 'all' || uFadeScope === 'batch' || uFadeScope === 'single-capsule') {
+        currentConfig.adsWidgetFadeScope = 'all-messages';
+      } else if (uFadeScope === 'per-message' || uFadeScope === 'each') {
+        currentConfig.adsWidgetFadeScope = 'per-message';
+      }
 
       const uEffect = String(urlParams.get('effect') || '').trim().toLowerCase();
       if (TEXT_EFFECTS.includes(uEffect)) currentConfig.adsWidgetTextEffect = uEffect;
@@ -2122,6 +2134,8 @@
           : 'rtl-marquee';
 
         const tState = resolveTransitionState(currentConfig);
+        const isAllInOneCapsule = currentConfig.adsWidgetFadeScope === 'all-messages';
+        const isRotate = currentConfig.adsWidgetPlayMode !== 'single';
         const fadeInMs = Math.round(tState.fadeInSec * 1000);
         const fadeOutMs = Math.round(tState.fadeOutSec * 1000);
         const holdSec = parseSec(currentConfig.adsWidgetHold, 10.0, 2, 60);
@@ -2133,11 +2147,13 @@
         const items = getNormalizedItems();
         const activeEntryMs = (playEntry && tState.effectiveTransIn !== 'none' && fadeInMs > 0) ? fadeInMs : 0;
 
+        let cycleDisplayMs = holdMs;
         if (flowMode === 'rtl-continuous') {
-          const totalPassesSec = currentConfig.adsWidgetPlayMode === 'single'
-            ? holdSec * 1.4
-            : Math.max(10, holdSec * items.length);
+          const totalPassesSec = isRotate
+            ? Math.max(6, holdSec * items.length)
+            : holdSec * 1.4;
           root.style.setProperty('--rtl-duration', `${totalPassesSec.toFixed(2)}s`);
+          cycleDisplayMs = isAllInOneCapsule ? Math.round(totalPassesSec * 1000) : holdMs;
         } else {
           root.style.setProperty('--rtl-duration', `${((activeEntryMs + holdMs) / 1000).toFixed(2)}s`);
         }
@@ -2160,20 +2176,37 @@
           timerFillEl.style.transition = 'none';
           timerFillEl.style.transform = 'scaleX(1)';
           void timerFillEl.offsetWidth;
-          timerFillEl.style.transition = `transform ${activeEntryMs + holdMs}ms linear`;
+          timerFillEl.style.transition = `transform ${activeEntryMs + cycleDisplayMs}ms linear`;
           timerFillEl.style.transform = 'scaleX(0)';
         }
 
-        // En ticker continuo sin espera oculta, corre infinitamente sin cortes
-        if (flowMode === 'rtl-continuous' && pauseMs <= 0) {
+        const hasExitOrPause = (tState.effectiveTransOut !== 'none' && fadeOutMs > 0) || pauseMs > 0;
+
+        // En ticker continuo: si no es modo lote con salida y no hay espera oculta, corre infinitamente
+        if (flowMode === 'rtl-continuous' && !(isAllInOneCapsule && hasExitOrPause) && pauseMs <= 0) {
           return;
         }
 
         cycleTimer = setTimeout(() => {
-          const advanceNext = () => {
-            const list = getNormalizedItems();
-            if (currentConfig.adsWidgetPlayMode !== 'single') {
-              currentAdIndex = (currentAdIndex + 1) % list.length;
+          const list = getNormalizedItems();
+          const hasMoreInSameCapsule =
+            flowMode !== 'rtl-continuous' &&
+            isAllInOneCapsule &&
+            isRotate &&
+            list.length > 1 &&
+            currentAdIndex < list.length - 1;
+
+          // Modo 1 cápsula para todos: pasa al siguiente mensaje SIN Fade Out ni Fade In
+          if (hasMoreInSameCapsule) {
+            currentAdIndex = currentAdIndex + 1;
+            renderCurrentAnnouncement('flow');
+            return;
+          }
+
+          const advanceNextBatch = () => {
+            const latestList = getNormalizedItems();
+            if (flowMode !== 'rtl-continuous' && currentConfig.adsWidgetPlayMode !== 'single') {
+              currentAdIndex = isAllInOneCapsule ? 0 : ((currentAdIndex + 1) % latestList.length);
             }
             renderCurrentAnnouncement('entry');
           };
@@ -2186,21 +2219,21 @@
             cycleTimer = setTimeout(() => {
               if (pauseMs > 0) {
                 bannerEl.classList.add('is-Paused-Hidden');
-                cycleTimer = setTimeout(advanceNext, pauseMs);
+                cycleTimer = setTimeout(advanceNextBatch, pauseMs);
               } else {
-                advanceNext();
+                advanceNextBatch();
               }
             }, fadeOutMs);
           } else if (pauseMs > 0) {
             // Sin Fade Out pero con tiempo de espera: oculta la cápsula los segundos configurados y vuelve a aparecer
             bannerEl.classList.remove('phase-in', 'phase-out');
             bannerEl.classList.add('is-Paused-Hidden');
-            cycleTimer = setTimeout(advanceNext, pauseMs);
+            cycleTimer = setTimeout(advanceNextBatch, pauseMs);
           } else {
             // Sin Fade Out y sin espera: mantiene el cartel siempre visible y pasa al siguiente anuncio
-            advanceNext();
+            advanceNextBatch();
           }
-        }, activeEntryMs + holdMs);
+        }, activeEntryMs + cycleDisplayMs);
       }
 
       function previewTransitionNow() {
@@ -2254,7 +2287,8 @@
         currentAdIndex = (currentAdIndex + 1) % items.length;
         currentConfig.adsWidgetActiveIndex = currentAdIndex;
         renderAdsEditorList();
-        renderCurrentAnnouncement(true);
+        const isAllInOneCapsule = currentConfig.adsWidgetFadeScope === 'all-messages';
+        renderCurrentAnnouncement(isAllInOneCapsule ? 'flow' : 'entry');
       }
 
       // ─── Apply Visual Config ───
@@ -2288,6 +2322,8 @@
           if (Number.isFinite(idx) && idx >= 0 && idx < currentConfig.adsWidgetItems.length) {
             currentAdIndex = idx;
           }
+        } else if (patch.adsWidgetFadeScope === 'all-messages' && currentConfig.adsWidgetPlayMode !== 'single') {
+          currentAdIndex = 0;
         }
 
         const bannerStyle = BANNER_STYLES.includes(currentConfig.adsWidgetBannerStyle)
@@ -2445,6 +2481,9 @@
         const fadeChk = document.getElementById('cfg-fadeEnabled');
         if (fadeChk) fadeChk.checked = tState.masterOn;
 
+        const scopeChk = document.getElementById('cfg-fadeScopeAll');
+        if (scopeChk) scopeChk.checked = currentConfig.adsWidgetFadeScope === 'all-messages';
+
         const fi = tState.rawFadeInSec;
         setVal('cfg-fadeIn', fi);
         setLbl('val-fadeIn', (!tState.masterOn || tState.chosenIn === 'none' || fi <= 0) ? 'OFF (0.0s)' : `${fi.toFixed(1)}s`);
@@ -2478,6 +2517,7 @@
         const transIn = document.getElementById('cfg-transIn')?.value || 'fade-blur';
         const transOut = document.getElementById('cfg-transOut')?.value || 'fade-blur';
         const fadeEnabled = Boolean(document.getElementById('cfg-fadeEnabled')?.checked);
+        const fadeScope = document.getElementById('cfg-fadeScopeAll')?.checked ? 'all-messages' : 'per-message';
         return {
           adsWidgetBannerStyle: document.getElementById('cfg-bannerStyle').value,
           adsWidgetFlowMode: document.getElementById('cfg-flowMode').value,
@@ -2485,6 +2525,7 @@
           adsWidgetActiveIndex: currentAdIndex,
           adsWidgetLetterAnim: document.getElementById('cfg-letterAnim').value,
           adsWidgetFadeEnabled: fadeEnabled,
+          adsWidgetFadeScope: fadeScope,
           adsWidgetTrans: transIn !== 'none' ? transIn : transOut,
           adsWidgetTransIn: transIn,
           adsWidgetTransOut: transOut,
@@ -2610,7 +2651,7 @@
 
       [
         'cfg-bannerStyle', 'cfg-flowMode', 'cfg-playMode', 'cfg-letterAnim',
-        'cfg-fadeEnabled', 'cfg-transIn', 'cfg-transOut', 'cfg-textEffect', 'cfg-font',
+        'cfg-fadeEnabled', 'cfg-fadeScopeAll', 'cfg-transIn', 'cfg-transOut', 'cfg-textEffect', 'cfg-font',
         'cfg-fadeIn', 'cfg-fadeOut', 'cfg-hold', 'cfg-pause',
         'cfg-fontSize', 'cfg-opacity', 'cfg-accent', 'cfg-accentSec'
       ].forEach((id) => {
@@ -2618,7 +2659,7 @@
         if (!el) return;
         const isTimingOrAnim = [
           'cfg-flowMode', 'cfg-playMode', 'cfg-letterAnim',
-          'cfg-fadeEnabled', 'cfg-transIn', 'cfg-transOut',
+          'cfg-fadeEnabled', 'cfg-fadeScopeAll', 'cfg-transIn', 'cfg-transOut',
           'cfg-fadeIn', 'cfg-fadeOut', 'cfg-hold', 'cfg-pause'
         ].includes(id);
         const handler = () => applyConfig(readConfigFromDrawer(), isTimingOrAnim);
@@ -2670,6 +2711,11 @@
           }
           if (TRANS_ANIMS.includes(uTransIn)) relevant.adsWidgetTransIn = uTransIn;
           if (TRANS_ANIMS.includes(uTransOut)) relevant.adsWidgetTransOut = uTransOut;
+          if (uFadeScope === 'all-messages' || uFadeScope === 'all' || uFadeScope === 'batch' || uFadeScope === 'single-capsule') {
+            relevant.adsWidgetFadeScope = 'all-messages';
+          } else if (uFadeScope === 'per-message' || uFadeScope === 'each') {
+            relevant.adsWidgetFadeScope = 'per-message';
+          }
           if (TEXT_EFFECTS.includes(uEffect)) relevant.adsWidgetTextEffect = uEffect;
           if (THEMES.includes(uTheme)) relevant.adsWidgetTheme = uTheme;
           if (Object.keys(relevant).length > 0) {
@@ -2708,7 +2754,8 @@
       ]);
       const FLOW_RESTART_KEYS = new Set([
         'adsWidgetFlowMode', 'adsWidgetPlayMode', 'adsWidgetActiveIndex',
-        'adsWidgetHold', 'adsWidgetFadeIn', 'adsWidgetFadeOut', 'adsWidgetPause', 'adsWidgetTransOut'
+        'adsWidgetFadeScope', 'adsWidgetHold', 'adsWidgetFadeIn', 'adsWidgetFadeOut',
+        'adsWidgetPause', 'adsWidgetTransOut'
       ]);
 
       function normalizeIncomingValue(k, val, payload) {
