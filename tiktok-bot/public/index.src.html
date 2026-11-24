@@ -1686,7 +1686,10 @@
                 adsWidgetPlayMode: 'rotate',
                 adsWidgetActiveIndex: 0,
                 adsWidgetLetterAnim: 'wave',
+                adsWidgetFadeEnabled: true,
                 adsWidgetTrans: 'fade-blur',
+                adsWidgetTransIn: '',
+                adsWidgetTransOut: '',
                 adsWidgetTextEffect: 'neon',
                 adsWidgetTheme: 'glass',
                 adsWidgetFadeIn: 0.7,
@@ -4219,6 +4222,317 @@
                 );
             };
 
+            const ADS_TRANSITION_OPTIONS = [
+                { id: 'none', icon: '🚫', name: 'Sin Fade (Fijo)', short: 'Sin Fade', desc: 'Siempre visible, sin desaparecer', color: '#94a3b8' },
+                { id: 'fade', icon: '🌅', name: 'Fade Puro', short: 'Fade Puro', desc: 'Desvanecimiento suave clásico', color: '#38bdf8' },
+                { id: 'fade-blur', icon: '🌫️', name: 'Fade + Blur', short: 'Fade + Blur', desc: 'Desenfoque cinemático premium', color: '#a855f7' },
+                { id: 'slide-up', icon: '⬆️', name: 'Elevación Vertical', short: 'Elevación', desc: 'Sube suave desde abajo', color: '#22c55e' },
+                { id: 'slide-down', icon: '⬇️', name: 'Caída Suave', short: 'Caída', desc: 'Desciende desde arriba', color: '#14b8a6' },
+                { id: 'slide-lr', icon: '⬅️', name: 'Barrido Der. ➔ Izq.', short: 'Der. ➔ Izq.', desc: 'Entra por derecha, sale izquierda', color: '#06b6d4' },
+                { id: 'slide-rl', icon: '➡️', name: 'Barrido Izq. ➔ Der.', short: 'Izq. ➔ Der.', desc: 'Entra por izquierda, sale derecha', color: '#3b82f6' },
+                { id: 'zoom-spring', icon: '💥', name: 'Zoom Elástico', short: 'Zoom Spring', desc: 'Escala con física de resorte', color: '#ec4899' },
+                { id: 'bounce-pop', icon: '🏀', name: 'Rebote Físico', short: 'Rebote', desc: 'Aterrizaje con rebote natural', color: '#f97316' },
+                { id: 'flip-3d', icon: '🎴', name: 'Giro 3D Vertical', short: 'Flip 3D X', desc: 'Rotación 3D tipo tarjeta', color: '#eab308' },
+                { id: 'flip-y', icon: '🪞', name: 'Giro 3D Horizontal', short: 'Flip 3D Y', desc: 'Giro lateral con perspectiva', color: '#8b5cf6' },
+                { id: 'wipe-curtain', icon: '🎬', name: 'Cortina Horizontal', short: 'Cortina', desc: 'Revelado geométrico de broadcast', color: '#f43f5e' },
+                { id: 'iris-reveal', icon: '🔮', name: 'Apertura Central', short: 'Apertura', desc: 'Se abre desde el centro al borde', color: '#10b981' },
+                { id: 'glitch-cut', icon: '⚡', name: 'Corte Cyber Glitch', short: 'Glitch', desc: 'Transición rápida estilo glitch', color: '#facc15' }
+            ];
+
+            const triggerAdsTransitionPreview = () => {
+                ['iframe-control-ads-widget', 'iframe-ads-widget'].forEach((id) => {
+                    const ifr = document.getElementById(id);
+                    if (ifr && ifr.contentWindow) {
+                        ifr.contentWindow.postMessage({ action: 'previewTransition' }, '*');
+                    }
+                });
+                try {
+                    if (typeof BroadcastChannel !== 'undefined') {
+                        const bc = new BroadcastChannel('zero_ads_widget_channel');
+                        bc.postMessage({ action: 'previewTransition' });
+                        bc.close();
+                    }
+                } catch (_) {}
+            };
+
+            const renderAdsTransitionControlsSection = () => {
+                const fadeEnabled = overlays.adsWidgetFadeEnabled !== false;
+                const legacyTrans = overlays.adsWidgetTrans || 'fade-blur';
+                const transIn = (typeof overlays.adsWidgetTransIn === 'string' && overlays.adsWidgetTransIn !== '')
+                    ? overlays.adsWidgetTransIn
+                    : legacyTrans;
+                const transOut = (typeof overlays.adsWidgetTransOut === 'string' && overlays.adsWidgetTransOut !== '')
+                    ? overlays.adsWidgetTransOut
+                    : legacyTrans;
+                const fadeInVal = overlays.adsWidgetFadeIn !== undefined && overlays.adsWidgetFadeIn !== null
+                    ? Number(overlays.adsWidgetFadeIn)
+                    : 0.7;
+                const fadeOutVal = overlays.adsWidgetFadeOut !== undefined && overlays.adsWidgetFadeOut !== null
+                    ? Number(overlays.adsWidgetFadeOut)
+                    : 0.7;
+                const holdVal = overlays.adsWidgetHold !== undefined && overlays.adsWidgetHold !== null
+                    ? Number(overlays.adsWidgetHold)
+                    : 10.0;
+                const pauseVal = overlays.adsWidgetPause !== undefined && overlays.adsWidgetPause !== null
+                    ? Number(overlays.adsWidgetPause)
+                    : 0.8;
+                const flowMode = overlays.adsWidgetFlowMode || 'rtl-marquee';
+
+                const isInActive = fadeEnabled && transIn !== 'none' && fadeInVal > 0;
+                const isOutActive = fadeEnabled && transOut !== 'none' && fadeOutVal > 0;
+                const samePresetId = !fadeEnabled
+                    ? 'none'
+                    : (transIn === transOut ? transIn : null);
+
+                const applyBothTransitions = (id) => {
+                    if (id === 'none') {
+                        updateAdsWidgetConfig({
+                            adsWidgetFadeEnabled: false,
+                            adsWidgetTrans: 'none',
+                            adsWidgetTransIn: 'none',
+                            adsWidgetTransOut: 'none'
+                        });
+                    } else {
+                        updateAdsWidgetConfig({
+                            adsWidgetFadeEnabled: true,
+                            adsWidgetTrans: id,
+                            adsWidgetTransIn: id,
+                            adsWidgetTransOut: id,
+                            ...(fadeInVal <= 0 ? { adsWidgetFadeIn: 0.7 } : {}),
+                            ...(fadeOutVal <= 0 ? { adsWidgetFadeOut: 0.7 } : {})
+                        });
+                    }
+                };
+
+                return (
+                    <div style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.09), rgba(15,23,42,0.6))', padding: '14px', borderRadius: '14px', border: '1px solid rgba(168,85,247,0.3)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {/* Cabecera: Interruptor ON/OFF + Botón Probar */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <div>
+                                <div style={{ fontWeight: '800', color: '#e9d5ff', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    ✨ Control de Entrada y Salida (Fade In / Out)
+                                </div>
+                                <div style={{ fontSize: '0.73rem', color: '#cbd5e1', marginTop: '2px' }}>
+                                    Quita el fade para mantener el cartel siempre fijo, o elige animaciones distintas para Entrada y Salida.
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={() => updateAdsWidgetConfig({
+                                        adsWidgetFadeEnabled: true,
+                                        ...(transIn === 'none' && transOut === 'none' ? { adsWidgetTrans: 'fade-blur', adsWidgetTransIn: 'fade-blur', adsWidgetTransOut: 'fade-blur' } : {})
+                                    })}
+                                    style={{
+                                        padding: '5px 10px',
+                                        fontSize: '0.74rem',
+                                        background: fadeEnabled ? 'rgba(34,197,94,0.22)' : 'rgba(15,23,42,0.65)',
+                                        borderColor: fadeEnabled ? '#22c55e' : 'rgba(255,255,255,0.12)',
+                                        color: fadeEnabled ? '#86efac' : '#94a3b8'
+                                    }}
+                                >
+                                    ✅ Transiciones Activas
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={() => updateAdsWidgetConfig({ adsWidgetFadeEnabled: false })}
+                                    style={{
+                                        padding: '5px 10px',
+                                        fontSize: '0.74rem',
+                                        background: !fadeEnabled ? 'rgba(239,68,68,0.24)' : 'rgba(15,23,42,0.65)',
+                                        borderColor: !fadeEnabled ? '#ef4444' : 'rgba(255,255,255,0.12)',
+                                        color: !fadeEnabled ? '#fca5a5' : '#94a3b8'
+                                    }}
+                                >
+                                    🚫 Sin Fade (Siempre Visible)
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={triggerAdsTransitionPreview}
+                                    style={{
+                                        padding: '5px 11px',
+                                        fontSize: '0.74rem',
+                                        background: 'rgba(6,182,212,0.2)',
+                                        borderColor: '#06b6d4',
+                                        color: '#67e8f9',
+                                        fontWeight: '700'
+                                    }}
+                                    title="Reproduce ahora mismo la salida y entrada en la vista previa"
+                                >
+                                    🎬 Probar Entrada / Salida
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Presets Rápidos de 1 Clic */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: '6px' }}>
+                            {ADS_TRANSITION_OPTIONS.map(tr => {
+                                const isSel = samePresetId === tr.id;
+                                return (
+                                    <button
+                                        key={tr.id}
+                                        type="button"
+                                        onClick={() => applyBothTransitions(tr.id)}
+                                        style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'flex-start',
+                                            gap: '2px',
+                                            padding: '7px 9px',
+                                            borderRadius: '9px',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            transition: 'all 0.16s ease',
+                                            background: isSel ? `${tr.color}2b` : 'rgba(15,23,42,0.58)',
+                                            border: isSel ? `1.5px solid ${tr.color}` : '1px solid rgba(255,255,255,0.08)',
+                                            boxShadow: isSel ? `0 4px 14px ${tr.color}30` : 'none'
+                                        }}
+                                    >
+                                        <span style={{ fontWeight: '800', fontSize: '0.75rem', color: isSel ? '#fff' : '#e2e8f0' }}>
+                                            {tr.icon} {tr.short}
+                                        </span>
+                                        <span style={{ fontSize: '0.65rem', color: isSel ? '#cbd5e1' : '#94a3b8', lineHeight: 1.2 }}>
+                                            {tr.desc}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Selectores Independientes: Entrada vs Salida */}
+                        <div className="grid-2" style={{ gap: '10px', opacity: fadeEnabled ? 1 : 0.55 }}>
+                            <div className="form-group" style={{ margin: 0 }}>
+                                <label>🌅 Animación de Entrada (Fade In)</label>
+                                <select
+                                    value={fadeEnabled ? transIn : 'none'}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        updateAdsWidgetConfig({
+                                            adsWidgetFadeEnabled: val !== 'none' || transOut !== 'none',
+                                            adsWidgetTransIn: val,
+                                            adsWidgetTrans: val !== 'none' ? val : transOut,
+                                            ...(val !== 'none' && fadeInVal <= 0 ? { adsWidgetFadeIn: 0.7 } : {})
+                                        });
+                                    }}
+                                >
+                                    {ADS_TRANSITION_OPTIONS.map(opt => (
+                                        <option key={`in-${opt.id}`} value={opt.id}>
+                                            {opt.icon} {opt.id === 'none' ? 'Sin Entrada (Aparece Fijo)' : opt.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-group" style={{ margin: 0 }}>
+                                <label>🌇 Animación de Salida (Fade Out)</label>
+                                <select
+                                    value={fadeEnabled ? transOut : 'none'}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        updateAdsWidgetConfig({
+                                            adsWidgetFadeEnabled: val !== 'none' || transIn !== 'none',
+                                            adsWidgetTransOut: val,
+                                            adsWidgetTrans: transIn !== 'none' ? transIn : val,
+                                            ...(val !== 'none' && fadeOutVal <= 0 ? { adsWidgetFadeOut: 0.7 } : {})
+                                        });
+                                    }}
+                                >
+                                    {ADS_TRANSITION_OPTIONS.map(opt => (
+                                        <option key={`out-${opt.id}`} value={opt.id}>
+                                            {opt.icon} {opt.id === 'none' ? 'Sin Salida (No Desaparece)' : opt.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Sliders de Duración (Soportan 0.0s sin fallback forzado) */}
+                        <div className="grid-2" style={{ gap: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                            <div className="form-group" style={{ margin: 0, opacity: isInActive ? 1 : 0.6 }}>
+                                <label>
+                                    🌅 Duración Entrada: {isInActive ? `${fadeInVal.toFixed(1)}s` : 'OFF (0.0s)'}
+                                </label>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="3.5"
+                                    step="0.1"
+                                    value={fadeInVal}
+                                    onChange={(e) => {
+                                        const v = parseFloat(e.target.value);
+                                        updateAdsWidgetConfig({
+                                            adsWidgetFadeIn: v,
+                                            ...(v > 0 && !fadeEnabled ? { adsWidgetFadeEnabled: true } : {})
+                                        });
+                                    }}
+                                />
+                            </div>
+                            <div className="form-group" style={{ margin: 0, opacity: isOutActive ? 1 : 0.6 }}>
+                                <label>
+                                    🌇 Duración Salida: {isOutActive ? `${fadeOutVal.toFixed(1)}s` : 'OFF (0.0s)'}
+                                </label>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="3.5"
+                                    step="0.1"
+                                    value={fadeOutVal}
+                                    onChange={(e) => {
+                                        const v = parseFloat(e.target.value);
+                                        updateAdsWidgetConfig({
+                                            adsWidgetFadeOut: v,
+                                            ...(v > 0 && !fadeEnabled ? { adsWidgetFadeEnabled: true } : {})
+                                        });
+                                    }}
+                                />
+                            </div>
+                            <div className="form-group" style={{ margin: 0 }}>
+                                <label>📺 Tiempo en Pantalla: {holdVal.toFixed(1)}s</label>
+                                <input
+                                    type="range"
+                                    min="2"
+                                    max="45"
+                                    step="0.5"
+                                    value={holdVal}
+                                    onChange={(e) => updateAdsWidgetConfig({ adsWidgetHold: parseFloat(e.target.value) })}
+                                />
+                            </div>
+                            <div className="form-group" style={{ margin: 0, opacity: isOutActive ? 1 : 0.55 }}>
+                                <label>
+                                    ⏸️ Pausa Entre Anuncios: {isOutActive ? `${pauseVal.toFixed(1)}s` : `${pauseVal.toFixed(1)}s (Requiere Salida activa)`}
+                                </label>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="20"
+                                    step="0.5"
+                                    value={pauseVal}
+                                    onChange={(e) => updateAdsWidgetConfig({ adsWidgetPause: parseFloat(e.target.value) })}
+                                />
+                            </div>
+                        </div>
+
+                        {flowMode === 'rtl-continuous' && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '8px 10px', borderRadius: '8px', background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.28)', fontSize: '0.73rem', color: '#bae6fd' }}>
+                                <span>
+                                    ℹ️ En modo <strong>Cinta / Ticker Continuo</strong> el cartel permanece siempre visible sin cortes de salida (solo usa Entrada al iniciar).
+                                </span>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={() => updateAdsWidgetConfig({ adsWidgetFlowMode: 'rtl-marquee' })}
+                                    style={{ padding: '3px 9px', fontSize: '0.7rem', borderColor: '#06b6d4', color: '#67e8f9' }}
+                                >
+                                    Cambiar a Desfile con Ciclos
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
             // Helper centralizado para guardar configuración de overlays mezclando solo lo modificado ("dirty")
             const saveOverlaysConfig = async (localOverlays, extraDirtyKeys = {}) => {
                 try {
@@ -4702,7 +5016,8 @@
                 ],
                 'Announcements Widget': [
                     'adsWidgetBannerStyle', 'adsWidgetFlowMode', 'adsWidgetPlayMode',
-                    'adsWidgetActiveIndex', 'adsWidgetLetterAnim', 'adsWidgetTrans',
+                    'adsWidgetActiveIndex', 'adsWidgetLetterAnim', 'adsWidgetFadeEnabled',
+                    'adsWidgetTrans', 'adsWidgetTransIn', 'adsWidgetTransOut',
                     'adsWidgetTextEffect', 'adsWidgetTheme', 'adsWidgetFont',
                     'adsWidgetAlign', 'adsWidgetVPos', 'adsWidgetFontSize',
                     'adsWidgetFadeIn', 'adsWidgetFadeOut', 'adsWidgetHold',
@@ -7431,7 +7746,7 @@
                                             </div>
                                         </div>
 
-                                        {/* Controles de Animación por Letra, Transición Fade, Efecto de Texto y Tema */}
+                                        {/* Controles de Animación por Letra, Efecto de Texto y Estilo Rápido */}
                                         <div className="grid-2" style={{ gap: '12px', marginBottom: '14px' }}>
                                             <div className="form-group" style={{ margin: 0 }}>
                                                 <label>🔤 Animación por Letra (Con Movimiento Vivo)</label>
@@ -7450,20 +7765,6 @@
                                                 </select>
                                             </div>
                                             <div className="form-group" style={{ margin: 0 }}>
-                                                <label>✨ Transición de Entrada y Salida (Fade)</label>
-                                                <select
-                                                    value={overlays.adsWidgetTrans || 'fade-blur'}
-                                                    onChange={(e) => updateAdsWidgetConfig({ adsWidgetTrans: e.target.value })}
-                                                >
-                                                    <option value="fade-blur">🌫️ 1. Fade + Blur Cinemático</option>
-                                                    <option value="fade">🌅 2. Fade In / Out Puro</option>
-                                                    <option value="slide-up">⬆️ 3. Fade + Elevación Vertical</option>
-                                                    <option value="slide-lr">➡️ 4. Barrido Lateral</option>
-                                                    <option value="zoom-spring">💥 5. Zoom Elástico</option>
-                                                    <option value="flip-3d">🎴 6. Giro 3D de Cartel</option>
-                                                </select>
-                                            </div>
-                                            <div className="form-group" style={{ margin: 0 }}>
                                                 <label>🌈 Efecto Visual de Texto</label>
                                                 <select
                                                     value={overlays.adsWidgetTextEffect || 'neon'}
@@ -7477,42 +7778,11 @@
                                                     <option value="clean">🎯 6. Sombra Nítida Limpia</option>
                                                 </select>
                                             </div>
-                                            <div className="form-group" style={{ margin: 0 }}>
-                                                <label>🎴 Estilo Rápido del Cartel</label>
-                                                <select
-                                                    value={overlays.adsWidgetBannerStyle || 'kinetic-glass'}
-                                                    onChange={(e) => updateAdsWidgetConfig({ adsWidgetBannerStyle: e.target.value })}
-                                                >
-                                                    <option value="kinetic-glass">✨ 1. Cristal Dinámico 3D (Vision Pulse)</option>
-                                                    <option value="cyber-hud">⚡ 2. Cyberpunk Broadcast HUD</option>
-                                                    <option value="neon-capsule">🌈 3. Cápsula Plasma Neón</option>
-                                                    <option value="royal-gold">👑 4. Cartel VIP Imperial 3D</option>
-                                                    <option value="radio-eq">🎚️ 5. Estudio Radio FM + Ecualizador</option>
-                                                    <option value="hologram-prism">🔮 6. Holograma Prisma 3D</option>
-                                                    <option value="fire-energy">🔥 7. Fuego / Alta Energía</option>
-                                                    <option value="minimal-floating">🕊️ 8. Puro Texto Flotante Vivo</option>
-                                                </select>
-                                            </div>
                                         </div>
 
-                                        {/* Duraciones de Fade In, Pantalla, Fade Out y Pausa */}
-                                        <div className="grid-2" style={{ gap: '12px', marginBottom: '18px', background: 'rgba(255,255,255,0.02)', padding: '14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                                            <div className="form-group" style={{ margin: 0 }}>
-                                                <label>🌅 Duración Fade In: {Number(overlays.adsWidgetFadeIn || 0.8).toFixed(1)}s</label>
-                                                <input type="range" min="0.2" max="3.5" step="0.1" value={overlays.adsWidgetFadeIn || 0.8} onChange={(e) => updateAdsWidgetConfig({ adsWidgetFadeIn: parseFloat(e.target.value) })} />
-                                            </div>
-                                            <div className="form-group" style={{ margin: 0 }}>
-                                                <label>🌇 Duración Fade Out: {Number(overlays.adsWidgetFadeOut || 0.8).toFixed(1)}s</label>
-                                                <input type="range" min="0.2" max="3.5" step="0.1" value={overlays.adsWidgetFadeOut || 0.8} onChange={(e) => updateAdsWidgetConfig({ adsWidgetFadeOut: parseFloat(e.target.value) })} />
-                                            </div>
-                                            <div className="form-group" style={{ margin: 0 }}>
-                                                <label>📺 Tiempo en Pantalla: {Number(overlays.adsWidgetHold || 6.0).toFixed(1)}s</label>
-                                                <input type="range" min="2" max="45" step="0.5" value={overlays.adsWidgetHold || 6.0} onChange={(e) => updateAdsWidgetConfig({ adsWidgetHold: parseFloat(e.target.value) })} />
-                                            </div>
-                                            <div className="form-group" style={{ margin: 0 }}>
-                                                <label>⏸️ Pausa Entre Anuncios: {Number(overlays.adsWidgetPause ?? 1.0).toFixed(1)}s</label>
-                                                <input type="range" min="0" max="20" step="0.5" value={overlays.adsWidgetPause ?? 1.0} onChange={(e) => updateAdsWidgetConfig({ adsWidgetPause: parseFloat(e.target.value) })} />
-                                            </div>
+                                        {/* Control Completo de Transiciones Fade In / Fade Out */}
+                                        <div style={{ marginBottom: '18px' }}>
+                                            {renderAdsTransitionControlsSection()}
                                         </div>
 
                                         {/* Enlace para OBS */}
@@ -15193,9 +15463,9 @@
                                             </div>
                                         </div>
 
-                                        {/* Selectores Rápidos */}
+                                        {/* Selectores Rápidos de Letras y Efecto */}
                                         <div style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                                            <div className="grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
+                                            <div className="grid-2" style={{ gap: '12px' }}>
                                                 <div className="form-group" style={{ marginBottom: 0 }}>
                                                     <label>🔤 Animación de Letras (Con Movimiento Vivo)</label>
                                                     <select
@@ -15213,20 +15483,6 @@
                                                     </select>
                                                 </div>
                                                 <div className="form-group" style={{ marginBottom: 0 }}>
-                                                    <label>✨ Entrada / Salida (Fade)</label>
-                                                    <select
-                                                        value={overlays.adsWidgetTrans || 'fade-blur'}
-                                                        onChange={(e) => updateAdsWidgetConfig({ adsWidgetTrans: e.target.value })}
-                                                    >
-                                                        <option value="fade-blur">🌫️ 1. Fade + Blur Cinemático</option>
-                                                        <option value="fade">🌅 2. Fade In / Out Puro</option>
-                                                        <option value="slide-up">⬆️ 3. Fade + Elevación</option>
-                                                        <option value="slide-lr">➡️ 4. Barrido Lateral</option>
-                                                        <option value="zoom-spring">💥 5. Zoom Elástico</option>
-                                                        <option value="flip-3d">🎴 6. Giro 3D de Cartel</option>
-                                                    </select>
-                                                </div>
-                                                <div className="form-group" style={{ marginBottom: 0 }}>
                                                     <label>🌈 Efecto de Texto</label>
                                                     <select
                                                         value={overlays.adsWidgetTextEffect || 'neon'}
@@ -15240,43 +15496,11 @@
                                                         <option value="clean">🎯 6. Sombra Nítida Limpia</option>
                                                     </select>
                                                 </div>
-                                                <div className="form-group" style={{ marginBottom: 0 }}>
-                                                    <label>🎴 Estilo del Cartel</label>
-                                                    <select
-                                                        value={overlays.adsWidgetBannerStyle || 'kinetic-glass'}
-                                                        onChange={(e) => updateAdsWidgetConfig({ adsWidgetBannerStyle: e.target.value })}
-                                                    >
-                                                        <option value="kinetic-glass">✨ 1. Cristal Dinámico 3D (Vision Pulse)</option>
-                                                        <option value="cyber-hud">⚡ 2. Cyberpunk Broadcast HUD</option>
-                                                        <option value="neon-capsule">🌈 3. Cápsula Plasma Neón</option>
-                                                        <option value="royal-gold">👑 4. Cartel VIP Imperial 3D</option>
-                                                        <option value="radio-eq">🎚️ 5. Estudio Radio FM + Ecualizador</option>
-                                                        <option value="hologram-prism">🔮 6. Holograma Prisma 3D</option>
-                                                        <option value="fire-energy">🔥 7. Fuego / Alta Energía</option>
-                                                        <option value="minimal-floating">🕊️ 8. Puro Texto Flotante Vivo</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-
-                                            <div className="grid-2" style={{ gap: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                                                <div className="form-group" style={{ marginBottom: 0 }}>
-                                                    <label>🌅 Fade In: {Number(overlays.adsWidgetFadeIn || 0.8).toFixed(1)}s</label>
-                                                    <input type="range" min="0.2" max="3.5" step="0.1" value={overlays.adsWidgetFadeIn || 0.8} onChange={(e) => updateAdsWidgetConfig({ adsWidgetFadeIn: parseFloat(e.target.value) })} />
-                                                </div>
-                                                <div className="form-group" style={{ marginBottom: 0 }}>
-                                                    <label>🌇 Fade Out: {Number(overlays.adsWidgetFadeOut || 0.8).toFixed(1)}s</label>
-                                                    <input type="range" min="0.2" max="3.5" step="0.1" value={overlays.adsWidgetFadeOut || 0.8} onChange={(e) => updateAdsWidgetConfig({ adsWidgetFadeOut: parseFloat(e.target.value) })} />
-                                                </div>
-                                                <div className="form-group" style={{ marginBottom: 0 }}>
-                                                    <label>📺 En Pantalla: {Number(overlays.adsWidgetHold || 6.0).toFixed(1)}s</label>
-                                                    <input type="range" min="2" max="45" step="0.5" value={overlays.adsWidgetHold || 6.0} onChange={(e) => updateAdsWidgetConfig({ adsWidgetHold: parseFloat(e.target.value) })} />
-                                                </div>
-                                                <div className="form-group" style={{ marginBottom: 0 }}>
-                                                    <label>⏸️ Pausa Entre Anuncios: {Number(overlays.adsWidgetPause ?? 1.0).toFixed(1)}s</label>
-                                                    <input type="range" min="0" max="20" step="0.5" value={overlays.adsWidgetPause ?? 1.0} onChange={(e) => updateAdsWidgetConfig({ adsWidgetPause: parseFloat(e.target.value) })} />
-                                                </div>
                                             </div>
                                         </div>
+
+                                        {/* Control Completo de Transiciones Fade In / Fade Out */}
+                                        {renderAdsTransitionControlsSection()}
 
                                         {/* Enlace para OBS */}
                                         <div className="form-group" style={{ margin: 0, background: 'rgba(168, 85, 247, 0.06)', padding: '12px 14px', borderRadius: '12px', border: '1px dashed rgba(168, 85, 247, 0.4)' }}>
