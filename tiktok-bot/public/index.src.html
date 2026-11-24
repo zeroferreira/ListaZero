@@ -3972,12 +3972,12 @@
                     ? overlays.adsWidgetItems
                     : DEFAULT_ADS_ITEMS;
                 return raw.map(item => {
-                    const t = String(item?.text || '').trim();
+                    const t = item?.text !== undefined && item?.text !== null ? String(item.text) : '';
                     const s = String(item?.sub || '').trim();
-                    const merged = (s && !t.includes(s)) ? `${t} • ${s}` : t;
+                    const merged = (s && !t.includes(s)) ? `${t.trimEnd()} • ${s}` : t;
                     return {
-                        icon: item?.icon || '📢',
-                        text: merged || '🎵 PIDE TU CANCIÓN EN EL CHAT CON !zr',
+                        icon: item?.icon !== undefined && item?.icon !== null ? String(item.icon) : '📢',
+                        text: merged,
                         sub: ''
                     };
                 });
@@ -4520,31 +4520,58 @@
                                 <input
                                     type="range"
                                     min="2"
-                                    max="45"
+                                    max="60"
                                     step="0.5"
                                     value={holdVal}
                                     onChange={(e) => updateAdsWidgetConfig({ adsWidgetHold: parseFloat(e.target.value) })}
                                 />
                             </div>
-                            <div className="form-group" style={{ margin: 0, opacity: isOutActive ? 1 : 0.55 }}>
-                                <label>
-                                    ⏸️ Pausa Entre Anuncios: {isOutActive ? `${pauseVal.toFixed(1)}s` : `${pauseVal.toFixed(1)}s (Requiere Salida activa)`}
+                            <div className="form-group" style={{ margin: 0 }}>
+                                <label style={{ color: '#67e8f9', fontWeight: '700' }}>
+                                    ⏱️ Espera Oculta Antes de Volver a Aparecer: {pauseVal > 0 ? `${pauseVal.toFixed(1)}s` : '0.0s (Siempre visible)'}
                                 </label>
                                 <input
                                     type="range"
                                     min="0"
-                                    max="20"
+                                    max="120"
                                     step="0.5"
                                     value={pauseVal}
                                     onChange={(e) => updateAdsWidgetConfig({ adsWidgetPause: parseFloat(e.target.value) })}
                                 />
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
+                                    {[0, 2, 5, 10, 15, 30, 60].map(sec => {
+                                        const isPreset = Math.abs(pauseVal - sec) < 0.05;
+                                        return (
+                                            <button
+                                                key={`pause-${sec}`}
+                                                type="button"
+                                                onClick={() => updateAdsWidgetConfig({ adsWidgetPause: sec })}
+                                                style={{
+                                                    padding: '2px 8px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.69rem',
+                                                    fontWeight: '700',
+                                                    cursor: 'pointer',
+                                                    background: isPreset ? 'rgba(6,182,212,0.28)' : 'rgba(15,23,42,0.7)',
+                                                    border: isPreset ? '1px solid #06b6d4' : '1px solid rgba(255,255,255,0.12)',
+                                                    color: isPreset ? '#fff' : '#94a3b8'
+                                                }}
+                                            >
+                                                {sec === 0 ? '0s (Fija)' : `${sec}s`}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '4px' }}>
+                                    Al terminar el anuncio, la cápsula desaparece estos segundos y luego vuelve a aparecer (funciona con o sin Fade).
+                                </div>
                             </div>
                         </div>
 
-                        {flowMode === 'rtl-continuous' && (
+                        {flowMode === 'rtl-continuous' && pauseVal <= 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '8px 10px', borderRadius: '8px', background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.28)', fontSize: '0.73rem', color: '#bae6fd' }}>
                                 <span>
-                                    ℹ️ En modo <strong>Cinta / Ticker Continuo</strong> el cartel permanece siempre visible sin cortes de salida (solo usa Entrada al iniciar).
+                                    ℹ️ En modo <strong>Cinta / Ticker Continuo</strong> con Espera en <strong>0s</strong> el cartel corre sin cortes. Sube <strong>Espera Oculta</strong> si quieres que se oculte unos segundos y vuelva a aparecer.
                                 </span>
                                 <button
                                     type="button"
@@ -4762,6 +4789,19 @@
                                     }}>
                                         {fadeEnabled ? '✨ Fade Activo' : '🚫 Sin Fade'}
                                     </span>
+                                    {Number(overlays.adsWidgetPause ?? 0.8) > 0 && (
+                                        <span style={{
+                                            fontSize: '0.68rem',
+                                            fontWeight: '700',
+                                            padding: '2px 8px',
+                                            borderRadius: '999px',
+                                            background: 'rgba(6,182,212,0.16)',
+                                            border: '1px solid rgba(6,182,212,0.4)',
+                                            color: '#67e8f9'
+                                        }}>
+                                            ⏱️ Oculta: {Number(overlays.adsWidgetPause ?? 0.8).toFixed(1)}s
+                                        </span>
+                                    )}
                                 </div>
                                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                                     <button

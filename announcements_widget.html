@@ -1607,8 +1607,8 @@
           <input type="range" id="cfg-hold" min="2" max="45" step="0.5" value="10" />
         </div>
         <div class="cfg-row">
-          <label><span>⏸️ Pausa Entre Mensajes</span><span id="val-pause">0.8s</span></label>
-          <input type="range" id="cfg-pause" min="0" max="20" step="0.5" value="0.8" />
+          <label><span>⏱️ Oculta Antes de Volver</span><span id="val-pause">0.8s</span></label>
+          <input type="range" id="cfg-pause" min="0" max="120" step="0.5" value="0.8" />
         </div>
       </div>
       <div class="cfg-grid-2">
@@ -2126,9 +2126,8 @@
         const fadeOutMs = Math.round(tState.fadeOutSec * 1000);
         const holdSec = parseSec(currentConfig.adsWidgetHold, 10.0, 2, 60);
         const holdMs = Math.round(holdSec * 1000);
-        const pauseMs = fadeOutMs > 0
-          ? Math.round(parseSec(currentConfig.adsWidgetPause, 0.8, 0, 30) * 1000)
-          : 0;
+        const pauseSec = parseSec(currentConfig.adsWidgetPause, 0.8, 0, 120);
+        const pauseMs = Math.round(pauseSec * 1000);
 
         const root = document.documentElement;
         const items = getNormalizedItems();
@@ -2165,8 +2164,8 @@
           timerFillEl.style.transform = 'scaleX(0)';
         }
 
-        // In continuous ticker mode, keep running infinitely without exit cuts
-        if (flowMode === 'rtl-continuous') {
+        // En ticker continuo sin espera oculta, corre infinitamente sin cortes
+        if (flowMode === 'rtl-continuous' && pauseMs <= 0) {
           return;
         }
 
@@ -2192,8 +2191,13 @@
                 advanceNext();
               }
             }, fadeOutMs);
+          } else if (pauseMs > 0) {
+            // Sin Fade Out pero con tiempo de espera: oculta la cápsula los segundos configurados y vuelve a aparecer
+            bannerEl.classList.remove('phase-in', 'phase-out');
+            bannerEl.classList.add('is-Paused-Hidden');
+            cycleTimer = setTimeout(advanceNext, pauseMs);
           } else {
-            // Sin Fade Out: mantiene el cartel siempre visible y pasa al siguiente anuncio
+            // Sin Fade Out y sin espera: mantiene el cartel siempre visible y pasa al siguiente anuncio
             advanceNext();
           }
         }, activeEntryMs + holdMs);
@@ -2204,14 +2208,25 @@
           clearTimeout(cycleTimer);
           cycleTimer = null;
         }
+        if (phaseInCleanupTimer) {
+          clearTimeout(phaseInCleanupTimer);
+          phaseInCleanupTimer = null;
+        }
         const tState = resolveTransitionState(currentConfig);
         const fadeInMs = Math.round(tState.fadeInSec * 1000);
         const fadeOutMs = Math.round(tState.fadeOutSec * 1000);
+        const pauseSec = parseSec(currentConfig.adsWidgetPause, 0.8, 0, 120);
+        const pauseMs = Math.round(pauseSec * 1000);
+        const demoPauseMs = pauseMs > 0 ? Math.min(pauseMs, 3000) : 260;
 
-        if (tState.effectiveTransIn === 'none' && tState.effectiveTransOut === 'none') {
+        if (tState.effectiveTransIn === 'none' && tState.effectiveTransOut === 'none' && pauseMs <= 0) {
           bannerEl.classList.remove('phase-in', 'phase-out', 'is-Paused-Hidden');
-          showToast('🚫 Transiciones desactivadas (Siempre visible)');
+          showToast('🚫 Sin fade ni espera oculta (Siempre visible)');
           return;
+        }
+
+        if (pauseSec > 3) {
+          showToast(`⏱️ Demo de espera oculta (real: ${pauseSec.toFixed(1)}s)`);
         }
 
         if (tState.effectiveTransOut !== 'none' && fadeOutMs > 0) {
@@ -2221,16 +2236,16 @@
           cycleTimer = setTimeout(() => {
             bannerEl.classList.add('is-Paused-Hidden');
             cycleTimer = setTimeout(() => {
-              startCycleForCurrentAd();
-            }, 240);
+              startCycleForCurrentAd(true);
+            }, demoPauseMs);
           }, fadeOutMs);
         } else {
-          // Solo Entrada activa: breve reinicio para ver la animación de entrada
+          // Oculta la cápsula durante la espera y vuelve a mostrarla (con entrada si está activa)
           bannerEl.classList.remove('phase-in', 'phase-out');
           bannerEl.classList.add('is-Paused-Hidden');
           cycleTimer = setTimeout(() => {
-            startCycleForCurrentAd();
-          }, 120);
+            startCycleForCurrentAd(true);
+          }, pauseMs > 0 ? demoPauseMs : 150);
         }
       }
 
@@ -2442,9 +2457,9 @@
         setVal('cfg-hold', hd);
         setLbl('val-hold', `${hd.toFixed(1)}s`);
 
-        const ps = parseSec(currentConfig.adsWidgetPause, 0.8, 0, 30);
+        const ps = parseSec(currentConfig.adsWidgetPause, 0.8, 0, 120);
         setVal('cfg-pause', ps);
-        setLbl('val-pause', `${ps.toFixed(1)}s`);
+        setLbl('val-pause', ps > 0 ? `${ps.toFixed(1)}s` : '0.0s (Sin pausa)');
 
         const fs = Number(currentConfig.adsWidgetFontSize) || 24;
         setVal('cfg-fontSize', fs);
@@ -2478,7 +2493,7 @@
           adsWidgetFadeIn: parseSec(document.getElementById('cfg-fadeIn').value, 0.7, 0, 5),
           adsWidgetFadeOut: parseSec(document.getElementById('cfg-fadeOut').value, 0.7, 0, 5),
           adsWidgetHold: parseSec(document.getElementById('cfg-hold').value, 10.0, 2, 60),
-          adsWidgetPause: parseSec(document.getElementById('cfg-pause').value, 0.8, 0, 30),
+          adsWidgetPause: parseSec(document.getElementById('cfg-pause').value, 0.8, 0, 120),
           adsWidgetFontSize: Number(document.getElementById('cfg-fontSize').value) || 24,
           adsWidgetOpacity: Number(document.getElementById('cfg-opacity').value),
           adsWidgetAccent: document.getElementById('cfg-accent').value,
