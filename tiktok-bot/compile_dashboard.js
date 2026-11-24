@@ -14,34 +14,49 @@ if (!fs.existsSync(srcHtmlPath)) {
     process.exit(1);
 }
 
-// Download file helper (handles 301/302 redirects, supports relative paths)
-function downloadFile(url, dest) {
+// Download file helper (handles 301/302/307/308 redirects cleanly without leaking file descriptors)
+function downloadFile(url, dest, redirectDepth = 0) {
   return new Promise((resolve, reject) => {
+    if (redirectDepth > 5) {
+      reject(new Error(`Too many redirects downloading ${url}`));
+      return;
+    }
     const dir = path.dirname(dest);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    const file = fs.createWriteStream(dest);
-    https.get(url, (response) => {
-      if (response.statusCode === 301 || response.statusCode === 302) {
+    const req = https.get(url, { timeout: 15000 }, (response) => {
+      if ([301, 302, 307, 308].includes(response.statusCode) && response.headers.location) {
+        response.resume();
         let redirectUrl = response.headers.location;
         if (!redirectUrl.startsWith('http://') && !redirectUrl.startsWith('https://')) {
           const baseUrl = new URL(url);
           redirectUrl = new URL(redirectUrl, baseUrl.origin).href;
         }
-        downloadFile(redirectUrl, dest).then(resolve).catch(reject);
+        downloadFile(redirectUrl, dest, redirectDepth + 1).then(resolve).catch(reject);
         return;
       }
       if (response.statusCode !== 200) {
+        response.resume();
         reject(new Error(`Failed to download ${url}: HTTP ${response.statusCode}`));
         return;
       }
+      const file = fs.createWriteStream(dest);
       response.pipe(file);
       file.on('finish', () => {
-        file.close();
-        resolve();
+        file.close(() => resolve());
       });
-    }).on('error', (err) => {
+      file.on('error', (err) => {
+        file.close(() => {
+          fs.unlink(dest, () => {});
+          reject(err);
+        });
+      });
+    });
+    req.on('timeout', () => {
+      req.destroy(new Error(`Timeout downloading ${url}`));
+    });
+    req.on('error', (err) => {
       fs.unlink(dest, () => {});
       reject(err);
     });

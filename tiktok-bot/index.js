@@ -94,6 +94,7 @@ const {
     serverTimestamp: serverTimestampFn,
     query: queryFn,
     where: whereFn,
+    orderBy: orderByFn,
     getDocs: getDocsFn,
     deleteDoc,
     increment 
@@ -132,12 +133,26 @@ async function syncUserStatsToRtdb(userKey) {
     }
 }
 
+const rtdbSyncTimers = new Map();
+function scheduleSyncUserStatsToRtdb(userKey) {
+    if (!db || !rtdb || !userKey) return;
+    const key = String(userKey).trim();
+    if (!key) return;
+    const prev = rtdbSyncTimers.get(key);
+    if (prev) clearTimeout(prev);
+    const timer = setTimeout(() => {
+        rtdbSyncTimers.delete(key);
+        syncUserStatsToRtdb(key).catch(() => {});
+    }, 2500);
+    rtdbSyncTimers.set(key, timer);
+}
+
 async function setDocInterceptor(documentReference, data, options) {
     const result = await setDocFn(documentReference, data, options);
     try {
         if (documentReference && documentReference.path && documentReference.path.startsWith('userStats/')) {
             const userKey = documentReference.id;
-            syncUserStatsToRtdb(userKey).catch(() => {});
+            scheduleSyncUserStatsToRtdb(userKey);
         }
     } catch (_) {}
     return result;
@@ -148,7 +163,7 @@ async function updateDocInterceptor(documentReference, ...args) {
     try {
         if (documentReference && documentReference.path && documentReference.path.startsWith('userStats/')) {
             const userKey = documentReference.id;
-            syncUserStatsToRtdb(userKey).catch(() => {});
+            scheduleSyncUserStatsToRtdb(userKey);
         }
     } catch (_) {}
     return result;
@@ -265,7 +280,7 @@ if (typeof module !== 'undefined' && module.exports) {
             likesPerPoint: 300,
             commandAliases: ["zr", "!zr", "!sr", "!pedir", "!cancion"],
             ignoreExampleQuery: "artista cancion",
-            eulerApiKey: "euler_OGVhNzY2MGYwM2IwZDExNTcyY2IzOTQ5NWMwOGY4NDJlMGUzNDEzZWMzNTM1MmU1OWU5YzA3"
+            eulerApiKey: process.env.EULER_API_KEY || ""
         };
 
         const profilesToEnsure = [
@@ -562,7 +577,18 @@ try {
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
     }
     
-    console.log(`📂 Configuración cargada del perfil [${activeProfile}]:`, config);
+    const maskSecret = (val) => {
+        const s = String(val || '').trim();
+        if (!s) return '';
+        return s.length <= 6 ? '******' : `${s.slice(0, 3)}***${s.slice(-4)}`;
+    };
+    const safeConfigForLog = {
+        ...config,
+        sessionId: maskSecret(config.sessionId),
+        ttTargetIdc: maskSecret(config.ttTargetIdc),
+        eulerApiKey: maskSecret(config.eulerApiKey)
+    };
+    console.log(`📂 Configuración cargada del perfil [${activeProfile}]:`, safeConfigForLog);
     
     // Cargar credenciales Firebase Web del perfil activo (para DB principal y estado LIVE)
     const fbConfigFile = PROFILE_FB_CONFIG_FILE;
@@ -837,6 +863,21 @@ async function extractYoutubeMetadata(url) {
 const recentSrEvents = [];
 const pendingCiderQueue = [];
 let ciderFlushInProgress = false;
+// Set compartido entre handleSongRequest y el listener de Firestore para evitar doble envío a Cider
+const processedSolicitudIds = new Set();
+function markSolicitudProcessed(id) {
+    if (!id) return;
+    const key = String(id);
+    processedSolicitudIds.add(key);
+    if (processedSolicitudIds.size > 1000) {
+        const first = processedSolicitudIds.values().next().value;
+        processedSolicitudIds.delete(first);
+    }
+}
+// Protección contra eventos duplicados de Cider (V1 + V2 casi simultáneos)
+const inFlightCiderMatches = new Set();
+let lastProcessedCiderPlaybackKey = '';
+let lastProcessedCiderPlaybackAt = 0;
 
 // ── LIVE CHAT STREAM & BUFFER (PERSISTENT) ──
 const CHAT_HISTORY_FILE = path.join(__dirname, 'chat_history.json');
@@ -1667,9 +1708,48 @@ function startBot() {
     const app = express();
     const PORT = Number(process.env.PORT || config.dashboardPort || 3000) || 3000;
 
-    // CORS & No-Cache Middleware - Permite solicitudes locales y evita caché en desarrollo
+    // CORS & No-Cache Middleware - Restringe acceso cross-origin a orígenes locales/extensión/ZeroFM
+    const isTrustedLocalOrExtOrigin = (origin) => {
+        if (!origin || origin === 'null') return true;
+        try {
+            if (origin.startsWith('chrome-extension://') || origin.startsWith('moz-extension://')) return true;
+            const u = new URL(origin);
+            const h = u.hostname.toLowerCase();
+            if (h === 'localhost' || h === '127.0.0.1' || h === '::1' || h.endsWith('.local')) return true;
+            if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+            if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+            if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+        } catch (_) {}
+        return false;
+    };
+    const isAllowedProjectWebOrigin = (origin) => {
+        if (!origin) return false;
+        try {
+            const u = new URL(origin);
+            const h = u.hostname.toLowerCase();
+            if (h === 'zeroferreira.github.io') return true;
+            if (h === 'zero-strom-web.web.app' || h === 'zero-strom-web.firebaseapp.com') return true;
+            if (h === 'zer0-gaming.web.app' || h === 'zer0-gaming.firebaseapp.com') return true;
+            if (h === 'zero-fm-canciones.vercel.app' || /^zero-fm-canciones-[a-z0-9-]+\.vercel\.app$/.test(h)) return true;
+        } catch (_) {}
+        return false;
+    };
+    const resolveAllowedCorsOrigin = (req) => {
+        const origin = req.headers.origin;
+        if (!origin) return null;
+        if (isTrustedLocalOrExtOrigin(origin)) return origin;
+        const p = req.path || '';
+        const isSensitiveRoute = p.startsWith('/api/config') || p.startsWith('/api/tiktok/') || p.startsWith('/api/server/') || p.includes('-profile');
+        if (!isSensitiveRoute && isAllowedProjectWebOrigin(origin)) return origin;
+        return null;
+    };
+
     app.use((req, res, next) => {
-        res.header('Access-Control-Allow-Origin', '*');
+        const allowedOrigin = resolveAllowedCorsOrigin(req);
+        if (allowedOrigin) {
+            res.header('Access-Control-Allow-Origin', allowedOrigin);
+            res.header('Vary', 'Origin');
+        }
         res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
         res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
         
@@ -1679,7 +1759,7 @@ function startBot() {
         res.header('Expires', '0');
 
         if (req.method === 'OPTIONS') {
-            return res.sendStatus(200);
+            return res.sendStatus(allowedOrigin || !req.headers.origin ? 200 : 403);
         }
         next();
     });
@@ -1914,15 +1994,27 @@ function startBot() {
         
         const https = require('https');
         const searchUrl = `https://www.myinstants.com/en/search/?name=${encodeURIComponent(query)}`;
-        
-        https.get(searchUrl, {
+        let responded = false;
+        const finishError = (msg) => {
+            if (responded || res.headersSent) return;
+            responded = true;
+            res.status(500).json({ success: false, error: msg });
+        };
+
+        const upReq = https.get(searchUrl, {
+            timeout: 10000,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
         }, (clientRes) => {
             let body = '';
-            clientRes.on('data', (chunk) => { body += chunk; });
+            const MAX_BYTES = 2 * 1024 * 1024;
+            clientRes.on('data', (chunk) => {
+                if (body.length < MAX_BYTES) body += chunk;
+            });
             clientRes.on('end', () => {
+                if (responded || res.headersSent) return;
+                responded = true;
                 const regex = /class="instant">[\s\S]*?onclick="play\('([^']*)'[\s\S]*?class="instant-link[^"]*">([^<]*)/g;
                 let match;
                 const results = [];
@@ -1934,8 +2026,13 @@ function startBot() {
                 }
                 res.json({ success: true, results });
             });
-        }).on('error', (e) => {
-            res.status(500).json({ success: false, error: e.message });
+        });
+        upReq.on('timeout', () => {
+            upReq.destroy();
+            finishError('Timeout consultando MyInstants');
+        });
+        upReq.on('error', (e) => {
+            finishError(e.message);
         });
     });
 
@@ -2159,12 +2256,17 @@ function startBot() {
     });
 
     app.get('/api/chat/stream', (req, res) => {
-        res.writeHead(200, {
+        const sseHeaders = {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*'
-        });
+            'Connection': 'keep-alive'
+        };
+        const allowedOrigin = resolveAllowedCorsOrigin(req);
+        if (allowedOrigin) {
+            sseHeaders['Access-Control-Allow-Origin'] = allowedOrigin;
+            sseHeaders['Vary'] = 'Origin';
+        }
+        res.writeHead(200, sseHeaders);
 
         // Handshake inicial
         res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now(), totalHistory: recentChatMessages.length })}\n\n`);
@@ -2765,9 +2867,18 @@ function startBot() {
             if (multiplierEnabled !== undefined) timerState.multiplierEnabled = Boolean(multiplierEnabled);
             if (multiplierValue !== undefined) timerState.multiplierValue = Number(multiplierValue) || 1.0;
             if (actionOnExpiry !== undefined) timerState.actionOnExpiry = String(actionOnExpiry).trim();
-            if (timerOpacity !== undefined)  timerState.timerOpacity  = parseFloat(timerOpacity);
-            if (timerRadius !== undefined)   timerState.timerRadius   = parseInt(timerRadius);
-            if (timerFontSize !== undefined) timerState.timerFontSize = parseInt(timerFontSize);
+            if (timerOpacity !== undefined) {
+                const v = parseFloat(timerOpacity);
+                if (Number.isFinite(v)) timerState.timerOpacity = v;
+            }
+            if (timerRadius !== undefined) {
+                const v = parseInt(timerRadius, 10);
+                if (Number.isFinite(v)) timerState.timerRadius = v;
+            }
+            if (timerFontSize !== undefined) {
+                const v = parseInt(timerFontSize, 10);
+                if (Number.isFinite(v)) timerState.timerFontSize = v;
+            }
             if (timerTheme !== undefined)    timerState.timerTheme    = String(timerTheme).trim();
             if (timerWidth !== undefined)    timerState.timerWidth    = parseInt(timerWidth) || 300;
             if (timerHeight !== undefined)   timerState.timerHeight   = parseInt(timerHeight) || 135;
@@ -3402,6 +3513,14 @@ function startBot() {
         const playingAmId = String((info?.playParams?.id) || (data?.playParams?.id) || info?.appleMusicId || data?.appleMusicId || info?.id || data?.id || '').trim();
 
         if (!name || !artist) return;
+        const playbackSig = (playingAmId || `${name}|${artist}`).toLowerCase();
+        const nowPlaybackMs = Date.now();
+        if (playbackSig === lastProcessedCiderPlaybackKey && (nowPlaybackMs - lastProcessedCiderPlaybackAt) < 4000) {
+          return;
+        }
+        lastProcessedCiderPlaybackKey = playbackSig;
+        lastProcessedCiderPlaybackAt = nowPlaybackMs;
+
         console.log(`🎵 [Cider Backend] Reproduciendo: "${name}" - "${artist}" [AM ID: ${playingAmId}]`);
 
         if (!db) return;
@@ -3463,26 +3582,34 @@ function startBot() {
           return false;
         };
 
-        // ── Obtener fecha actual en zona horaria de la transmisión ──
-        const todayKey = (() => {
-          const d = new Date();
+        // ── Obtener fecha actual y ayer en zona horaria de la transmisión (soporte cruce de medianoche) ──
+        const formatMxDay = (dateObj) => {
           try {
             const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit' });
             const parts = {};
-            fmt.formatToParts(d).forEach(p => { parts[p.type] = p.value; });
+            fmt.formatToParts(dateObj).forEach(p => { parts[p.type] = p.value; });
             return `${parts.year}-${parts.month}-${parts.day}`;
           } catch (_) {
-            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}-${String(dateObj.getDate()).padStart(2,'0')}`;
           }
-        })();
+        };
+        const nowDate = new Date();
+        const todayKey = formatMxDay(nowDate);
+        const yesterdayKey = formatMxDay(new Date(nowDate.getTime() - 24 * 60 * 60 * 1000));
 
-        // ── Obtener solicitudes de hoy (ya marcadas o no) ──
-        const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-        const solicSnap = await getDocsFn(queryFn(collectionFn(db, 'solicitudes'), whereFn('ts', '>=', startOfToday)));
+        // ── Obtener solicitudes recientes (ventana de 18h para no perder pedidos al cruzar medianoche) ──
+        const lookupSince = new Date(Date.now() - 18 * 60 * 60 * 1000);
+        const solicSnap = await getDocsFn(queryFn(collectionFn(db, 'solicitudes'), whereFn('ts', '>=', lookupSince)));
 
-        // ── Obtener IDs ya reproducidos hoy ──
-        const playedDocSnap = await getDocFn(docFn(db, 'playedSongs', todayKey));
-        const alreadyPlayedIds = new Set(playedDocSnap.exists() ? (playedDocSnap.data()?.songs || []) : []);
+        // ── Obtener IDs ya reproducidos hoy y ayer ──
+        const [playedDocSnap, playedYestSnap] = await Promise.all([
+          getDocFn(docFn(db, 'playedSongs', todayKey)),
+          getDocFn(docFn(db, 'playedSongs', yesterdayKey)).catch(() => null)
+        ]);
+        const alreadyPlayedIds = new Set([
+          ...(playedDocSnap.exists() ? (playedDocSnap.data()?.songs || []) : []),
+          ...(playedYestSnap && playedYestSnap.exists() ? (playedYestSnap.data()?.songs || []) : [])
+        ]);
 
         // ── Buscar coincidencia ──
         let matchedDoc = null;
@@ -3490,7 +3617,7 @@ function startBot() {
         for (const docSnap of solicSnap.docs) {
           const reqData = docSnap.data();
           const docId = docSnap.id;
-          if (alreadyPlayedIds.has(docId)) continue; // ya fue marcado
+          if (alreadyPlayedIds.has(docId) || inFlightCiderMatches.has(docId)) continue; // ya fue marcado o en proceso
           if (_isMatch({ artist, song: name }, reqData)) {
             matchedDoc = docId;
             matchedData = reqData;
@@ -3503,6 +3630,8 @@ function startBot() {
           return;
         }
 
+        inFlightCiderMatches.add(matchedDoc);
+        try {
         console.log(`✅ [Cider Backend] Coincidencia: "${matchedData.cancion}" - "${matchedData.artista}" (doc: ${matchedDoc})`);
 
         // Actualizar solicitante e insignia en el estado en vivo del widget de Cider
@@ -3533,11 +3662,18 @@ function startBot() {
 
         const idsArr = Array.from(idsToMark);
 
-        // ── Marcar en playedSongs ──
+        // ── Marcar en playedSongs (y en el día original si la solicitud fue antes de medianoche) ──
         await setDocFn(docFn(db, 'playedSongs', todayKey), {
           songs: arrayUnion(...idsArr),
           lastUpdated: serverTimestampFn()
         }, { merge: true });
+        const origDay = String(matchedData.day || '').trim();
+        if (origDay && origDay !== todayKey && /^\d{4}-\d{2}-\d{2}$/.test(origDay)) {
+          await setDocFn(docFn(db, 'playedSongs', origDay), {
+            songs: arrayUnion(...idsArr),
+            lastUpdated: serverTimestampFn()
+          }, { merge: true }).catch(() => {});
+        }
 
         // ── Otorgar puntos al solicitante ──
         if (u) {
@@ -3556,6 +3692,9 @@ function startBot() {
           }, { merge: true });
 
           console.log(`💰 [Cider Backend] +25 pts para @${uKey} por "${matchedData.cancion}"`);
+        }
+        } finally {
+          inFlightCiderMatches.delete(matchedDoc);
         }
 
       } catch (err) {
@@ -3617,12 +3756,22 @@ function setupNotificationListener() {
     const recentNotificationsQuery = query(
         collection(db, 'notifications'),
         where('timestamp', '>', recentThreshold),
+        orderByFn('timestamp', 'desc'),
         limit(100)
     );
+    const processedNotifIds = new Set();
 
     unsubNotifications = onSnapshot(recentNotificationsQuery, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
+                const notifId = change.doc.id;
+                if (processedNotifIds.has(notifId)) return;
+                processedNotifIds.add(notifId);
+                if (processedNotifIds.size > 500) {
+                    const first = processedNotifIds.values().next().value;
+                    processedNotifIds.delete(first);
+                }
+
                 const data = change.doc.data();
                 
                 // Ignorar si es muy antigua (más de 30 segundos)
@@ -3652,10 +3801,6 @@ function setupNotificationListener() {
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);
 
-        // Set para evitar procesar el mismo pedido dos veces en la misma sesión
-        // (protección contra duplicados en Firestore por múltiples instancias del bot)
-        const processedSolicitudIds = new Set();
-
         const solicitudesQuery = query(
             collection(db, 'solicitudes'),
             where('ts', '>=', startOfToday)
@@ -3672,17 +3817,14 @@ function setupNotificationListener() {
 
                     // Si ya procesamos un pedido con este mismo id en esta sesión, ignorar
                     const solicitudId = data.id || docId;
-                    if (processedSolicitudIds.has(solicitudId)) {
+                    if (processedSolicitudIds.has(solicitudId) || processedSolicitudIds.has(docId)) {
                         console.log(`🔁 [Firestore Listener] Pedido duplicado ignorado (id="${solicitudId}", docId="${docId}")`);
                         return;
                     }
 
                     if (isPending && !alreadySent) {
-                        processedSolicitudIds.add(solicitudId);
-                        if (processedSolicitudIds.size > 1000) {
-                            const first = processedSolicitudIds.values().next().value;
-                            processedSolicitudIds.delete(first);
-                        }
+                        markSolicitudProcessed(solicitudId);
+                        if (docId !== solicitudId) markSolicitudProcessed(docId);
                         let appleMusicId = data.appleMusicId ? String(data.appleMusicId).trim() : '';
                         let songName = data.cancion ? String(data.cancion).trim() : '';
                         let artistName = data.artista ? String(data.artista).trim() : '';
@@ -3893,12 +4035,20 @@ async function updateUserProfilePic(userId, displayName, url, extraFields = {}) 
         
         if (url) {
             updateData.profilePic = url;
+            if (profilePicCache.size >= 5000) {
+                const firstKey = profilePicCache.values().next().value;
+                profilePicCache.delete(firstKey);
+            }
             profilePicCache.add(userId);
         }
         
         await setDoc(userRef, updateData, { merge: true });
         
-        // Actualizar cache local
+        // Actualizar cache local (con límite FIFO de 5000 usuarios)
+        if (userMetadataCache.size >= 5000 && !userMetadataCache.has(userId)) {
+            const firstKey = userMetadataCache.keys().next().value;
+            userMetadataCache.delete(firstKey);
+        }
         userMetadataCache.set(userId, {
             memberLevel: fields.memberLevel ?? cached?.memberLevel ?? 0,
             gifterLevel: fields.gifterLevel ?? cached?.gifterLevel ?? 0,
@@ -4227,6 +4377,20 @@ function setupListeners() {
             sessionGifterDetails.clear();
             sessionLikes.clear();
             sessionLikerDetails.clear();
+            sessionFollows.clear();
+            sessionShares.clear();
+            sessionTotalCoins = 0;
+            tempVipUsers.clear();
+            tempDonadorUsers.clear();
+            runtimeSuperfanUsers.clear();
+            donorRanks = { gold: null, silver: null, bronze: null };
+            if (global.activeGiftStreaks) {
+                for (const s of global.activeGiftStreaks.values()) {
+                    if (s && s.timer) clearTimeout(s.timer);
+                }
+                global.activeGiftStreaks.clear();
+            }
+            if (global.giftCoinRemainder) global.giftCoinRemainder.clear();
             livePresenceMap.clear();
             likeBuffer.clear();
             lastLikeAlertMilestone.clear();
@@ -4678,6 +4842,10 @@ function setupListeners() {
                                 if (!isStreamer) {
                                     activeTtsQueue.push({ userId, timestamp: now });
                                 }
+                                if (ttsCooldowns.size >= 2000 && !ttsCooldowns.has(userId)) {
+                                    const firstKey = ttsCooldowns.keys().next().value;
+                                    ttsCooldowns.delete(firstKey);
+                                }
                                 ttsCooldowns.set(userId, now);
 
                                 // Guardar en el log global para el dashboard
@@ -4901,6 +5069,10 @@ function setupListeners() {
                     const remaining = Math.ceil((SR_COOLDOWN_MS - (now - lastRequest)) / 1000);
                     console.log(`⏳ @${displayName} está en cooldown para pedir canciones. Espera ${remaining}s.`);
                     return;
+                }
+                if (srRateLimit.size >= 2000 && !srRateLimit.has(userId)) {
+                    const firstKey = srRateLimit.keys().next().value;
+                    srRateLimit.delete(firstKey);
                 }
                 srRateLimit.set(userId, now);
             }
@@ -5255,6 +5427,10 @@ function setupListeners() {
                 const prevRem = global.giftCoinRemainder.get(userKey) || 0;
                 const accumulatedCoins = prevRem + totalCoinsFromDelta;
                 const pointsFromGift = Math.floor(accumulatedCoins / 10);
+                if (global.giftCoinRemainder.size >= 5000 && !global.giftCoinRemainder.has(userKey)) {
+                    const firstKey = global.giftCoinRemainder.keys().next().value;
+                    global.giftCoinRemainder.delete(firstKey);
+                }
                 global.giftCoinRemainder.set(userKey, accumulatedCoins % 10);
                 
                 const giftUpdateData = {
@@ -5561,7 +5737,12 @@ const livePresenceMap = new Map(); // uid -> lastSeenTimestamp (ms)
 const LIVE_PRESENCE_TTL_MS = 5 * 60 * 1000; // 5 minutos por defecto
 
 function markUserPresent(uid) {
-    if (uid) livePresenceMap.set(uid, Date.now());
+    if (!uid) return;
+    if (livePresenceMap.size >= 5000 && !livePresenceMap.has(uid)) {
+        const firstKey = livePresenceMap.keys().next().value;
+        livePresenceMap.delete(firstKey);
+    }
+    livePresenceMap.set(uid, Date.now());
 }
 
 function isUserInLive(uid) {
@@ -5751,6 +5932,8 @@ async function saveTimerToFirestore(immediate = false) {
             await setDoc(doc(db, 'systemConfig', 'timerConfig'), {
                 state:            timerState.state,
                 endsAt:           timerState.endsAt,
+                pausedAt:         timerState.pausedAt || null,
+                remainingOnPause: Number(timerState.remainingOnPause) || 0,
                 label:            timerState.label,
                 primaryColor:     timerState.primaryColor,
                 secondsPerGift:   timerState.secondsPerGift,
@@ -5766,7 +5949,7 @@ async function saveTimerToFirestore(immediate = false) {
                 timerOpacity:     timerState.timerOpacity !== undefined ? timerState.timerOpacity : 0.85,
                 timerRadius:      timerState.timerRadius !== undefined ? timerState.timerRadius : 22,
                 timerFontSize:    timerState.timerFontSize !== undefined ? timerState.timerFontSize : 14,
-                timerTheme:       timerState.theme || timerState.timerTheme || 'neon',
+                timerTheme:       timerState.timerTheme || timerState.theme || 'neon',
                 timerWidth:       timerState.timerWidth !== undefined ? timerState.timerWidth : 300,
                 timerHeight:      timerState.timerHeight !== undefined ? timerState.timerHeight : 135,
                 progressHeight:   timerState.progressHeight !== undefined ? timerState.progressHeight : 3,
@@ -5833,8 +6016,13 @@ function scheduleUpdateGlobalTopLiker(name, count) {
     }, 2000);
 }
 
-// Flush periódico de likes (cada 30 segundos para dar tiempo a acumular)
-setInterval(async () => {
+// Flush periódico de likes (cada 5 segundos, con protección anti-solapamiento)
+let isFlushingLikes = false;
+if (likeFlushInterval) clearInterval(likeFlushInterval);
+likeFlushInterval = setInterval(async () => {
+    if (isFlushingLikes) return;
+    isFlushingLikes = true;
+    try {
     // Asegurar que insignias y alias estén frescos
     try { await ensureBadgeSetsFresh(); } catch (_) {}
     
@@ -5847,6 +6035,7 @@ setInterval(async () => {
     likeBuffer.clear(); 
 
     for (const [uid, data] of entries) {
+        let userSaved = false;
         try {
             // Resolver usuario canónico
             const resolved = await getCanonicalUserKey(data.userId, data.displayName);
@@ -5925,6 +6114,7 @@ setInterval(async () => {
             }
 
             await setDoc(userRef, updateData, { merge: true });
+            userSaved = true;
 
             // ─── ALERTA DE HITOS ACUMULADOS ───────────────────────────────────────
             // Dispara cuando el TOTAL ACUMULADO de sesión cruza un múltiplo del umbral
@@ -5963,6 +6153,20 @@ setInterval(async () => {
 
         } catch (e) {
             console.error(`Error procesando likes para ${data.displayName}:`, e);
+            // Si falló antes de guardar en Firestore, devolver los likes al buffer (máx. 3 reintentos)
+            const retries = Number(data.retries || 0);
+            if (!userSaved && retries < 3 && data.likes > 0) {
+                const existing = likeBuffer.get(uid) || {
+                    userId: data.userId,
+                    displayName: data.displayName,
+                    profilePic: data.profilePic,
+                    likes: 0,
+                    retries: 0
+                };
+                existing.likes += data.likes;
+                existing.retries = Math.max(Number(existing.retries || 0), retries + 1);
+                likeBuffer.set(uid, existing);
+            }
         }
     }
     
@@ -5977,6 +6181,9 @@ setInterval(async () => {
         syncSessionCountersToFirestore(true);
     } catch (err) {
         console.error('Error sincronizando contadores de likes al final del buffer:', err);
+    }
+    } finally {
+        isFlushingLikes = false;
     }
 }, 5000); // 5 segundos (más interactivo/en tiempo real)
 
@@ -6028,6 +6235,20 @@ function resetDonationTracking() {
         sessionGifterDetails.clear();
         sessionLikes.clear();
         sessionLikerDetails.clear();
+        sessionFollows.clear();
+        sessionShares.clear();
+        sessionTotalCoins = 0;
+        tempVipUsers.clear();
+        tempDonadorUsers.clear();
+        runtimeSuperfanUsers.clear();
+        donorRanks = { gold: null, silver: null, bronze: null };
+        if (global.activeGiftStreaks) {
+            for (const s of global.activeGiftStreaks.values()) {
+                if (s && s.timer) clearTimeout(s.timer);
+            }
+            global.activeGiftStreaks.clear();
+        }
+        if (global.giftCoinRemainder) global.giftCoinRemainder.clear();
         livePresenceMap.clear();
         if (db) {
             const { doc, setDoc } = require('firebase/firestore');
@@ -6533,6 +6754,8 @@ async function handleSongRequest(user, query, options = {}) {
                 } catch (_) {}
 
                 if (!alreadyExists) {
+                    // Marcar como procesada antes de escribir en Firestore para evitar que el listener onSnapshot la envíe por duplicado a Cider
+                    markSolicitudProcessed(songId);
                     await setDoc(docFn(db, 'solicitudes', songId), requestData);
                     queueSaved = true;
                     queueDocId = songId;
@@ -6548,6 +6771,7 @@ async function handleSongRequest(user, query, options = {}) {
                         const fresh = (freshStatus || liveCodeEnv || '').trim();
                         if (fresh && fresh !== String(requestData.liveCode || '')) {
                             requestData.liveCode = fresh;
+                            markSolicitudProcessed(songId);
                             await setDoc(docFn(db, 'solicitudes', songId), requestData);
                             queueSaved = true;
                             queueDocId = songId;
@@ -6557,6 +6781,7 @@ async function handleSongRequest(user, query, options = {}) {
                         }
                     } catch (_) {}
                 }
+                if (!queueSaved) processedSolicitudIds.delete(songId);
                 throw e;
             }
         }
@@ -6593,9 +6818,7 @@ async function handleSongRequest(user, query, options = {}) {
                 }
             } else {
                 ciderQueued = true;
-                if (!queueSaved) {
-                    enqueueCider({ source: source || 'request', user, userId, query, songName, artistName, artworkUrl, appleMusicId, trackViewUrl, queueSaved, docId: queueDocId });
-                }
+                enqueueCider({ source: source || 'request', user, userId, query, songName, artistName, artworkUrl, appleMusicId, trackViewUrl, queueSaved, docId: queueDocId, id: songId });
                 console.warn(`⚠️ Cider no conectado. Pedido en cola para reintento.`);
             }
         }

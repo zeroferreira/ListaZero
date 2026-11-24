@@ -87,7 +87,7 @@ if %RC% geq 8 (
 REM --- Copiar overlays del root del repo a la carpeta padre del bot ---
 set "ROOT_DEST=%DEST%\.."
 echo [INFO] Copiando overlays del root al directorio padre...
-for %%F in (alerts_overlay.html goal_overlay.html welcome_overlay.html topgifter_overlay.html topliker_overlay.html youtube_player_overlay.html stats_ticker_widget.html last_events_widget.html overlay.html overlay.js overlay.css queue_overlay.html queue.js queue.css roulette_overlay.html roulette.js roulette.css particles.js tops.html regalos.html lista.html lista.js lista.css styles.css stats.js chat_overlay.html chat.html index.html index.js) do (
+for %%F in (cider_widget.html artists_widget.html announcements_widget.html alerts_overlay.html goal_overlay.html welcome_overlay.html topgifter_overlay.html topliker_overlay.html youtube_player_overlay.html stats_ticker_widget.html last_events_widget.html overlay.html overlay.js overlay.css queue_overlay.html queue.js queue.css roulette_overlay.html roulette.js roulette.css particles.js tops.html regalos.html lista.html lista.js lista.css styles.css stats.js chat_overlay.html chat.html index.html index.js) do (
     if exist "%TMP%\%%F" (
         copy /Y "%TMP%\%%F" "%ROOT_DEST%\%%F" >nul 2>&1
         echo   Actualizado: %%F
@@ -157,7 +157,7 @@ if %RC% geq 8 (
 REM --- Copiar overlays del root del repo a la carpeta padre del bot ---
 set "ROOT_DEST=%DEST%\.."
 echo [INFO] Copiando overlays del root al directorio padre...
-for %%F in (alerts_overlay.html goal_overlay.html welcome_overlay.html topgifter_overlay.html topliker_overlay.html youtube_player_overlay.html stats_ticker_widget.html last_events_widget.html overlay.html overlay.js overlay.css queue_overlay.html queue.js queue.css roulette_overlay.html roulette.js roulette.css particles.js tops.html regalos.html lista.html lista.js lista.css styles.css stats.js chat_overlay.html chat.html index.html index.js) do (
+for %%F in (cider_widget.html artists_widget.html announcements_widget.html alerts_overlay.html goal_overlay.html welcome_overlay.html topgifter_overlay.html topliker_overlay.html youtube_player_overlay.html stats_ticker_widget.html last_events_widget.html overlay.html overlay.js overlay.css queue_overlay.html queue.js queue.css roulette_overlay.html roulette.js roulette.css particles.js tops.html regalos.html lista.html lista.js lista.css styles.css stats.js chat_overlay.html chat.html index.html index.js) do (
     if exist "%TMP%\ListaZero-main\%%F" (
         copy /Y "%TMP%\ListaZero-main\%%F" "%ROOT_DEST%\%%F" >nul 2>&1
         echo   Actualizado: %%F
@@ -177,6 +177,13 @@ if exist "%BACKUP_PROFILES%" (
     xcopy "%BACKUP_PROFILES%\*" "profiles\" /E /I /Q /Y >nul 2>&1
     rd /s /q "%BACKUP_PROFILES%" >nul 2>&1
 )
+if exist "package.json" (
+    where npm >nul 2>&1
+    if not errorlevel 1 (
+        echo [INFO] Sincronizando dependencias npm...
+        call npm install --silent --no-audit --no-fund >nul 2>&1
+    )
+)
 if exist "compile_dashboard.js" (
     node compile_dashboard.js >nul 2>&1
 )
@@ -188,11 +195,20 @@ echo.
 echo [EXITO] Todo actualizado. (config.json se conserva)
 echo.
 
-REM --- REINICIAR EL BOT automaticamente ---
+REM --- REINICIAR EL BOT automaticamente (solo el proceso del bot, sin matar otros Node.js) ---
 echo [INFO] Reiniciando el Bot para aplicar los cambios...
-taskkill /F /IM node.exe /FI "WINDOWTITLE eq Zero FM TikTok Bot" >nul 2>&1
-taskkill /F /IM node.exe /T >nul 2>&1
-if errorlevel 1 (
+set "BOT_KILLED=0"
+where powershell >nul 2>&1
+if errorlevel 1 goto fallback_taskkill
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$procs = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'index\.js' -and ($_.CommandLine -match 'tiktok-bot' -or $_.CommandLine -match '^\s*\"?[^\"]*node(\.exe)?\"?\s+\"?index\.js\"?\s*$') }; if ($procs) { $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; exit 0 } else { exit 1 }" >nul 2>&1
+if not errorlevel 1 set "BOT_KILLED=1"
+
+:fallback_taskkill
+if "%BOT_KILLED%"=="0" (
+    taskkill /F /IM node.exe /FI "WINDOWTITLE eq Zero FM TikTok Bot" >nul 2>&1
+    if not errorlevel 1 set "BOT_KILLED=1"
+)
+if "%BOT_KILLED%"=="0" (
     echo   Bot no estaba corriendo. No hay nada que reiniciar.
     echo   Abre INICIAR_BOT.bat para arrancar el bot con los cambios nuevos.
 ) else (
