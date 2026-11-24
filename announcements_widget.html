@@ -124,7 +124,6 @@
         justify-content: center;
         padding: 0.5rem 1rem;
         perspective: 1100px;
-        contain: layout style;
       }
 
       #widget-stage[data-align="left"]   { justify-content: flex-start; }
@@ -141,8 +140,12 @@
         display: inline-flex;
         width: min(880px, calc(100vw - 24px));
         max-width: 100%;
-        transform-style: preserve-3d;
-        will-change: transform, opacity, filter;
+        opacity: 1;
+      }
+
+      #ad-banner.phase-in,
+      #ad-banner.phase-out {
+        will-change: transform, opacity;
       }
 
       /* Inner cartel box: strictly 1 horizontal row with live floating motion */
@@ -157,23 +160,22 @@
         font-size: var(--ad-font-size);
         line-height: 1.15;
         isolation: isolate;
-        transform-style: preserve-3d;
         animation: cartelAliveFloat 4.2s ease-in-out infinite;
         --animation-reduced: none;
       }
 
       @keyframes cartelAliveFloat {
         0%, 100% {
-          transform: translate3d(0, 0px, 0) rotateX(0deg);
+          transform: translate3d(0, 0px, 0);
         }
         25% {
-          transform: translate3d(0, -3px, 4px) rotateX(1.6deg);
+          transform: translate3d(0, -2.5px, 0);
         }
         50% {
-          transform: translate3d(0, 1px, 8px) rotateX(-1deg);
+          transform: translate3d(0, 1px, 0);
         }
         75% {
-          transform: translate3d(0, -2px, 4px) rotateX(1.2deg);
+          transform: translate3d(0, -1.5px, 0);
         }
       }
 
@@ -1671,11 +1673,12 @@
 
       const STORAGE_KEY = 'zero_announcements_widget_config';
       const urlParams = new URLSearchParams(window.location.search);
+      const isPreviewMode = urlParams.get('preview') === '1';
       const supportsSiblingIndex = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('animation-delay: calc(sibling-index() * 0.1s)');
 
       let bcChannel = null;
       try {
-        if (typeof BroadcastChannel !== 'undefined') {
+        if (!isPreviewMode && typeof BroadcastChannel !== 'undefined') {
           bcChannel = new BroadcastChannel('zero_ads_widget_channel');
         }
       } catch (_) {}
@@ -2028,6 +2031,8 @@
       // ─── Cycle Engine: Right-to-Left Single Line ───
       let currentAdIndex = 0;
       let cycleTimer = null;
+      let phaseInCleanupTimer = null;
+      let renderRafId = null;
 
       function getNormalizedItems() {
         return Array.isArray(currentConfig.adsWidgetItems) && currentConfig.adsWidgetItems.length > 0
@@ -2035,7 +2040,9 @@
           : DEFAULT_ADS;
       }
 
-      function renderCurrentAnnouncement(restartPhase = true) {
+      // restartMode: 'none' (solo refresca DOM/métricas), 'flow' (reinicia pista sin ocultar el cartel), 'entry' (reproduce Fade In)
+      function renderCurrentAnnouncement(restartMode = 'entry') {
+        const mode = restartMode === true ? 'entry' : (restartMode === false ? 'none' : restartMode);
         const items = getNormalizedItems();
 
         if (currentConfig.adsWidgetPlayMode === 'single') {
@@ -2085,18 +2092,29 @@
           headlineEl.appendChild(createAnimatedMessageNode(singleLineMsg));
         }
 
-        requestAnimationFrame(() => {
+        if (renderRafId) {
+          cancelAnimationFrame(renderRafId);
+          renderRafId = null;
+        }
+        renderRafId = requestAnimationFrame(() => {
+          renderRafId = null;
           updateRtlMetrics();
-          if (restartPhase) {
-            startCycleForCurrentAd();
+          if (mode === 'entry') {
+            startCycleForCurrentAd(true);
+          } else if (mode === 'flow') {
+            startCycleForCurrentAd(false);
           }
         });
       }
 
-      function startCycleForCurrentAd() {
+      function startCycleForCurrentAd(playEntry = true) {
         if (cycleTimer) {
           clearTimeout(cycleTimer);
           cycleTimer = null;
+        }
+        if (phaseInCleanupTimer) {
+          clearTimeout(phaseInCleanupTimer);
+          phaseInCleanupTimer = null;
         }
 
         const flowMode = FLOW_MODES.includes(currentConfig.adsWidgetFlowMode)
@@ -2114,6 +2132,7 @@
 
         const root = document.documentElement;
         const items = getNormalizedItems();
+        const activeEntryMs = (playEntry && tState.effectiveTransIn !== 'none' && fadeInMs > 0) ? fadeInMs : 0;
 
         if (flowMode === 'rtl-continuous') {
           const totalPassesSec = currentConfig.adsWidgetPlayMode === 'single'
@@ -2121,16 +2140,20 @@
             : Math.max(10, holdSec * items.length);
           root.style.setProperty('--rtl-duration', `${totalPassesSec.toFixed(2)}s`);
         } else {
-          root.style.setProperty('--rtl-duration', `${((fadeInMs + holdMs) / 1000).toFixed(2)}s`);
+          root.style.setProperty('--rtl-duration', `${((activeEntryMs + holdMs) / 1000).toFixed(2)}s`);
         }
 
-        // Reset transition classes cleanly so entry replays accurately when enabled
+        // Mantener siempre limpio el estado visual para evitar congelamiento o parpadeo
         bannerEl.classList.remove('phase-in', 'phase-out', 'is-Paused-Hidden');
         rtlTrackEl.classList.remove('is-running');
         void bannerEl.offsetWidth;
 
-        if (tState.effectiveTransIn !== 'none' && fadeInMs > 0) {
+        if (activeEntryMs > 0) {
           bannerEl.classList.add('phase-in');
+          phaseInCleanupTimer = setTimeout(() => {
+            bannerEl.classList.remove('phase-in');
+            phaseInCleanupTimer = null;
+          }, activeEntryMs + 60);
         }
         rtlTrackEl.classList.add('is-running');
 
@@ -2138,7 +2161,7 @@
           timerFillEl.style.transition = 'none';
           timerFillEl.style.transform = 'scaleX(1)';
           void timerFillEl.offsetWidth;
-          timerFillEl.style.transition = `transform ${fadeInMs + holdMs}ms linear`;
+          timerFillEl.style.transition = `transform ${activeEntryMs + holdMs}ms linear`;
           timerFillEl.style.transform = 'scaleX(0)';
         }
 
@@ -2153,7 +2176,7 @@
             if (currentConfig.adsWidgetPlayMode !== 'single') {
               currentAdIndex = (currentAdIndex + 1) % list.length;
             }
-            renderCurrentAnnouncement(true);
+            renderCurrentAnnouncement('entry');
           };
 
           if (tState.effectiveTransOut !== 'none' && fadeOutMs > 0) {
@@ -2173,7 +2196,7 @@
             // Sin Fade Out: mantiene el cartel siempre visible y pasa al siguiente anuncio
             advanceNext();
           }
-        }, fadeInMs + holdMs);
+        }, activeEntryMs + holdMs);
       }
 
       function previewTransitionNow() {
@@ -2595,6 +2618,9 @@
       // ─── Firebase Real-Time Sync ───
       let db = null;
       function initFirebase() {
+        // En vista previa del dashboard el padre envía el estado en tiempo real;
+        // evitamos que onSnapshot compita y haga parpadear el cartel al guardar.
+        if (isPreviewMode) return;
         try {
           if (typeof firebase === 'undefined') return;
           if (!firebase.apps.length) {
@@ -2632,16 +2658,18 @@
           if (TEXT_EFFECTS.includes(uEffect)) relevant.adsWidgetTextEffect = uEffect;
           if (THEMES.includes(uTheme)) relevant.adsWidgetTheme = uTheme;
           if (Object.keys(relevant).length > 0) {
-            handleIncomingPayload(relevant);
+            handleIncomingPayload(relevant, 'firebase');
           }
         }, () => {});
       }
 
       document.getElementById('btn-save-cfg').addEventListener('click', async () => {
         const nextCfg = readConfigFromDrawer();
-        applyConfig(nextCfg, true);
-        safeStorage.setItem(STORAGE_KEY, JSON.stringify(currentConfig));
-        try { bcChannel?.postMessage({ action: 'updateLiveConfig', config: currentConfig }); } catch (_) {}
+        applyConfig(nextCfg, 'flow');
+        if (!isPreviewMode) {
+          safeStorage.setItem(STORAGE_KEY, JSON.stringify(currentConfig));
+          try { bcChannel?.postMessage({ action: 'updateLiveConfig', config: currentConfig }); } catch (_) {}
+        }
         if (db) {
           try {
             await db.collection('systemConfig').doc('overlayAlertsConfig').set(nextCfg, { merge: true });
@@ -2653,42 +2681,65 @@
       });
 
       document.getElementById('btn-reset-cfg').addEventListener('click', () => {
-        safeStorage.removeItem(STORAGE_KEY);
+        if (!isPreviewMode) safeStorage.removeItem(STORAGE_KEY);
         currentConfig = { ...defaultConfig, adsWidgetItems: DEFAULT_ADS.map(x => ({ ...x })) };
-        applyConfig(currentConfig, true);
+        applyConfig(currentConfig, 'flow');
         renderAdsEditorList();
         showToast('↺ Anuncios restablecidos');
       });
 
-      const RESTART_KEYS = new Set([
+      const ENTRY_REPLAY_KEYS = new Set([
+        'adsWidgetFadeEnabled', 'adsWidgetTrans', 'adsWidgetTransIn'
+      ]);
+      const FLOW_RESTART_KEYS = new Set([
         'adsWidgetFlowMode', 'adsWidgetPlayMode', 'adsWidgetActiveIndex',
-        'adsWidgetLetterAnim', 'adsWidgetFadeEnabled', 'adsWidgetTrans',
-        'adsWidgetTransIn', 'adsWidgetTransOut', 'adsWidgetFadeIn',
-        'adsWidgetFadeOut', 'adsWidgetHold', 'adsWidgetPause', 'adsWidgetItems'
+        'adsWidgetHold', 'adsWidgetFadeIn', 'adsWidgetFadeOut', 'adsWidgetPause', 'adsWidgetTransOut'
       ]);
 
-      function handleIncomingPayload(payload) {
+      function normalizeIncomingValue(k, val, payload) {
+        if (k === 'adsWidgetTransIn' || k === 'adsWidgetTransOut') {
+          if (val === '' || val === null || val === undefined) {
+            return payload.adsWidgetTrans || currentConfig.adsWidgetTrans || 'fade-blur';
+          }
+        }
+        return val;
+      }
+
+      function handleIncomingPayload(payload, source = 'message') {
         if (!payload) return;
         const mapped = {};
         let hasChanges = false;
-        let shouldRestart = false;
+        let restartMode = 'none';
+
         Object.keys(defaultConfig).forEach((k) => {
           if (payload[k] !== undefined) {
-            const prevVal = currentConfig[k];
-            const nextVal = payload[k];
+            const prevVal = normalizeIncomingValue(k, currentConfig[k], currentConfig);
+            const nextVal = normalizeIncomingValue(k, payload[k], payload);
             const isDiff = (typeof nextVal === 'object' && nextVal !== null)
               ? JSON.stringify(prevVal) !== JSON.stringify(nextVal)
               : prevVal !== nextVal;
             if (isDiff) {
               mapped[k] = nextVal;
               hasChanges = true;
-              if (RESTART_KEYS.has(k)) shouldRestart = true;
+              if (ENTRY_REPLAY_KEYS.has(k)) {
+                restartMode = 'entry';
+              } else if (FLOW_RESTART_KEYS.has(k) && restartMode !== 'entry') {
+                restartMode = 'flow';
+              }
             }
           }
         });
+
         if (hasChanges) {
-          applyConfig(mapped, shouldRestart);
-          safeStorage.setItem(STORAGE_KEY, JSON.stringify(currentConfig));
+          // Si se desactiva el fade, no reproducir entrada; mantener visible al instante
+          if (mapped.adsWidgetFadeEnabled === false || mapped.adsWidgetTransIn === 'none') {
+            if (restartMode === 'entry') restartMode = 'flow';
+          }
+          applyConfig(mapped, restartMode);
+          // Nunca escribir de vuelta en localStorage en vista previa ni desde evento storage (evita bucles)
+          if (!isPreviewMode && source !== 'storage') {
+            safeStorage.setItem(STORAGE_KEY, JSON.stringify(currentConfig));
+          }
           renderAdsEditorList();
         }
       }
@@ -2701,7 +2752,7 @@
         } else if (event.data.action === 'previewTransition') {
           previewTransitionNow();
         } else if ((event.data.action === 'updateConfig' || event.data.action === 'updateLiveConfig') && (event.data.payload || event.data.config)) {
-          handleIncomingPayload(event.data.payload || event.data.config);
+          handleIncomingPayload(event.data.payload || event.data.config, 'message');
         }
       });
 
@@ -2711,22 +2762,24 @@
           if (ev.data.action === 'previewTransition') {
             previewTransitionNow();
           } else if (ev.data.payload || ev.data.config) {
-            handleIncomingPayload(ev.data.payload || ev.data.config);
+            handleIncomingPayload(ev.data.payload || ev.data.config, 'broadcast');
           }
         };
       }
 
-      window.addEventListener('storage', (ev) => {
-        if (ev.key === STORAGE_KEY && ev.newValue) {
-          try {
-            handleIncomingPayload(JSON.parse(ev.newValue));
-          } catch (_) {}
-        }
-      });
+      if (!isPreviewMode) {
+        window.addEventListener('storage', (ev) => {
+          if (ev.key === STORAGE_KEY && ev.newValue) {
+            try {
+              handleIncomingPayload(JSON.parse(ev.newValue), 'storage');
+            } catch (_) {}
+          }
+        });
+      }
 
       // ─── Bootstrap ───
       renderAdsEditorList();
-      applyConfig(currentConfig, true);
+      applyConfig(currentConfig, isPreviewMode ? 'flow' : 'entry');
       initFirebase();
     })();
   </script>
