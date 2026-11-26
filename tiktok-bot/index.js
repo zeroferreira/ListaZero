@@ -7,6 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const os = require('os');
+const crypto = require('crypto');
+const BOT_STARTED_AT = Date.now();
 
 let SocketIOServer = null;
 try {
@@ -228,7 +230,7 @@ if (!fs.existsSync(PROFILES_DIR)) {
 
 function ensureDefaultProfiles() {
     try {
-        const defaultMusicFb = `const firebaseConfig = {
+        const defaultMusicFb = `var firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || {
     apiKey:            "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
     authDomain:        "zero-strom-web.firebaseapp.com",
     projectId:         "zero-strom-web",
@@ -240,13 +242,14 @@ function ensureDefaultProfiles() {
 
 if (typeof window !== 'undefined') {
     window.ZERO_FM_FIREBASE = firebaseConfig;
+    window.firebaseConfig = firebaseConfig;
 }
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = firebaseConfig;
 }
 `;
 
-        const defaultGamingFb = `const firebaseConfig = {
+        const defaultGamingFb = `var firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || {
   apiKey: "AIzaSyC9zlwtUUq7eNUoZ1QVcEOY4-NI_4fKU5Y",
   authDomain: "zer0-gaming.firebaseapp.com",
   projectId: "zer0-gaming",
@@ -258,6 +261,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
 if (typeof window !== 'undefined') {
     window.ZERO_FM_FIREBASE = firebaseConfig;
+    window.firebaseConfig = firebaseConfig;
 }
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = firebaseConfig;
@@ -879,16 +883,21 @@ const inFlightCiderMatches = new Set();
 let lastProcessedCiderPlaybackKey = '';
 let lastProcessedCiderPlaybackAt = 0;
 
-// ── LIVE CHAT STREAM & BUFFER (PERSISTENT) ──
-const CHAT_HISTORY_FILE = path.join(__dirname, 'chat_history.json');
+// ── LIVE CHAT STREAM & BUFFER (PERSISTENT POR PERFIL) ──
+const CHAT_HISTORY_FILE = path.join(activeProfileDir, 'chat_history.json');
+const LEGACY_CHAT_HISTORY_FILE = path.join(__dirname, 'chat_history.json');
 let recentChatMessages = [];
 try {
-    if (fs.existsSync(CHAT_HISTORY_FILE)) {
-        const raw = fs.readFileSync(CHAT_HISTORY_FILE, 'utf8');
+    let chatSourceFile = CHAT_HISTORY_FILE;
+    if (!fs.existsSync(CHAT_HISTORY_FILE) && activeProfile === 'zer0ferreira' && fs.existsSync(LEGACY_CHAT_HISTORY_FILE)) {
+        chatSourceFile = LEGACY_CHAT_HISTORY_FILE;
+    }
+    if (fs.existsSync(chatSourceFile)) {
+        const raw = fs.readFileSync(chatSourceFile, 'utf8');
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
             recentChatMessages = parsed.slice(-250);
-            console.log(`💬 [Chat History] ${recentChatMessages.length} mensajes previos cargados desde disco.`);
+            console.log(`💬 [Chat History][${activeProfile}] ${recentChatMessages.length} mensajes previos cargados desde disco.`);
         }
     }
 } catch (e) {
@@ -1739,7 +1748,7 @@ function startBot() {
         if (!origin) return null;
         if (isTrustedLocalOrExtOrigin(origin)) return origin;
         const p = req.path || '';
-        const isSensitiveRoute = p.startsWith('/api/config') || p.startsWith('/api/tiktok/') || p.startsWith('/api/server/') || p.includes('-profile');
+        const isSensitiveRoute = p.startsWith('/api/config') || p.startsWith('/api/tiktok/') || p.startsWith('/api/server/') || p.includes('-profile') || p.startsWith('/api/profile/');
         if (!isSensitiveRoute && isAllowedProjectWebOrigin(origin)) return origin;
         return null;
     };
@@ -1766,28 +1775,211 @@ function startBot() {
 
     app.use(express.json());
 
-    // Endpoint dinámico para servir configuración de Firebase del perfil activo a todos los overlays (ANTES de express.static)
-    app.get('/firebase-config.js', (req, res) => {
-        const fbConfigFile = path.join(PROFILES_DIR, activeProfile, 'firebase-config.js');
-        res.setHeader('Content-Type', 'application/javascript');
+    const DEFAULT_FALLBACK_FB_CONFIG = {
+        apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
+        authDomain: "zero-strom-web.firebaseapp.com",
+        projectId: "zero-strom-web",
+        storageBucket: "zero-strom-web.firebasestorage.app",
+        messagingSenderId: "758369466349",
+        appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
+        databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
+    };
+
+    function readProfileFirebaseConfig(profileName) {
+        const fbConfigFile = path.join(PROFILES_DIR, profileName, 'firebase-config.js');
         if (fs.existsSync(fbConfigFile)) {
             try {
                 delete require.cache[require.resolve(fbConfigFile)];
-                const fbConfig = require(fbConfigFile);
-                res.send(`window.ZERO_FM_FIREBASE = ${JSON.stringify(fbConfig)}; window.firebaseConfig = window.ZERO_FM_FIREBASE; var firebaseConfig = window.ZERO_FM_FIREBASE;`);
+                const loaded = require(fbConfigFile);
+                if (loaded && typeof loaded === 'object' && loaded.projectId) {
+                    return loaded;
+                }
             } catch (e) {
-                res.status(500).send(`console.error("Error reading firebase-config.js:", ${JSON.stringify(e.message)});`);
+                console.warn(`⚠️ Error leyendo firebase-config.js de [${profileName}]:`, e.message);
             }
-        } else {
-            res.send(`window.ZERO_FM_FIREBASE = {
-                apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-                authDomain: "zero-strom-web.firebaseapp.com",
-                projectId: "zero-strom-web",
-                storageBucket: "zero-strom-web.firebasestorage.app",
-                messagingSenderId: "758369466349",
-                appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
-                databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
-            }; window.firebaseConfig = window.ZERO_FM_FIREBASE; var firebaseConfig = window.ZERO_FM_FIREBASE;`);
+        }
+        return { ...DEFAULT_FALLBACK_FB_CONFIG };
+    }
+
+    function computeProfileConfigHash(profileName, fbConfig) {
+        const payload = JSON.stringify({
+            profile: profileName,
+            projectId: fbConfig && fbConfig.projectId || '',
+            apiKey: fbConfig && fbConfig.apiKey || '',
+            appId: fbConfig && fbConfig.appId || '',
+            databaseURL: fbConfig && fbConfig.databaseURL || ''
+        });
+        return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 16);
+    }
+
+    function serializeProfileFirebaseFile(profileName, fbConfig) {
+        return `/**\n * firebase-config.js — Zero FM (Perfil ${profileName})\n */\nvar firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || ${JSON.stringify(fbConfig, null, 2)};\n\nif (typeof window !== 'undefined') {\n    window.ZERO_FM_FIREBASE = firebaseConfig;\n    window.firebaseConfig = firebaseConfig;\n}\nif (typeof module !== 'undefined' && module.exports) {\n    module.exports = firebaseConfig;\n}\n`;
+    }
+
+    function parseFirebaseConfigInput(rawInput) {
+        let obj = null;
+        if (rawInput && typeof rawInput === 'object') {
+            obj = rawInput;
+        } else if (typeof rawInput === 'string') {
+            const trimmed = rawInput.trim();
+            if (!trimmed) throw new Error('Configuración de Firebase vacía.');
+            // Intentar JSON directo primero
+            try {
+                obj = JSON.parse(trimmed);
+            } catch (_) {
+                // Extraer objeto { ... } de un snippet JS pegado desde Firebase Console
+                const firstBrace = trimmed.indexOf('{');
+                const lastBrace = trimmed.lastIndexOf('}');
+                if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+                    throw new Error('No se encontró un bloque { ... } válido en la configuración de Firebase.');
+                }
+                const block = trimmed.slice(firstBrace, lastBrace + 1);
+                const extracted = {};
+                const allowedKeys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId', 'databaseURL', 'measurementId'];
+                for (const key of allowedKeys) {
+                    const rx = new RegExp(`(?:["']?${key}["']?)\\s*:\\s*["']([^"']+)["']`);
+                    const m = block.match(rx);
+                    if (m && m[1]) extracted[key] = m[1].trim();
+                }
+                obj = extracted;
+            }
+        }
+        if (!obj || typeof obj !== 'object') {
+            throw new Error('Formato de configuración de Firebase inválido.');
+        }
+        const clean = {};
+        const allowedKeys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId', 'databaseURL', 'measurementId'];
+        for (const key of allowedKeys) {
+            if (typeof obj[key] === 'string' && obj[key].trim()) {
+                clean[key] = obj[key].trim();
+            }
+        }
+        if (!clean.apiKey || !clean.projectId || !clean.appId) {
+            throw new Error('Faltan campos obligatorios de Firebase (apiKey, projectId y appId).');
+        }
+        if (!clean.authDomain) clean.authDomain = `${clean.projectId}.firebaseapp.com`;
+        if (!clean.storageBucket) clean.storageBucket = `${clean.projectId}.firebasestorage.app`;
+        return clean;
+    }
+
+    // Endpoint ligero para que overlays y Dashboard detecten cambios de perfil/Firebase en tiempo real
+    app.get('/api/profile-watch', (req, res) => {
+        const fbConfig = readProfileFirebaseConfig(activeProfile);
+        const configHash = computeProfileConfigHash(activeProfile, fbConfig);
+        res.json({
+            activeProfile: activeProfile,
+            tiktokUsername: TIKTOK_USERNAME || config.tiktokUsername || activeProfile,
+            projectId: fbConfig.projectId || '',
+            configHash: configHash,
+            startedAt: BOT_STARTED_AT
+        });
+    });
+
+    // Endpoint dinámico para servir configuración de Firebase del perfil activo a todos los overlays (ANTES de express.static)
+    app.get('/firebase-config.js', (req, res) => {
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        try {
+            const fbConfig = readProfileFirebaseConfig(activeProfile);
+            const configHash = computeProfileConfigHash(activeProfile, fbConfig);
+            const profileMeta = {
+                name: activeProfile,
+                tiktokUsername: TIKTOK_USERNAME || config.tiktokUsername || activeProfile,
+                projectId: fbConfig.projectId || '',
+                configHash: configHash
+            };
+            const script = [
+                `window.ZERO_FM_FIREBASE = ${JSON.stringify(fbConfig)};`,
+                `window.firebaseConfig = window.ZERO_FM_FIREBASE;`,
+                `var firebaseConfig = window.ZERO_FM_FIREBASE;`,
+                `window.ZERO_FM_PROFILE = ${JSON.stringify(profileMeta)};`,
+                `(function(){`,
+                `  var PROFILE_NAME = ${JSON.stringify(activeProfile)};`,
+                `  var CONFIG_HASH = ${JSON.stringify(configHash)};`,
+                `  var SCOPED_KEYS = [`,
+                `    'zerofm_chat_cache',`,
+                `    'offline_overlays_config',`,
+                `    'offline_goals_config',`,
+                `    'zero_announcements_widget_config',`,
+                `    'zero_artists_widget_config',`,
+                `    'zero_cider_widget_config',`,
+                `    'stats_ticker_settings',`,
+                `    'rouletteTheme',`,
+                `    'rouletteOverlayEnabled'`,
+                `  ];`,
+                `  try {`,
+                `    var ls = window.localStorage;`,
+                `    if (ls) {`,
+                `      var prevProfile = ls.getItem('__zero_fm_active_profile');`,
+                `      if (prevProfile && prevProfile !== PROFILE_NAME) {`,
+                `        var savedPrev = {};`,
+                `        for (var i = 0; i < SCOPED_KEYS.length; i++) {`,
+                `          var k = SCOPED_KEYS[i];`,
+                `          var val = ls.getItem(k);`,
+                `          if (val !== null) savedPrev[k] = val;`,
+                `          ls.removeItem(k);`,
+                `        }`,
+                `        ls.setItem('__zero_fm_profile_store__' + prevProfile, JSON.stringify(savedPrev));`,
+                `        var rawNext = ls.getItem('__zero_fm_profile_store__' + PROFILE_NAME);`,
+                `        if (rawNext) {`,
+                `          try {`,
+                `            var parsedNext = JSON.parse(rawNext);`,
+                `            if (parsedNext && typeof parsedNext === 'object') {`,
+                `              for (var j = 0; j < SCOPED_KEYS.length; j++) {`,
+                `                var nk = SCOPED_KEYS[j];`,
+                `                if (typeof parsedNext[nk] === 'string') ls.setItem(nk, parsedNext[nk]);`,
+                `              }`,
+                `            }`,
+                `          } catch (_) {}`,
+                `        }`,
+                `      }`,
+                `      ls.setItem('__zero_fm_active_profile', PROFILE_NAME);`,
+                `    }`,
+                `  } catch (_) {}`,
+                `  if (typeof window !== 'undefined' && !window.__ZERO_FM_PROFILE_WATCHER_STARTED && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {`,
+                `    window.__ZERO_FM_PROFILE_WATCHER_STARTED = true;`,
+                `    var reloading = false;`,
+                `    function triggerProfileReload(nextName) {`,
+                `      if (reloading) return;`,
+                `      reloading = true;`,
+                `      try { console.log('[ZeroFM] Cambio de perfil detectado (' + PROFILE_NAME + ' -> ' + nextName + '). Recargando overlay...'); } catch (_) {}`,
+                `      window.location.reload();`,
+                `    }`,
+                `    if (typeof BroadcastChannel !== 'undefined') {`,
+                `      try {`,
+                `        var ch = new BroadcastChannel('zero_fm_profile_switch');`,
+                `        ch.onmessage = function(ev) {`,
+                `          var d = ev && ev.data;`,
+                `          if (!d || d.type !== 'profile_switched') return;`,
+                `          if ((d.activeProfile && d.activeProfile !== PROFILE_NAME) || (d.configHash && d.configHash !== CONFIG_HASH)) {`,
+                `            triggerProfileReload(d.activeProfile || PROFILE_NAME);`,
+                `          }`,
+                `        };`,
+                `      } catch (_) {}`,
+                `    }`,
+                `    if (typeof fetch === 'function') {`,
+                `      var watchTimer = setInterval(function() {`,
+                `        if (reloading) return;`,
+                `        fetch('/api/profile-watch', { cache: 'no-store' })`,
+                `          .then(function(r) { return r && r.ok ? r.json() : null; })`,
+                `          .then(function(data) {`,
+                `            if (!data || !data.activeProfile) return;`,
+                `            if (data.tiktokUsername && window.ZERO_FM_PROFILE) {`,
+                `              window.ZERO_FM_PROFILE.tiktokUsername = data.tiktokUsername;`,
+                `            }`,
+                `            if (data.activeProfile !== PROFILE_NAME || (data.configHash && data.configHash !== CONFIG_HASH)) {`,
+                `              clearInterval(watchTimer);`,
+                `              triggerProfileReload(data.activeProfile);`,
+                `            }`,
+                `          })`,
+                `          .catch(function() {});`,
+                `      }, 3500);`,
+                `    }`,
+                `  }`,
+                `})();`
+            ].join('\n');
+            res.send(script);
+        } catch (e) {
+            res.status(500).send(`console.error("Error reading firebase-config.js:", ${JSON.stringify(e.message)});`);
         }
     });
 
@@ -2464,19 +2656,79 @@ function startBot() {
         }
     });
 
-    // API para obtener lista de perfiles y perfil activo
+    // API para obtener lista de perfiles y perfil activo (con detalles de TikTok y proyecto Firebase)
     app.get('/api/profiles', (req, res) => {
         try {
             const files = fs.readdirSync(PROFILES_DIR, { withFileTypes: true });
             const profileNames = files
                 .filter(dirent => dirent.isDirectory())
                 .map(dirent => dirent.name);
+            const names = profileNames.length > 0 ? profileNames : ['zer0ferreira'];
+            const profileDetails = names.map((name) => {
+                let tiktokUser = name;
+                try {
+                    const cfgPath = path.join(PROFILES_DIR, name, 'config.json');
+                    if (fs.existsSync(cfgPath)) {
+                        const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+                        if (parsed && parsed.tiktokUsername) tiktokUser = parsed.tiktokUsername;
+                    }
+                } catch (_) {}
+                const fb = readProfileFirebaseConfig(name);
+                return {
+                    name,
+                    tiktokUsername: tiktokUser,
+                    projectId: fb.projectId || '',
+                    hasDatabaseURL: Boolean(fb.databaseURL)
+                };
+            });
+            const activeFb = readProfileFirebaseConfig(activeProfile);
             res.json({
-                profiles: profileNames.length > 0 ? profileNames : ['zeroferreira'],
-                activeProfile: activeProfile
+                profiles: names,
+                activeProfile: activeProfile,
+                activeProjectId: activeFb.projectId || '',
+                configHash: computeProfileConfigHash(activeProfile, activeFb),
+                profileDetails
             });
         } catch (e) {
             res.status(500).json({ error: e.message });
+        }
+    });
+
+    // API para consultar la configuración Firebase del perfil activo
+    app.get('/api/profile/firebase-config', (req, res) => {
+        try {
+            const fb = readProfileFirebaseConfig(activeProfile);
+            res.json({
+                activeProfile,
+                firebaseConfig: fb,
+                configHash: computeProfileConfigHash(activeProfile, fb)
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // API para actualizar la configuración Firebase del perfil activo y reiniciar el bot limpiamente
+    app.post('/api/profile/firebase-config', (req, res) => {
+        try {
+            const rawInput = (req.body && (req.body.firebaseConfig !== undefined ? req.body.firebaseConfig : req.body.rawConfig));
+            const cleanFb = parseFirebaseConfigInput(rawInput);
+            const targetFbFile = path.join(PROFILES_DIR, activeProfile, 'firebase-config.js');
+            fs.writeFileSync(targetFbFile, serializeProfileFirebaseFile(activeProfile, cleanFb), 'utf8');
+            const newHash = computeProfileConfigHash(activeProfile, cleanFb);
+            console.log(`🔥 Firebase actualizado para el perfil [${activeProfile}] -> proyecto [${cleanFb.projectId}]. Reiniciando...`);
+            res.json({
+                success: true,
+                activeProfile,
+                projectId: cleanFb.projectId,
+                configHash: newHash
+            });
+            setTimeout(() => {
+                console.log("👋 Reiniciando proceso para aplicar nueva configuración de Firebase...");
+                process.exit(0);
+            }, 800);
+        } catch (e) {
+            res.status(400).json({ error: e.message });
         }
     });
 
@@ -2509,7 +2761,7 @@ function startBot() {
     // API para crear un perfil nuevo
     app.post('/api/create-profile', (req, res) => {
         try {
-            const { profile } = req.body;
+            const { profile, tiktokUsername, firebaseConfig: customFbInput } = req.body || {};
             if (!profile) return res.status(400).json({ error: "Debe especificar un perfil nuevo." });
             const cleanProfileName = profile.toLowerCase().replace(/[^a-z0-9_-]/g, '').trim();
             if (!cleanProfileName) return res.status(400).json({ error: "Nombre de perfil inválido." });
@@ -2519,8 +2771,14 @@ function startBot() {
                 return res.status(400).json({ error: "El perfil ya existe." });
             }
 
+            const cleanTiktokUser = String(tiktokUsername || cleanProfileName).trim().replace(/^@/, '') || cleanProfileName;
+            let fbToSave = { ...DEFAULT_FALLBACK_FB_CONFIG };
+            if (customFbInput) {
+                fbToSave = parseFirebaseConfigInput(customFbInput);
+            }
+
             // Crear directorio del perfil
-            fs.mkdirSync(targetDir);
+            fs.mkdirSync(targetDir, { recursive: true });
 
             // Copiar configuración por defecto
             const default_config = {
@@ -2529,7 +2787,7 @@ function startBot() {
                 allowSuperFans: true,
                 minCoinsForVip: 30,
                 vipDurationSession: true,
-                tiktokUsername: cleanProfileName,
+                tiktokUsername: cleanTiktokUser,
                 sessionId: "",
                 ttTargetIdc: "",
                 dashboardPort: 3000,
@@ -2539,26 +2797,17 @@ function startBot() {
                 allowPointsCommand: true,
                 likesPerPoint: 300,
                 commandAliases: ["zr", "!zr", "!sr", "!pedir", "!cancion"],
-                ignoreExampleQuery: "artista cancion"
-            };
-
-            const default_fb = {
-                apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
-                authDomain: "zero-strom-web.firebaseapp.com",
-                projectId: "zero-strom-web",
-                storageBucket: "zero-strom-web.firebasestorage.app",
-                messagingSenderId: "758369466349",
-                appId: "1:758369466349:web:f2ced362a5a049c70b59e4",
-                databaseURL: "https://zero-strom-web-default-rtdb.firebaseio.com"
+                ignoreExampleQuery: "artista cancion",
+                eulerApiKey: config.eulerApiKey || ""
             };
 
             fs.writeFileSync(path.join(targetDir, 'config.json'), JSON.stringify(default_config, null, 2));
             fs.writeFileSync(
                 path.join(targetDir, 'firebase-config.js'),
-                `var firebaseConfig = ${JSON.stringify(default_fb, null, 2)};\nif (typeof window !== 'undefined') {\n    window.ZERO_FM_FIREBASE = firebaseConfig;\n    window.firebaseConfig = firebaseConfig;\n}\nif (typeof module !== 'undefined' && module.exports) {\n    module.exports = firebaseConfig;\n}\n`
+                serializeProfileFirebaseFile(cleanProfileName, fbToSave)
             );
 
-            res.json({ success: true, profile: cleanProfileName });
+            res.json({ success: true, profile: cleanProfileName, projectId: fbToSave.projectId });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
@@ -4283,22 +4532,27 @@ function setupListeners() {
                 const likersSnap = await getDocFn(likersRef);
                 if (likersSnap.exists()) {
                     const snapData = likersSnap.data() || {};
-                    const list = snapData.list || [];
+                    const list = (!snapData.testAudit && Array.isArray(snapData.list)) ? snapData.list : [];
                     streamTotalLikesCounter = Number(snapData.streamTotalLikes) || 0;
                     lastKnownTotalLikeCount = streamTotalLikesCounter;
                     console.log(`🟢 Recuperado streamTotalLikes del live: ${streamTotalLikesCounter}`);
+                    let recoveredCount = 0;
                     for (const user of list) {
-                        sessionLikes.set(user.username, user.totalAmount);
-                        lastLikeCountMap.set(user.username, user.totalAmount);
+                        if (!user || !user.username) continue;
+                        const amt = Number(user.totalAmount !== undefined ? user.totalAmount : user.likes);
+                        if (!Number.isFinite(amt) || amt <= 0) continue;
+                        sessionLikes.set(user.username, amt);
+                        lastLikeCountMap.set(user.username, amt);
                         sessionLikerDetails.set(user.username, {
                             username: user.username,
-                            nickname: user.nickname,
-                            profilePictureUrl: user.profilePictureUrl
+                            nickname: user.nickname || user.username,
+                            profilePictureUrl: user.profilePictureUrl || ''
                         });
                         // Marcar como presentes al reconectar (se invalidarán en 5 min si no interactúan)
                         markUserPresent(user.username);
+                        recoveredCount++;
                     }
-                    console.log(`🟢 Recuperados ${list.length} Top Likers de sesión y mapeo de likes inicializado.`);
+                    console.log(`🟢 Recuperados ${recoveredCount} Top Likers de sesión y mapeo de likes inicializado.`);
                 }
             } catch (e) {
                 console.error('⚠️ Error recuperando topLikers de sesión:', e);
@@ -4309,18 +4563,24 @@ function setupListeners() {
                 const giftersRef = docFn(db, 'globalStats', 'topGifters');
                 const giftersSnap = await getDocFn(giftersRef);
                 if (giftersSnap.exists()) {
-                    const list = giftersSnap.data().list || [];
+                    const snapData = giftersSnap.data() || {};
+                    const list = (!snapData.testAudit && Array.isArray(snapData.list)) ? snapData.list : [];
+                    let recoveredGifters = 0;
                     for (const user of list) {
-                        sessionDonations.set(user.username, user.totalAmount);
+                        if (!user || !user.username) continue;
+                        const amt = Number(user.totalAmount !== undefined ? user.totalAmount : user.coins);
+                        if (!Number.isFinite(amt) || amt <= 0) continue;
+                        sessionDonations.set(user.username, amt);
                         sessionGifterDetails.set(user.username, {
                             username: user.username,
-                            nickname: user.nickname,
-                            profilePictureUrl: user.profilePictureUrl
+                            nickname: user.nickname || user.username,
+                            profilePictureUrl: user.profilePictureUrl || ''
                         });
                         // Marcar como presentes al reconectar
                         markUserPresent(user.username);
+                        recoveredGifters++;
                     }
-                    console.log(`🟢 Recuperados ${list.length} Top Gifters de sesión.`);
+                    console.log(`🟢 Recuperados ${recoveredGifters} Top Gifters de sesión.`);
                 }
             } catch (e) {
                 console.error('⚠️ Error recuperando topGifters de sesión:', e);
@@ -5134,10 +5394,10 @@ function setupListeners() {
                 nickname: displayName,
                 uniqueId: uid
             };
-            const logPath = path.join(__dirname, 'gift_logs.json');
+            const logPath = path.join(activeProfileDir, 'gift_logs.json');
             fs.stat(logPath, (statErr, stats) => {
                 if (!statErr && stats && stats.size > 5 * 1024 * 1024) {
-                    fs.rename(logPath, path.join(__dirname, 'gift_logs.old.json'), () => {
+                    fs.rename(logPath, path.join(activeProfileDir, 'gift_logs.old.json'), () => {
                         fs.appendFile(logPath, JSON.stringify(logEntry) + '\n', () => {});
                     });
                 } else {
@@ -6210,6 +6470,7 @@ async function recalculateLikerRanks() {
         await setDoc(doc(db, 'globalStats', 'topLikers'), {
             list: list,
             streamTotalLikes: streamTotalLikesCounter, // ⚡ total real del stream (incluyendo likes sin uniqueId)
+            testAudit: false,
             lastUpdate: serverTimestamp()
         }, { merge: true });
         console.log(`💾 Top Likers actualizados en Firestore (${list.length} en live). Total stream: ${streamTotalLikesCounter} likes.`);
@@ -6254,11 +6515,13 @@ function resetDonationTracking() {
             const { doc, setDoc } = require('firebase/firestore');
             setDoc(doc(db, 'globalStats', 'topGifters'), {
                 list: [],
+                testAudit: false,
                 lastUpdate: new Date()
             }, { merge: true }).catch(() => {});
 
             setDoc(doc(db, 'globalStats', 'topLikers'), {
                 list: [],
+                testAudit: false,
                 lastUpdate: new Date()
             }, { merge: true }).catch(() => {});
         }
@@ -6295,6 +6558,7 @@ async function recalculateDonorRanks() {
 
             await setDoc(doc(db, 'globalStats', 'topGifters'), {
                 list: list,
+                testAudit: false,
                 lastUpdate: serverTimestamp()
             }, { merge: true });
             console.log(`💾 Top Gifters actualizados en Firestore (${list.length} en live).`);

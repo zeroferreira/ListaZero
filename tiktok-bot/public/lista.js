@@ -9545,7 +9545,9 @@ function shouldShowStatsTicker() {
       }
 
       function syncUserToRtdb(username, points, level, achievements, gamificationData) {
-        if (!window.firebase) return;
+        if (!window.firebase || typeof window.firebase.database !== 'function') return;
+        const activeCfg = window.ZERO_FM_FIREBASE || window.firebaseConfig || firebaseConfig;
+        if (!activeCfg || !activeCfg.databaseURL) return;
         try {
           const rtdb = window.firebase.database();
           const normUser = normalizeUserKey(username).toLowerCase().trim().replace(/[.#$\[\]]/g, '_');

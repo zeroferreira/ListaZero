@@ -1255,8 +1255,14 @@
             const [activeSub, setActiveSub] = React.useState('cider');
             const [activeConfigSub, setActiveConfigSub] = React.useState('commands');
             const [saveStatus, setSaveStatus] = React.useState('');
-            const [profiles, setProfiles] = React.useState(['zeroferreira']);
-            const [activeProfile, setActiveProfile] = React.useState('zeroferreira');
+            const [profiles, setProfiles] = React.useState(['zer0ferreira']);
+            const [activeProfile, setActiveProfile] = React.useState('zer0ferreira');
+            const [profileDetails, setProfileDetails] = React.useState([]);
+            const [activeProjectId, setActiveProjectId] = React.useState('');
+            const [profileConfigHash, setProfileConfigHash] = React.useState('');
+            const [profileFirebaseInput, setProfileFirebaseInput] = React.useState('');
+            const [profileFirebaseStatus, setProfileFirebaseStatus] = React.useState('');
+            const [isSwitchingProfile, setIsSwitchingProfile] = React.useState(false);
             const [isEditingUsername, setIsEditingUsername] = React.useState(false);
             
             // Estados y referencias para evitar conflictos al arrastrar controles del reproductor de YouTube
@@ -3444,8 +3450,21 @@
                 fetch('/api/profiles')
                     .then(r => r.json())
                     .then(data => {
-                        setProfiles(data.profiles || ['zeroferreira']);
-                        setActiveProfile(data.activeProfile || 'zeroferreira');
+                        setProfiles(data.profiles || ['zer0ferreira']);
+                        setActiveProfile(data.activeProfile || 'zer0ferreira');
+                        if (Array.isArray(data.profileDetails)) setProfileDetails(data.profileDetails);
+                        if (data.activeProjectId) setActiveProjectId(data.activeProjectId);
+                        if (data.configHash) setProfileConfigHash(data.configHash);
+                    }).catch(() => {});
+
+                fetch('/api/profile/firebase-config')
+                    .then(r => r.ok ? r.json() : null)
+                    .then(data => {
+                        if (data && data.firebaseConfig) {
+                            setProfileFirebaseInput(JSON.stringify(data.firebaseConfig, null, 2));
+                            if (data.firebaseConfig.projectId) setActiveProjectId(data.firebaseConfig.projectId);
+                            if (data.configHash) setProfileConfigHash(data.configHash);
+                        }
                     }).catch(() => {});
 
                 fetch('/api/config')
@@ -5621,20 +5640,68 @@
                 });
             };
 
+            const waitForBotRestartAndReload = (expectedProfile, prevConfigHash) => {
+                setIsSwitchingProfile(true);
+                const startedWait = Date.now();
+                const maxWaitMs = 30000;
+                const checkServer = () => {
+                    fetch('/api/profile-watch', { cache: 'no-store' })
+                        .then(r => (r && r.ok ? r.json() : null))
+                        .then(data => {
+                            const profileReady = data && (
+                                (expectedProfile && data.activeProfile === expectedProfile) ||
+                                (prevConfigHash && data.configHash && data.configHash !== prevConfigHash)
+                            );
+                            if (profileReady) {
+                                try {
+                                    if (typeof BroadcastChannel !== 'undefined') {
+                                        const ch = new BroadcastChannel('zero_fm_profile_switch');
+                                        ch.postMessage({
+                                            type: 'profile_switched',
+                                            activeProfile: data.activeProfile,
+                                            configHash: data.configHash
+                                        });
+                                        ch.close();
+                                    }
+                                } catch (_) {}
+                                window.location.reload();
+                                return;
+                            }
+                            if (Date.now() - startedWait < maxWaitMs) {
+                                setTimeout(checkServer, 1000);
+                            } else {
+                                window.location.reload();
+                            }
+                        })
+                        .catch(() => {
+                            if (Date.now() - startedWait < maxWaitMs) {
+                                setTimeout(checkServer, 1000);
+                            } else {
+                                window.location.reload();
+                            }
+                        });
+                };
+                // Esperar 2.2s para que el proceso anterior cierre antes de consultar el nuevo
+                setTimeout(checkServer, 2200);
+            };
+
             const handleProfileChange = async (newProfile) => {
+                if (!newProfile || newProfile === activeProfile) return;
                 try {
+                    setIsSwitchingProfile(true);
                     const res = await fetch('/api/switch-profile', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ profile: newProfile })
                     });
                     if (res.ok) {
-                        alert("Cambiando perfil... El bot se reiniciará en un momento. Espere 5 segundos y recargue la página.");
-                        setTimeout(() => window.location.reload(), 5000);
+                        waitForBotRestartAndReload(newProfile, profileConfigHash);
                     } else {
+                        setIsSwitchingProfile(false);
                         alert("Error al cambiar de perfil.");
                     }
                 } catch (e) {
+                    setIsSwitchingProfile(false);
                     alert("Error de red: " + e.message);
                 }
             };
@@ -5644,15 +5711,18 @@
                 if (!name) return;
                 const cleanName = name.toLowerCase().replace(/[^a-z0-9_-]/g, '').trim();
                 if (!cleanName) return;
+
+                const tiktokInput = prompt(`Usuario de TikTok para el perfil "${cleanName}" (sin @):`, cleanName);
+                if (tiktokInput === null) return;
+                const cleanTiktok = tiktokInput.trim().replace(/^@/, '') || cleanName;
                 
                 try {
                     const res = await fetch('/api/create-profile', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ profile: cleanName })
+                        body: JSON.stringify({ profile: cleanName, tiktokUsername: cleanTiktok })
                     });
                     if (res.ok) {
-                        alert("Perfil creado con éxito. Cambiando al nuevo perfil...");
                         handleProfileChange(cleanName);
                     } else {
                         const data = await res.json();
@@ -5660,6 +5730,30 @@
                     }
                 } catch (e) {
                     alert("Error: " + e.message);
+                }
+            };
+
+            const handleSaveProfileFirebase = async () => {
+                if (!profileFirebaseInput.trim()) {
+                    setProfileFirebaseStatus('❌ Pega una configuración de Firebase válida.');
+                    return;
+                }
+                setProfileFirebaseStatus('⏳ Guardando configuración de Firebase y reiniciando...');
+                try {
+                    const res = await fetch('/api/profile/firebase-config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ rawConfig: profileFirebaseInput })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        setProfileFirebaseStatus(`✅ Firebase [${data.projectId}] guardado. Reiniciando bot y overlays...`);
+                        waitForBotRestartAndReload(activeProfile, profileConfigHash);
+                    } else {
+                        setProfileFirebaseStatus(`❌ ${data.error || 'Error guardando configuración de Firebase.'}`);
+                    }
+                } catch (e) {
+                    setProfileFirebaseStatus(`❌ Error de red: ${e.message}`);
                 }
             };
 
@@ -5676,8 +5770,7 @@
                         body: JSON.stringify({ oldName: activeProfile, newName: cleanName })
                     });
                     if (res.ok) {
-                        alert("Perfil renombrado con éxito. El bot se reiniciará... Espere 5 segundos y recargue la página.");
-                        setTimeout(() => window.location.reload(), 5000);
+                        waitForBotRestartAndReload(cleanName, profileConfigHash);
                     } else {
                         const data = await res.json();
                         alert(data.error || "Error al renombrar el perfil.");
@@ -7045,20 +7138,25 @@
                                                 <div style={{ flexGrow: 1 }}>
                                                     <select 
                                                         value={activeProfile} 
+                                                        disabled={isSwitchingProfile}
                                                         onChange={(e) => handleProfileChange(e.target.value)}
                                                         style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '6px' }}
                                                     >
                                                         {profiles.map(p => {
-                                                            let label = p;
-                                                            if (p === 'gamez' || p === 'videojuegos') label = '🎮 Videojuegos (game.zer0)';
-                                                            else if (p === 'zeroferreira') label = '🎵 Música (zeroferreira)';
-                                                            else if (p === 'zer0ferreira') label = '🎵 Música (zer0ferreira)';
+                                                            const det = profileDetails.find(d => d.name === p);
+                                                            const tk = det && det.tiktokUsername ? `@${det.tiktokUsername}` : `@${p}`;
+                                                            const proj = det && det.projectId ? ` · DB: ${det.projectId}` : '';
+                                                            let label = `👤 ${p} (${tk})${proj}`;
+                                                            if (p === 'gamez' || p === 'videojuegos') label = `🎮 Videojuegos (${tk})${proj}`;
+                                                            else if (p === 'zeroferreira') label = `🎵 Música (${tk})${proj}`;
+                                                            else if (p === 'zer0ferreira') label = `🎵 Música (${tk})${proj}`;
                                                             return <option key={p} value={p}>{label}</option>;
                                                         })}
                                                     </select>
                                                 </div>
                                                 <button 
                                                     className="btn" 
+                                                    disabled={isSwitchingProfile}
                                                     onClick={handleRenameProfile}
                                                     style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}
                                                     title="Renombrar perfil activo"
@@ -7067,14 +7165,71 @@
                                                 </button>
                                                 <button 
                                                     className="btn" 
+                                                    disabled={isSwitchingProfile}
                                                     onClick={handleCreateProfile}
                                                     style={{ padding: '10px 16px', background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', border: 'none', borderRadius: '6px', fontWeight: 'bold' }}
                                                 >
                                                     ➕ Crear Perfil
                                                 </button>
                                             </div>
-                                            <small style={{ display: 'block', marginTop: '6px', color: 'var(--text-muted)' }}>
-                                                Cambia de cuenta de TikTok y bases de datos al instante. Cada perfil tiene su propia configuración y overlays independientes.
+                                            {isSwitchingProfile && (
+                                                <div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(124, 58, 237, 0.18)', border: '1px solid rgba(124, 58, 237, 0.45)', color: '#e9d5ff', fontSize: '0.84rem', fontWeight: '600' }}>
+                                                    🔄 Cambiando perfil y reiniciando el bot... El Dashboard y todos los overlays abiertos en OBS/TikTok Live Studio se recargarán automáticamente en unos segundos.
+                                                </div>
+                                            )}
+                                            {(() => {
+                                                const sharingProfiles = activeProjectId
+                                                    ? profileDetails.filter(d => d.projectId === activeProjectId && d.name !== activeProfile).map(d => d.name)
+                                                    : [];
+                                                return (
+                                                    <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                                                            <span>🔥 Proyecto Firebase activo: <strong style={{ color: '#fff' }}>{activeProjectId || 'desconocido'}</strong></span>
+                                                            <span style={{ color: '#4ade80' }}>● Auto-recarga de overlays activa</span>
+                                                        </div>
+                                                        {sharingProfiles.length > 0 && (
+                                                            <div style={{ padding: '8px 10px', borderRadius: '6px', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.35)', color: '#fde68a', fontSize: '0.78rem', lineHeight: '1.4' }}>
+                                                                ⚠️ Este perfil comparte la base de datos <strong>{activeProjectId}</strong> con: <strong>{sharingProfiles.join(', ')}</strong>. Los eventos en vivo usan tu cuenta de TikTok activa, pero diseños, metas y tops se comparten. Para aislarlos 100%, configura un proyecto Firebase propio abajo.
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+                                            <details style={{ marginTop: '10px' }}>
+                                                <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.82rem', userSelect: 'none' }}>
+                                                    🔥 Configurar Base de Datos Firebase de este perfil ({activeProfile})
+                                                </summary>
+                                                <div style={{ marginTop: '10px', padding: '12px', borderRadius: '8px', background: 'rgba(0,0,0,0.28)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                                    <small style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                                                        Pega aquí el bloque <code>firebaseConfig</code> de tu proyecto en Firebase Console (JSON o código JS). Al guardar, el bot se reiniciará y todos los overlays en <code>http://localhost:3000</code> cambiarán automáticamente a esa base de datos.
+                                                    </small>
+                                                    <textarea
+                                                        rows={7}
+                                                        value={profileFirebaseInput}
+                                                        onChange={(e) => setProfileFirebaseInput(e.target.value)}
+                                                        placeholder={'{\n  "apiKey": "...",\n  "authDomain": "...",\n  "projectId": "...",\n  "storageBucket": "...",\n  "messagingSenderId": "...",\n  "appId": "..."\n}'}
+                                                        style={{ width: '100%', padding: '10px', fontFamily: 'monospace', fontSize: '0.78rem', background: 'rgba(0,0,0,0.45)', color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', resize: 'vertical' }}
+                                                    />
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px', flexWrap: 'wrap' }}>
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-primary"
+                                                            disabled={isSwitchingProfile}
+                                                            onClick={handleSaveProfileFirebase}
+                                                            style={{ padding: '8px 14px', fontSize: '0.82rem' }}
+                                                        >
+                                                            💾 Guardar Firebase del Perfil y Reiniciar
+                                                        </button>
+                                                        {profileFirebaseStatus && (
+                                                            <span style={{ fontSize: '0.8rem', color: profileFirebaseStatus.startsWith('❌') ? '#fca5a5' : '#86efac' }}>
+                                                                {profileFirebaseStatus}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </details>
+                                            <small style={{ display: 'block', marginTop: '8px', color: 'var(--text-muted)' }}>
+                                                Usa siempre las URLs locales (<code>{currentOrigin}/...</code>) en OBS o TikTok Live Studio para que los overlays cambien de perfil automáticamente.
                                             </small>
                                         </div>
 

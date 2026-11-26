@@ -382,8 +382,8 @@
         }
       }
 
-      // Inicializa Firebase si aún no está
-      const firebaseConfig = {
+      // Inicializa Firebase si aún no está (prioriza configuración dinámica del perfil activo)
+      const firebaseConfig = (typeof window !== 'undefined' && (window.ZERO_FM_FIREBASE || window.firebaseConfig)) || {
         apiKey: "AIzaSyA6c3EaIvuPEfM6sTV0YHqCBHuz35ZmNIU",
         authDomain: "zero-strom-web.firebaseapp.com",
         projectId: "zero-strom-web",
