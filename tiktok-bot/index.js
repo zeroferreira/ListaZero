@@ -3062,6 +3062,7 @@ function startBot() {
         if (type === 'likes' || type === 'all') {
             sessionLikes.clear();
             likesGoalStartOffset = streamTotalLikesCounter;
+            saveLocalLiveSessionState(true);
         }
         if (type === 'follows' || type === 'all') {
             sessionFollows.clear();
@@ -3083,6 +3084,7 @@ function startBot() {
         likesGoalStartOffset = streamTotalLikesCounter;
         await recalculateLikerRanks();
         syncSessionCountersToFirestore(true);
+        saveLocalLiveSessionState(true);
         res.json({ success: true });
     });
 
@@ -4484,119 +4486,239 @@ function setupListeners() {
     
     // Debug: Log de conexión exitosa
     tiktokLiveConnection.on('connected', async (state) => {
-        console.log(`🟢 Conectado exitosamente (Room ID: ${state.roomId})`);
-        
-        let previousRoomId = null;
-        try {
-            // Cargar el roomId anterior de Firestore para ver si es el mismo Live
-            const statusRef = docFn(db, 'system', 'status');
-            const statusSnap = await getDocFn(statusRef);
-            if (statusSnap.exists()) {
-                previousRoomId = statusSnap.data().roomId || null;
-            }
-        } catch (e) {
-            console.error('⚠️ Error al obtener status de Firestore para comprobar roomId anterior:', e);
+        const incomingRoomId = state && state.roomId ? String(state.roomId).trim() : '';
+        console.log(`🟢 Conectado exitosamente (Room ID: ${incomingRoomId || 'desconocido'})`);
+
+        // Bloquear flushes/escrituras mientras restauramos el estado para evitar sobrescribir Firestore con 0
+        isRecoveringSession = true;
+        if (incomingRoomId) {
+            activeLiveRoomId = incomingRoomId;
         }
 
-        if (previousRoomId && previousRoomId === state.roomId) {
-            console.log(`🟢 Reconexión en el mismo live (${state.roomId}). Recuperando rankings de sesión...`);
-            
-            // Recuperar el offset de likes de la sesión
+        // Capturar deltas que pudieran haber llegado en los milisegundos previos a terminar la recuperación
+        const earlyLikes = new Map(sessionLikes);
+        const earlyLikerDetails = new Map(sessionLikerDetails);
+        const earlyDonations = new Map(sessionDonations);
+        const earlyGifterDetails = new Map(sessionGifterDetails);
+
+        try {
+            const localState = loadLocalLiveSessionState();
+            const localRoomId = localState && localState.roomId ? String(localState.roomId).trim() : '';
+
+            let statusRoomId = '';
+            let generalSnapData = null;
+            let likersSnapData = null;
+            let giftersSnapData = null;
+            let firestoreReadFailed = false;
+
             try {
-                const generalRef = docFn(db, 'globalStats', 'general');
-                const generalSnap = await getDocFn(generalRef);
-                if (generalSnap.exists()) {
-                    const genData = generalSnap.data() || {};
-                    if (genData.likesGoalStartOffset !== undefined && genData.likesGoalStartOffset !== null) {
-                        const val = Number(genData.likesGoalStartOffset);
-                        likesGoalStartOffset = Number.isFinite(val) ? val : null;
-                        console.log(`🟢 Recuperado likesGoalStartOffset de Firestore: ${likesGoalStartOffset}`);
-                    } else {
-                        likesGoalStartOffset = null;
+                const [statusSnap, generalSnap, likersSnap, giftersSnap] = await Promise.all([
+                    getDocFn(docFn(db, 'system', 'status')),
+                    getDocFn(docFn(db, 'globalStats', 'general')),
+                    getDocFn(docFn(db, 'globalStats', 'topLikers')),
+                    getDocFn(docFn(db, 'globalStats', 'topGifters'))
+                ]);
+                if (statusSnap.exists()) statusRoomId = String(statusSnap.data().roomId || '').trim();
+                if (generalSnap.exists()) generalSnapData = generalSnap.data() || {};
+                if (likersSnap.exists()) likersSnapData = likersSnap.data() || {};
+                if (giftersSnap.exists()) giftersSnapData = giftersSnap.data() || {};
+            } catch (e) {
+                firestoreReadFailed = true;
+                console.error('⚠️ Error al leer estado previo de Firestore al reconectar:', e);
+            }
+
+            const generalRoomId = generalSnapData && generalSnapData.roomId ? String(generalSnapData.roomId).trim() : '';
+            const likersRoomId = likersSnapData && likersSnapData.roomId ? String(likersSnapData.roomId).trim() : '';
+            const knownPrevRooms = [localRoomId, statusRoomId, likersRoomId, generalRoomId].filter(Boolean);
+            const previousRoomId = knownPrevRooms[0] || '';
+
+            const isSameRoom = Boolean(
+                incomingRoomId && (
+                    knownPrevRooms.includes(incomingRoomId) ||
+                    (firestoreReadFailed && !localRoomId)
+                )
+            );
+
+            if (isSameRoom) {
+                console.log(`🟢 Reconexión en el mismo live (${incomingRoomId}). Recuperando likes y rankings de la sesión sin reiniciar...`);
+
+                // 0. Restaurar primero desde caché local de sesión (conserva TODOS los usuarios, no solo el Top 20)
+                if (localState && localRoomId === incomingRoomId) {
+                    if (Number.isFinite(Number(localState.likesGoalStartOffset))) {
+                        likesGoalStartOffset = Math.max(0, Number(localState.likesGoalStartOffset));
                     }
-                    if (genData.sessionCoins !== undefined && genData.sessionCoins !== null) {
-                        const cVal = Number(genData.sessionCoins);
+                    if (Number.isFinite(Number(localState.streamTotalLikesCounter))) {
+                        streamTotalLikesCounter = Math.max(streamTotalLikesCounter, Number(localState.streamTotalLikesCounter));
+                        lastKnownTotalLikeCount = Math.max(lastKnownTotalLikeCount, streamTotalLikesCounter);
+                    }
+                    if (Number.isFinite(Number(localState.sessionTotalCoins))) {
+                        sessionTotalCoins = Math.max(sessionTotalCoins, Number(localState.sessionTotalCoins));
+                    }
+                    if (Array.isArray(localState.sessionLikes)) {
+                        for (const [uid, amt] of localState.sessionLikes) {
+                            const n = Number(amt);
+                            if (uid && Number.isFinite(n) && n > 0) {
+                                sessionLikes.set(uid, Math.max(sessionLikes.get(uid) || 0, n));
+                                lastLikeCountMap.set(uid, Math.max(lastLikeCountMap.get(uid) || 0, n));
+                                markUserPresent(uid);
+                            }
+                        }
+                    }
+                    if (Array.isArray(localState.sessionLikerDetails)) {
+                        for (const [uid, det] of localState.sessionLikerDetails) {
+                            if (uid && det) sessionLikerDetails.set(uid, det);
+                        }
+                    }
+                    if (Array.isArray(localState.sessionDonations)) {
+                        for (const [uid, amt] of localState.sessionDonations) {
+                            const n = Number(amt);
+                            if (uid && Number.isFinite(n) && n > 0) {
+                                sessionDonations.set(uid, Math.max(sessionDonations.get(uid) || 0, n));
+                                markUserPresent(uid);
+                            }
+                        }
+                    }
+                    if (Array.isArray(localState.sessionGifterDetails)) {
+                        for (const [uid, det] of localState.sessionGifterDetails) {
+                            if (uid && det) sessionGifterDetails.set(uid, det);
+                        }
+                    }
+                    if (Array.isArray(localState.sessionFollows)) {
+                        for (const [uid, cnt] of localState.sessionFollows) {
+                            if (uid) sessionFollows.set(uid, Number(cnt) || 1);
+                        }
+                    }
+                    if (Array.isArray(localState.sessionShares)) {
+                        for (const [uid, cnt] of localState.sessionShares) {
+                            if (uid) sessionShares.set(uid, Number(cnt) || 1);
+                        }
+                    }
+                    console.log(`💾 Estado local recuperado para live ${incomingRoomId}: ${sessionLikes.size} likers, ${streamTotalLikesCounter} likes totales, offset=${likesGoalStartOffset}.`);
+                }
+
+                // 1. Mezclar con globalStats/general de Firestore
+                if (generalSnapData) {
+                    if (generalSnapData.likesGoalStartOffset !== undefined && generalSnapData.likesGoalStartOffset !== null) {
+                        const val = Number(generalSnapData.likesGoalStartOffset);
+                        if (Number.isFinite(val) && val >= 0) {
+                            likesGoalStartOffset = val;
+                        }
+                    } else if (likesGoalStartOffset === null || likesGoalStartOffset === undefined) {
+                        likesGoalStartOffset = 0;
+                    }
+                    const genStreamLikes = Number(generalSnapData.streamTotalLikes || 0);
+                    if (Number.isFinite(genStreamLikes) && genStreamLikes > streamTotalLikesCounter) {
+                        streamTotalLikesCounter = genStreamLikes;
+                        lastKnownTotalLikeCount = Math.max(lastKnownTotalLikeCount, genStreamLikes);
+                    }
+                    if (generalSnapData.sessionCoins !== undefined && generalSnapData.sessionCoins !== null) {
+                        const cVal = Number(generalSnapData.sessionCoins);
                         if (Number.isFinite(cVal) && cVal > sessionTotalCoins) {
                             sessionTotalCoins = cVal;
-                            console.log(`🟢 Recuperado sessionCoins de Firestore: ${sessionTotalCoins}`);
                         }
                     }
                 }
-            } catch (e) {
-                console.error('⚠️ Error recuperando likesGoalStartOffset de general:', e);
-            }
 
-            // 1. Recuperar Top Likers de sesión
-            try {
-                const likersRef = docFn(db, 'globalStats', 'topLikers');
-                const likersSnap = await getDocFn(likersRef);
-                if (likersSnap.exists()) {
-                    const snapData = likersSnap.data() || {};
-                    const list = (!snapData.testAudit && Array.isArray(snapData.list)) ? snapData.list : [];
-                    streamTotalLikesCounter = Number(snapData.streamTotalLikes) || 0;
-                    lastKnownTotalLikeCount = streamTotalLikesCounter;
-                    console.log(`🟢 Recuperado streamTotalLikes del live: ${streamTotalLikesCounter}`);
-                    let recoveredCount = 0;
+                // 2. Mezclar Top Likers de Firestore (preservando el máximo por usuario)
+                if (likersSnapData) {
+                    const list = (!likersSnapData.testAudit && Array.isArray(likersSnapData.list)) ? likersSnapData.list : [];
+                    const fsStreamLikes = Number(likersSnapData.streamTotalLikes || 0);
+                    if (Number.isFinite(fsStreamLikes) && fsStreamLikes > streamTotalLikesCounter) {
+                        streamTotalLikesCounter = fsStreamLikes;
+                        lastKnownTotalLikeCount = Math.max(lastKnownTotalLikeCount, fsStreamLikes);
+                    }
                     for (const user of list) {
                         if (!user || !user.username) continue;
                         const amt = Number(user.totalAmount !== undefined ? user.totalAmount : user.likes);
                         if (!Number.isFinite(amt) || amt <= 0) continue;
-                        sessionLikes.set(user.username, amt);
-                        lastLikeCountMap.set(user.username, amt);
-                        sessionLikerDetails.set(user.username, {
-                            username: user.username,
-                            nickname: user.nickname || user.username,
-                            profilePictureUrl: user.profilePictureUrl || ''
-                        });
-                        // Marcar como presentes al reconectar (se invalidarán en 5 min si no interactúan)
+                        const merged = Math.max(sessionLikes.get(user.username) || 0, amt);
+                        sessionLikes.set(user.username, merged);
+                        lastLikeCountMap.set(user.username, Math.max(lastLikeCountMap.get(user.username) || 0, merged));
+                        if (!sessionLikerDetails.has(user.username)) {
+                            sessionLikerDetails.set(user.username, {
+                                username: user.username,
+                                nickname: user.nickname || user.username,
+                                profilePictureUrl: user.profilePictureUrl || '',
+                                lastActive: user.lastActive || Date.now()
+                            });
+                        }
                         markUserPresent(user.username);
-                        recoveredCount++;
                     }
-                    console.log(`🟢 Recuperados ${recoveredCount} Top Likers de sesión y mapeo de likes inicializado.`);
                 }
-            } catch (e) {
-                console.error('⚠️ Error recuperando topLikers de sesión:', e);
-            }
 
-            // 2. Recuperar Top Gifters de sesión
-            try {
-                const giftersRef = docFn(db, 'globalStats', 'topGifters');
-                const giftersSnap = await getDocFn(giftersRef);
-                if (giftersSnap.exists()) {
-                    const snapData = giftersSnap.data() || {};
-                    const list = (!snapData.testAudit && Array.isArray(snapData.list)) ? snapData.list : [];
-                    let recoveredGifters = 0;
+                // 3. Mezclar Top Gifters de Firestore
+                if (giftersSnapData) {
+                    const list = (!giftersSnapData.testAudit && Array.isArray(giftersSnapData.list)) ? giftersSnapData.list : [];
                     for (const user of list) {
                         if (!user || !user.username) continue;
                         const amt = Number(user.totalAmount !== undefined ? user.totalAmount : user.coins);
                         if (!Number.isFinite(amt) || amt <= 0) continue;
-                        sessionDonations.set(user.username, amt);
-                        sessionGifterDetails.set(user.username, {
-                            username: user.username,
-                            nickname: user.nickname || user.username,
-                            profilePictureUrl: user.profilePictureUrl || ''
-                        });
-                        // Marcar como presentes al reconectar
+                        sessionDonations.set(user.username, Math.max(sessionDonations.get(user.username) || 0, amt));
+                        if (!sessionGifterDetails.has(user.username)) {
+                            sessionGifterDetails.set(user.username, {
+                                username: user.username,
+                                nickname: user.nickname || user.username,
+                                profilePictureUrl: user.profilePictureUrl || ''
+                            });
+                        }
                         markUserPresent(user.username);
-                        recoveredGifters++;
                     }
-                    console.log(`🟢 Recuperados ${recoveredGifters} Top Gifters de sesión.`);
                 }
-            } catch (e) {
-                console.error('⚠️ Error recuperando topGifters de sesión:', e);
-            }
 
-            resetLikeTracking({ resetSession: false, resetTopLiker: false });
-        } else {
-            console.log(`🟢 Conexión inicial o nuevo room detectado (${previousRoomId || 'ninguno'} -> ${state.roomId}). Reiniciando tracking.`);
-            resetLikeTracking({ resetSession: true, resetTopLiker: true, isNewRoom: true });
-            resetDonationTracking();
-            await recalculateLikerRanks();
-            syncSessionCountersToFirestore(true);
+                // Re-sumar deltas tempranos que hayan llegado antes de terminar la carga (sin duplicar)
+                for (const [uid, earlyAmt] of earlyLikes.entries()) {
+                    if (earlyAmt > 0 && !localState) {
+                        sessionLikes.set(uid, (sessionLikes.get(uid) || 0) + earlyAmt);
+                    }
+                    if (earlyLikerDetails.has(uid) && !sessionLikerDetails.has(uid)) {
+                        sessionLikerDetails.set(uid, earlyLikerDetails.get(uid));
+                    }
+                }
+                for (const [uid, earlyAmt] of earlyDonations.entries()) {
+                    if (earlyAmt > 0 && !localState) {
+                        sessionDonations.set(uid, (sessionDonations.get(uid) || 0) + earlyAmt);
+                    }
+                    if (earlyGifterDetails.has(uid) && !sessionGifterDetails.has(uid)) {
+                        sessionGifterDetails.set(uid, earlyGifterDetails.get(uid));
+                    }
+                }
+
+                // Restaurar currentTopLiker para no sobrescribir el #1 con alguien con menos likes
+                let bestUid = null;
+                let bestAmt = 0;
+                for (const [uid, amt] of sessionLikes.entries()) {
+                    if (amt > bestAmt) {
+                        bestAmt = amt;
+                        bestUid = uid;
+                    }
+                }
+                if (bestUid && bestAmt > 0) {
+                    const det = sessionLikerDetails.get(bestUid);
+                    currentTopLiker = { name: (det && det.nickname) || bestUid, count: bestAmt };
+                }
+
+                // Asegurar que likesGoalStartOffset sea numérico válido (0 por defecto)
+                if (!Number.isFinite(Number(likesGoalStartOffset)) || likesGoalStartOffset === null) {
+                    likesGoalStartOffset = 0;
+                }
+
+                console.log(`✅ Sesión recuperada (${incomingRoomId}): ${sessionLikes.size} likers, Top Liker=${currentTopLiker.name} (${currentTopLiker.count}), streamTotalLikes=${streamTotalLikesCounter}, offset=${likesGoalStartOffset}.`);
+            } else {
+                console.log(`🟢 Nuevo stream detectado (${previousRoomId || 'ninguno'} -> ${incomingRoomId || 'desconocido'}). Reiniciando conteo para nueva sesión de stream.`);
+                resetLikeTracking({ resetSession: true, resetTopLiker: true, isNewRoom: true });
+                resetDonationTracking();
+                isRecoveringSession = false;
+                await recalculateLikerRanks();
+                syncSessionCountersToFirestore(true);
+            }
+        } finally {
+            isRecoveringSession = false;
         }
 
-        activeLiveRoomId = state.roomId || null;
-        updateLiveStatus(true, state.roomId); // Actualizar estado a ONLINE con roomId
+        saveLocalLiveSessionState(true);
+        if (incomingRoomId) {
+            updateLiveStatus(true, incomingRoomId);
+        }
         startLiveHeartbeat();
     });
     
@@ -5778,16 +5900,15 @@ function setupListeners() {
         const safeLikeCount = Number.isFinite(rawLikeCount) && rawLikeCount > 0 ? Math.floor(rawLikeCount) : 1;
 
         // ⚡ TOTAL LIKE COUNT GLOBAL: contador más confiable del stream
+        // Nunca restar los likes ya acumulados del stream al reconectar o reiniciar el bot;
+        // likesGoalStartOffset solo se mueve > 0 si el streamer pulsa manualmente Resetear Meta.
         const rawTotal = Number(data && (data.totalLikeCount !== undefined ? data.totalLikeCount : data.total));
         if (Number.isFinite(rawTotal) && rawTotal > lastKnownTotalLikeCount) {
-            if (likesGoalStartOffset === null) {
-                // Inicializar offset restando la suma actual de likes de sesión para preservar el progreso acumulado
-                const currentSessionLikes = Array.from(sessionLikes.values()).reduce((a, b) => a + b, 0);
-                likesGoalStartOffset = Math.max(0, rawTotal - currentSessionLikes);
-                console.log(`[Likes Goal] Offset inicializado: rawTotal=${rawTotal}, currentSessionLikes=${currentSessionLikes} → likesGoalStartOffset=${likesGoalStartOffset}`);
+            if (likesGoalStartOffset === null || likesGoalStartOffset === undefined || !Number.isFinite(Number(likesGoalStartOffset))) {
+                likesGoalStartOffset = 0;
             }
             lastKnownTotalLikeCount = rawTotal;
-            streamTotalLikesCounter = rawTotal; // totalLikeCount ya ES el acumulado real
+            streamTotalLikesCounter = rawTotal; // totalLikeCount ya ES el acumulado real del stream
         }
 
         // Si TikTok no manda usuario o el batch es 0, registrar el total y omitir atribución
@@ -5984,10 +6105,74 @@ const lastLikeTimeMap = new Map();
 const lastLikeAlertMilestone = new Map();
 let currentTopLiker = { name: 'N/D', count: 0 };
 let activeLiveRoomId = null;
+let isRecoveringSession = false;
 // ⚡ TOTAL LIKE COUNT GLOBAL: contador real del stream (vía totalLikeCount)
 let lastKnownTotalLikeCount = 0;
 let streamTotalLikesCounter = 0;
-let likesGoalStartOffset = null; // offset para contar likes acumulados en la meta sin pérdidas por throttling
+let likesGoalStartOffset = 0; // 0 por defecto (cuenta toda la sesión del stream); solo > 0 tras reset manual de meta
+
+// Persistencia local por perfil para conservar likes/donaciones de la sesión del stream ante reinicios del bot
+const LIVE_SESSION_STATE_FILE = path.join(activeProfileDir, 'live_session_state.json');
+let _saveSessionStateTimeout = null;
+
+function loadLocalLiveSessionState() {
+    try {
+        if (!fs.existsSync(LIVE_SESSION_STATE_FILE)) return null;
+        const raw = fs.readFileSync(LIVE_SESSION_STATE_FILE, 'utf8');
+        if (!raw || !raw.trim()) return null;
+        const parsed = JSON.parse(raw);
+        return (parsed && typeof parsed === 'object') ? parsed : null;
+    } catch (e) {
+        console.warn('⚠️ No se pudo leer live_session_state.json:', e.message);
+        return null;
+    }
+}
+
+function saveLocalLiveSessionState(immediate = false) {
+    if (isRecoveringSession || !activeLiveRoomId) return;
+    const writeNow = () => {
+        try {
+            const payload = {
+                roomId: String(activeLiveRoomId),
+                updatedAt: Date.now(),
+                likesGoalStartOffset: Math.max(0, Number(likesGoalStartOffset) || 0),
+                streamTotalLikesCounter: Math.max(0, Number(streamTotalLikesCounter) || 0),
+                lastKnownTotalLikeCount: Math.max(0, Number(lastKnownTotalLikeCount) || 0),
+                sessionTotalCoins: Math.max(0, Number(sessionTotalCoins) || 0),
+                currentTopLiker,
+                sessionLikes: Array.from(sessionLikes.entries()),
+                sessionLikerDetails: Array.from(sessionLikerDetails.entries()),
+                sessionDonations: Array.from(sessionDonations.entries()),
+                sessionGifterDetails: Array.from(sessionGifterDetails.entries()),
+                sessionFollows: Array.from(sessionFollows.entries()),
+                sessionShares: Array.from(sessionShares.entries())
+            };
+            const tmpPath = `${LIVE_SESSION_STATE_FILE}.tmp`;
+            fs.writeFileSync(tmpPath, JSON.stringify(payload), 'utf8');
+            fs.renameSync(tmpPath, LIVE_SESSION_STATE_FILE);
+        } catch (e) {
+            console.warn('⚠️ No se pudo guardar live_session_state.json:', e.message);
+        }
+    };
+    if (_saveSessionStateTimeout) {
+        clearTimeout(_saveSessionStateTimeout);
+        _saveSessionStateTimeout = null;
+    }
+    if (immediate) {
+        writeNow();
+    } else {
+        _saveSessionStateTimeout = setTimeout(writeNow, 2000);
+    }
+}
+
+process.once('SIGINT', () => {
+    saveLocalLiveSessionState(true);
+    process.exit(0);
+});
+process.once('SIGTERM', () => {
+    saveLocalLiveSessionState(true);
+    process.exit(0);
+});
 
 // ─── PRESENCIA EN EL LIVE ─────────────────────────────────────────────────────
 // Mapa de uid -> timestamp de la última vez que TikTok envió actividad del usuario
@@ -6026,24 +6211,30 @@ function syncSessionCountersToFirestore(immediate = false) {
     if (_syncCountersTimeout) clearTimeout(_syncCountersTimeout);
     
     const runSync = async () => {
-        if (!db) return;
+        if (!db || isRecoveringSession) return;
         try {
             const totalFollows = Array.from(sessionFollows.values()).reduce((a, b) => a + b, 0);
             const totalShares  = Array.from(sessionShares.values()).reduce((a, b) => a + b, 0);
-            // Usar total likes del stream con offset para evitar pérdida de conteos por throttling de TikTok
-            const totalLikes = likesGoalStartOffset !== null 
-                ? Math.max(0, streamTotalLikesCounter - likesGoalStartOffset) 
+            const safeOffset = Math.max(0, Number(likesGoalStartOffset) || 0);
+            // Usar total likes del stream con offset (0 por defecto = conteo completo de la sesión del stream)
+            const totalLikes = streamTotalLikesCounter > 0
+                ? Math.max(0, streamTotalLikesCounter - safeOffset)
                 : Array.from(sessionLikes.values()).reduce((a, b) => a + b, 0);
-            await setDoc(doc(db, 'globalStats', 'general'), {
+            const payload = {
                 sessionFollows: totalFollows,
                 sessionShares:  totalShares,
                 sessionLikes:   totalLikes,
                 streamTotalLikes: streamTotalLikesCounter,
-                likesGoalStartOffset: likesGoalStartOffset, // Guardar offset para persistencia tras reinicios
+                likesGoalStartOffset: safeOffset,
                 sessionCoins:   sessionTotalCoins,
                 botActive:      true, // ← Flag para que queue.js sepa que el bot está corriendo (evita doble puntos)
                 lastUpdate:     serverTimestamp()
-            }, { merge: true });
+            };
+            if (activeLiveRoomId) {
+                payload.roomId = String(activeLiveRoomId);
+            }
+            await setDoc(doc(db, 'globalStats', 'general'), payload, { merge: true });
+            saveLocalLiveSessionState();
         } catch (e) {
             console.error('Error sincronizando contadores de sesión:', e);
         }
@@ -6065,14 +6256,9 @@ async function syncRoomLikesFromApi() {
             const realTotalLikes = Number(roomInfo.stats.likeCount || roomInfo.stats.like_count || 0);
             if (realTotalLikes > streamTotalLikesCounter) {
                 console.log(`📊 [Room Stats Sync] Sincronizando likes de sala desde API: ${streamTotalLikesCounter} → ${realTotalLikes}`);
-                
-                // Si el offset no ha sido inicializado, este es el momento
-                if (likesGoalStartOffset === null) {
-                    const currentSessionLikes = Array.from(sessionLikes.values()).reduce((a, b) => a + b, 0);
-                    likesGoalStartOffset = Math.max(0, realTotalLikes - currentSessionLikes);
-                    console.log(`📊 [Room Stats Sync] Offset inicializado desde API: ${likesGoalStartOffset}`);
+                if (likesGoalStartOffset === null || likesGoalStartOffset === undefined || !Number.isFinite(Number(likesGoalStartOffset))) {
+                    likesGoalStartOffset = 0;
                 }
-                
                 streamTotalLikesCounter = realTotalLikes;
                 lastKnownTotalLikeCount = realTotalLikes;
                 syncSessionCountersToFirestore(true);
@@ -6244,7 +6430,7 @@ function resetLikeTracking(options = {}) {
             // ⚡ Resetear contadores de totalLikeCount al iniciar nuevo live
             lastKnownTotalLikeCount = 0;
             streamTotalLikesCounter = 0;
-            likesGoalStartOffset = null;
+            likesGoalStartOffset = 0;
             console.log('🔄 Contadores de likes globales reseteados para nuevo live.');
         }
     }
@@ -6280,7 +6466,7 @@ function scheduleUpdateGlobalTopLiker(name, count) {
 let isFlushingLikes = false;
 if (likeFlushInterval) clearInterval(likeFlushInterval);
 likeFlushInterval = setInterval(async () => {
-    if (isFlushingLikes) return;
+    if (isFlushingLikes || isRecoveringSession) return;
     isFlushingLikes = true;
     try {
     // Asegurar que insignias y alias estén frescos
@@ -6467,12 +6653,17 @@ async function recalculateLikerRanks() {
             };
         });
 
-        await setDoc(doc(db, 'globalStats', 'topLikers'), {
+        const likersPayload = {
             list: list,
             streamTotalLikes: streamTotalLikesCounter, // ⚡ total real del stream (incluyendo likes sin uniqueId)
             testAudit: false,
             lastUpdate: serverTimestamp()
-        }, { merge: true });
+        };
+        if (activeLiveRoomId) {
+            likersPayload.roomId = String(activeLiveRoomId);
+        }
+        await setDoc(doc(db, 'globalStats', 'topLikers'), likersPayload, { merge: true });
+        saveLocalLiveSessionState();
         console.log(`💾 Top Likers actualizados en Firestore (${list.length} en live). Total stream: ${streamTotalLikesCounter} likes.`);
     } catch (e) {
         console.error('❌ Error al guardar Top Likers en Firestore:', e);
@@ -6558,9 +6749,11 @@ async function recalculateDonorRanks() {
 
             await setDoc(doc(db, 'globalStats', 'topGifters'), {
                 list: list,
+                roomId: activeLiveRoomId ? String(activeLiveRoomId) : null,
                 testAudit: false,
                 lastUpdate: serverTimestamp()
             }, { merge: true });
+            saveLocalLiveSessionState();
             console.log(`💾 Top Gifters actualizados en Firestore (${list.length} en live).`);
         } catch (e) {
             console.error('❌ Error al guardar Top Gifters en Firestore:', e);
@@ -6817,8 +7010,9 @@ async function handleSongRequest(user, query, options = {}) {
                 const targetLikes = Number(overlayAlertsConfig.likesTargetForYoutubeLink) || 999;
                 
                 // Calcular total likes de sesión de forma unificada y precisa (evita el desfase por throttling de usuarios)
-                const totalSessionLikes = likesGoalStartOffset !== null 
-                    ? Math.max(0, streamTotalLikesCounter - likesGoalStartOffset) 
+                const safeOffset = Math.max(0, Number(likesGoalStartOffset) || 0);
+                const totalSessionLikes = streamTotalLikesCounter > 0
+                    ? Math.max(0, streamTotalLikesCounter - safeOffset)
                     : Array.from(sessionLikes.values()).reduce((a, b) => a + b, 0);
 
                 if (totalSessionLikes < targetLikes) {
