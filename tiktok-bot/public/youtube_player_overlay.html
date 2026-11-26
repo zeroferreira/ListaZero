@@ -2,7 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="referrer" content="no-referrer-when-downgrade">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>YouTube Display Overlay - Zero FM</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
@@ -502,7 +505,7 @@
   <!-- Player Card -->
   <div id="player-card" style="position: relative;">
     <div class="card-bg" id="card-bg"></div>
-    <div id="yt-player-container" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0.001; pointer-events: none; overflow: hidden; z-index: -999;">
+    <div id="yt-player-container" style="position: absolute; width: 100%; height: 100%; min-width: 240px; min-height: 180px; top: 0; left: 0; opacity: 0.02; pointer-events: none; overflow: hidden; z-index: 0;">
       <div id="yt-player"></div>
     </div>
     <div class="card-inner">
@@ -628,6 +631,8 @@
   // ─── State ───────────────────────────────────
   let currentVideoId  = null;
   let currentState    = 'idle';   // idle | playing | paused | ended
+  let desiredState    = 'idle';   // Estado real pedido por Firestore / Dashboard (no sobrescrito por pausas de autoplay en OBS)
+  let mutedKickstartActive = false;
   let elapsedSec      = 0;
   let lastFirestoreElapsed = null; // Evita saltos de canción involuntarios
   let durationSec     = 0;
@@ -655,7 +660,7 @@
 
   // Detect OBS environment and query params globally
   const params = new URLSearchParams(window.location.search);
-  const isObs = window.obsstudio || window.navigator.userAgent.includes('OBS') || params.get('obs') === 'true';
+  const isObs = Boolean(window.obsstudio || /OBS|CEF/i.test(window.navigator.userAgent || '') || params.get('obs') === 'true');
   if (isObs) {
     document.body.classList.add('obs-mode');
     console.log("🎥 OBS Studio detectado. Optimizaciones de rendimiento activadas.");
@@ -762,49 +767,87 @@
       ytPlayer = null;
     }
 
+    // Garantizar que el contenedor tenga dimensiones reales antes de instanciar el iframe (evita 0x0 en OBS CEF)
+    if (card && card.style.display === 'none') {
+      card.style.display = 'block';
+    }
+
     // Recreate container div
     const container = document.getElementById('yt-player-container');
     if (container) {
       container.innerHTML = '<div id="yt-player"></div>';
     }
 
-    let originParam = window.location.origin;
-    if (originParam === 'null' || originParam.startsWith('file:')) {
-      console.warn("⚠️ Advertencia: Estás ejecutando el overlay desde un archivo local (file://). YouTube bloqueará la reproducción de videos protegidos. Por favor, usa tu enlace HTTPS de Vercel en OBS.");
-      originParam = 'https://www.youtube.com'; 
-    }
+    let originParam = '';
+    try {
+      if (window.location.origin && /^https?:\/\//i.test(window.location.origin)) {
+        originParam = window.location.origin;
+      } else {
+        console.warn("⚠️ Advertencia: Estás ejecutando el overlay desde file://. Usa http://localhost:3000 o HTTPS en OBS para evitar bloqueos de YouTube.");
+      }
+    } catch (_) {}
 
     const isPreview = params.get('preview') === 'true';
     const isForceMuted = params.get('mute') === 'true' || params.get('muted') === 'true';
-    const shouldMuteInit = isPreview || isForceMuted || routeAudioTo === 'dashboard' || routeAudioTo === 'none';
+    const shouldMuteTarget = isPreview || isForceMuted || routeAudioTo === 'dashboard' || routeAudioTo === 'none';
+    // En OBS iniciamos en silencio solo durante el arranque si quiere reproducir, y al entrar en PLAYING (1) restauramos el volumen real.
+    // Esto evita que el bloqueo de autoplay de Chromium/CEF congele el video en estado -1/5.
+    const shouldMuteInit = shouldMuteTarget || (isObs && startState === 'playing');
+    mutedKickstartActive = Boolean(isObs && startState === 'playing' && !shouldMuteTarget);
+
+    const playerVars = {
+      'autoplay': startState === 'playing' ? 1 : 0,
+      'start': startSec,
+      'controls': 0,
+      'disablekb': 1,
+      'fs': 0,
+      'rel': 0,
+      'showinfo': 0,
+      'iv_load_policy': 3,
+      'enablejsapi': 1,
+      'playsinline': 1,
+      'mute': shouldMuteInit ? 1 : 0,
+      'modestbranding': 1,
+      'autohide': 1,
+      'cc_load_policy': 0
+    };
+    if (originParam) {
+      playerVars.origin = originParam;
+      playerVars.widget_referrer = originParam;
+    }
 
     ytPlayer = new YT.Player('yt-player', {
       host: 'https://www.youtube.com',
       height: '100%',
       width: '100%',
       videoId: videoId,
-      playerVars: {
-        'autoplay': startState === 'playing' ? 1 : 0,
-        'start': startSec,
-        'controls': 0,
-        'disablekb': 1,
-        'fs': 0,
-        'rel': 0,
-        'showinfo': 0,
-        'iv_load_policy': 3,
-        'enablejsapi': 1,
-        'mute': shouldMuteInit ? 1 : 0, // Iniciar silenciado solo si la salida no es OBS o está forzado
-        'modestbranding': 1,
-        'autohide': 1,
-        'cc_load_policy': 0,
-        'origin': originParam
-      },
+      playerVars: playerVars,
       events: {
         'onReady': (event) => {
           isYtReady = true;
 
+          // Asegurar atributos de autoplay en el iframe recién creado por la API de YouTube
+          try {
+            const ifr = event.target.getIframe ? event.target.getIframe() : document.querySelector('#yt-player-container iframe');
+            if (ifr) {
+              ifr.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+              ifr.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+            }
+          } catch (_) {}
+
           if (startState === 'playing') {
+            if (mutedKickstartActive) {
+              try { event.target.mute(); } catch (_) {}
+            }
             event.target.playVideo();
+            // Si el kickstart en silencio ya arrancó, intentar desmutear tras un instante seguro
+            if (mutedKickstartActive) {
+              setTimeout(() => {
+                if (desiredState === 'playing') {
+                  updatePlayerMuteState(currentVolume);
+                }
+              }, 450);
+            }
           } else {
             event.target.pauseVideo();
           }
@@ -818,13 +861,16 @@
               timeTotal.textContent = fmtTime(durationSec);
             }
           }
-          updatePlayerMuteState(currentVolume);
+          if (!mutedKickstartActive) {
+            updatePlayerMuteState(currentVolume);
+          }
           adjustIframeAspectRatio();
           positionMiniatureVideo();
         },
         'onStateChange': (event) => {
           // 1 = PLAYING, 2 = PAUSED, 0 = ENDED, 3 = BUFFERING
           if (event.data === 1) {
+            mutedKickstartActive = false;
             updatePlayerMuteState(currentVolume);
             if (typeof event.target.getDuration === 'function') {
               const ytDuration = event.target.getDuration();
@@ -837,11 +883,28 @@
               applyState('playing');
             }
           } else if (event.data === 2) {
-            if (currentState !== 'paused' && currentState !== 'ended') {
+            // En OBS: si el DJ/Firestore pidió 'playing', una pausa inesperada del iframe (ej. bloqueo de autoplay)
+            // NO debe apagar el watchdog ni marcar el estado deseado como pausado.
+            if (desiredState === 'playing' && isObs) {
+              console.warn('⚠️ [OBS] YouTube se pausó inesperadamente mientras desiredState=playing; intentando reanudar...');
+              setTimeout(() => {
+                if (desiredState === 'playing' && ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+                  const st = ytPlayer.getPlayerState();
+                  if (st === 2 || st === -1 || st === 5) {
+                    try {
+                      ytPlayer.mute();
+                      ytPlayer.playVideo();
+                      setTimeout(() => updatePlayerMuteState(currentVolume), 500);
+                    } catch (_) {}
+                  }
+                }
+              }, 350);
+            } else if (currentState !== 'paused' && currentState !== 'ended') {
               applyState('paused');
             }
           } else if (event.data === 0) {
             if (currentState !== 'ended') {
+              desiredState = 'ended';
               applyState('ended');
               reportEndedToFirestore();
             }
@@ -1065,18 +1128,20 @@
 
     // FIX: applyState actualiza solo la UI (dot, timer, label).
     // syncPlayerState se llama UNA sola vez abajo — no dentro de applyState.
-    applyState(data.state || 'playing');
+    desiredState = data.state || 'playing';
+    applyState(desiredState);
+
+    currentVideoId = vid;
+    // Mostrar tarjeta ANTES de instanciar/cargar el iframe de YouTube (evita iframe 0x0 en OBS CEF)
+    showCard();
 
     // Sync YT audio player state (una sola vez, evita race conditions)
     if (videoChanged) {
-      createOrLoadPlayer(vid, data.state || 'playing', elapsedSec);
+      createOrLoadPlayer(vid, desiredState, elapsedSec);
     } else {
-      syncPlayerState(data.state || 'playing', vid);
+      syncPlayerState(desiredState, vid);
       updatePlayerMuteState(currentVolume);
     }
-
-    currentVideoId = vid;
-    showCard();
     // Layout recalc solo si el modo miniatura está activo
     if (window.currentVideoMode === 'miniature') {
       setTimeout(() => {
@@ -1088,16 +1153,18 @@
 
   function showCard() {
     card.style.display = 'block';
-    // PERF 1: Doble rAF en vez de reflow forzado (void card.offsetWidth).
-    // El browser registra el display change en el primer frame y aplica
-    // la transición de opacidad en el siguiente — sin bloquear el hilo principal.
     if (!isVisible) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+      const makeVisible = () => {
+        if (!card.classList.contains('visible')) {
           card.classList.add('visible');
-          isVisible = true;
-        });
+        }
+        isVisible = true;
+      };
+      requestAnimationFrame(() => {
+        requestAnimationFrame(makeVisible);
       });
+      // Fallback en OBS si rAF está pausado al iniciar en segundo plano
+      setTimeout(makeVisible, 80);
     }
   }
 
@@ -1153,6 +1220,8 @@
     timeElapsed.textContent = '0:00';
     timeTotal.textContent   = '—';
     currentState = 'idle';
+    desiredState = 'idle';
+    mutedKickstartActive = false;
 
     if (errorSkipTimeoutId) {
       clearTimeout(errorSkipTimeoutId);
@@ -1292,35 +1361,86 @@
   function startWatchdog() {
     if (watchdogInterval) clearInterval(watchdogInterval);
     watchdogInterval = setInterval(() => {
-      if (currentState !== 'playing' || !ytPlayer || typeof ytPlayer.getPlayerState !== 'function') {
+      if (desiredState !== 'playing' || !currentVideoId) {
         stuckCount = 0;
         stuckTimeCount = 0;
+        lastTimeChecked = -1;
         hideAutoplayUnlockBanner();
+        return;
+      }
+      if (!ytPlayer || typeof ytPlayer.getPlayerState !== 'function') {
+        stuckCount++;
+        if (stuckCount >= 3 && isYtApiReady) {
+          stuckCount = 0;
+          createOrLoadPlayer(currentVideoId, 'playing', elapsedSec || 0);
+        }
         return;
       }
 
       const ytState = ytPlayer.getPlayerState();
 
-      // 1 = PLAYING, 3 = BUFFERING
-      if (ytState === 1 || ytState === 3) {
+      // 1 = PLAYING: verificar que el tiempo realmente avanza (en OBS CEF el decodificador puede congelarse en estado 1)
+      if (ytState === 1) {
         stuckCount = 0;
-        stuckTimeCount = 0;
         hideAutoplayUnlockBanner();
+        if (typeof ytPlayer.getCurrentTime === 'function') {
+          const curT = Number(ytPlayer.getCurrentTime()) || 0;
+          if (lastTimeChecked >= 0 && Math.abs(curT - lastTimeChecked) < 0.25) {
+            stuckTimeCount++;
+            if (stuckTimeCount === 4) {
+              console.warn(`⚠️ [Watchdog] Tiempo congelado en ${curT.toFixed(1)}s. Reimpulsando seek+play...`);
+              try {
+                ytPlayer.seekTo(Math.max(0, curT), true);
+                ytPlayer.playVideo();
+              } catch (_) {}
+            } else if (stuckTimeCount >= 6) {
+              console.warn('⚠️ [Watchdog] Reproductor congelado >18s. Recreando instancia...');
+              stuckTimeCount = 0;
+              lastTimeChecked = -1;
+              createOrLoadPlayer(currentVideoId, 'playing', Math.floor(curT) || elapsedSec || 0);
+            }
+          } else {
+            stuckTimeCount = 0;
+          }
+          lastTimeChecked = curT;
+        }
         return;
       }
 
-      // Si está en estado no iniciado (-1 o 5) durante más de 6s
-      if (ytState === -1 || ytState === 5) {
+      // 3 = BUFFERING prolongado (>12s) en OBS
+      if (ytState === 3) {
+        stuckTimeCount++;
+        if (stuckTimeCount === 4) {
+          console.warn('⚠️ [Watchdog] Buffering prolongado en OBS. Intentando reanudar...');
+          try { ytPlayer.playVideo(); } catch (_) {}
+        } else if (stuckTimeCount >= 6) {
+          stuckTimeCount = 0;
+          createOrLoadPlayer(currentVideoId, 'playing', elapsedSec || 0);
+        }
+        return;
+      }
+
+      // Estado no iniciado (-1), en cola (5) o pausado inesperadamente (2) mientras desiredState='playing'
+      if (ytState === -1 || ytState === 5 || ytState === 2) {
         stuckCount++;
-        if (stuckCount >= 2) {
+        if (stuckCount >= 1) {
           try {
-            ytPlayer.playVideo();
+            if (isObs) {
+              // Kickstart silenciado para superar política de autoplay de OBS CEF, luego restaurar volumen
+              ytPlayer.mute();
+              ytPlayer.playVideo();
+              setTimeout(() => {
+                if (desiredState === 'playing') updatePlayerMuteState(currentVolume);
+              }, 550);
+            } else {
+              ytPlayer.playVideo();
+            }
           } catch (e) {}
         }
-        if (stuckCount >= 4 && !isObs) {
+        if (stuckCount >= 3 && !isObs) {
           showAutoplayUnlockBanner();
         }
-        if (stuckCount >= 8) {
+        if (stuckCount >= 5) {
           stuckCount = 0;
           hideAutoplayUnlockBanner();
           createOrLoadPlayer(currentVideoId, 'playing', elapsedSec || 0);
@@ -1662,8 +1782,10 @@
         ytContainer.style.left = '0';
         ytContainer.style.width = '100%';
         ytContainer.style.height = '100%';
-        ytContainer.style.opacity = '0.001';
-        ytContainer.style.zIndex = '-999';
+        ytContainer.style.minWidth = '240px';
+        ytContainer.style.minHeight = '180px';
+        ytContainer.style.opacity = '0.02';
+        ytContainer.style.zIndex = '0';
         ytContainer.style.borderRadius = '0';
         ytContainer.style.filter = '';
         
@@ -1820,9 +1942,9 @@
       }
       db = firebase.firestore();
       try {
-        db.settings({ experimentalForceLongPolling: true });
+        db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
       } catch (e) {
-        console.warn('Could not set experimentalForceLongPolling:', e);
+        console.warn('Could not set Firestore long-polling:', e);
       }
 
       // Listen to active video — guardar unsubscribe para limpieza futura
@@ -1866,6 +1988,7 @@
     }
 
     if (action === 'ytPlay' || action === 'ytResume') {
+      desiredState = 'playing';
       if (payload?.videoId) {
         applyData({ ...payload, state: 'playing', timestamp: Date.now() });
       } else {
@@ -1876,13 +1999,17 @@
       }
     }
     if (action === 'ytPause') {
+      desiredState = 'paused';
       applyState('paused');
       // BUG C: pausar el player real, no solo la UI
       if (ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
         ytPlayer.pauseVideo();
       }
     }
-    if (action === 'ytStop' || action === 'ytEnd') setIdle();
+    if (action === 'ytStop' || action === 'ytEnd') {
+      desiredState = 'idle';
+      setIdle();
+    }
     if (action === 'ytSeek' && typeof payload?.elapsed === 'number') {
       elapsedSec = payload.elapsed;
       updateProgress();
@@ -1906,6 +2033,38 @@
       positionMiniatureVideo();
       adjustIframeAspectRatio();
     }, 100);
+  });
+
+  // Recuperación automática en OBS al activar/mostrar escena
+  function handleObsSceneResume() {
+    adjustIframeAspectRatio();
+    positionMiniatureVideo();
+    if (desiredState === 'playing' && currentVideoId) {
+      if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+        const st = ytPlayer.getPlayerState();
+        if (st !== 1) {
+          try {
+            if (isObs) ytPlayer.mute();
+            ytPlayer.playVideo();
+            setTimeout(() => {
+              if (desiredState === 'playing') updatePlayerMuteState(currentVolume);
+            }, 500);
+          } catch (_) {}
+        }
+      } else if (isYtApiReady) {
+        createOrLoadPlayer(currentVideoId, 'playing', elapsedSec || 0);
+      }
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') handleObsSceneResume();
+  });
+  window.addEventListener('obsSourceActiveChanged', (ev) => {
+    if (ev && ev.detail && ev.detail.active) handleObsSceneResume();
+  });
+  window.addEventListener('obsSourceVisibleChanged', (ev) => {
+    if (ev && ev.detail && ev.detail.visible) handleObsSceneResume();
   });
 
   // Iniciar el vigilante en segundo plano para autocuración

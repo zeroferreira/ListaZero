@@ -47,24 +47,9 @@
 
     @layer base {
       :root {
-        --in-oklab: ;
-        --in-oklch: ;
-
-        /* Physics-based easings */
-        --spring-easing: linear(
-          0, 0.016 0.5%, 0.06 1%, 0.226 2%, 1.116 5.4%, 1.375 6.6%, 1.527 7.7%,
-          1.565 8.2%, 1.585 8.8%, 1.581 9.3%, 1.559 9.8%, 1.458 10.9%, 0.937 14.3%,
-          0.784 15.5%, 0.693 16.6%, 0.67 17.1%, 0.657 17.7%, 0.671 18.7%, 0.729 19.8%,
-          1.042 23.3%, 1.13 24.5%, 1.182 25.6%, 1.201 26.7%, 1.192 27.7%, 1.156 28.8%,
-          0.977 32.2%, 0.925 33.4%, 0.894 34.5%, 0.882 35.6%, 0.887 36.6%, 0.907 37.7%,
-          1.045 42.4%, 1.069 44.5%, 1.059 46.3%, 0.979 50.9%, 0.96 53.4%, 0.966 55.3%,
-          1.013 59.9%, 1.024 62.3%, 0.986 71.2%, 1.008 79.9%, 0.995 88.9%, 1
-        );
-        --bounce-easing: linear(
-          0, 0.214 14.7%, 0.386 23.7%, 0.598 31.9%, 0.999 44.7%, 0.807 52.6%,
-          0.762 56%, 0.747 59.4%, 0.758 62.4%, 0.793 65.6%, 0.999 77.4%,
-          0.961 81.2%, 0.949 84.8%, 0.956 88%, 0.993 95.5%, 1
-        );
+        /* Fallback universal compatible con OBS CEF (Chromium 103+) y TikTok Live Studio */
+        --spring-easing: cubic-bezier(0.34, 1.56, 0.64, 1);
+        --bounce-easing: cubic-bezier(0.34, 1.45, 0.64, 1);
 
         /* Dynamic Config Variables */
         --font-active: 'Outfit', system-ui, -apple-system, sans-serif;
@@ -86,10 +71,23 @@
         --card-radius: 999px;
       }
 
-      @supports (background: linear-gradient(in oklab, white, black)) {
+      /* Mejora progresiva de easings físicos solo si el navegador soporta linear() (Chrome 113+) */
+      @supports (animation-timing-function: linear(0, 1)) {
         :root {
-          --in-oklab: in oklab;
-          --in-oklch: in oklch;
+          --spring-easing: linear(
+            0, 0.016 0.5%, 0.06 1%, 0.226 2%, 1.116 5.4%, 1.375 6.6%, 1.527 7.7%,
+            1.565 8.2%, 1.585 8.8%, 1.581 9.3%, 1.559 9.8%, 1.458 10.9%, 0.937 14.3%,
+            0.784 15.5%, 0.693 16.6%, 0.67 17.1%, 0.657 17.7%, 0.671 18.7%, 0.729 19.8%,
+            1.042 23.3%, 1.13 24.5%, 1.182 25.6%, 1.201 26.7%, 1.192 27.7%, 1.156 28.8%,
+            0.977 32.2%, 0.925 33.4%, 0.894 34.5%, 0.882 35.6%, 0.887 36.6%, 0.907 37.7%,
+            1.045 42.4%, 1.069 44.5%, 1.059 46.3%, 0.979 50.9%, 0.96 53.4%, 0.966 55.3%,
+            1.013 59.9%, 1.024 62.3%, 0.986 71.2%, 1.008 79.9%, 0.995 88.9%, 1
+          );
+          --bounce-easing: linear(
+            0, 0.214 14.7%, 0.386 23.7%, 0.598 31.9%, 0.999 44.7%, 0.807 52.6%,
+            0.762 56%, 0.747 59.4%, 0.758 62.4%, 0.793 65.6%, 0.999 77.4%,
+            0.961 81.2%, 0.949 84.8%, 0.956 88%, 0.993 95.5%, 1
+          );
         }
       }
 
@@ -105,11 +103,24 @@
         -moz-osx-font-smoothing: grayscale;
       }
 
-      @media (prefers-reduced-motion: reduce) {
-        * {
-          animation: var(--animation-reduced) !important;
-          transition: none !important;
-        }
+      /* En OBS/Windows (PCs de transmisión con "Efectos de animación" desactivados),
+         no bloquear las animaciones del overlay de transmisión para evitar congelamientos. */
+
+      /* Modo seguro para GPU en OBS Studio CEF (Windows): evita que repaints de
+         conic-gradient animado + blur extremo congelen el Browser Source */
+      body.obs-browser #ad-banner-inner {
+        backdrop-filter: blur(12px) saturate(150%);
+        -webkit-backdrop-filter: blur(12px) saturate(150%);
+      }
+      body.obs-browser #widget-stage[data-banner-style="kinetic-glass"] #ad-banner-inner,
+      body.obs-browser #widget-stage[data-banner-style="neon-capsule"] #ad-banner-inner,
+      body.obs-browser #widget-stage[data-banner-style="royal-gold"] #ad-banner-inner,
+      body.obs-browser #widget-stage[data-banner-style="fire-energy"] #ad-banner-inner {
+        animation: cartelAliveFloat 4.2s ease-in-out infinite;
+      }
+      body.obs-browser .cartel-orbs {
+        animation: none;
+        filter: blur(14px);
       }
     }
 
@@ -287,7 +298,7 @@
         padding: 0.28em 0.56em;
         border-radius: 999px;
         background: linear-gradient(
-          135deg var(--in-oklab),
+          135deg,
           rgba(var(--accent-rgb), 0.36),
           rgba(var(--accent-sec-rgb), 0.24)
         );
@@ -492,7 +503,7 @@
         padding: 0.05em 0.45em;
         border-radius: 0.42em;
         background: linear-gradient(
-          135deg var(--in-oklab),
+          135deg,
           rgba(var(--accent-rgb), 0.48),
           rgba(var(--accent-sec-rgb), 0.38)
         );
@@ -515,10 +526,9 @@
         }
       }
 
-      /* Individual Character Span */
+      /* Individual Character Span (sin will-change por letra para evitar saturar GPU/CEF en OBS Windows) */
       .ad-char {
         display: inline-block;
-        will-change: transform, opacity;
         --char-delay: calc(var(--sibling-index, 1) * var(--stagger-step));
       }
 
@@ -546,7 +556,7 @@
         width: 100%;
         height: 100%;
         transform-origin: right center;
-        background: linear-gradient(270deg var(--in-oklab), var(--accent-primary), var(--accent-secondary), #ffffff);
+        background: linear-gradient(270deg, var(--accent-primary), var(--accent-secondary), #ffffff);
         box-shadow: 0 0 10px var(--accent-secondary);
       }
     }
@@ -563,7 +573,7 @@
       :where(#widget-stage[data-banner-style="kinetic-glass"]) #ad-banner-inner {
         border-radius: 999px;
         background:
-          linear-gradient(135deg var(--in-oklab), rgba(16, 14, 32, calc(var(--card-opacity) * 0.94)), rgba(28, 12, 38, calc(var(--card-opacity) * 0.88))) padding-box,
+          linear-gradient(135deg, rgba(16, 14, 32, calc(var(--card-opacity) * 0.94)), rgba(28, 12, 38, calc(var(--card-opacity) * 0.88))) padding-box,
           conic-gradient(from var(--border-angle), var(--accent-primary), var(--accent-secondary), rgba(255,255,255,0.28), var(--accent-primary)) border-box;
         border: 2px solid transparent;
         backdrop-filter: blur(22px) saturate(180%);
@@ -686,7 +696,7 @@
       :where(#widget-stage[data-banner-style="hologram-prism"]) #ad-banner-inner {
         border-radius: 999px;
         background: linear-gradient(
-          135deg var(--in-oklab),
+          135deg,
           rgba(0, 240, 255, 0.26) 0%,
           rgba(168, 85, 247, 0.3) 50%,
           rgba(255, 0, 128, 0.26) 100%
@@ -1046,7 +1056,7 @@
 
       #widget-stage[data-text-effect="shimmer"] .ad-char.is-alpha {
         background: linear-gradient(
-          90deg var(--in-oklab),
+          90deg,
           #ffffff 0%,
           var(--accent-secondary) 35%,
           var(--accent-primary) 65%,
@@ -2408,6 +2418,16 @@
       let cycleTimer = null;
       let phaseInCleanupTimer = null;
       let renderRafId = null;
+      let renderFallbackTimer = null;
+
+      // Detectar OBS Studio / CEF en Windows para aplicar alivio GPU y recuperación de escenas
+      const isObsBrowser = Boolean(
+        typeof window !== 'undefined' &&
+        (window.obsstudio || /OBS|CEF/i.test(navigator.userAgent || ''))
+      );
+      if (isObsBrowser) {
+        document.body.classList.add('obs-browser');
+      }
 
       function getNormalizedItems() {
         return Array.isArray(currentConfig.adsWidgetItems) && currentConfig.adsWidgetItems.length > 0
@@ -2471,15 +2491,31 @@
           cancelAnimationFrame(renderRafId);
           renderRafId = null;
         }
-        renderRafId = requestAnimationFrame(() => {
+        if (renderFallbackTimer) {
+          clearTimeout(renderFallbackTimer);
+          renderFallbackTimer = null;
+        }
+
+        let didRun = false;
+        const flushRender = () => {
+          if (didRun) return;
+          didRun = true;
           renderRafId = null;
+          if (renderFallbackTimer) {
+            clearTimeout(renderFallbackTimer);
+            renderFallbackTimer = null;
+          }
           updateRtlMetrics();
           if (mode === 'entry') {
             startCycleForCurrentAd(true);
           } else if (mode === 'flow') {
             startCycleForCurrentAd(false);
           }
-        });
+        };
+
+        renderRafId = requestAnimationFrame(flushRender);
+        // Fallback en OBS si rAF está pausado al iniciar en una escena inactiva
+        renderFallbackTimer = setTimeout(flushRender, 90);
       }
 
       function startCycleForCurrentAd(playEntry = true) {
@@ -2521,10 +2557,15 @@
           root.style.setProperty('--rtl-duration', `${((activeEntryMs + holdMs) / 1000).toFixed(2)}s`);
         }
 
-        // Mantener siempre limpio el estado visual para evitar congelamiento o parpadeo
+        // Mantener siempre limpio el estado visual y forzar reinicio real en OBS CEF Windows
         bannerEl.classList.remove('phase-in', 'phase-out', 'is-Paused-Hidden');
         rtlTrackEl.classList.remove('is-running');
+        bannerEl.style.animation = 'none';
+        rtlTrackEl.style.animation = 'none';
         void bannerEl.offsetWidth;
+        void rtlTrackEl.offsetWidth;
+        bannerEl.style.animation = '';
+        rtlTrackEl.style.animation = '';
 
         if (activeEntryMs > 0) {
           bannerEl.classList.add('phase-in');
@@ -3117,6 +3158,7 @@
         'adsWidgetFadeEnabled', 'adsWidgetTrans', 'adsWidgetTransIn'
       ]);
       const FLOW_RESTART_KEYS = new Set([
+        'adsWidgetItems', 'adsWidgetLetterAnim',
         'adsWidgetFlowMode', 'adsWidgetPlayMode', 'adsWidgetActiveIndex',
         'adsWidgetFadeScope', 'adsWidgetHold', 'adsWidgetFadeIn', 'adsWidgetFadeOut',
         'adsWidgetPause', 'adsWidgetTransOut'
@@ -3202,6 +3244,53 @@
           }
         });
       }
+
+      // ─── Recuperación automática de métricas y animación en OBS (fuentes, resize, cambio de escena) ───
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => {
+          updateRtlMetrics();
+        }).catch(() => {});
+      }
+
+      if (typeof ResizeObserver !== 'undefined' && viewportEl) {
+        let lastVpW = viewportEl.clientWidth || 0;
+        const vpObserver = new ResizeObserver(() => {
+          const nextW = viewportEl.clientWidth || 0;
+          if (nextW > 0 && Math.abs(nextW - lastVpW) > 6) {
+            lastVpW = nextW;
+            updateRtlMetrics();
+            if (!isPreviewMode) startCycleForCurrentAd(false);
+          }
+        });
+        vpObserver.observe(viewportEl);
+      }
+
+      let lastResumeAt = 0;
+      function resumeOverlayInObs() {
+        const now = Date.now();
+        if (now - lastResumeAt < 600) return;
+        lastResumeAt = now;
+        updateRtlMetrics();
+        if (!isPreviewMode) {
+          renderCurrentAnnouncement('entry');
+        }
+      }
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          resumeOverlayInObs();
+        }
+      });
+      window.addEventListener('obsSourceActiveChanged', (ev) => {
+        if (ev && ev.detail && ev.detail.active) {
+          resumeOverlayInObs();
+        }
+      });
+      window.addEventListener('obsSourceVisibleChanged', (ev) => {
+        if (ev && ev.detail && ev.detail.visible) {
+          resumeOverlayInObs();
+        }
+      });
 
       // ─── Bootstrap ───
       renderAdsEditorList();
